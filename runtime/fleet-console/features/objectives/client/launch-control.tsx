@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerExtra } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { ModelCoordinatePicker, type ModelCoordinatePickerExtra } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { LocalizedText, Translate } from "@fleet-console/i18n";
@@ -31,25 +31,9 @@ let models: ClientModelsCapability | null = null;
 let lastGroups: readonly LaunchGroup[] = [];
 let lastRoster: ModelRoster | null = null;
 
-/** 리액트 밖 구독자(대화 명부를 싣는 묶음 서술자) — 로스터가 오거나 바뀌면 다시 셈한다. */
-const rosterListeners = new Set<() => void>();
-const notifyRoster = () => { for (const listener of rosterListeners) listener(); };
-
 export function installLaunchRoster(capability: ClientModelsCapability): () => void {
   models = capability;
-  const off = capability.subscribe(notifyRoster);
-  if (rosterListeners.size > 0) { void capability.load("launch").catch(() => undefined); notifyRoster(); }
-  return () => { off(); if (models === capability) models = null; };
-}
-
-/** 지금 캐시된 기동 로스터 — 읽기 전이면 null 이고 읽기를 시작하지 않는다. */
-export const readLaunchRoster = (): ModelRoster | null => models?.read("launch") ?? null;
-
-/** 리액트 밖에서 로스터를 따른다 — 구독하는 동안 읽기를 한 번 청해, 보드를 열지 않아도 같은 낱말이 선다. */
-export function subscribeLaunchRoster(listener: () => void): () => void {
-  rosterListeners.add(listener);
-  void models?.load("launch").catch(() => undefined);
-  return () => { rosterListeners.delete(listener); };
+  return () => { if (models === capability) models = null; };
 }
 
 function toLaunchGroups(roster: ModelRoster | null): readonly LaunchGroup[] {
@@ -262,51 +246,9 @@ export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, 
   const chosen = launchedWords(rows, picked.model, picked.effort, labels);
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
-/**
- * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원은 실행 모델,
- * 아직 고르지 않은 구성원은 「라우팅」이다. hover 글은 보드 트리거의 title 그대로다.
- */
-export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
-  const groups = toLaunchGroups(roster);
-  const display = memberLaunchDisplay(member, launched, t, groups.flatMap((group) => group.rows));
-  if (launched) {
-    // 보드 행의 LaunchedText 와 같은 낱말 — 이름과 강도를 따로 싣는다.
-    const running = launchedWords(groups.flatMap((group) => group.rows), member.model, member.effort, { auto: t("objectives.commander.effortAuto"), fallback: t("objectives.launch.default") });
-    return { label: running.words.model, effort: running.words.effort || null, title: display.title, provider: running.model ? providerOfModel(groups, running.model) : null, struck: false, badge: null };
-  }
-  const picked = pickedLaunch(member);
-  if (!picked) return { label: display.label, effort: null, title: display.title, provider: null, struck: false, badge: null };
-  const shown = modelCoordinateDisplay(roster, { model: picked.model, ...(picked.effort ? { effort: picked.effort } : {}) }, undefined, pickerLabels(t));
-  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
-}
-
-/** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
-export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown | null {
-  // 시작 전(세션 없음·미시작)은 모델 자리가 비어 있다. 기본 좌표 낱말도 두지 않는다.
-  if (!objective.commander.started && !objective.hasSession) return null;
-  const { model, effort } = objective.commander;
-  const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
-  return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };
-}
 
 /**
- * 트리거가 보이는 모델 줄 — 낱말, hover 글, 공급자, 그리고 공유 선택기가 그 곁에 그리는 상태: 로스터 밖 저장값이면 취소선(struck)과
- * 「꺼짐」, 로스터가 비어 최후 폴백으로 서면 「폴백」 표식(badge).
- */
-export interface LaunchShown {
-  /** 모델 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
-  readonly label: string;
-  /** 강도 낱말 — 말하지 않는 행(라우팅·강도 사다리 없는 모델)이면 null. */
-  readonly effort: string | null;
-  readonly title: string;
-  readonly provider: LaunchProviderGlyphId | null;
-  readonly providerName?: string;
-  readonly struck: boolean;
-  readonly badge: string | null;
-}
-
-/**
- * 구성원 행 아래의 진단 줄 — 보드 행과 대화 명부가 같은 낱말·순서를 쓴다. 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
+ * 구성원 행 아래의 진단 줄 — 직전 턴 실패, 바꾸지 못한 모델 전환, 보고 경로 없음. `title` 은 보드가 펼침 안에 싣는 원문이다(번역하지 않는다). 없으면 빈 목록이다.
  */
 export interface MemberNote {
   readonly kind: "failure" | "switch" | "noReportTool";
@@ -328,9 +270,7 @@ export function memberNotes(member: ObjectiveMember, launched: boolean, t: Trans
   return notes;
 }
 
-const pickerLabels = (t: Translate<ObjectiveMessageKey>) => ({ auto: t("objectives.commander.effortAuto"), off: t("objectives.launch.off"), providerRemoved: t("objectives.launch.providerRemoved"), fallback: t("objectives.launch.fallback") });
-
-/** 한 로케일 값의 낱말을 로케일마다 다시 푼다 — 대화 명부는 호스트의 로케일로 읽는다. */
+/** 한 로케일 값의 낱말을 로케일마다 다시 푼다. */
 export const localized = (word: (t: Translate<ObjectiveMessageKey>) => string): LocalizedText => (locale) => word(getT(locale));
 
 /**

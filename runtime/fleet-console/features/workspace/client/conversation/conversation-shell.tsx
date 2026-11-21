@@ -29,12 +29,11 @@ import { useTheaterLabel } from "../../../../core/client/src/hooks/use-store.js"
 import { useTheaterInboxState } from "../theater-inbox/store.js";
 import { useDesktopRailEntries, type RailEntryBinding } from "../../../../core/client/src/chrome/pane/pane-registry.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../settings/client/settings-entry.js";
-import { objectiveRecordAvatarKey, commodoreAvatarKey, type MongleState } from "../../shared/avatars.js";
+import { objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { TheaterGlyph } from "../components/theater-glyph.js";
 import { AvatarEditor, KeyedAvatar, ObjectiveAvatar, objectiveRecordAvatarRole, objectiveRecordMongleState } from "../avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
 import { pluginRuntimeState } from "../../../execution/client/objective-activity.js";
-import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDriving, useBrowserSurface } from "../../../browser/client/browser-surface.js";
@@ -49,9 +48,10 @@ import { useClusterIndex, useObjectiveClusters } from "../objective-clusters.js"
 import { commanderOwnerOf } from "../commander-tab/commander-rows.js";
 import { ObjectiveChipCommodore } from "./objective-chip-commodore.js";
 import { openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { openObjectivePopup } from "../../../objectives/client/objectives-panel.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
 import { ConversationParticipantBody } from "./conversation-participant-body.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject, useConversationToolbarTail } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationToolbarTail } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
@@ -90,9 +90,12 @@ const LAST_PANEL_KEY = "fleet-console.conversation.lastPanel";
 export const CONVERSATION_MIN_WIDTH = 480;
 export const CONVERSATION_RESERVED_ARENA_WIDTH = CONVERSATION_MIN_WIDTH;
 
+const RETIRED_LAST_PANELS = new Set(["commodore-info", "commodore-routines", "conversation.members"]);
+
 function readLastPanel(): string | null {
   try {
-    return window.localStorage.getItem(LAST_PANEL_KEY);
+    const stored = window.localStorage.getItem(LAST_PANEL_KEY);
+    return stored !== null && RETIRED_LAST_PANELS.has(stored) ? null : stored;
   } catch {
     return null;
   }
@@ -242,12 +245,10 @@ function SideBarBrowserButton() {
 }
 
 /**
- * 오른쪽 패널 머리 — 대상의 글자 탭(구성원 등)만 선다. 칸이 하나인 사령관은 탭 줄 없이 선다(hidePanelTabs). 작전구역 도구 글리프는 이 머리가 아니라
+ * 오른쪽 패널 머리 — 탭을 선언한 표면(TaskForce 등)이나 Theater 설정만 선다. 작전구역 도구 글리프는 이 머리가 아니라
  * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
  */
 export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
-  const subject = useConversationSubject();
-  const standIn = useConversationStandIn();
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const state = useConsoleState();
@@ -255,7 +256,7 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   const descriptor = surface === null ? null : conversationSurfaces.find((entry) => entry.id === surface.surfaceId) ?? null;
   useConversationSurfaceHead(descriptor);
   const context = surface && descriptor ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const : null;
-  const avatarKey = subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null : null;
+  const avatarKey = context ? descriptor?.avatar?.(context)?.key ?? null : null;
   const accent = useAvatarAccent(avatarKey);
   const activeId = useRailActivePanelId();
   const entries = useDesktopRailEntries();
@@ -470,23 +471,20 @@ function PanelIdentityName({ title, onRename, subject = "objective" }: { readonl
   );
 }
 
-/** 오른쪽 패널 머리 가운데 — 지금 가운데 칸 대상의 표식과 이름. 대상이 없으면 서지 않는다. */
+/** 오른쪽 패널 머리 가운데 — Theater 설정 또는 오른쪽 패널 탭을 선언한 표면의 표식과 이름. 대상이 없으면 서지 않는다. */
 function ConversationPanelIdentity() {
   const inbox = useTheaterInboxState();
   const theaterLabel = useTheaterLabel(inbox?.theaterId);
-  const subject = useConversationSubject();
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const state = useConsoleState();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const centerSurface = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
-  const descriptor = subject === null ? centerSurface : null;
-  const clusterIndex = useClusterIndex();
-  const renameObjective = useConversationObjectiveRename();
   useConversationSurfaceHead(centerSurface);
   // Theater 를 연 동안 패널은 그 Theater 의 것이다 — Theater 는 정체성이 아니므로 표식은 Theater 표식이다.
   // 가운데 칸에 그 Theater 를 대신하는 대화가 서 있으면 표식과 이름은 그 대화의 것이다 — 패널을 어느 길로 열든 머리가 같다.
-  if (inbox !== null && theaterLabel !== null) {    const context = centerSurface !== null && surface !== null
+  if (inbox !== null && theaterLabel !== null) {
+    const context = centerSurface !== null && surface !== null
       ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const
       : null;
     let owner: { readonly title: string; readonly label: string; readonly state: MongleState; readonly rename: ((title: string) => void) | null } | null = null;
@@ -507,24 +505,15 @@ function ConversationPanelIdentity() {
       </div>
     );
   }
-  if (subject !== null) {
-    // 대상의 몽글 아바타(64px) — 이 화면에서만 눌러 고친다. 일반 화면에는 이 자리도 편집 진입도 없다.
-    return (
-      <div className="conversation-panel-identity">
-        <AvatarEditor avatarKey={objectiveRecordAvatarKey(subject.id)} role={objectiveRecordAvatarRole(subject)} state={objectiveRecordMongleState(subject.id, state, clusterIndex.clusters)} activityObjectiveId={subject.id} size={64} label={subject.title} />
-        <PanelIdentityName title={subject.title} onRename={renameObjective ? (next) => renameObjective(subject.id, next) : undefined} />
-      </div>
-    );
-  }
-  if (descriptor !== null && surface !== null) {
-    const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const;
-    const avatar = descriptor.avatar?.(context) ?? null;
+  if (centerSurface !== null && surface !== null) {
+    const context = { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(centerSurface.id) } as const;
+    const avatar = centerSurface.avatar?.(context) ?? null;
     return (
       <div className="conversation-panel-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} figure />
-          : descriptor.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{descriptor.mark()}</span> : null}
-        <PanelIdentityName title={descriptor.title(context)} onRename={descriptor.rename?.(context) ?? undefined} subject="surface" />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={64} label={avatar.label} figure={avatar.role === "commodore"} />
+          : centerSurface.mark ? <span className="conversation-panel-identity-mark is-surface" aria-hidden="true">{centerSurface.mark()}</span> : null}
+        <PanelIdentityName title={centerSurface.title(context)} onRename={centerSurface.rename?.(context) ?? undefined} subject="surface" />
       </div>
     );
   }
@@ -810,7 +799,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           objectiveRecord={subject}
           language={language}
           objectiveRecordKinds={objectiveRecordKinds}
-          onToggleDetails={toggleDetails}
           onClose={onClose}
           browserSurfaceOpen={browserOpen}
           tools={tools}
@@ -1226,13 +1214,14 @@ function registerSurfaceTabs(descriptor: ResolvedConversationSurface, context: C
 }
 
 /**
- * 오른쪽 패널 탭이 없는 대화(사령관 등)에서 상단 이름 pill 을 눌렀을 때 열리는 초경량 정체성 프로필 팝오버.
- * 아바타 편집(`AvatarEditor`)과 인라인 이름 수정(`PanelIdentityName`), 표면별 보조 꼬리(`profileFooter`)를 채팅창 안에 통합한다.
+ * 오른쪽 패널 탭이 없는 대화(사령관·지휘관·목표)에서 상단 이름 pill 을 눌렀을 때 열리는 초경량 정체성 프로필 팝오버.
+ * 아바타 편집(`AvatarEditor`)과 인라인 이름 수정(`PanelIdentityName`), 표면별 보조 꼬리(`footer`)를 채팅창 안에 통합한다.
  */
-function ConversationSurfaceProfilePopover({ title, avatar, onRename, footer, onClose }: {
+function ConversationProfilePopover({ title, avatar, onRename, subject = "surface", footer, onClose }: {
   readonly title: string;
-  readonly avatar: { readonly key: string; readonly role: import("../../shared/avatars.js").MongleRole; readonly label: string; readonly state?: MongleState } | null;
+  readonly avatar: { readonly key: string; readonly role: import("../../shared/avatars.js").MongleRole; readonly label: string; readonly state?: MongleState; readonly activityObjectiveId?: string | null } | null;
   readonly onRename: ((title: string) => void) | null;
+  readonly subject?: "objective" | "surface";
   readonly footer: ReactNode;
   readonly onClose: () => void;
 }) {
@@ -1273,9 +1262,9 @@ function ConversationSurfaceProfilePopover({ title, avatar, onRename, footer, on
     >
       <div className="conversation-panel-identity conversation-profile-identity">
         {avatar
-          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={56} label={avatar.label} figure />
+          ? <AvatarEditor avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} activityObjectiveId={avatar.activityObjectiveId} size={56} label={avatar.label} figure={avatar.role === "commodore"} />
           : null}
-        <PanelIdentityName title={title} onRename={onRename ?? undefined} subject="surface" />
+        <PanelIdentityName title={title} onRename={onRename ?? undefined} subject={subject} />
       </div>
       {footer ? <div className="conversation-profile-extra">{footer}</div> : null}
     </div>
@@ -1369,7 +1358,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const avatar = descriptor.avatar?.(context) ?? null;
   const rename = descriptor.rename?.(context) ?? null;
   const hasSurfaceTabs = (descriptor.tabs?.length ?? 0) > 0;
-  const profileAvailable = !hasSurfaceTabs && standInId === null && (avatar !== null || rename !== null);
+  const profileAvailable = !hasSurfaceTabs && (avatar !== null || rename !== null);
   const [profileOpen, setProfileOpen] = useState(false);
   const closeProfile = useCallback(() => setProfileOpen(false), []);
   const contextRailFlyout = useContextRailState().flyout;
@@ -1400,7 +1389,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
         {tools(null, <span ref={setRailSlot} className="conversation-rail-slot" />, toolbarTail)}
       </div>
       {profileOpen && profileAvailable ? (
-        <ConversationSurfaceProfilePopover
+        <ConversationProfilePopover
           title={title}
           avatar={avatar}
           onRename={rename}
@@ -1417,12 +1406,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   );
 }
 
-function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSurfaceOpen, tools }: {
+function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onClose, browserSurfaceOpen, tools }: {
   readonly state: ConsoleState;
   readonly objectiveRecord: ObjectiveRecord;
   readonly language: "en" | "ko";
   readonly objectiveRecordKinds: readonly ObjectiveKindDescriptor[];
-  readonly onToggleDetails: () => void;
   readonly onClose: (objectiveId: string) => void;
   /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSurfaceOpen: boolean;
@@ -1434,6 +1422,16 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
   const toolbarTailRenderer = useConversationToolbarTail();
+  const renameObjective = useConversationObjectiveRename();
+  const [profileOpen, setProfileOpen] = useState(false);
+  const closeProfile = useCallback(() => setProfileOpen(false), []);
+  const contextRailFlyout = useContextRailState().flyout;
+  useEffect(() => { setProfileOpen(false); }, [objectiveRecord.id]);
+  useEffect(() => { if (contextRailFlyout !== null) setProfileOpen(false); }, [contextRailFlyout]);
+  const handlePillPress = useCallback(() => {
+    setContextFlyout(null);
+    setProfileOpen((open) => !open);
+  }, []);
   const pill = useConversationPillHost({ kind: "objective", id: objectiveRecord.id });
   const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
   const clusterRoot = clusterIndex.rootOf.get(objectiveRecord.id) ?? null;
@@ -1577,22 +1575,36 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionActions} />
     </FeatureErrorBoundary>
   );
-  // 구성원 수는 오른쪽 「구성원」 탭의 명부와 같은 기준이다 — 명부(세션 없는 구성원 포함)와 이 대화의 하위 Objective 의 합집합, 지휘관 제외.
-  // 묶음의 노드(임무 칸·살아 있는 구성원)는 명부가 아니다. 명부는 구조 없는 묶음(임무·떠 있는 구성원 없이 세션 없는 구성원만 있는
-  // 목표)에도 서므로 rootOf 가 아니라 묶음 전체에서 찾는다 — 「구성원」 탭과 같은 길이다.
-  const roster = clusterIndex.clusters.find((cluster) => cluster.conversation?.objectiveId === objectiveRecord.id)?.conversation?.members ?? [];
+  // 구성원 수는 묶음 대화 명부(세션 없는 구성원 포함)와 이 대화의 하위 Objective 의 합집합, 지휘관 제외.
+  // 명부는 구조 없는 묶음(임무·떠 있는 구성원 없이 세션 없는 구성원만 있는 목표)에도 서므로 rootOf 가 아니라 묶음 전체에서 찾는다.
+  const cluster = clusterIndex.clusters.find((candidate) => candidate.conversation?.objectiveId === objectiveRecord.id || candidate.root === objectiveRecord.id) ?? null;
+  const roster = cluster?.conversation?.members ?? [];
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
-  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 사령관 쪽은 사령관 대화로 돌아가고, 목표 쪽은 이 목표의 세부 정보 패널을 여닫는다.
+  const isObjectiveCluster = cluster !== null || clusterRoot !== null;
+  const objectiveMongleState = objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters);
+  const profileFooter = isObjectiveCluster ? (
+    <div className="conversation-profile-meta">
+      {memberCount > 0 ? <span>{t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span> : null}
+      <button
+        type="button"
+        className="conversation-profile-link"
+        onClick={() => { closeProfile(); openObjectivePopup(objectiveRecord.id, "goal"); }}
+      >
+        {t("conversation.pill.openObjective")}
+      </button>
+    </div>
+  ) : null;
+  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 사령관 쪽은 사령관 대화로 돌아가고, 목표 쪽은 이 목표의 프로필 팝오버를 여닫는다.
   const chipCommodoreId = commanderOwnerOf(clusterIndex.clusters, objectiveRecord.id);
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}
+        <ConversationPill takeover={pill.takeover} onPress={handlePillPress} label={t("conversation.pill.profileAria", { title: objectiveRecord.title })} controls={viewSwitch}
           lead={chipCommodoreId === null ? undefined : <ObjectiveChipCommodore commodoreId={chipCommodoreId} onPress={() => { openCommodoreConversation(chipCommodoreId); }} />}>
-            <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
+            <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveMongleState} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
             {memberCount > 0 ? (
@@ -1603,8 +1615,23 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />, toolbarTail)}
       </div>
-      {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
-          노드 줄을 따로 세우지 않는다. */}
+      {profileOpen ? (
+        <ConversationProfilePopover
+          title={objectiveRecord.title}
+          avatar={{
+            key: objectiveRecordAvatarKey(objectiveRecord.id),
+            role: objectiveRecordAvatarRole(objectiveRecord),
+            label: objectiveRecord.title,
+            state: objectiveMongleState,
+            activityObjectiveId: objectiveRecord.id,
+          }}
+          onRename={renameObjective ? (next) => renameObjective(objectiveRecord.id, next) : null}
+          subject="objective"
+          footer={profileFooter}
+          onClose={closeProfile}
+        />
+      ) : null}
+      {/* 구성원은 pill 의 「구성원 n」과 목표 팝업·원장 분할이 말한다. 본문(그룹 대화든 터미널이든) 위에 노드 줄을 따로 세우지 않는다. */}
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
           <ConversationPillContext.Provider value={pill.port}>{custom ?? defaultBody}</ConversationPillContext.Provider>

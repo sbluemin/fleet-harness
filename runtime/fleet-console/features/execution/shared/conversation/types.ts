@@ -2,7 +2,6 @@ import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
 import type { ComposerQuote } from "../../client/composer-primitives/quotes.js";
 import type { ReactNode } from "react";
 
-import type { LaunchProviderGlyphId } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ConversationReference } from "./references.js";
 
@@ -74,45 +73,12 @@ export interface ConversationDecision {
   readonly route?: LocalizedText;
 }
 
-/**
- * 명부 줄에 보드가 보이는 사실 — 플러그인이 자기 보드와 같은 표시 문자열로 채운다. 표시 문자열의 변환은 플러그인 한 곳에만 있고,
- * 호스트는 받은 글을 그대로 그린다. 모든 칸은 선택이다 — 없으면 그 칸이 서지 않는다.
- * `status` 는 상태 낱말만 바꾼다. 상태 점은 호스트가 관측한 활동 그대로다.
- */
-export interface ConversationMemberProfile {
-  /** 역할 곁의 작은 표식(예: 「지휘관 제안」). */
-  readonly badge?: LocalizedText;
-  /** 맡은 일의 한두 줄 설명. 사람이 쓴 글이라 번역하지 않는다. */
-  readonly brief?: string;
-  /**
-   * 모델·강도 한 줄 — `label` 은 모델 낱말(「Opus」), `effort` 는 강도 낱말(「HIGH」, 없으면 말하지 않는다)과 hover 풀네임, 공급자 글리프.
-   * `struck` — 다음 기동에 쓰이지 않는 값(로스터에서 꺼진 모델)이라 모델 낱말에만 취소선을 긋는다. `badge` — 낱말 곁 표식(「꺼짐」·「폴백」).
-   */
-  readonly launch?: {
-    readonly label: LocalizedText;
-    readonly effort?: LocalizedText;
-    readonly title?: LocalizedText;
-    readonly provider?: LaunchProviderGlyphId;
-    /** 제거된 공급자는 글리프 대신 원래 이름을 보인다. */
-    readonly providerName?: string;
-    readonly struck?: boolean;
-    readonly badge?: LocalizedText;
-  };
-  readonly status?: { readonly text: LocalizedText; readonly tone?: "danger" };
-  /**
-   * 줄 아래의 진단 줄들 — 보드 행이 보이는 순서 그대로(예: 직전 턴 실패, 보고 경로 없음). `title` 은 보드가 펼쳐 싣는
-   * 원문이라 번역하지 않는다. `tone` 은 낱말의 신호 색이다.
-   */
-  readonly notes?: readonly { readonly text: LocalizedText; readonly title?: string; readonly tone?: "warn" | "danger" }[];
-}
-
-/** 플러그인이 보내는 명부 한 줄 — 발화자 표식에 보드 사실을 곁들인다. 호스트는 profile 을 참여자로 옮기고 발화자에서는 뗀다. */
-export type ConversationMember = ConversationSpeaker & { readonly profile?: ConversationMemberProfile };
+/** 플러그인이 보내는 명부 한 줄 — 발화자 표식. */
+export type ConversationMember = ConversationSpeaker;
 
 export interface ConversationParticipant {
   readonly speaker: ConversationSpeaker;
   readonly activity: "running" | "background" | "awaiting" | "idle" | "ended" | "unknown";
-  readonly profile?: ConversationMemberProfile;
   /** 그 참여자 원장에서 지금 열린 턴의 좌표(메시지의 `turn` 과 같은 값). 아직 말이 없는 턴도 열린 순간부터 선다. 모르면 없다. */
   readonly turn?: string;
 }
@@ -178,8 +144,6 @@ export interface ObjectiveClusterConversation {
    */
   readonly commodoreAlias?: string | null;
   readonly members: readonly ConversationMember[];
-  /** 지휘관 줄의 보드 사실 — 보드가 지휘관 행에 보이는 것만 싣는다. */
-  readonly commander?: ConversationMemberProfile;
   readonly events: readonly GroupTimelineEntry[];
   readonly truncated?: boolean;
   readonly decision: ConversationDecision | null;

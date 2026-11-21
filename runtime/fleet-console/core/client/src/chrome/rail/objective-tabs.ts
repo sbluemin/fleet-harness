@@ -30,7 +30,6 @@ export interface ConversationTabSection {
 let tabs: readonly ConversationObjectiveTab[] = [];
 let hostCount = 0;
 let snapshot: readonly ConversationObjectiveTab[] = [];
-let registered: readonly ConversationObjectiveTab[] = [];
 const listeners = new Set<() => void>();
 
 function sameTabs(left: readonly ConversationObjectiveTab[], right: readonly ConversationObjectiveTab[]): boolean {
@@ -40,10 +39,9 @@ function sameTabs(left: readonly ConversationObjectiveTab[], right: readonly Con
 function publish(): void {
   const sorted = [...tabs].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
   const next = hostCount > 0 ? sorted : [];
-  const changed = !sameTabs(next, snapshot) || !sameTabs(sorted, registered);
+  if (sameTabs(next, snapshot)) return;
   snapshot = next;
-  registered = sorted;
-  if (changed) for (const listener of listeners) listener();
+  for (const listener of listeners) listener();
 }
 
 function subscribe(listener: () => void): () => void {
@@ -73,14 +71,6 @@ export function mountConversationObjectiveTabsHost(): () => void {
     hostCount -= 1;
     publish();
   };
-}
-
-/**
- * 등록된 탭 전부 — 호스트가 서 있는지와 무관하다. 레일 목록에 싣지 않고 읽기만 하는 표면(모바일 대화 정보 화면)이 같은 원천을 읽는다.
- * 레일에 싣는 쪽(`useConversationObjectiveTabPanels`)은 그대로 호스트가 선 동안만 비어 있지 않다.
- */
-export function useRegisteredConversationObjectiveTabs(): readonly ConversationObjectiveTab[] {
-  return useSyncExternalStore(subscribe, () => registered, () => registered);
 }
 
 /** 레일 목록이 읽는 앞 묶음 — 대화 중심 화면 밖에서는 늘 빈 배열이다. */

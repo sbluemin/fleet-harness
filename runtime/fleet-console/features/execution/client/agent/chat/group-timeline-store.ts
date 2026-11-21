@@ -232,16 +232,14 @@ function snapshot(rootObjectiveId: string | null, board: ObjectiveClusterConvers
   const objectiveRecords = [...state.objectiveRecords, ...state.nestedObjectiveRecords];
   const root = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === rootObjectiveId);
   const runtime = ownObjectiveRuntime();
-  // 명부의 보드 사실(profile)은 참여자에만 싣는다 — 발화자는 말풍선·이음 줄마다 복사되므로 표식만 남긴다.
-  const roster = (board?.members ?? []).map(({ profile, ...speaker }): Pick<ConversationParticipant, "speaker" | "profile"> => ({ speaker, ...(profile ? { profile } : {}) }));
+  const roster = (board?.members ?? []).map((speaker): Pick<ConversationParticipant, "speaker"> => ({ speaker }));
   const byMember = new Map(roster.flatMap((member) => member.speaker.objectiveId ? [[member.speaker.objectiveId, member] as const] : []));
   const current = objectiveRecords.filter((objectiveRecord) => objectiveRecord.id === rootObjectiveId || objectiveRecord.parentObjectiveId === rootObjectiveId);
   const participants: ConversationParticipant[] = current.map((objectiveRecord) => {
     const listed = byMember.get(objectiveRecord.id);
     const speaker: ConversationSpeaker = listed?.speaker ?? { kind: objectiveRecord.id === rootObjectiveId ? (board ? "commander" : "objectiveRecord") : "member", name: objectiveRecord.id === rootObjectiveId && board ? commanderName : objectiveRecord.title, objectiveId: objectiveRecord.id };
-    const profile = listed?.profile ?? (objectiveRecord.id === rootObjectiveId ? board?.commander : undefined);
     const observed = runtime[objectiveRecord.id];
-    return { speaker, activity: observed?.lifecycle === "live" ? observed.activity : observed?.lifecycle === "dormant" ? "ended" : "unknown", ...(profile ? { profile } : {}) };
+    return { speaker, activity: observed?.lifecycle === "live" ? observed.activity : observed?.lifecycle === "dormant" ? "ended" : "unknown" };
   });
   // 아직 기동하지 않은 명부도 표식은 보인다. 실행 상태를 꾸며내지 않는다.
   for (const member of roster) if (!participants.some(({ speaker }) => speaker.objectiveId === member.speaker.objectiveId)) participants.push({ ...member, activity: "unknown" });

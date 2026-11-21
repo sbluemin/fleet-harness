@@ -63,7 +63,7 @@
 .workspace-avatar-panel .objectives-row-ic.objectives-plus { color: var(--conversation-add-ink); }
 /* 모델 강도도 + 추가 문구와 같은 토큰을 쓴다 — 다크 원색·라이트 글자용 보정이 함께 바뀐다. */
 .workspace-avatar-panel :is(.fc-coord-trigger-effort, .objectives-launch-effort) { color: var(--conversation-add-ink); }
-.workspace-avatar-panel :is(.objectives-mission-add, .objectives-commodore-intel-add, .group-members-add, .commodore-theaters-add) {
+.workspace-avatar-panel :is(.objectives-mission-add, .objectives-commodore-intel-add, .commodore-theaters-add) {
   --brass-ink: var(--conversation-add-ink);
 }
 .workspace-avatar-panel :is(.objectives-mission-add, .objectives-commodore-intel-add) :is(input, textarea)::placeholder { opacity: 1; }
@@ -330,7 +330,7 @@
   color: var(--brass-ink);
 }
 
-/* 오른쪽 패널 탭이 없는 대화(사령관)의 상단 이름 pill 아래 프로필 팝오버 — 아바타·이름 편집과 보조 설명을 싣는다. */
+/* 오른쪽 패널 탭이 없는 대화(사령관·지휘관·목표)의 상단 이름 pill 아래 프로필 팝오버 — 아바타·이름 편집과 보조 링크를 싣는다. */
 .conversation-profile-popover {
   position: absolute;
   top: calc(var(--conversation-top-row) + var(--space-1));
@@ -356,6 +356,40 @@ html[data-desktop-shell="true"] .conversation-profile-popover {
 .conversation-profile-extra {
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--popover-divider);
+}
+
+.conversation-profile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.conversation-profile-link {
+  margin-left: auto;
+  padding: 2px 6px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+
+.conversation-profile-link:hover {
+  background: var(--wash-hover);
+}
+
+.conversation-profile-link:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
 }
 
 .conversation-pill-surface-mark svg { width: 100%; height: 100%; }
@@ -1392,13 +1426,6 @@ html[data-desktop-shell="true"] .conversation-profile-popover {
   gap: var(--space-2);
   width: 100%;
 }
-.avatar-editor.is-inline { justify-items: stretch; }
-.avatar-editor-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
 .avatar-editor-trigger {
   position: relative;
   display: grid;
@@ -1426,7 +1453,6 @@ html[data-desktop-shell="true"] .conversation-profile-popover {
   opacity: 0;
   transition: opacity var(--duration-fast);
 }
-.avatar-editor.is-inline .avatar-editor-pen { width: 14px; height: 14px; right: -2px; bottom: -2px; }
 .avatar-editor-pen svg { width: 60%; height: 60%; }
 .avatar-editor-trigger:hover .avatar-editor-pen,
 .avatar-editor-trigger:focus-visible .avatar-editor-pen,

@@ -1,26 +1,18 @@
 import { createElement } from "react";
 import { CommodoreGroupComposerSettings } from "../../commodore/client/commodore-conversation.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationConsultReply, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
-import type { Translate } from "@fleet-console/i18n";
-import type { ModelRoster } from "../../ai-gateway/shared/models.js";
-import { MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
+import type { ConversationConsultReply, ConversationMember, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import { MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind } from "../shared/types.js";
 import { commodoreAliasOf } from "./board-commodore.js";
-import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
-
-/** 명부 줄의 보드 사실을 셀 재료 — 구성원 Objective 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
-export interface ConversationCrew {
-  readonly state: (objectiveId: string) => string;
-  readonly roster: ModelRoster | null;
-}
+import { objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
+import { localized } from "./launch-control.js";
 
 /**
- * 명부 표식과 보드 사실은 보드 행과 같은 함수가 같은 값으로 짓는다. 소유 사령관의 설정은 렌더 슬롯으로 제공한다.
+ * 명부 표식과 보드 행위·결정을 그룹 대화 계약으로 엮는다. 소유 사령관의 설정은 렌더 슬롯으로 제공한다.
  */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): ObjectiveClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, openRecord?: (at: number) => void, actions?: GroupConversationActions): ObjectiveClusterConversation {
   const alias = commodoreAliasOf(objective.commodoreId);
-  const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", objectiveId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
+  const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", objectiveId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) } }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
     kind: entry.kind === "joined" ? "member-joined" : "member-left", id: `membership:${objective.id}:${entry.id}`, at: entry.at,
     speaker: { kind: "member", objectiveId: entry.memberId, name: entry.name, mark: { number: entry.number, tone: toneAt(entry.number - 1) } },
@@ -78,7 +70,6 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true,
     ...(objective.recorded ? { renderComposerControls } : {}),
     commodoreAlias: alias, holds: [], members, decision: null,
-    ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}),
     events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}),
   };
 }
@@ -143,41 +134,4 @@ function boardAct(kind: string) {
     const key = `objectives.prov.act.${kind}`;
     return key in objectivesEn ? t(key as ObjectiveMessageKey) : kind;
   });
-}
-
-/** 보드 구성원 행이 보이는 것 — 역할 곁 제안 표식, 브리프, 모델·강도(꺼짐 포함), 상태 낱말, 진단 줄. 로케일과 무관한 칸은 한 번만 센다. */
-function memberProfile(objective: Objective, member: ObjectiveMember, crew: ConversationCrew): ConversationMemberProfile {
-  const state = crew.state(member.id);
-  const launched = memberLaunched(member, crew.state);
-  const en = getT("en");
-  const { failed } = memberStatus(member, state, objective, en);
-  const notes = memberNotes(member, launched, en);
-  return {
-    ...(member.by === "commander" ? { badge: localized((t) => t("objectives.members.proposed")) } : {}),
-    ...(member.brief ? { brief: member.brief } : {}),
-    launch: launchLine((t) => memberLaunchShown(member, launched, t, crew.roster)),
-    status: { text: localized((t) => memberStatus(member, state, objective, t).text), ...(failed ? { tone: "danger" as const } : {}) },
-    // 진단 줄의 개수·순서·tone·원문은 로케일과 무관하다 — 낱말만 로케일마다 다시 푼다.
-    ...(notes.length > 0 ? { notes: notes.map((note, index) => ({ text: localized((t) => memberNotes(member, launched, t)[index]?.text ?? ""), ...(note.title !== undefined ? { title: note.title } : {}), tone: note.tone })) } : {}),
-  };
-}
-
-/** 보드의 지휘관 행은 모델·강도만 보인다 — 그 한 줄만 싣는다. */
-function commanderProfile(objective: Objective, roster: ModelRoster | null): ConversationMemberProfile {
-  if (!commanderLaunchShown(objective, getT("en"), roster)) return {};
-  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)!) };
-}
-
-/** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */
-function launchLine(shown: (t: Translate<ObjectiveMessageKey>) => LaunchShown): NonNullable<ConversationMemberProfile["launch"]> {
-  const { provider, providerName, struck, badge, effort } = shown(getT("en"));
-  return {
-    label: localized((t) => shown(t).label),
-    ...(effort !== null ? { effort: localized((t) => shown(t).effort ?? "") } : {}),
-    title: localized((t) => shown(t).title),
-    ...(provider ? { provider } : {}),
-    ...(providerName ? { providerName } : {}),
-    ...(struck ? { struck } : {}),
-    ...(badge !== null ? { badge: localized((t) => shown(t).badge ?? "") } : {}),
-  };
 }

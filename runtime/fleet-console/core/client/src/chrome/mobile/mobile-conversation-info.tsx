@@ -7,7 +7,6 @@ import type { RailPanelContext } from "../../../../../features/workspace/shared/
 
 import { readAgentChatSessionCoordinates } from "../../../../../features/execution/client/agent/chat/session-coordinates.js";
 import { useCommanderLedgerChosen } from "../../../../../features/execution/client/agent/chat/group/commander-ledger.js";
-import { CONVERSATION_MEMBERS_TAB_ID } from "../../../../../features/execution/client/agent/chat/group/install.js";
 import { formatAbsoluteDateTime } from "../../i18n/format.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
@@ -15,7 +14,6 @@ import type { ObjectiveRecord } from "../../integration/types.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { PaneBody, usePaneContext } from "../pane/pane-body.js";
 import { usePaneIndex, useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
-import { useRegisteredConversationObjectiveTabs } from "../rail/objective-tabs.js";
 import { useObjectiveMobileRowValues } from "../../../../../features/objectives/client/mobile.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { pushBackLayer } from "./mobile-back.js";
@@ -29,10 +27,11 @@ import { theaterFolderName, theaterLabelOf } from "../../../../../features/commo
 
 type InfoTab =
   | { readonly kind: "info"; readonly id: "info"; readonly title: string }
-  /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationObjectiveTab`) — 데스크톱과 같은 원천이다. */
-  | { readonly kind: "panel"; readonly id: string; readonly title: string; readonly render: (ctx: RailPanelContext) => React.ReactNode }
   /** 레일 엔트리가 `conversationTab`과 `mobile.conversationPane`으로 선언한 도구(목표) — 그 페인을 탭 본문에 그대로 세운다. */
-  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly external?: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
+  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly external?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
+
+/** 옛 `?dest=info:conversation.members` 주소를 목표의 구성원 탭으로 넘길 때 매칭하는 id. */
+const LEGACY_MEMBERS_TAB_ID = "conversation.members";
 
 /**
  * 대화 정보 화면 — Objective 화면 머리 pill이 연다. 구역이 둘 이상이면 사령관 세부와 같이 큰 아바타 · 이름 · 상태 · 「편집」과
@@ -59,7 +58,6 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
     theaterFolderName(typeof objectiveRecord.cwd === "string" ? objectiveRecord.cwd : null),
   );
   const bodyItems = useMobileObjectiveMenu(bodyOwner.id);
-  const registered = useRegisteredConversationObjectiveTabs();
   const bindings = useRailEntries();
   const destination = useMobileDestination();
   const tabId = destination.kind === "info" ? destination.tab ?? "info" : "info";
@@ -76,17 +74,11 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
     },
     () => JSON.stringify(bindings.map((binding) => {
       const value = binding.entry.mobile?.conversationPane?.tabs?.read(objectiveRecord.id);
-      return [binding.entry.id, value?.selected, value?.tabs.map((item) => [item.id, resolveLocalizedText(item.title, locale), item.replacesMembers, item.dot?.tone, item.dot && resolveLocalizedText(item.dot.label, locale)])];
+      return [binding.entry.id, value?.selected, value?.tabs.map((item) => [item.id, resolveLocalizedText(item.title, locale), item.dot?.tone, item.dot && resolveLocalizedText(item.dot.label, locale)])];
     })),
   );
   const tabs = useMemo<readonly InfoTab[]>(() => {
     const list: InfoTab[] = [{ kind: "info", id: "info", title: t("mobile.info.tabInfo") }];
-    // 「구성원」 탭은 데스크톱에서는 1:1 대화에도 「참여자 1」로 서지만, 폰의 정보 화면은 구성원이 있는 묶음에서만 세운다.
-    const hasMembers = conversation.memberCount > 0 || state.nestedObjectiveRecords.some((nested) => nested.parentObjectiveId === objectiveRecord.id);
-    for (const tab of registered) {
-      if (tab.section !== undefined || (tab.id === CONVERSATION_MEMBERS_TAB_ID && !hasMembers)) continue;
-      list.push({ kind: "panel", id: tab.id, title: resolveLocalizedText(tab.title, locale), render: tab.render });
-    }
     for (const binding of bindings) {
       const pane = binding.entry.mobile?.conversationPane;
       if (binding.entry.conversationTab !== true || pane === undefined || binding.entry.visible?.() === false || !paneShown.has(binding.entry.id)) continue;
@@ -94,32 +86,26 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
       const source = pane.tabs;
       const views = source?.read(objectiveRecord.id);
       if (source && views && views.tabs.length > 0) {
-        if (views.tabs.some((view) => view.replacesMembers)) {
-          const memberIndex = list.findIndex((item) => item.id === CONVERSATION_MEMBERS_TAB_ID);
-          if (memberIndex >= 0) list.splice(memberIndex, 1);
-        }
         for (const view of views.tabs) list.push({
           kind: "pane", id: `${routeId}:${view.id}`, routeId, paneId: pane.paneId,
           title: resolveLocalizedText(view.title, locale), selected: view.id === views.selected,
           ...(view.external ? { external: true } : {}),
-          ...(view.replacesMembers ? { replacesMembers: true } : {}),
           select: () => source.select(view.id, objectiveRecord.id),
           ...(view.dot ? { dot: { tone: view.dot.tone, label: resolveLocalizedText(view.dot.label, locale) } } : {}),
         });
       } else list.push({ kind: "pane", id: routeId, routeId, title: resolveLocalizedText(binding.entry.mobile?.destination?.label ?? binding.entry.title, locale), paneId: pane.paneId, selected: true });
     }
     return list;
-  }, [bindings, conversation.memberCount, locale, objectiveRecord.id, paneShown, paneTabsKey, registered, state.nestedObjectiveRecords, t]);
+  }, [bindings, locale, objectiveRecord.id, paneShown, paneTabsKey, t]);
   const tab = tabs.find((item) => item.id === tabId)
-    ?? (tabId === CONVERSATION_MEMBERS_TAB_ID ? tabs.find((item) => item.kind === "pane" && item.replacesMembers) : undefined)
+    ?? (tabId === LEGACY_MEMBERS_TAB_ID ? tabs.find((item) => item.kind === "pane" && item.id.endsWith(":crew")) : undefined)
     ?? tabs.find((item) => item.kind === "pane" && item.routeId === tabId && item.selected)
     ?? tabs[0]!;
   // 주소로 들어온 보기는 플러그인에 적용한다. 반대로 본문 동작이 보기를 바꾸면 그 선택을 주소에 남긴다.
-  // 호스트 구성원 탭을 대신하는 플러그인 보기가 설 때는 옛 구성원 주소(또는 목표 로드 전 선택)를 그 대체 보기로 옮긴다.
   const paneNavigation = useRef<{ readonly route: string; selected: string } | null>(null);
   useEffect(() => {
     if (tab.kind !== "pane") { paneNavigation.current = null; return; }
-    if (tabId === CONVERSATION_MEMBERS_TAB_ID && tab.replacesMembers) {
+    if (tabId === LEGACY_MEMBERS_TAB_ID) {
       if (!tab.selected) tab.select?.();
       setTabId(tab.id);
       return;
@@ -263,11 +249,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
               </button>
             </div>
           </>
-        ) : tab.kind === "panel" ? (
-    <div className="mobile-info-panel" key={tab.id}>
-      <FeatureErrorBoundary fallback={null}>{tab.render(panelContext)}</FeatureErrorBoundary>
-    </div>
-  ) : (
+        ) : (
     <div className="mobile-info-panel" key={tab.id}>
       <MobileConversationPane paneId={tab.paneId} objectiveId={objectiveRecord.id} theaterId={objectiveRecord.theaterId} panelContext={panelContext} />
     </div>
@@ -318,7 +300,6 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
 
 function sectionIcon(item: InfoTab): "info" | "target" | "commanders" | "file" | "grid" {
   if (item.kind === "info") return "info";
-  if (item.kind === "panel") return "commanders";
   const viewId = item.id.startsWith(`${item.routeId}:`) ? item.id.slice(item.routeId.length + 1) : "";
   if (viewId === "goal") return "target";
   if (viewId === "crew") return "commanders";

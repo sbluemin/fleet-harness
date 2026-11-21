@@ -107,8 +107,7 @@ export interface ConversationSurfaceDescriptor {
   readonly opensWithoutTheater?: boolean;
   /**
    * 이 대화가 아직 서지 않은 Objective 대화를 대신하면 그 Objective id(예: 시작 전 목표 — 개시하면 그 id 의 지휘관이 선다). 있으면
-   * 오른쪽 패널이 Objective 대화와 같은 머리로 선다 — 작전구역 도구 줄 대신 대화 도구(`conversationTab`)가 글자 탭으로 서고, 그 id 의
-   * 묶음 대화(`ObjectiveCluster.conversation`)가 있으면 「구성원」 탭이 그 명부를 보인다. 없거나 null 이면 플러그인 대화의 머리다.
+   * 호스트가 그 id 의 묶음 대화 입력창(`composer`)과 목표 문맥을 연결한다. 없거나 null 이면 일반 플러그인 대화다.
    */
   readonly standInObjectiveId?: (ctx: ConversationSurfaceContext) => string | null;
   /** 목표 대화를 대신하는 표면의 소유 사령관. 도구 작업대는 그 사령관과 공유한다. */
