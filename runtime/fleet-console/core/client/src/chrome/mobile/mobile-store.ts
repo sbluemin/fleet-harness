@@ -108,6 +108,17 @@ export function useMobileDestination(): MobileDestination {
 
 export function getMobileDestination(): MobileDestination { return destination; }
 
+/** 사령관/지휘관 목록에서 연 Objective이 뒤로갈 때 돌아갈 문맥. 홈에서 직접 열면 비워 홈으로 돌아간다. */
+let returnDestination: MobileDestination | null = null;
+export function setMobileReturnDestination(next: MobileDestination | null): void {
+  returnDestination = next;
+}
+export function consumeMobileReturnDestination(): MobileDestination | null {
+  const value = returnDestination;
+  returnDestination = null;
+  return value;
+}
+
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab

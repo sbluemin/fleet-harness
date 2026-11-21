@@ -359,10 +359,33 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
     ? readings.find((reading) => reading.id === cardState.providerId) ?? null
     : null;
 
+  // 모바일 390px 폭에서는 7개 링이 컴포저 동작 칩과 충돌해 잘린다 — 단일 요약 알약으로 접고 누르면 전체 사용량 팝오버를 연다.
+  const mobileCompact = mobile && !glyphOnly;
+  const mobilePeak = mobileCompact
+    ? readings
+      .map((reading) => ringPresentationOf(reading, snapshot.data))
+      .filter((ring) => !ring.disconnected && !ring.loading && ring.percent !== null)
+      .sort((a, b) => (b.percent ?? 0) - (a.percent ?? 0))[0] ?? null
+    : null;
+
   return (
     <>
       {glyphOnly ? null : <QuotaSummaryHold />}
-      {glyphOnly ? (
+      {mobileCompact ? (
+        <button
+          ref={(node) => { summaryRef.current = node; }}
+          type="button"
+          className={`quota-toolbar-summary quota-toolbar-summary--mobile-pill${inCapsule ? " quota-toolbar-summary--capsule" : ""}${mobilePeak ? ` quota-toolbar-summary--${mobilePeak.severity}` : ""}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? popoverId : undefined}
+          aria-label={fullSummaryLabel}
+          onClick={(event) => togglePopoverFor(null, event.currentTarget)}
+        >
+          <QuotaBarsGlyph />
+          {mobilePeak && mobilePeak.percent !== null ? <span className="quota-toolbar-summary__mobile-pct">{Math.round(mobilePeak.percent)}%</span> : null}
+        </button>
+      ) : glyphOnly ? (
         <button
           ref={(node) => { summaryRef.current = node; }}
           type="button"

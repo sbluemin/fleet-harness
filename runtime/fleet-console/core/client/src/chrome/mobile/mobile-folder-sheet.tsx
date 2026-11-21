@@ -8,19 +8,40 @@ import { useT } from "../../i18n/index.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileSheet } from "./mobile-sheet.js";
 
+export interface FolderTargetCommodore {
+  readonly commodoreId: string;
+  readonly label: string;
+}
+
 /**
- * Theater 추가 시트(S-15, 전체 높이). 현행 폴더 브라우저의 기능을 시안 문법으로 담는다(D9): 지금 경로(모노), 거르기 입력칸,
- * 위로·절대 경로 이동·브레드크럼·루트 선택, 묶음 행으로 폴더 들어가기. 고르는 단위는 지금 보고 있는 폴더 — 「Theater 추가」가 그 폴더를 등록한다.
+ * Theater 추가 시트(S-15, 전체 높이). 지금 경로(모노), 거르기 입력칸,
+ * 위로·절대 경로 이동·브레드크럼·루트 선택, 묶음 행으로 폴더 들어가기.
+ * 하위 폴더를 라디오로 고르거나, 고르지 않으면 지금 열려 있는 폴더 자체를 「이 폴더 추가」로 등록한다.
  */
-export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: () => void; readonly onConfirm: (path: string) => void }) {
+export function MobileFolderSheet({
+  onClose,
+  onConfirm,
+  commodores,
+  initialCommodoreId,
+}: {
+  readonly onClose: () => void;
+  readonly onConfirm: (path: string, commodoreId?: string | null) => void;
+  readonly commodores?: readonly FolderTargetCommodore[];
+  readonly initialCommodoreId?: string | null;
+}) {
   const t = useT(true);
   const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [failureCode, setFailureCode] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [jump, setJump] = useState("");
-  // 고른 폴더(라디오) — 「Theater 추가」는 고를 때까지 비활성이고 고른 폴더를 등록한다(FD-14).
+  // 고른 하위 폴더(라디오). 비어 있으면 지금 열려 있는 폴더 자체를 추가 대상으로 삼는다.
   const [picked, setPicked] = useState<string | null>(null);
+  const [selectedCommodoreId, setSelectedCommodoreId] = useState<string | null>(() => {
+    if (!commodores || commodores.length === 0) return initialCommodoreId ?? null;
+    if (initialCommodoreId && commodores.some((item) => item.commodoreId === initialCommodoreId)) return initialCommodoreId;
+    return commodores[0]!.commodoreId;
+  });
 
   const load = async (path: string | null, signal?: AbortSignal) => {
     setLoading(true);
@@ -53,6 +74,7 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
   }, [crumbs]);
   const roots = listing?.roots ?? [];
   const path = listing?.path ?? null;
+  const targetPath = picked ?? path;
   const windowsPaths = path !== null ? /^[A-Za-z]:\\/.test(path) : roots.some((root) => /^[A-Za-z]:\\$/.test(root));
 
   return (
@@ -63,9 +85,35 @@ export function MobileFolderSheet({ onClose, onConfirm }: { readonly onClose: ()
       onClose={onClose}
       footer={<>
         <button type="button" className="mobile-pill-secondary" onClick={onClose}>{t("common.cancel")}</button>
-        <button type="button" className="mobile-pill-secondary is-inverse" disabled={picked === null || loading} onClick={() => picked !== null && onConfirm(picked)}>{t("chrome.directoryBrowser.addTheater")}</button>
+        <button
+          type="button"
+          className="mobile-pill-secondary is-inverse"
+          disabled={targetPath === null || loading}
+          onClick={() => targetPath !== null && onConfirm(targetPath, selectedCommodoreId)}
+        >
+          {picked !== null ? t("chrome.directoryBrowser.addTheater") : t("mobile.sheet.folder.addCurrent")}
+        </button>
       </>}
     >
+      {commodores && commodores.length > 0 ? (
+        <div className="mobile-folder-target" role="group" aria-label={t("mobile.sheet.folder.targetCommodore")}>
+          <span className="mobile-folder-target-label">{t("mobile.sheet.folder.targetCommodore")}</span>
+          <div className="mobile-folder-target-chips">
+            {commodores.map((commodore) => (
+              <button
+                key={commodore.commodoreId}
+                type="button"
+                data-press="r1"
+                className={`mobile-conv-chip${selectedCommodoreId === commodore.commodoreId ? " is-on" : ""}`}
+                aria-pressed={selectedCommodoreId === commodore.commodoreId}
+                onClick={() => setSelectedCommodoreId(commodore.commodoreId)}
+              >
+                {commodore.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <p className="mobile-folder-path">{path ?? t("common.loading")}</p>
       {roots.length > 1 ? (
         <div className="mobile-folder-crumbs" role="group" aria-label={t("chrome.directoryBrowser.drives")}>

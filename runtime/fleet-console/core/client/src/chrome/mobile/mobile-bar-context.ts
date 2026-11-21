@@ -3,6 +3,7 @@ import { createContext, createElement, Fragment, useContext, useEffect, useMemo,
 import type { ClientMobileBarCapability, MobileBarSpec } from "../../../../../features/workspace/shared/pane.js";
 
 import { closeTopBackLayer, pushBackLayer } from "./mobile-back.js";
+import { MobileIcon } from "./mobile-icons.js";
 import { claimMobileBar, releaseMobileBar, type MobileBarState } from "./mobile-store.js";
 
 /**
@@ -140,7 +141,8 @@ function pluginPill(spec: MobileBarSpec, pill: NonNullable<MobileBarSpec["pill"]
       createElement("span", { className: "mobile-conv-pill-av" }, pill.avatar),
       createElement("span", { className: "mobile-conv-pill-copy" },
         createElement("strong", null, spec.title),
-        spec.subtitle ? createElement("small", null, spec.subtitle) : null)),
+        spec.subtitle ? createElement("small", null, spec.subtitle) : null),
+      createElement(MobileIcon, { name: "down", size: 14, className: "mobile-conv-pill-caret" })),
   };
 }
 

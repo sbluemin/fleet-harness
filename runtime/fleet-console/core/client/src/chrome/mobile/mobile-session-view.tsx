@@ -4,9 +4,11 @@ import type { ClientMobileObjectiveCapability } from "../../../../../features/wo
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 import type { ObjectiveKindDescriptor, ObjectiveRenderContext, ObjectiveRuntimeState } from "../../../../../features/execution/shared/client-contract.js";
 
-import { useT } from "../../i18n/index.js";
+import { useConsoleLocale, useT } from "../../i18n/index.js";
 import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import type { ObjectiveGeometry, ObjectiveRecord } from "../../integration/types.js";
+import { commodoreSectionLabel, useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
+import { useObjectiveMobileRowValues } from "../../../../../features/objectives/client/mobile.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { objectiveRecordHarnessLabel } from "./mobile-objective-label.js";
@@ -105,6 +107,12 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
   };
 
   const title = bodyOwner.title;
+  const locale = useConsoleLocale();
+  const commodores = useCommodoreList();
+  const ownerRow = commodores.find((row) => row.commodoreId === objectiveRecord.commodoreId);
+  const ownerName = ownerRow ? commodoreSectionLabel(ownerRow, t("sidebar.commodore.fallback")) : null;
+  const rowValues = useObjectiveMobileRowValues(objectiveRecord.id, locale);
+  const hasUnreadCrew = rowValues.crew?.tone === "awaiting";
 
   const harnessLabel = objectiveRecordHarnessLabel(bodyOwner, t);
   const conversation = useMobileConversationOf(useConsoleState())(bodyOwner);
@@ -115,11 +123,11 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
     if (ledgerObjectiveId(objectiveRecord.id) !== null) openLedger(objectiveRecord.id, null);
     else closeMobileObjective();
   };
-  // 머리: ‹(대화 목록) · 아바타와 제목·상태 한 줄이 든 pill(누르면 대화 정보) · 지휘관 목록 글리프.
-  // 이름 변경·보관·본문이 끼운 항목은 그 정보 화면에 이미 있다. 전언 대화가 pill 을 덮는 동안만 예전 ⋮를 그대로 둔다.
+  // 머리: ‹(직전 문맥 또는 목록) · 아바타와 제목·사령관/상태가 든 pill(누르면 세그먼트 대화 정보) · 지휘관 목록 글리프.
   const openCommanders = () => openMobileCommanderSheet(objectiveRecord.commodoreId);
   // 이 화면이 보이는 동안 대화 머리의 컨텍스트 칩이 읽을 대화 — 화면의 주인(지휘관)이 뿌리이고, 구성원 원장을 보면 그 구성원이 보는 세션이다.
   useMobileContextRailScope(covered ? null : { kind: "objective", objectiveId: objectiveRecord.parentObjectiveId ?? objectiveRecord.id, bodyObjectiveId: bodyOwner.id });
+  const subtitleParts = [ownerName, rowValues.goal?.text].filter(Boolean).join(" · ");
   useClaimMobileBar(covered ? null : {
     variant: "conversation",
     title: bodyOwner.title,
@@ -127,7 +135,7 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
     // 본문이 pill 을 바꾼 동안(전언 대화 화면) ‹ 는 그 화면부터 닫고, 원장(구성원·지휘관)을 보는 동안에는 그룹 대화로 돌아간다.
     onBack: pillTakeover ? () => { if (!closeTopBackLayer()) stepBack(); } : stepBack,
     pill: {
-      key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.objectiveRecord.id}:${entry.mark}`).join(",")}\u0001${harnessLabel ?? ""}\u0001${pillTakeover?.key ?? ""}`,
+      key: `${bodyOwner.id}\u0001${bodyOwner.title}\u0001${conversation.face}\u0001${conversation.minis.map((entry) => `${entry.objectiveRecord.id}:${entry.mark}`).join(",")}\u0001${subtitleParts}\u0001${hasUnreadCrew ? 1 : 0}\u0001${pillTakeover?.key ?? ""}`,
       label: pillTakeover ? t("commanderTab.aria") : t("mobile.conv.infoAria", { title: bodyOwner.title }),
       onPress: pillTakeover ? openCommanders : () => setMobileDestination({ kind: "info" }),
       takeover: pillTakeover,
@@ -136,8 +144,10 @@ export function MobileSessionView({ objectiveRecord, theme, language, active, ru
           <span className="mobile-conv-pill-av"><ConversationAvatar conversation={conversation} size={36} /></span>
           <span className="mobile-conv-pill-copy">
             <strong>{bodyOwner.title}</strong>
-            <small><span className={`mobile-conv-state is-${conversation.face}`}>{conversationStateWord(conversation.face, t)}</span>{harnessLabel ? ` · ${harnessLabel}` : ""}</small>
+            <small><span className={`mobile-conv-state is-${conversation.face}`}>{conversationStateWord(conversation.face, t)}</span>{subtitleParts ? ` · ${subtitleParts}` : harnessLabel ? ` · ${harnessLabel}` : ""}</small>
           </span>
+          {hasUnreadCrew ? <span className="mobile-conv-pill-dot" aria-hidden="true" /> : null}
+          <MobileIcon name="down" size={14} className="mobile-conv-pill-caret" />
         </>
       ),
     },

@@ -5,7 +5,6 @@ import { pushBackLayer } from "./mobile-back.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMenu } from "./mobile-menu.js";
 import { getLiveMobileBar, useMobileBar, type MobileBarState } from "./mobile-store.js";
-import { MobileContextRail } from "../../../../../features/workspace/client/conversation/context-rail/mobile.js";
 import { ConversationPill } from "../../../../../features/workspace/client/conversation/pill-takeover.js";
 
 const DEFAULT_BAR: MobileBarState = { variant: "centered", title: "", leading: "back" };
@@ -45,7 +44,6 @@ export function MobileTopBar() {
       </button>
       {title}
       {bar.variant === "centered" && actionsCount === 0 ? <span className="mobile-bar-spacer" aria-hidden="true" /> : null}
-      <MobileContextRail />
       {bar.actions?.map((action) => (
         <button type="button" key={action.id} className="mobile-bar-button" aria-label={action.label} aria-pressed={action.pressed} onClick={() => getLiveMobileBar()?.actions?.find((item) => item.id === action.id)?.run()}>
           {action.icon}

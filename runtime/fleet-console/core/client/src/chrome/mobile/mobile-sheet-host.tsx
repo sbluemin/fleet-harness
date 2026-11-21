@@ -72,13 +72,28 @@ export function MobileSheetHost({ state }: { readonly state: ConsoleState }) {
   if (top.kind === "profile") return <ProfileSheet />;
   if (top.kind === "custom") return <>{top.render(popMobileSheet)}</>;
   if (top.kind === "confirm") return <ConfirmSheet spec={top.spec} resolve={top.resolve} />;
-  if (top.kind === "folder") return <MobileFolderSheet onClose={popMobileSheet} onConfirm={(path) => { closeMobileSheets(); void addTheaterWithToast(path, t); }} />;
+  if (top.kind === "folder") return <FolderSheetWithTarget onClose={popMobileSheet} />;
   return <TheaterSheet />;
 }
 
-/** 사령관이 있으면 그 목록에만 더한다. 사령관이 없으면 새 사령관 만들기 흐름으로 이어진다. */
-async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>): Promise<void> {
-  const commodoreId = mobileHomeCommodoreId();
+function FolderSheetWithTarget({ onClose }: { readonly onClose: () => void }) {
+  const t = useT();
+  const commodores = useCommodoreList();
+  const fallback = t("sidebar.commodore.fallback");
+  const targets = commodores.map((commodore) => ({ commodoreId: commodore.commodoreId, label: commodoreSectionLabel(commodore, fallback) }));
+  return (
+    <MobileFolderSheet
+      onClose={onClose}
+      commodores={targets}
+      initialCommodoreId={mobileHomeCommodoreId()}
+      onConfirm={(path, commodoreId) => { closeMobileSheets(); void addTheaterWithToast(path, t, commodoreId); }}
+    />
+  );
+}
+
+/** 사령관이 있으면 고른(또는 기본) 사령관 목록에 더한다. 사령관이 없으면 새 사령관 만들기 흐름으로 이어진다. */
+async function addTheaterWithToast(path: string, t: ReturnType<typeof useT>, preferredCommodoreId?: string | null): Promise<void> {
+  const commodoreId = preferredCommodoreId ?? mobileHomeCommodoreId() ?? readCommodoreList()[0]?.commodoreId ?? null;
   if (!commodoreId) {
     requestCommodoreCreate();
     return;

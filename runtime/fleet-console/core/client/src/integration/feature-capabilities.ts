@@ -79,7 +79,7 @@ function viewTheaterInbox(theaterId: string, commodoreId: string | null = null):
   if (getViewModeSnapshot().effective === "mobile") {
     selectMobileCommodore(owner);
     setMobileListTheater({ commodoreId: owner, theaterId });
-    closeMobileObjective();
+    closeMobileObjective(false);
     setMobileDestination({ kind: "home" });
   }
   else {

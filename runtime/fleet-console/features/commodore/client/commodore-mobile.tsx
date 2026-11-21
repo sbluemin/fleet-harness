@@ -245,30 +245,33 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
   const leave = useCallback((run: () => void) => {
     if (!bar) { run(); return; }
-    bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
-  }, [bar]);
+    bar.leave(() => {
+      setSection(null);
+      setMemoryTrail([]);
+      setPanel(false);
+      if (commodoreId) setCommodoreMapMode(commodoreId, "chat");
+    }, run);
+  }, [bar, commodoreId]);
   useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
   // 다른 사령관으로 옮기면 채팅으로 시작한다.
   useEffect(() => { if (commodoreId) setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
   useEffect(() => {
     if (!bar) return;
+    const inMap = mapMode === "map";
+    const depthBase = inMap ? 1 : 0;
     if (!panel) {
       bar.set({
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
-        depth: 0,
-        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
+        depth: depthBase,
+        ...(inMap && commodoreId ? { onBack: () => setCommodoreMapMode(commodoreId, "chat") } : {}),
+        // 칩은 세부, 오른쪽은 지휘관 시트와 신경망 보기 직행 단추 — 상단 막대 컨텍스트 칩을 내려 확보한 공간에 핵심 전환을 올린다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
-        // 지휘관 시트와 지도 전환(데스크톱 머리 줄 꼬리 단추와 같은 동작)은 ⋮ 하나에 묶는다 — 375px 막대에서 단추 하나만큼 사령관 이름 자리를 둔다.
         ...(commodoreId ? {
-          menu: {
-            label: t("commodore.mobile.more"),
-            caption: title,
-            items: [
-              ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
-              { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
-            ],
-          },
+          actions: [
+            ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
+            { id: "map", label: t(inMap ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={20} />, pressed: inMap, run: () => setCommodoreMapMode(commodoreId, inMap ? "chat" : "map") },
+          ],
         } : {}),
       });
       return;
@@ -278,7 +281,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       bar.set({
         title: "",
         round: true,
-        depth: 1,
+        depth: depthBase + 1,
         onBack: () => setPanel(false),
         menu: {
           label: t("commodore.mobile.more"),
@@ -295,7 +298,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       title: sectionTitle(t, section),
       subtitle: title,
       round: true,
-      depth: 2 + (section === "info" ? memoryTrail.length : 0),
+      depth: depthBase + 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
   }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover, mapMode]);
@@ -406,7 +409,10 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   const useAttentionCount = sessions?.useAttentionCount ?? noAttentionCount;
   const attention = useAttentionCount(commodoreId);
   const running = objectives.filter(isRunningObjective).length;
-  const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" } : running > 0 ? { text: t("commodore.mobile.running", { n: running }) } : null;
+  const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" }
+    : running > 0 ? { text: t("commodore.mobile.running", { n: running }) }
+    : objectives.length > 0 ? { text: t("commodore.mobile.count", { n: objectives.length }) }
+    : null;
   const run = view?.run;
   const logValue: ProfileValue = !run ? null
     : run.phase === "turn" ? { text: t("commodore.meta.turn") }

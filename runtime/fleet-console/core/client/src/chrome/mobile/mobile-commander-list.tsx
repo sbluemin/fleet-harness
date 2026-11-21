@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 import { useMobileCommanderActions } from "./mobile-commander-actions.js";
@@ -11,11 +11,11 @@ import { useConversationTime } from "./mobile-conversation-row.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { MobileSheet } from "./mobile-sheet.js";
-import { pushMobileSheet, setMobileDestination } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, setMobileReturnDestination } from "./mobile-store.js";
 
 type Leave = (run: () => void) => void;
 
-/** 첫 탭은 고르기, 펼친 행의 버튼은 열기. 시작 전·완료는 이름만 있는 구역으로 접힌다. */
+/** 행 탭 한 번으로 바로 세션(또는 미시작 목표)을 연다. 길게 누르면 이름 변경·보관 시트를 연다. */
 export function MobileCommanderList({ rows, leave, hasAttention }: {
   readonly rows: {
     readonly sorted: readonly SideBarRowItem[];
@@ -26,7 +26,6 @@ export function MobileCommanderList({ rows, leave, hasAttention }: {
   readonly hasAttention: boolean;
 }) {
   const t = useT();
-  const [selected, setSelected] = useState<string | null>(null);
   const folds = useCommanderFolds();
   const { sorted, sections, preference } = rows;
   const current = SORTS.find((sort) => sort.key === preference.key) ?? SORTS[0]!;
@@ -45,7 +44,7 @@ export function MobileCommanderList({ rows, leave, hasAttention }: {
         {section.fold != null ? <button type="button" className="mobile-conv-section" aria-expanded={!collapsed} onClick={() => toggleFold(section.fold!)}><span>{section.title}</span><span>{section.rows.length}</span></button>
           : section.title !== null ? <h3 className="mobile-conv-section"><span>{section.title}</span><span>{section.rows.length}</span></h3> : null}
         {collapsed ? null : <ol className="mobile-commander-rows">
-          {section.rows.map((item) => <CommanderRow key={item.layout.cluster.id} item={item} selected={selected === item.layout.cluster.id} onSelect={() => setSelected(selected === item.layout.cluster.id ? null : item.layout.cluster.id)} leave={leave} />)}
+          {section.rows.map((item) => <CommanderRow key={item.layout.cluster.id} item={item} leave={leave} />)}
         </ol>}
       </section>;
       })}
@@ -53,11 +52,10 @@ export function MobileCommanderList({ rows, leave, hasAttention }: {
   );
 }
 
-function CommanderRow({ item, selected, onSelect, leave }: { readonly item: SideBarRowItem; readonly selected: boolean; readonly onSelect: () => void; readonly leave: Leave }) {
+function CommanderRow({ item, leave }: { readonly item: SideBarRowItem; readonly leave: Leave }) {
   const t = useT();
   const language = useConsoleLocale();
   const time = useConversationTime();
-  const detailId = useId();
   const openActions = useMobileCommanderActions();
   const longPress = useLongPress<HTMLButtonElement>(() => openActions(item));
   const { layout, row } = item;
@@ -65,14 +63,16 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   const { state, label, personNote, conversationLine } = clusterRowSummary(item, language, t, workActivity);
   const activity = activityOf(item);
   const open = () => leave(() => {
-    // 뿌리 없는 목표는 시작 화면으로 — 가짜 세션 id로 focus하지 않는다.
+    const commodoreId = layout.cluster.commodoreId;
+    setMobileReturnDestination(commodoreId ? { kind: "plugin", entryId: "commodore", params: { commodoreId } } : null);
+    // 뿌리 없는 목표는 모바일 목표 화면으로 — 가짜 세션 id로 focus하지 않는다.
     if (!layout.cluster.root) { layout.cluster.open?.(); return; }
     setMobileDestination({ kind: "home" });
     focusObjective(layout.cluster.root);
   });
-  return <li className={`mobile-commander-item${selected ? " is-selected" : ""}`} data-cluster-row-id={layout.cluster.id}>
+  return <li className="mobile-commander-item" data-cluster-row-id={layout.cluster.id}>
     <MobileMarkedRow mark={row.mark}>
-      <button type="button" data-press="r1" className="mobile-conv-row" aria-expanded={selected} aria-controls={selected ? detailId : undefined} aria-description={personNote || undefined} onClick={onSelect}
+      <button type="button" data-press="r1" className="mobile-conv-row" aria-description={personNote || undefined} onClick={open}
         onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}
         onContextMenu={(event) => { event.preventDefault(); if (!longPress.claimContextMenu(event)) openActions(item); }}>
         <span className="mobile-conv-row-av"><ClusterRowAvatar item={item} rowState={state} label={label} size={40} decorative /></span>
@@ -85,9 +85,6 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
         </span>
       </button>
     </MobileMarkedRow>
-    {selected ? <div id={detailId} className="mobile-commander-detail">
-      <button type="button" data-press="r3" className="mobile-pill" onClick={open}>{t("mobile.commodore.sessions.open")}<MobileIcon name="right" size={16} /></button>
-    </div> : null}
   </li>;
 }
 

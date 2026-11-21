@@ -1558,9 +1558,11 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-pill { position: relative; display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 48px; padding: 3px 14px 3px 6px; color: var(--m-text); text-align: left; background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); }
 .mobile-conv-pill:active { background: var(--m-selected); }
 .mobile-conv-pill-av { display: grid; place-items: center; flex: none; width: 36px; height: 36px; }
-.mobile-conv-pill-copy { display: grid; min-width: 0; line-height: 1.2; }
+.mobile-conv-pill-copy { display: grid; flex: 1; min-width: 0; line-height: 1.2; }
 .mobile-conv-pill-copy strong { overflow: hidden; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); text-overflow: ellipsis; white-space: nowrap; }
 .mobile-conv-pill-copy small { overflow: hidden; color: var(--m-text-muted); font-size: var(--m-fs-small); text-overflow: ellipsis; white-space: nowrap; }
+.mobile-conv-pill-dot { flex: none; width: 7px; height: 7px; background: var(--m-awaiting); border-radius: 50%; }
+.mobile-conv-pill-caret { flex: none; color: var(--m-text-muted); }
 /* 고정 폭인 폰 머리도 주인 아바타·이름은 그대로 두고 상대만 같은 박자로 드러낸다. */
 .mobile-conv-pill.conversation-pill-host { gap: 0; }
 .mobile-conv-pill > .conversation-pill-details { display: flex; flex: 1; align-items: center; gap: 10px; min-height: 40px; min-width: 0; text-align: left; }
@@ -1607,3 +1609,165 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-settings-page.is-embedded .mobile-settings-scroll { overflow: visible; }
 .mobile-sheet.is-profile { background: var(--popover-face); }
 .mobile-sheet.is-profile .mobile-sheet-body { padding-inline: 0; }
+
+/* ── Option A: 홈 통합 허브 · 1탭 인라인 목표 칩 · 세그먼트 대화 정보 · 폴더 대상 선택 ── */
+.mobile-home-console {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: calc(100% - 104px);
+  height: 44px;
+  padding: 0 12px 0 8px;
+  color: var(--m-text);
+  background: var(--m-surface);
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: var(--radius-pill);
+  --pr-r: var(--radius-pill);
+}
+.mobile-home-console-name {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--m-fs-secondary);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mobile-home-console-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  background: var(--m-running);
+  border-radius: 50%;
+}
+.mobile-home-console-dot[data-state="reconnecting"] { background: var(--m-awaiting); }
+.mobile-home-console-dot[data-state="failed"] { background: var(--m-danger); }
+.mobile-home-console-caret { flex: none; color: var(--m-text-muted); }
+
+.mobile-home-attention { padding: 2px 0 6px; }
+.mobile-home-attention-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 18px 4px;
+}
+.mobile-home-attention-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--m-awaiting);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-bold);
+}
+.mobile-home-attention-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--m-awaiting);
+  border-radius: 50%;
+}
+.mobile-home-attention-all {
+  padding: 4px 8px;
+  color: var(--m-text-nav);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-medium);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+}
+.mobile-home-chip-caret { flex: none; color: var(--m-text-faint); }
+
+.mobile-home-commodore-item { display: flex; flex-direction: column; min-width: 0; }
+.mobile-home-obj-chips {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 0 18px 10px 84px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mobile-home-obj-chips::-webkit-scrollbar { display: none; }
+.mobile-home-obj-chip {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  max-width: 210px;
+  min-height: 32px;
+  padding: 0 11px;
+  color: var(--m-text-nav);
+  font-size: var(--m-fs-caption);
+  background: var(--m-surface);
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: var(--radius-pill);
+  --pr-r: var(--radius-pill);
+}
+.mobile-home-obj-chip[data-tone="awaiting"] {
+  border-color: color-mix(in srgb, var(--m-awaiting) 45%, var(--m-hairline-strong));
+}
+.mobile-home-obj-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  background: var(--m-text-faint);
+  border-radius: 50%;
+}
+.mobile-home-obj-dot.is-awaiting { background: var(--m-awaiting); }
+.mobile-home-obj-dot.is-running { background: var(--m-running); }
+.mobile-home-obj-dot.is-idle { background: var(--m-idle); }
+.mobile-home-obj-dot.is-fresh { background: transparent; border: 1.5px solid var(--m-text-muted); }
+.mobile-home-obj-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-home-obj-prog { flex: none; color: var(--m-text-faint); font-size: var(--m-fs-small); font-variant-numeric: tabular-nums; }
+
+.mobile-info-segments {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  margin: 0 14px 8px;
+  padding: 4px;
+  background: var(--m-surface);
+  border: 1px solid var(--m-hairline-strong);
+  border-radius: 16px;
+}
+.mobile-info-seg {
+  position: relative;
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  color: var(--m-text-muted);
+  font-size: var(--m-fs-caption);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  --pr-r: 12px;
+}
+.mobile-info-seg.is-on {
+  color: var(--m-on-inverse);
+  font-weight: var(--weight-bold);
+  background: var(--m-inverse);
+}
+.mobile-info-seg-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background: var(--m-awaiting);
+  border-radius: 50%;
+}
+.mobile-info-seg.is-on .mobile-info-seg-dot { background: var(--m-on-inverse); }
+.mobile-info-screen.is-segmented .mobile-info-body { padding-top: 4px; }
+
+.mobile-folder-target { display: flex; flex-direction: column; gap: 6px; padding: 0 4px; }
+.mobile-folder-target-label { color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-medium); }
+.mobile-folder-target-chips { display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.mobile-folder-target-chips::-webkit-scrollbar { display: none; }

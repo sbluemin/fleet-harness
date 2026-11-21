@@ -25,7 +25,7 @@ import { MobileTopBar } from "./mobile-top-bar.js";
 import { installMobileBackBridge } from "./mobile-back.js";
 import { closeMobileObjective, readMobileObjectiveId } from "./mobile-objective-url.js";
 import { installMobileHistory } from "./mobile-history.js";
-import { getMobileDestination, useMobileBar, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
+import { consumeMobileReturnDestination, getMobileDestination, useMobileBar, useMobileDestination, useMobileSheetStack, registerMobileDestinationEntries, setMobileDestination, syncMobileDestinationUrl, pushMobileSheet, getMobileSheetStack } from "./mobile-store.js";
 import { ledgerObjectiveId, openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import "../../styles/mobile.css";
 
@@ -49,7 +49,7 @@ export function MobileFrame({ state, bands, children }: { readonly state: Consol
     const current = getMobileDestination();
     if (current.kind !== "plugin" || current.entryId !== "commodore" || current.params?.commodoreId) return;
     setMobileDestination({ kind: "home" });
-    closeMobileObjective();
+    closeMobileObjective(false);
   }, [commodoresLoaded, destination, selectedCommodoreId]);
 
   // 목적지로 선언된 레일 엔트리를 스토어에 알린다 — 그 id를 연 요청(플러그인의 rail.open 등)은 시트가 아니라 화면이 된다.
@@ -86,8 +86,10 @@ export function MobileFrame({ state, bands, children }: { readonly state: Consol
   // 대화 목록이 루트다(4): 앱이면 false를 돌려 앱 기본(Console 목록)에 맡기고, 브라우저는 가드 두 칸을 넘어 이전 페이지로 간다.
   const backRef = useRef<() => boolean>(() => false);
   backRef.current = () => {
-    if (path !== "/objectives" || getMobileDestination().kind !== "home") {
-      setMobileDestination({ kind: "home" });
+    const currentDest = getMobileDestination();
+    if (path !== "/objectives" || currentDest.kind !== "home") {
+      const returnTo = currentDest.kind === "plugin" && currentDest.entryId === "objectives" ? consumeMobileReturnDestination() : null;
+      setMobileDestination(returnTo ?? { kind: "home" });
       if (path !== "/objectives") navigate("/objectives", { replace: true });
       return true;
     }
