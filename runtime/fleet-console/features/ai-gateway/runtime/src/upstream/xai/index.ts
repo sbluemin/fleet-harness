@@ -1,3 +1,3 @@
 export * from "./cli-version.js";
 export * from "./quota.js";
-export * from "./responses/index.js";
+export * from "./responses/adapter.js";

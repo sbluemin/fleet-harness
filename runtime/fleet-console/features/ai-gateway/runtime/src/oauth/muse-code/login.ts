@@ -1,10 +1,79 @@
-import type { AuthService } from "../../auth/types.js";
+import type { AuthService, AuthStorageEntry } from "../../auth/types.js";
 import type { ProviderResult, QuotaWindow } from "../../quota/types.js";
-import { createDeviceCodeClient } from "../device-code.js";
+import { parseMuseCodeUsage, type ParsedMuseCodeUsage } from "../../upstream/muse-code/quota.js";
+import { createDeviceCodeClient, httpsUrl, OAuthRequestError, requestOAuthJson, type DeviceCodeConfig } from "../device-code.js";
 import { createLoginSessions } from "../login-sessions.js";
-import { readMuseCodeEntry, type MuseCodeAuthEntry, type MuseCodeAuthResult } from "./credentials.js";
-import { MUSE_CODE_AUTH_PROVIDER_ID, MUSE_CODE_DEVICE_CONFIG, MUSE_CODE_MINT_BACKOFF_MS, MUSE_CODE_MINT_INTERVAL_MS } from "./config.js";
-import { mintMuseCodeKey, type MuseCodeMintResult } from "./mint.js";
+
+export const MUSE_CODE_AUTH_PROVIDER_ID = "Fleet AI Gateway with Muse Code";
+export const MUSE_CODE_KEY_URL = "https://api.meta.ai/muse-code/key";
+export const MUSE_CODE_DEVICE_CONFIG: DeviceCodeConfig = {
+  authorizationUrl: "https://auth.meta.com/oidc/device/authorization/",
+  tokenUrl: "https://auth.meta.com/oidc/device/token/",
+  clientId: "1031625952748946",
+  headers: { "x-api-version": "1.0.0" },
+};
+
+/** 조회·재mint가 같은 key endpoint를 공유한다. 강제 새로고침도 이 간격·실패 backoff를 넘지 못한다. */
+export const MUSE_CODE_MINT_INTERVAL_MS = 60_000;
+export const MUSE_CODE_MINT_BACKOFF_MS = 5 * 60_000;
+
+export interface MuseCodeAuthEntry extends AuthStorageEntry {
+  readonly type: "oauth-device";
+  readonly accessToken: string;
+  readonly baseUrl?: string;
+  readonly accessExpiresAt?: number;
+  readonly mintedAt: number;
+  readonly version: 1;
+}
+export type MuseCodeAuthResult =
+  | { readonly status: "ok"; readonly credentials: { readonly apiKey: string; readonly baseUrl?: string } }
+  | { readonly status: "signed_out" | "expired" | "unavailable" };
+
+/** Console 슬롯만 읽는다. CLI 파일·환경변수·OS 비밀 저장소에는 접근하지 않는다. */
+export async function readMuseCodeEntry(authService: Pick<AuthService, "getEntry">): Promise<MuseCodeAuthEntry | undefined> {
+  const entry = await authService.getEntry(MUSE_CODE_AUTH_PROVIDER_ID);
+  if (entry === undefined) return undefined;
+  if (entry.type !== "oauth-device" || entry.version !== 1
+    || typeof entry.key !== "string" || !entry.key.trim()
+    || typeof entry.accessToken !== "string" || !entry.accessToken.trim()
+    || typeof entry.mintedAt !== "number" || !Number.isFinite(entry.mintedAt)
+    || (entry.baseUrl !== undefined && typeof entry.baseUrl !== "string")
+    || (entry.accessExpiresAt !== undefined && (typeof entry.accessExpiresAt !== "number" || !Number.isFinite(entry.accessExpiresAt)))) {
+    throw new Error("The saved Muse Code sign-in could not be read. Sign in again in Console.");
+  }
+  return entry as MuseCodeAuthEntry;
+}
+
+export type MuseCodeMintResult =
+  | { readonly status: "ok"; readonly apiKey: string; readonly baseUrl?: string; readonly usage: ParsedMuseCodeUsage | null }
+  | { readonly status: "expired" }
+  | { readonly status: "entitlement_required"; readonly actionUrl?: string };
+
+/** Meta 계정 상태를 바꾸는 onboard 필드는 보내지 않는다. 응답에서 비밀과 사용량만 선별한다. */
+export async function mintMuseCodeKey(deps: {
+  readonly accessToken: string;
+  readonly fetch?: typeof fetch;
+  readonly signal?: AbortSignal;
+}): Promise<MuseCodeMintResult> {
+  const { status, body } = await requestOAuthJson(deps.fetch ?? fetch, MUSE_CODE_KEY_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json", "Content-Type": "application/json",
+      Authorization: `Bearer ${deps.accessToken}`, "x-api-version": "1.0.0",
+    },
+    body: "{}", ...(deps.signal ? { signal: deps.signal } : {}),
+  });
+  if (status === 401 || status === 403) return { status: "expired" };
+  const actionUrl = httpsUrl(body.action_url);
+  if ((status >= 200 && status < 300) && (body.is_subs_active === false || body.require_payment === true || actionUrl)) {
+    return { status: "entitlement_required", ...(actionUrl ? { actionUrl } : {}) };
+  }
+  if (status !== 200 || typeof body.api_key !== "string" || !body.api_key.trim()) throw new OAuthRequestError(status);
+  // API 키를 다른 origin으로 보내지 않는다. base_url은 저장하되 Meta Model API만 허용한다.
+  const baseUrl = httpsUrl(body.base_url);
+  if (body.base_url !== undefined && (!baseUrl || new URL(baseUrl).origin !== "https://api.meta.ai")) throw new OAuthRequestError();
+  return { status: "ok", apiKey: body.api_key, ...(baseUrl ? { baseUrl } : {}), usage: parseMuseCodeUsage(body) };
+}
 
 export interface MuseCodeOAuthDeps {
   readonly authService: AuthService;

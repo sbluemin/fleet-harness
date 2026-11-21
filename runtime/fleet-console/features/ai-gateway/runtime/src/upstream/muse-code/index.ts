@@ -1,1 +1,1 @@
-export * from "./responses/index.js";
+export * from "./responses/adapter.js";

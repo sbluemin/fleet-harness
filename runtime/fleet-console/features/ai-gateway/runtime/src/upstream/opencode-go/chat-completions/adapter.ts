@@ -23,6 +23,7 @@ import {
   readWithIdleTimeout,
   type FetchLike,
   type UpstreamReadOptions,
+  isRecord,
 } from "../../../transport/upstream-sse.js";
 import { opencodeSessionHeaders } from "../session.js";
 import { logRawWireEvent, wireLog, type RawWireEventPayload } from "../../../transport/wire-log.js";
@@ -887,6 +888,3 @@ function readablePatternSchema(value: unknown): unknown {
   return changed ? next : value;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

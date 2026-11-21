@@ -1,2 +1,37 @@
-export * from "./coordinates.js";
-export { validateTypesafeApiKey } from "./probe.js";
+import { validateApiKeyByProbe, type AuthProbeRequest } from "../../auth/validation.js";
+import type { AuthValidationResult } from "../../auth/types.js";
+
+/**
+ * TypeSafe 접속 좌표. `src/auth/`는 공급자를 모르는 채로 남아야 하므로 저장 id·기반
+ * URL·검증 경로는 공급자 폴더인 이 자리에 산다.
+ */
+
+// Keep the persisted provider id stable so stored keys survive upgrades.
+// 키는 계정(TypeSafe)에 속하므로 모델명이 아니라 서비스명으로 고정한다.
+// 표시 이름과 일부러 다른 문자열이다: 라우트는 저장 id를 브라우저에 실어 보내지
+// 않으며, 두 이름이 같으면 그 보장을 시험으로 확인할 수 없다.
+export const TYPESAFE_AUTH_PROVIDER_ID = "Fleet Console with TypeSafe System One";
+export const TYPESAFE_API_BASE_URL = "https://api.typesafe.ai";
+/** 키 검증 프로브가 부르는 모델 목록 경로. 추론 토큰을 쓰지 않는다. */
+export const TYPESAFE_MODELS_PATH = "/v1/models";
+
+/**
+ * 키 검증 프로브. TypeSafe는 Anthropic Messages wire를 말하지 않으므로 그 검증을
+ * 재사용할 수 없다. 대신 모델 목록 조회가 인증만 확인하고 추론 토큰을 전혀 쓰지
+ * 않는다 — 유효한 키에 200, 잘못된 키에 401, 키가 없으면 403을 준다.
+ */
+export async function validateTypesafeApiKey(request: {
+  readonly providerId: string;
+  readonly apiKey: string;
+  readonly baseUrl?: string;
+  readonly timeoutMs?: AuthProbeRequest["timeoutMs"];
+}): Promise<AuthValidationResult> {
+  const baseUrl = (request.baseUrl ?? TYPESAFE_API_BASE_URL).replace(/\/+$/, "");
+  return validateApiKeyByProbe({ providerId: request.providerId, timeoutMs: request.timeoutMs }, (signal) =>
+    fetch(`${baseUrl}${TYPESAFE_MODELS_PATH}`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${request.apiKey}` },
+      signal,
+    }),
+  );
+}

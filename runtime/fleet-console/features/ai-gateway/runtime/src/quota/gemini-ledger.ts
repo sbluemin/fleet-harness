@@ -14,6 +14,7 @@ import type {
   GeminiUsageObservation,
   GeminiUsagePort,
 } from "./gemini-usage.js";
+import { clampText, isRecord, MAX_BLOCK_TEXT, safeTime, sanitizeAmounts, WEEK_KEY_PATTERN } from "./ledger-document.js";
 import type { ProviderBlock, ProviderSpend } from "./types.js";
 
 /**
@@ -79,9 +80,6 @@ interface GeminiSpendDocument {
 }
 
 const EMPTY_DOCUMENT: GeminiSpendDocument = { version: 1, months: {} };
-
-/** 오류 본문 원문은 화면에 한 줄로 서므로 길이·개행만 다듬는다. 키·요청 본문은 오지 않는다. */
-const MAX_BLOCK_TEXT = 300;
 
 export function createGeminiSpendLedger(deps: GeminiSpendLedgerDeps): GeminiSpendLedger {
   const now = deps.now ?? Date.now;
@@ -201,20 +199,6 @@ export function createGeminiSpendLedger(deps: GeminiSpendLedgerDeps): GeminiSpen
   };
 }
 
-function clampText(value: string): string | undefined {
-  const text = value.replace(/[\r\n]+/g, " ").trim();
-  if (text.length === 0) return undefined;
-  return text.length > MAX_BLOCK_TEXT ? `${text.slice(0, MAX_BLOCK_TEXT)}…` : text;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function safeTime(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
 function sanitizeBlock(value: unknown): StoredBlock | undefined {
   if (!isRecord(value)) return undefined;
   const httpStatus = value.httpStatus;
@@ -230,20 +214,6 @@ function sanitizeBlock(value: unknown): StoredBlock | undefined {
     ...(typeof value.code === "string" && value.code.length <= MAX_BLOCK_TEXT ? { code: value.code } : {}),
     ...(typeof value.message === "string" && value.message.length <= MAX_BLOCK_TEXT + 1 ? { message: value.message } : {}),
   };
-}
-
-/** 주 키 — 그 주 월요일의 달력 날짜("2026-11-16"). */
-const WEEK_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/;
-
-function sanitizeAmounts(value: unknown, pattern: RegExp): Record<string, string> | undefined {
-  if (!isRecord(value)) return undefined;
-  const result: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (!pattern.test(key)) continue;
-    if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
-    result[key] = raw;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 /** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. 레거시 달 누적은 그대로 보존한다. */

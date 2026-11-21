@@ -13,6 +13,7 @@ import {
   spendWeekBounds,
   usdFromPicoUsd,
 } from "./gemini-pricing.js";
+import { clampText, isRecord, MAX_BLOCK_TEXT, safeTime, sanitizeAmounts, WEEK_KEY_PATTERN } from "./ledger-document.js";
 import type { ProviderBlock, ProviderSpend } from "./types.js";
 
 /**
@@ -95,8 +96,6 @@ const MAX_MODELS_PER_PERIOD = 16;
 const MAX_MODEL_ID_LENGTH = 64;
 
 const EMPTY_DOCUMENT: AnthropicSpendDocument = { version: 1, months: {} };
-const MAX_BLOCK_TEXT = 300;
-
 export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): AnthropicSpendLedger {
   const now = deps.now ?? Date.now;
   const store = createDurableJsonStore<AnthropicSpendDocument>({
@@ -246,20 +245,6 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
   };
 }
 
-function clampText(value: string): string | undefined {
-  const text = value.replace(/[\r\n]+/g, " ").trim();
-  if (text.length === 0) return undefined;
-  return text.length > MAX_BLOCK_TEXT ? `${text.slice(0, MAX_BLOCK_TEXT)}…` : text;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function safeTime(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
-}
-
 function sanitizeBlock(value: unknown): StoredBlock | undefined {
   if (!isRecord(value)) return undefined;
   const httpStatus = value.httpStatus;
@@ -313,20 +298,6 @@ function sanitizePeriodRecords<T>(
       if (clean !== undefined) kept[model] = clean;
     }
     if (Object.keys(kept).length > 0) result[key] = kept;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
-/** 주 키 — 그 주 월요일의 달력 날짜("2026-11-16"). */
-const WEEK_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/;
-
-function sanitizeAmounts(value: unknown, pattern: RegExp): Record<string, string> | undefined {
-  if (!isRecord(value)) return undefined;
-  const result: Record<string, string> = {};
-  for (const [key, raw] of Object.entries(value)) {
-    if (!pattern.test(key)) continue;
-    if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
-    result[key] = raw;
   }
   return Object.keys(result).length > 0 ? result : undefined;
 }
