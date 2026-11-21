@@ -4,8 +4,7 @@ import { restoreObjectiveCluster } from "../../../../../features/execution/clien
 
 import { ObjectiveStatusIcon } from "../../../../../features/execution/client/components/objective-status-icon.js";
 
-import { formatRelativeTime } from "../../i18n/format.js";
-import { useConsoleLocale, useT } from "../../i18n/index.js";
+import { formatRelativeTime, useConsoleLocale, useT } from "../../i18n/index.js";
 import { fetchObjectiveRecords } from "../../integration/api.js";
 import { refreshObjectiveArchive, useObjectiveArchive } from "../../integration/objective-archive.js";
 import { hydrateObjectiveRecords, getState } from "../../integration/store.js";

@@ -9,7 +9,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { openOtherSurfaceLink } from "../../../../../features/browser/client/global-link.js";
 import { useT } from "../../i18n/index.js";
 import { createHostCapabilities } from "../../integration/feature-capabilities.js";
-import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";
+import { useHostSideBarVisible } from "../../integration/view-mode-store.js";
 import { getState } from "../../integration/store.js";
 import { resolveConsoleLanguage } from "../../../../../features/updates/client/whatsnew-i18n.js";
 import {

@@ -11,7 +11,7 @@ import type { ClientPreferencesCapability } from "../../../../../features/settin
 import type { ConsoleTheme } from "../../../../../features/settings/shared/theme.js";
 
 import type { HostPaneContext } from "./pane-registry.js";
-import { useHostSideBarVisible } from "../../integration/host-sidebar-visible.js";
+import { useHostSideBarVisible } from "../../integration/view-mode-store.js";
 import { useMobileBarCapabilityValue } from "../mobile/mobile-bar-context.js";
 
 /**

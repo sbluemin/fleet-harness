@@ -2,7 +2,9 @@ import type { OpenResult } from "../../../../../features/workspace/shared/naviga
 import type { PaneDescriptor, PaneOpenRequest, PaneTarget } from "../../../../../features/workspace/shared/pane.js";
 import type { RailEntryDescriptor } from "../../../../../features/workspace/shared/rail.js";
 import type { ExpandedSurfaceOpenRequest } from "../../../../../features/workspace/shared/expanded-surface.js";
-import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
+
+/** 페인을 펼친 표면(expanded surface)에 올릴 때 쓰는 표면 id. */
+export const EXPANDED_PANE_SURFACE_ID = "pane";
 
 export interface PaneTargetBinding {
   readonly entry: RailEntryDescriptor;

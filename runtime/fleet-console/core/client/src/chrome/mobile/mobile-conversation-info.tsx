@@ -7,8 +7,7 @@ import type { RailPanelContext } from "../../../../../features/workspace/shared/
 
 import { readAgentChatSessionCoordinates } from "../../../../../features/execution/client/agent/chat/session-coordinates.js";
 import { useCommanderLedgerChosen } from "../../../../../features/execution/client/agent/chat/group/commander-ledger.js";
-import { formatAbsoluteDateTime } from "../../i18n/format.js";
-import { useConsoleLocale, useT } from "../../i18n/index.js";
+import { formatAbsoluteDateTime, useConsoleLocale, useT } from "../../i18n/index.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import type { ObjectiveRecord } from "../../integration/types.js";
 import { useConsoleState } from "../../hooks/use-store.js";

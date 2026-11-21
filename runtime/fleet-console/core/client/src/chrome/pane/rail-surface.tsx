@@ -12,7 +12,7 @@ import type { ConsoleTheme } from "../../../../../features/settings/shared/theme
 
 import { createHostCapabilities } from "../../integration/feature-capabilities.js";
 import { isPaneExpanded, openExpandedPane } from "./expanded-pane-surface.js";
-import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
+import { EXPANDED_PANE_SURFACE_ID } from "./pane-target.js";
 import { PaneBody, usePaneContext } from "./pane-body.js";
 import { PaneCaption } from "./pane-caption.js";
 import { PaneDivider } from "./pane-divider.js";

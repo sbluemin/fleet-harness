@@ -39,5 +39,5 @@ export function getT(locale: ConsoleLocale, mobile = false): Translate<CoreMessa
 export type { CoreMessageKey };
 export { CORE_MESSAGES } from "./messages/index.js";
 export { diagramHydratorLabels, markdownCopyOptions } from "./ui.js";
-export { formatAbsoluteDateTime, formatDate, formatRelativeTime } from "./format.js";
+export { formatAbsoluteDateTime, formatDate, formatRelativeTime } from "@fleet-console/i18n/format";
 export { renderMessage, translateServerError } from "./ui.js";
