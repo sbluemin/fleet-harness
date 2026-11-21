@@ -8,6 +8,7 @@ import {
   resolveColorEnabled,
   section,
   stripAnsi,
+  type ResolveColorEnabledOptions,
 } from "./styles/tokens.js";
 import { formatFleetCliReleaseLabel, readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
@@ -19,9 +20,7 @@ export function buildFleetVersionText(release: FleetCliRelease = readFleetCliRel
   return `@dotobokuri/fleet-console ${release.version} (${formatFleetCliReleaseLabel(release)})\n`;
 }
 
-export interface BuildFleetHelpTextOptions {
-  readonly env?: NodeJS.ProcessEnv;
-  readonly isTTY?: boolean;
+export interface BuildFleetHelpTextOptions extends ResolveColorEnabledOptions {
   readonly release?: FleetCliRelease;
 }
 

@@ -5,15 +5,14 @@ import {
   optionRow,
   paintFleetHelpBanner,
   resolveColorEnabled,
+  type ResolveColorEnabledOptions,
   section,
   stripAnsi,
 } from "../styles/tokens.js";
 import { GATEWAY_SET_KEYS, GATEWAY_SET_KEY_SYNTAX } from "./policy.js";
 import { readFleetCliRelease, type FleetCliRelease } from "../release.js";
 
-export interface BuildGatewayHelpTextOptions {
-  readonly env?: NodeJS.ProcessEnv;
-  readonly isTTY?: boolean;
+export interface BuildGatewayHelpTextOptions extends ResolveColorEnabledOptions {
   readonly release?: FleetCliRelease;
 }
 
