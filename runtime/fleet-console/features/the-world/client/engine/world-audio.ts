@@ -1252,3 +1252,163 @@ export function playStarBoost(): void {
     attack: 0.01,
   });
 }
+
+// --- Sprint 17: 포토 스튜디오 · 동행 호출 · 이모트 휠 프로시저럴 SFX 3종 ---
+
+/** 포토 스튜디오(`P`) 스냅샷 촬영 시 기계 셔터 클릭 + 은은한 별빛 차임. */
+export function playCameraShutter(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 1차·2차 기계 셔터 찰칵 (34ms 간격)
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.026,
+    centerFreq: 3400,
+    q: 2.2,
+    peakGain: 0.42,
+    attack: 0.002,
+  });
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.034,
+    duration: 0.032,
+    centerFreq: 2450,
+    q: 1.8,
+    peakGain: 0.36,
+    attack: 0.002,
+  });
+  // 은은한 별빛 확인 차임
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 1318.51, // E6
+    delay: 0.055,
+    duration: 0.17,
+    peakGain: 0.16,
+    attack: 0.008,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 1975.53, // B6
+    delay: 0.095,
+    duration: 0.20,
+    peakGain: 0.11,
+    attack: 0.008,
+  });
+}
+
+/** 사령관 동행 산책 호출 시 경쾌하고 따뜻한 2음 휘파람·차임. */
+export function playCompanionCall(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // G5 -> C6 밝은 2음 동행 부름
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 740,
+    freqEnd: 783.99, // G5
+    duration: 0.11,
+    peakGain: 0.30,
+    attack: 0.01,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 987.77,
+    freqEnd: 1046.5, // C6
+    delay: 0.095,
+    duration: 0.18,
+    peakGain: 0.32,
+    attack: 0.01,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 1567.98, // G6 배음
+    delay: 0.105,
+    duration: 0.16,
+    peakGain: 0.12,
+    attack: 0.01,
+  });
+}
+
+/** 제독 이모트 휠(`B`) 실행 시 동작별 맑은 반짝이 효과음. */
+export function playEmoteSparkle(kind?: string): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  if (kind === "clap") {
+    // 경쾌한 3연 박수 톡톡 + 밝은 틱
+    for (let i = 0; i < 3; i += 1) {
+      scheduleFilteredNoise(eng.ctx, eng.out, {
+        delay: i * 0.095,
+        duration: 0.036,
+        centerFreq: 1850 + i * 160,
+        q: 1.5,
+        peakGain: 0.34,
+        attack: 0.002,
+      });
+    }
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 880,
+      freqEnd: 1174.66,
+      delay: 0.02,
+      duration: 0.16,
+      peakGain: 0.14,
+      attack: 0.008,
+    });
+    return;
+  }
+
+  if (kind === "twirl" || kind === "stardust") {
+    const notes = kind === "stardust"
+      ? [783.99, 1046.5, 1318.51, 1567.98, 2093.0]
+      : [659.25, 880.0, 1174.66, 1567.98];
+    for (let i = 0; i < notes.length; i += 1) {
+      scheduleTone(eng.ctx, eng.out, {
+        type: i % 2 === 0 ? "sine" : "triangle",
+        freqStart: notes[i]!,
+        delay: i * 0.038,
+        duration: 0.18,
+        peakGain: 0.22 - i * 0.022,
+        attack: 0.007,
+      });
+    }
+    return;
+  }
+
+  if (kind === "sit") {
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 523.25,
+      freqEnd: 392.0,
+      duration: 0.18,
+      peakGain: 0.24,
+      attack: 0.012,
+    });
+    return;
+  }
+
+  // 기본 / cheer / wave: 맑은 3음 반짝이 차임
+  const base = kind === "wave" ? 587.33 : 659.25;
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: base,
+    duration: 0.13,
+    peakGain: 0.26,
+    attack: 0.008,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: base * 1.25,
+    delay: 0.048,
+    duration: 0.15,
+    peakGain: 0.22,
+    attack: 0.008,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: base * 1.5,
+    delay: 0.095,
+    duration: 0.18,
+    peakGain: 0.18,
+    attack: 0.008,
+  });
+}

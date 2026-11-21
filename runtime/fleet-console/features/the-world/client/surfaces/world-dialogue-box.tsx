@@ -4,12 +4,14 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldActorSpec, WorldChatFeedEntry } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
-import { playMongleChirp } from "../engine/world-audio.js";
+import { playCompanionCall, playDistrictSelect, playMongleChirp } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorPanel,
   pushActorSpeech,
+  setCompanionActorId,
+  useWorldStore,
 } from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
 
@@ -85,7 +87,9 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const speechScrollRef = useRef<HTMLDivElement | null>(null);
   const lastSpokenKeyRef = useRef<string | null>(null);
+  const store = useWorldStore();
   const t = getWorldT(deps.commodore.language());
+  const isCompanion = store.companionActorId === actor.id;
 
   const conversation = deps.useActorConversation(actor);
   const voiceSeed = useMemo(() => actorVoiceSeed(actor.id), [actor.id]);
@@ -261,6 +265,25 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
 
           {actor.role === "commodore" && actor.commodoreId ? (
             <>
+              <button
+                type="button"
+                className={`the-world-rpg-action-btn${isCompanion ? " is-primary" : ""}`}
+                aria-pressed={isCompanion}
+                onClick={() => {
+                  if (isCompanion) {
+                    setCompanionActorId(null);
+                    playDistrictSelect();
+                    onStatusBanner(t("theWorld.companion.leftToast", { name: actor.name }));
+                  } else {
+                    setCompanionActorId(actor.id);
+                    playCompanionCall();
+                    onStatusBanner(t("theWorld.companion.joinedToast", { name: actor.name }));
+                  }
+                }}
+              >
+                <WorldIcon name={isCompanion ? "close" : "approach"} size={13} tone={isCompanion ? "amber" : "teal"} />
+                <span>{isCompanion ? t("theWorld.companion.endWalk") : t("theWorld.companion.walkTogether")}</span>
+              </button>
               <button
                 type="button"
                 className="the-world-rpg-action-btn"

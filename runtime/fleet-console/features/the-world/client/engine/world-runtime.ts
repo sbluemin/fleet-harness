@@ -37,6 +37,7 @@ import {
   WORLD_GUILD_HALL_POS,
   WORLD_NOTICE_BOARD_POS,
   type WorldActorEmote,
+  type WorldActorSpec,
   type WorldAdmiralCape,
   type WorldAdmiralHat,
   type WorldAdmiralStyle,
@@ -56,6 +57,7 @@ import {
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import { PLUSH_VIVID_TONES } from "../../../workspace/shared/mongle-3d-glsl.js";
 import { createChoreographyDirector } from "./choreography-director.js";
+import { createLivingWorkflowFx } from "./living-workflow-fx.js";
 import { createMeadowScene } from "./meadow-scene.js";
 import {
   createMongleActorRig,
@@ -72,6 +74,7 @@ import {
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
   playBarrelRoll,
+  playEmoteSparkle,
   playFootstep,
   playJump,
   playLevelUpFanfare,
@@ -187,6 +190,8 @@ export interface WorldRuntimeConfig {
   readonly onCampfireStandUp?: (() => void) | undefined;
   /** 관전/작업 동반자 시네마 모드의 현재 스포트라이트 대상이 바뀔 때 라벨을 전달한다. */
   readonly onCinemaSpotlight?: ((label: string) => void) | undefined;
+  /** 동행 사령관이 실제 작업/확인 필요 상태에 돌입해 마을로 자동 복귀할 때 호출된다. */
+  readonly onCompanionDutyReturn?: ((actorId: string, actorName: string) => void) | undefined;
   /** 액터 라벨의 구조적 변화(목록·말풍선·근접·선택·주의 상태)가 있을 때만 호출된다(평시 0Hz). */
   readonly onLabelsStructureChanged: (labels: readonly WorldActorLabelMeta[]) => void;
   /** 매 프레임 DOM `style.transform` 직접 갱신용 스크래치 좌표 콜백(React 리렌더 0). */
@@ -217,6 +222,10 @@ export interface WorldRuntimeHandle {
   setCustomizerMode(open: boolean): void;
   triggerCustomizerPreviewBounce(): void;
   setCampfireSit(sitting: boolean): void;
+  setCompanionActor(actorId: string | null): void;
+  triggerPhotoGroupPose(): void;
+  triggerAdmiralEmote(emote: "cheer" | "wave" | "clap" | "twirl" | "stardust" | "sit"): void;
+  captureSnapshotDataUrl(): string | null;
   rallyAllToPlaza(): void;
   playPlayerEmote(emote: WorldPlayerEmote): void;
   setDistrictHighlight(hovered: WorldDistrictSpec | null, selected: WorldDistrictSpec | null): void;
@@ -498,6 +507,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const meadow = createMeadowScene(scene) as MeadowSceneS8;
   const playerCtrl = createPlayerAndCameraController();
   const director = createChoreographyDirector(scene);
+  const livingWorkflowFx = createLivingWorkflowFx(scene, meadow.getGroundHeight);
 
   // 플레이어 + 모든 액터 발밑 배치 Soft AO 접촉 그림자 (단일 InstancedMesh 1 draw call, 점프 높이 반응)
   const aoBlobGeo = new CircleGeometry(0.86, 24);
@@ -624,6 +634,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
 
   const actorRigs = new Map<string, { sig: string; rig: MongleActorRig }>();
   let currentVillages: readonly WorldVillageSpec[] = [];
+  let currentActors: readonly WorldActorSpec[] = [];
   let currentHoveredDistrict: WorldDistrictSpec | null = null;
 
   let currentLifecycle: WorldLifecycleState = "diving";
@@ -756,7 +767,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let stardustAccum = 0;
   let stardustStep = 0;
   let playerEmoteHop = 0;
-  let playerEmoteKind: "wave" | "cheer" | "spin" | null = null;
+  let playerEmoteKind: "wave" | "cheer" | "spin" | "clap" | "twirl" | null = null;
+  let rainUmbrellaLevel = 0;
   let customizerOpen = false;
   let cinemaMode = false;
   let cinemaTimer = 0;
@@ -1275,9 +1287,35 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       focusedActorId,
       meadow.isWalkable,
       meadow.resolveMovement,
+      {
+        playerYaw: playerCtrl.player.yaw,
+        playerTakeoffPhase: playerCtrl.player.takeoffPhase,
+        playerTakeoffProgress: playerCtrl.player.takeoffProgress,
+        playerFlying: playerCtrl.player.flying,
+        playerDiving: playerCtrl.player.diving,
+        playerFlightAlt: playerCtrl.player.flightAlt,
+        playerMoveSpeed: playerCtrl.player.moveSpeed,
+        playerFlightRoll: playerCtrl.player.flightRoll,
+        playerFlightPitch: playerCtrl.player.flightPitch,
+        playerBarrelRollTimer: playerCtrl.player.barrelRollTimer,
+        playerHeroLandTimer: playerCtrl.player.heroLandTimer,
+        playerSittingAtCampfire: playerCtrl.isSittingAtCampfire(),
+        onCompanionDutyReturn: (actor) => {
+          config.onCompanionDutyReturn?.(actor.id, actor.name);
+        },
+      },
     );
     const nearId = (playerCtrl.player.flying || playerCtrl.player.diving) ? null : nearIdRaw;
     config.onNearActorChanged(nearId);
+
+    // 리빙 워크플로우 3D 비주얼 FX (긴급 비콘 기둥 · 별빛 전령 구슬 · 마을 목표 진행 크리스탈)
+    livingWorkflowFx.update(dt, elapsed, currentVillages, currentActors);
+
+    // 우천 연잎 우산 부드러운 0↔1 개폐 보간
+    const rainTarget = currentWeather === "rain" ? 1 : 0;
+    rainUmbrellaLevel += (rainTarget - rainUmbrellaLevel) * Math.min(1, dt * 4.2);
+    if (rainUmbrellaLevel < 0.005) rainUmbrellaLevel = 0;
+    else if (rainUmbrellaLevel > 0.995) rainUmbrellaLevel = 1;
 
     // 살아 움직이는 공방 FX 에미터 주기 방출 (0 할당, 단일 InstancedMesh 풀)
     workshopFxAccum += dt;
@@ -1338,7 +1376,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const pGround = Math.max(-0.05, meadow.getGroundHeight(p.x, p.z));
     const pHop = p.walking && p.onGround ? Math.abs(Math.sin(elapsed * (p.sprinting ? 15 : 10))) * 0.14 : 0;
     const pEmoteLift = playerEmoteHop > 0
-      ? Math.sin(Math.min(1, playerEmoteHop) * Math.PI) * (playerEmoteKind === "spin" ? 0.68 : 0.42)
+      ? Math.sin(Math.min(1, playerEmoteHop) * Math.PI) * (playerEmoteKind === "spin" || playerEmoteKind === "twirl" ? 0.68 : 0.42)
       : 0;
     const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
 
@@ -1533,7 +1571,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     } else if (playerEmoteTimer > 0 && playerEmoteKind) {
       playerAnim = playerEmoteKind;
       playerExpr = "happy";
-      playerBlush = playerEmoteKind === "spin" ? 0.92 : 0.82;
+      playerBlush = playerEmoteKind === "spin" || playerEmoteKind === "twirl" ? 0.92 : 0.82;
     } else if (sittingCampfire) {
       if (p.campfireSitSec > 8.0) {
         playerAnim = "doze";
@@ -1595,7 +1633,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     playerLookYaw += (targetPLookYaw - playerLookYaw) * lookLerp;
     playerLookPitch += (targetPLookPitch - playerLookPitch) * lookLerp;
 
-    const fireWarmP = Math.max(0, 1 - Math.hypot(p.x - 2.8, p.z - 1.0) / 8.0) * skyLighting.nightFactor * 0.55;
+    const nightFactor = skyLighting.getNightFactor();
+    playerRig.setNightGlow(nightFactor);
+    const fireWarmP = Math.max(0, 1 - Math.hypot(p.x - 2.8, p.z - 1.0) / 8.0) * nightFactor * 0.55;
     tempTint.set(
       skyLighting.avatarWorldTint.x + fireWarmP * 0.65,
       skyLighting.avatarWorldTint.y + fireWarmP * 0.32,
@@ -1628,6 +1668,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       hatBounce: playerHatPos,
       flightRoll: p.flightRoll,
       flightPitch: p.flightPitch,
+      nightGlow: nightFactor,
     });
 
     // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · 미니맵 산책 도트 · Direct-DOM 투영 계산
@@ -1657,10 +1698,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (!entry) continue;
       const gy = Math.max(-0.05, meadow.getGroundHeight(m.x, m.z));
       const roleScale = m.spec.role === "commodore" ? 0.96 : m.spec.role === "commander" ? 0.82 : 0.70;
-      const waddle = m.moving ? Math.abs(Math.sin(elapsed * 11 + idx)) * 0.11 : 0;
+      const waddle = m.moving && m.flightAlt < 0.6 ? Math.abs(Math.sin(elapsed * 11 + idx)) * 0.11 : 0;
       const hop = m.hopBoost * Math.abs(Math.sin(elapsed * 10)) * 0.48
         + (director.celebratingTimer > 0 ? Math.abs(Math.sin(elapsed * 9 + idx)) * 0.40 : 0);
-      const totalLift = waddle + hop;
+      const totalLift = m.flightAlt + waddle + hop;
 
       let sp = actorPoseSprings.get(m.spec.id);
       if (!sp) {
@@ -1718,10 +1759,27 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         skyLighting.avatarWorldTint.z + fireWarm * 0.05,
       );
 
-      const keepEmote = m.worldAnim === "wave" || m.worldAnim === "cheer" || m.worldAnim === "spin";
+      const keepEmote =
+        m.worldAnim === "wave"
+        || m.worldAnim === "cheer"
+        || m.worldAnim === "spin"
+        || m.worldAnim === "clap"
+        || m.worldAnim === "twirl"
+        || m.worldAnim === "takeoff-charge"
+        || m.worldAnim === "takeoff-ascend"
+        || m.worldAnim === "fly"
+        || m.worldAnim === "dive"
+        || m.worldAnim === "hero-land";
       const effAnim: WorldAnimMode = conversingFocus && !keepEmote ? "talk" : m.worldAnim;
       const effExpr: WorldExpression = conversingFocus && !keepEmote ? "happy" : m.expression;
       const effBlush = conversingFocus ? Math.max(m.blush, 0.42) : m.blush;
+      const actorRainUmbrella =
+        m.flightAlt < 0.6
+        && effAnim !== "fly"
+        && effAnim !== "dive"
+        && effAnim !== "takeoff-ascend"
+          ? rainUmbrellaLevel
+          : 0;
 
       entry.rig.updatePose({
         x: m.x,
@@ -1750,10 +1808,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         lookPitch: sp.lookPitch,
         blush: effBlush,
         hatBounce: sp.hatPos,
+        flightRoll: m.flightRoll,
+        flightPitch: m.flightPitch,
+        rainUmbrella: actorRainUmbrella,
       });
 
-      // 배치 Soft AO 접촉 그림자 (점프/바운스 높이에 따라 크기·투명도 부드럽게 반응)
-      if (aoBlobCount < MAX_ACTOR_AO_BLOBS) {
+      // 배치 Soft AO 접촉 그림자 (점프/바운스 높이에 따라 반응, 2.2m 이상 상공 비행 윙맨은 숨김)
+      if (aoBlobCount < MAX_ACTOR_AO_BLOBS && totalLift < 2.2) {
         const aAoScale = roleScale * Math.max(0.46, Math.min(1.04, 1 - totalLift * 0.28));
         const aAoAlpha = Math.max(0.06, Math.min(0.42, 0.34 * (1 - totalLift * 0.40)));
         aoPos.set(m.x, gy + 0.022, m.z);
@@ -1805,9 +1866,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         }
         slot.actorId = m.spec.id;
 
-        tempPos.set(m.x, gy + waddle + hop + 1.62 * roleScale, m.z);
+        tempPos.set(m.x, gy + totalLift + 1.62 * roleScale, m.z);
         const topOk = projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop);
-        tempPos.set(m.x, gy + 0.62 * roleScale, m.z);
+        tempPos.set(m.x, gy + totalLift + 0.62 * roleScale, m.z);
         const bodyOk = topOk && projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projBody);
 
         if (
@@ -2120,6 +2181,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   return {
     applySnapshot(snapshot) {
       currentVillages = snapshot.villages;
+      currentActors = snapshot.actors;
       meadow.syncZones(snapshot.zones, snapshot.villages);
       skyLighting.setStreetlampAnchors(meadow.streetlampAnchors);
       director.syncActors(snapshot.actors);
@@ -2290,6 +2352,75 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     setCampfireSit(sitting) {
       playerCtrl.setCampfireSit(sitting);
+    },
+    setCompanionActor(actorId) {
+      director.setCompanionActor(actorId);
+    },
+    triggerPhotoGroupPose() {
+      director.triggerPhotoGroupPose(camera.position.x, camera.position.z);
+      playerEmoteKind = "cheer";
+      playerEmoteTimer = 2.6;
+      playerEmotePhase = 0;
+      playerEmoteHop = 0.72;
+      playerHatVel -= 1.25;
+      playEmoteSparkle("cheer");
+    },
+    triggerAdmiralEmote(emote) {
+      const px = playerCtrl.player.x;
+      const py = playerCtrl.player.y;
+      const pz = playerCtrl.player.z;
+      playEmoteSparkle(emote);
+      if (emote === "sit") {
+        playerCtrl.setCampfireSit(true);
+        director.triggerAdmiralEmoteReaction(px, pz, "sit");
+        return;
+      }
+      if (emote === "stardust") {
+        playerEmoteKind = "cheer";
+        playerEmoteTimer = 1.9;
+        playerEmotePhase = 0;
+        playerEmoteHop = 0.85;
+        playerHatVel -= 1.5;
+        director.spawnBurst(px, py + 1.35, pz, 0xfde047, 22);
+        const burstTheme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        for (let k = 0; k < 14; k += 1) {
+          const ang = (k / 14) * Math.PI * 2;
+          const col = resolveTrailColor(burstTheme, k) ?? 0xfde047;
+          director.spawnTrailSparkle(
+            px + Math.cos(ang) * 0.65,
+            py + 1.05 + (k % 3) * 0.22,
+            pz + Math.sin(ang) * 0.65,
+            col,
+            0.95,
+            true,
+          );
+        }
+        director.triggerAdmiralEmoteReaction(px, pz, "stardust");
+        return;
+      }
+      playerEmoteKind = emote === "wave"
+        ? "wave"
+        : emote === "clap"
+          ? "clap"
+          : emote === "twirl"
+            ? "twirl"
+            : "cheer";
+      playerEmoteTimer = emote === "twirl" ? 1.55 : 1.9;
+      playerEmotePhase = 0;
+      playerEmoteHop = emote === "twirl" ? 1.15 : emote === "clap" ? 0.55 : 0.85;
+      if (emote === "twirl") {
+        playerHatVel -= 1.8;
+      }
+      director.triggerAdmiralEmoteReaction(px, pz, emote);
+    },
+    captureSnapshotDataUrl() {
+      if (disposed) return null;
+      try {
+        composer.render();
+        return renderer.domElement.toDataURL("image/png");
+      } catch {
+        return null;
+      }
     },
     rallyAllToPlaza() {
       director.rallyAllToPlaza();
@@ -2670,6 +2801,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       groundRingMat.dispose();
       scene.remove(groundRingMesh);
       playerRig.dispose();
+      livingWorkflowFx.dispose();
       director.dispose();
       playerCtrl.dispose();
       meadow.dispose();

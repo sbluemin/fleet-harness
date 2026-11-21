@@ -52,16 +52,39 @@ export interface LiveActorMotion {
   blush: number;
   gazeTargetX: number | null;
   gazeTargetZ: number | null;
+  /** 동행 하늘 순찰 비행 고도(0=지상) 및 윙맨 뱅킹/피치 기울기. */
+  flightAlt: number;
+  flightRoll: number;
+  flightPitch: number;
+}
+
+export interface CompanionFlightContext {
+  readonly playerYaw: number;
+  readonly playerTakeoffPhase: "none" | "charge" | "ascend";
+  readonly playerTakeoffProgress: number;
+  readonly playerFlying: boolean;
+  readonly playerDiving: boolean;
+  readonly playerFlightAlt: number;
+  readonly playerMoveSpeed: number;
+  readonly playerFlightRoll: number;
+  readonly playerFlightPitch: number;
+  readonly playerBarrelRollTimer: number;
+  readonly playerHeroLandTimer: number;
+  readonly playerSittingAtCampfire: boolean;
+  readonly onCompanionDutyReturn?: ((actor: WorldActorSpec) => void) | undefined;
 }
 
 interface ActorAnimState {
-  emoteKind: "wave" | "cheer" | "spin" | null;
+  emoteKind: "wave" | "cheer" | "spin" | "sit" | null;
   emoteTimer: number;
   emoteElapsed: number;
   surprisedTimer: number;
   banterTimer: number;
   banterPartnerX: number | null;
   banterPartnerZ: number | null;
+  photoPoseTimer: number;
+  photoLookX: number | null;
+  photoLookZ: number | null;
   sleepyTimer: number;
   wasSleeping: boolean;
   sleepFxAccum: number;
@@ -241,6 +264,13 @@ export interface ChoreographyDirector {
   emitWorkshopFx(x: number, y: number, z: number, kind: WorkshopFxKind): void;
   /** 두 마을/구역 사이로 빛나는 전령 비행 아크를 발사한다 (단일 캐시 머티리얼 + 트레일 입자). */
   spawnCourierArc(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
+  /** 함께 산책 · 모닥불 합석 · 하늘 순찰 윙맨 동행 사령관 지정 (`null`이면 동행 해제). */
+  setCompanionActor(actorId: string | null): void;
+  getCompanionActorId(): string | null;
+  /** 단체 포토 스튜디오 포즈: 반경 18m 이내 사령관/NPC가 카메라를 바라보며 2.8초간 `cheer` 포즈. */
+  triggerPhotoGroupPose(cameraX: number, cameraZ: number): number;
+  /** 제독 이모트 휠 떼창 리액션: 반경 11m 이내 사령관들이 이모트에 맞춰 함께 환호/손흔들기/회전 리액션. */
+  triggerAdmiralEmoteReaction(playerX: number, playerZ: number, emote: string): number;
   update(
     dt: number,
     elapsed: number,
@@ -249,6 +279,7 @@ export interface ChoreographyDirector {
     focusedActorId: string | null,
     isWalkable: (x: number, z: number) => boolean,
     resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+    companionCtx?: CompanionFlightContext,
   ): string | null;
   dispose(): void;
 }
@@ -268,6 +299,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
   const particles: BurstParticle[] = [];
   const pendingTimers = new Set<number>();
   let currentWeather: WorldWeatherMode = "clear";
+  let companionActorId: string | null = null;
+  let companionBarrelDelay = 0;
+  let companionBarrelTimer = 0;
+  let companionPrevHeroLand = false;
+  let companionSparkleAccum = 0;
 
   function getOrCreateAnimState(actorId: string): ActorAnimState {
     let st = animStates.get(actorId);
@@ -280,6 +316,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         banterTimer: 0,
         banterPartnerX: null,
         banterPartnerZ: null,
+        photoPoseTimer: 0,
+        photoLookX: null,
+        photoLookZ: null,
         sleepyTimer: 0,
         wasSleeping: false,
         sleepFxAccum: 0,
@@ -292,7 +331,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     return st;
   }
 
-  function triggerActorEmote(actorId: string, kind: "wave" | "cheer" | "spin", durationSec: number): void {
+  function triggerActorEmote(actorId: string, kind: "wave" | "cheer" | "spin" | "sit", durationSec: number): void {
     const st = getOrCreateAnimState(actorId);
     st.emoteKind = kind;
     st.emoteTimer = Math.max(st.emoteTimer, durationSec);
@@ -1012,6 +1051,97 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     }
   }
 
+  function setCompanionActor(actorId: string | null): void {
+    if (companionActorId === actorId) return;
+    if (companionActorId) {
+      const prev = motions.get(companionActorId);
+      if (prev) {
+        prev.flightAlt = 0;
+        prev.flightRoll = 0;
+        prev.flightPitch = 0;
+        const ps = patrolStates.get(companionActorId);
+        if (ps) {
+          ps.route.length = 0;
+          ps.waitTimer = 0.6;
+        }
+      }
+    }
+    companionActorId = actorId;
+    companionBarrelDelay = 0;
+    companionBarrelTimer = 0;
+    companionPrevHeroLand = false;
+    companionSparkleAccum = 0;
+    if (actorId) {
+      const next = motions.get(actorId);
+      if (next) {
+        next.hopBoost = Math.max(next.hopBoost, 1.35);
+        triggerActorEmote(actorId, "cheer", 1.2);
+        spawnBurst(next.x, 1.5, next.z, 0xfde047, 12);
+      }
+    }
+  }
+
+  function getCompanionActorId(): string | null {
+    return companionActorId;
+  }
+
+  function triggerPhotoGroupPose(cameraX: number, cameraZ: number): number {
+    let posed = 0;
+    for (const m of motionList) {
+      if (Math.hypot(m.x - cameraX, m.z - cameraZ) > 18.0) continue;
+      const anim = getOrCreateAnimState(m.spec.id);
+      anim.photoPoseTimer = 2.8;
+      anim.photoLookX = cameraX;
+      anim.photoLookZ = cameraZ;
+      m.hopBoost = Math.max(m.hopBoost, 1.25);
+      m.yaw = Math.atan2(cameraX - m.x, cameraZ - m.z);
+      triggerActorEmote(m.spec.id, "cheer", 2.8);
+      const ps = patrolStates.get(m.spec.id);
+      if (ps && !ps.rallying) {
+        ps.chatPauseTimer = Math.max(ps.chatPauseTimer, 2.8);
+        ps.chatFaceX = cameraX;
+        ps.chatFaceZ = cameraZ;
+      }
+      posed += 1;
+    }
+    return posed;
+  }
+
+  function triggerAdmiralEmoteReaction(playerX: number, playerZ: number, emote: string): number {
+    const burstColor = emote === "wave"
+      ? 0x38bdf8
+      : emote === "stardust" || emote === "cheer"
+        ? 0xfde047
+        : emote === "twirl"
+          ? 0xe879f9
+          : 0x34d399;
+    spawnBurst(playerX, 1.5, playerZ, burstColor, emote === "stardust" ? 26 : 16);
+
+    let reacted = 0;
+    for (const m of motionList) {
+      if (Math.hypot(m.x - playerX, m.z - playerZ) > 11.0) continue;
+      m.yaw = Math.atan2(playerX - m.x, playerZ - m.z);
+      m.hopBoost = Math.max(m.hopBoost, emote === "twirl" ? 1.75 : emote === "sit" ? 0.45 : 1.35);
+      const mappedKind: "wave" | "cheer" | "spin" | "sit" =
+        emote === "wave"
+          ? "wave"
+          : emote === "twirl"
+            ? "spin"
+            : emote === "sit"
+              ? "sit"
+              : "cheer";
+      triggerActorEmote(m.spec.id, mappedKind, emote === "sit" ? 2.6 : 1.9);
+      const ps = patrolStates.get(m.spec.id);
+      if (ps && !ps.rallying && !ps.workingCommute) {
+        ps.chatPauseTimer = Math.max(ps.chatPauseTimer, 2.2);
+        ps.chatFaceX = playerX;
+        ps.chatFaceZ = playerZ;
+      }
+      reacted += 1;
+    }
+    return reacted;
+  }
+
   let lastCommandNonce = 0;
 
   const director: ChoreographyDirector = {
@@ -1027,6 +1157,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           motions.delete(id);
           patrolStates.delete(id);
           animStates.delete(id);
+          if (companionActorId === id) {
+            companionActorId = null;
+          }
         }
       }
       for (const spec of specs) {
@@ -1053,6 +1186,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             blush: 0,
             gazeTargetX: null,
             gazeTargetZ: null,
+            flightAlt: 0,
+            flightRoll: 0,
+            flightPitch: 0,
           });
         }
       }
@@ -1113,6 +1249,10 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     },
     emitWorkshopFx,
     spawnCourierArc,
+    setCompanionActor,
+    getCompanionActorId,
+    triggerPhotoGroupPose,
+    triggerAdmiralEmoteReaction,
     handleCommand(cmd) {
       if (cmd.nonce === lastCommandNonce) return false;
       lastCommandNonce = cmd.nonce;
@@ -1229,7 +1369,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       }
       return false;
     },
-    update(dt, elapsed, nightFactor, playerPos, focusedActorId, isWalkable, resolveMovement) {
+    update(dt, elapsed, nightFactor, playerPos, focusedActorId, isWalkable, resolveMovement, companionCtx) {
       if (director.celebratingTimer > 0) {
         director.celebratingTimer = Math.max(0, director.celebratingTimer - dt);
       }
@@ -1247,7 +1387,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         m.hopBoost = Math.max(0, m.hopBoost - dt * 1.9);
 
         const distToPlayer = Math.hypot(m.x - playerPos.x, m.z - playerPos.z);
-        if (distToPlayer < nearestDist) {
+        if (distToPlayer < nearestDist && m.flightAlt < 1.2) {
           nearestDist = distToPlayer;
           nearestId = m.spec.id;
         }
@@ -1258,6 +1398,335 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           m.speech = "";
           m.speechTimer = 0;
         }
+
+        // 동행 사령관(함께 산책 · 모닥불 합석 · 하늘 순찰 동시 비행 윙맨 · 작업 시 자동 복귀)
+        if (m.spec.id === companionActorId) {
+          const dutyActive = m.spec.state === "running" || m.spec.needsAttention;
+          if (dutyActive) {
+            companionActorId = null;
+            companionBarrelDelay = 0;
+            companionBarrelTimer = 0;
+            companionPrevHeroLand = false;
+            m.flightAlt = 0;
+            m.flightRoll = 0;
+            m.flightPitch = 0;
+            const psDuty = patrolStates.get(m.spec.id);
+            if (psDuty) {
+              psDuty.route.length = 0;
+              psDuty.workingCommute = false;
+              psDuty.waitTimer = 0;
+            }
+            m.hopBoost = Math.max(m.hopBoost, 1.1);
+            companionCtx?.onCompanionDutyReturn?.(m.spec);
+            // 일반 워크플로우 루프로 자연스럽게 fall-through해 자기 마을로 달려간다
+          } else if (!isFocused) {
+            const cYaw = companionCtx?.playerYaw ?? 0;
+            const takeoffPhase = companionCtx?.playerTakeoffPhase ?? "none";
+            const takeoffProgress = companionCtx?.playerTakeoffProgress ?? 0;
+            const pFlying = companionCtx?.playerFlying ?? false;
+            const pDiving = companionCtx?.playerDiving ?? false;
+            const pFlightAlt = companionCtx?.playerFlightAlt ?? 0;
+            const pMoveSpeed = companionCtx?.playerMoveSpeed ?? 0;
+            const pFlightRoll = companionCtx?.playerFlightRoll ?? 0;
+            const pFlightPitch = companionCtx?.playerFlightPitch ?? 0;
+            const pBarrelRollTimer = companionCtx?.playerBarrelRollTimer ?? 0;
+            const pHeroLandTimer = companionCtx?.playerHeroLandTimer ?? 0;
+            const pCampfire = companionCtx?.playerSittingAtCampfire ?? false;
+
+            const anim = getOrCreateAnimState(m.spec.id);
+            if (anim.emoteTimer > 0) {
+              anim.emoteTimer = Math.max(0, anim.emoteTimer - dt);
+              anim.emoteElapsed += dt;
+              if (anim.emoteTimer === 0) anim.emoteKind = null;
+            }
+            if (anim.photoPoseTimer > 0) {
+              anim.photoPoseTimer = Math.max(0, anim.photoPoseTimer - dt);
+            }
+
+            const rightX = Math.cos(cYaw);
+            const rightZ = -Math.sin(cYaw);
+            const backX = -Math.sin(cYaw);
+            const backZ = -Math.cos(cYaw);
+
+            // 1) 1단계 줌인 화이팅 이륙 충전: 제독 옆에서 함께 화이팅 포즈!
+            if (takeoffPhase === "charge") {
+              const slotX = playerPos.x + rightX * 1.95;
+              const slotZ = playerPos.z + rightZ * 1.95;
+              const resolved = resolveMovement(m.x, m.z, m.x + (slotX - m.x) * Math.min(1, dt * 8), m.z + (slotZ - m.z) * Math.min(1, dt * 8), 0.44);
+              m.x = resolved.x;
+              m.z = resolved.z;
+              m.tx = m.x;
+              m.tz = m.z;
+              m.flightAlt = 0;
+              m.flightRoll = 0;
+              m.flightPitch = 0;
+              m.yaw = cYaw;
+              m.moving = false;
+              m.moveSpeed = 0;
+              m.worldAnim = "takeoff-charge";
+              m.animPhase = takeoffProgress;
+              m.expression = "happy";
+              m.blush = 0.78;
+              m.gazeTargetX = null;
+              m.gazeTargetZ = null;
+              companionPrevHeroLand = false;
+              continue;
+            }
+
+            // 2) 2단계 회오리 수직 상승: 제독 옆에서 나란히 빙글빙글 회오리 급상승!
+            if (takeoffPhase === "ascend") {
+              const slotX = playerPos.x + rightX * 2.15 + backX * 0.85;
+              const slotZ = playerPos.z + rightZ * 2.15 + backZ * 0.85;
+              const k = Math.min(1, dt * 7.5);
+              m.x += (slotX - m.x) * k;
+              m.z += (slotZ - m.z) * k;
+              m.tx = m.x;
+              m.tz = m.z;
+              m.flightAlt += (Math.max(0, pFlightAlt - 0.35) - m.flightAlt) * Math.min(1, dt * 10);
+              m.flightRoll = 0;
+              m.flightPitch = 0;
+              m.yaw = cYaw;
+              m.moving = true;
+              m.moveSpeed = 12;
+              m.worldAnim = "takeoff-ascend";
+              m.animPhase = takeoffProgress;
+              m.expression = "happy";
+              m.blush = 0.65;
+              m.gazeTargetX = null;
+              m.gazeTargetZ = null;
+              companionSparkleAccum += dt;
+              if (companionSparkleAccum >= 0.055) {
+                companionSparkleAccum = 0;
+                spawnTrailSparkle(m.x, m.flightAlt + 0.3, m.z, 0xfde047, 0.62, false);
+              }
+              continue;
+            }
+
+            // 3) 하늘 순찰 윙맨 동시 비행 (우측 후방 ~2.7m 윙맨 대형 + 0.12s 지연 360° 배럴롤!)
+            if (pFlying) {
+              const wingX = playerPos.x + rightX * 2.15 + backX * 1.65;
+              const wingZ = playerPos.z + rightZ * 2.15 + backZ * 1.65;
+              const wingAlt = Math.max(0.6, pFlightAlt - 0.35 + Math.sin(elapsed * 2.7 + idx) * 0.28);
+              const k = Math.min(1, dt * 6.4);
+              m.x += (wingX - m.x) * k;
+              m.z += (wingZ - m.z) * k;
+              m.tx = wingX;
+              m.tz = wingZ;
+              m.flightAlt += (wingAlt - m.flightAlt) * Math.min(1, dt * 6.8);
+
+              // 플레이어 배럴롤 감지 → 0.12초 지연 후 윙맨도 360° 따라 돌기!
+              if (pBarrelRollTimer > 0.42 && companionBarrelDelay <= 0 && companionBarrelTimer <= 0) {
+                companionBarrelDelay = 0.12;
+              }
+              let extraRoll = 0;
+              if (companionBarrelDelay > 0) {
+                companionBarrelDelay = Math.max(0, companionBarrelDelay - dt);
+                if (companionBarrelDelay === 0) {
+                  companionBarrelTimer = 0.55;
+                }
+              }
+              if (companionBarrelTimer > 0) {
+                companionBarrelTimer = Math.max(0, companionBarrelTimer - dt);
+                const u = 1 - companionBarrelTimer / 0.55;
+                const smoothU = u * u * (3 - 2 * u);
+                extraRoll = smoothU * Math.PI * 2;
+              }
+
+              let dfYaw = cYaw - m.yaw;
+              while (dfYaw > Math.PI) dfYaw -= Math.PI * 2;
+              while (dfYaw < -Math.PI) dfYaw += Math.PI * 2;
+              m.yaw += dfYaw * Math.min(1, dt * 8.5);
+              m.moving = pMoveSpeed > 0.6;
+              m.moveSpeed = pMoveSpeed;
+              m.flightRoll = pFlightRoll + extraRoll;
+              m.flightPitch = pFlightPitch;
+              m.worldAnim = "fly";
+              m.animPhase = 0;
+              m.expression = pMoveSpeed > 20 ? "happy" : "normal";
+              m.blush = pMoveSpeed > 20 ? 0.55 : 0.25;
+              m.gazeTargetX = null;
+              m.gazeTargetZ = null;
+
+              companionSparkleAccum += dt;
+              if (pMoveSpeed > 2.5 && companionSparkleAccum >= 0.09) {
+                companionSparkleAccum = 0;
+                spawnTrailSparkle(m.x, m.flightAlt + 0.45, m.z, 0x7dd3fc, 0.55, false);
+              }
+              companionPrevHeroLand = false;
+              continue;
+            }
+
+            // 4) 유성 급강하 동반 착지
+            if (pDiving) {
+              const diveX = playerPos.x + rightX * 1.95 + backX * 0.5;
+              const diveZ = playerPos.z + rightZ * 1.95 + backZ * 0.5;
+              const k = Math.min(1, dt * 9.5);
+              m.x += (diveX - m.x) * k;
+              m.z += (diveZ - m.z) * k;
+              m.tx = diveX;
+              m.tz = diveZ;
+              m.flightAlt += (Math.max(0, pFlightAlt) - m.flightAlt) * Math.min(1, dt * 11.5);
+              m.yaw = cYaw;
+              m.moving = true;
+              m.moveSpeed = Math.max(16, pMoveSpeed);
+              m.flightRoll = pFlightRoll;
+              m.flightPitch = pFlightPitch;
+              m.worldAnim = "dive";
+              m.animPhase = elapsed;
+              m.expression = "happy";
+              m.blush = 0.65;
+              m.gazeTargetX = null;
+              m.gazeTargetZ = null;
+              companionPrevHeroLand = false;
+              continue;
+            }
+
+            // 5) 유성 착지 직후 동반 히어로 착지 → 기쁜 박수/환호!
+            if (pHeroLandTimer > 0) {
+              m.flightAlt *= Math.max(0, 1 - dt * 16);
+              if (m.flightAlt < 0.04) m.flightAlt = 0;
+              m.flightRoll = 0;
+              m.flightPitch = 0;
+              const safeLand = resolveMovement(m.x, m.z, m.x, m.z, 0.46);
+              m.x = safeLand.x;
+              m.z = safeLand.z;
+              m.tx = m.x;
+              m.tz = m.z;
+              m.moving = false;
+              m.moveSpeed = 0;
+              m.worldAnim = "hero-land";
+              m.animPhase = 1 - Math.min(1, pHeroLandTimer / 0.56);
+              m.expression = "happy";
+              m.blush = 0.72;
+              m.gazeTargetX = playerPos.x;
+              m.gazeTargetZ = playerPos.z;
+              companionPrevHeroLand = true;
+              continue;
+            }
+
+            if (companionPrevHeroLand) {
+              companionPrevHeroLand = false;
+              m.hopBoost = Math.max(m.hopBoost, 1.35);
+              triggerActorEmote(m.spec.id, "cheer", 1.15);
+              spawnBurst(m.x, 1.4, m.z, 0xfde047, 8);
+            }
+
+            // 지상 복귀 정리
+            m.flightAlt *= Math.max(0, 1 - dt * 12);
+            if (m.flightAlt < 0.02) m.flightAlt = 0;
+            m.flightRoll *= Math.max(0, 1 - dt * 12);
+            m.flightPitch *= Math.max(0, 1 - dt * 12);
+
+            // 6) 모닥불 벤치 합석 동행: 제독 옆 벤치 좌석에 나란히 앉아 불멍!
+            if (pCampfire) {
+              const seatX = 3.85;
+              const seatZ = 2.42;
+              const sd = Math.hypot(seatX - m.x, seatZ - m.z);
+              if (sd > 0.36) {
+                const step = Math.min(sd, 3.6 * dt);
+                const resolved = resolveMovement(m.x, m.z, m.x + ((seatX - m.x) / sd) * step, m.z + ((seatZ - m.z) / sd) * step, 0.44);
+                m.x = resolved.x;
+                m.z = resolved.z;
+                m.tx = seatX;
+                m.tz = seatZ;
+                m.yaw = Math.atan2(seatX - m.x, seatZ - m.z);
+                m.moving = true;
+                m.moveSpeed = 3.2;
+                m.worldAnim = "walk";
+                m.expression = "happy";
+                m.blush = 0.35;
+              } else {
+                m.tx = m.x;
+                m.tz = m.z;
+                m.moving = false;
+                m.moveSpeed = 0;
+                const fireYaw = Math.atan2(2.8 - m.x, 1.0 - m.z);
+                let df = fireYaw - m.yaw;
+                while (df > Math.PI) df -= Math.PI * 2;
+                while (df < -Math.PI) df += Math.PI * 2;
+                m.yaw += df * Math.min(1, dt * 6.5);
+                m.worldAnim = isNight ? "doze" : "sit";
+                m.expression = isNight ? "sleepy" : "happy";
+                m.blush = 0.48;
+                m.gazeTargetX = 2.8;
+                m.gazeTargetZ = 1.0;
+              }
+              continue;
+            }
+
+            // 7) 지상 함께 산책: 별 제독 뒤/옆 ~2.2m 거리를 경쾌하게 추종!
+            const followX = playerPos.x + backX * 1.85 + rightX * 1.15;
+            const followZ = playerPos.z + backZ * 1.85 + rightZ * 1.15;
+            const followDist = Math.hypot(followX - m.x, followZ - m.z);
+
+            if (followDist > 16.0) {
+              // 강이나 장애물로 너무 멀어졌으면 부드럽게 별빛 워프 합류
+              const safe = resolveMovement(playerPos.x, playerPos.z, followX, followZ, 0.46);
+              m.x = safe.x;
+              m.z = safe.z;
+              spawnBurst(m.x, 1.35, m.z, 0xfde047, 8);
+            }
+
+            let companionActualSpd = 0;
+            if (followDist > 0.85 && anim.photoPoseTimer <= 0) {
+              const spd = followDist > 5.0 ? 5.8 : followDist > 2.6 ? 4.1 : 2.9;
+              const step = Math.min(followDist - 0.55, spd * dt);
+              if (step > 0.001) {
+                const nx = m.x + ((followX - m.x) / followDist) * step;
+                const nz = m.z + ((followZ - m.z) / followDist) * step;
+                const resolved = resolveMovement(m.x, m.z, nx, nz, 0.45);
+                const moved = Math.hypot(resolved.x - m.x, resolved.z - m.z);
+                m.x = resolved.x;
+                m.z = resolved.z;
+                m.yaw = Math.atan2(followX - m.x, followZ - m.z);
+                m.moving = moved > 0.002;
+                companionActualSpd = dt > 0.0001 ? moved / dt : 0;
+              } else {
+                m.moving = false;
+              }
+            } else {
+              m.moving = false;
+              const lookTargetX = anim.photoPoseTimer > 0 && anim.photoLookX !== null ? anim.photoLookX : playerPos.x;
+              const lookTargetZ = anim.photoPoseTimer > 0 && anim.photoLookZ !== null ? anim.photoLookZ : playerPos.z;
+              const targetYaw = Math.atan2(lookTargetX - m.x, lookTargetZ - m.z);
+              let df = targetYaw - m.yaw;
+              while (df > Math.PI) df -= Math.PI * 2;
+              while (df < -Math.PI) df += Math.PI * 2;
+              m.yaw += df * Math.min(1, dt * 6.5);
+            }
+
+            m.tx = followX;
+            m.tz = followZ;
+            m.moveSpeed = companionActualSpd;
+            m.animPhase = anim.emoteTimer > 0 ? anim.emoteElapsed : 0;
+            m.gazeTargetX = anim.photoPoseTimer > 0 && anim.photoLookX !== null ? anim.photoLookX : playerPos.x;
+            m.gazeTargetZ = anim.photoPoseTimer > 0 && anim.photoLookZ !== null ? anim.photoLookZ : playerPos.z;
+
+            if (anim.photoPoseTimer > 0) {
+              m.worldAnim = "cheer";
+              m.expression = "happy";
+              m.blush = 0.85;
+            } else if (anim.emoteTimer > 0 && anim.emoteKind) {
+              m.worldAnim = anim.emoteKind;
+              m.expression = "happy";
+              m.blush = 0.8;
+            } else if (m.moving) {
+              m.worldAnim = companionActualSpd > 3.5 ? "sprint" : "walk";
+              m.expression = "happy";
+              m.blush = 0.25;
+            } else {
+              m.worldAnim = "idle";
+              m.expression = "happy";
+              m.blush = 0.35;
+            }
+            continue;
+          }
+        }
+
+        // 비동행 액터는 비행 고도/기울기 0으로 깔끔히 유지
+        m.flightAlt = 0;
+        m.flightRoll = 0;
+        m.flightPitch = 0;
         const patrolPlan = m.spec.role === "commodore" && m.spec.commodoreId
           ? villagePatrolPlans.get(m.spec.commodoreId)
           : undefined;
@@ -1624,6 +2093,13 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             anim.banterPartnerZ = null;
           }
         }
+        if (anim.photoPoseTimer > 0) {
+          anim.photoPoseTimer = Math.max(0, anim.photoPoseTimer - dt);
+          if (anim.photoPoseTimer === 0) {
+            anim.photoLookX = null;
+            anim.photoLookZ = null;
+          }
+        }
 
         const actorWorking =
           m.spec.state === "running"
@@ -1722,7 +2198,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             : null;
         m.animPhase = anim.emoteTimer > 0 ? anim.emoteElapsed : 0;
 
-        if (director.celebratingTimer > 0) {
+        if (director.celebratingTimer > 0 || anim.photoPoseTimer > 0) {
           m.worldAnim = "cheer";
           m.expression = "happy";
           m.blush = 0.88;
@@ -1766,11 +2242,13 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         }
       }
 
-      // 캐릭터 상호 겹침 방지 소프트 분리 (서로 몸통이 파고들지 않게 밀어냄)
+      // 캐릭터 상호 겹침 방지 소프트 분리 (비행 중인 동행 윙맨은 지상 분리에서 제외)
       for (let i = 0; i < motionList.length; i += 1) {
         const a = motionList[i]!;
+        if (a.flightAlt > 1.2) continue;
         for (let j = i + 1; j < motionList.length; j += 1) {
           const b = motionList[j]!;
+          if (b.flightAlt > 1.2) continue;
           const dx = b.x - a.x;
           const dz = b.z - a.z;
           const d = Math.hypot(dx, dz);

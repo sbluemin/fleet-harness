@@ -28,7 +28,6 @@ import {
   playLevelUpFanfare,
   playMongleChirp,
   playOverviewToggle,
-  playPhotoShutter,
   playSend,
   playWarp,
   setBgmEnabled,
@@ -38,11 +37,13 @@ import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
   clearDispatchFlag,
+  clearPhotoSnapshotPreview,
   closeActorInteraction,
   closeAdmiralCustomizer,
   closeDistrictContextMenu,
   closeGazette,
   closeQuestBoard,
+  closeSkyQuickMenu,
   closeWarRoom,
   deactivateChat,
   getWorldStoreSnapshot,
@@ -53,6 +54,7 @@ import {
   openDistrictContextMenu,
   openGazette,
   openQuestBoard,
+  openSkyQuickMenu,
   openWarRoom,
   placeDispatchFlag,
   pushActorSpeech,
@@ -67,7 +69,9 @@ import {
   setCinemaMode,
   setCinemaSpotlight,
   setCommodoreGift,
+  setCompanionActorId,
   setDistrictNote,
+  setEmoteWheelOpen,
   setHoveredDistrict,
   setNearWorldActor,
   setOverviewMode,
@@ -88,6 +92,7 @@ import { WorldControlsGuide } from "./world-controls-guide.js";
 import { WorldDialogueBox } from "./world-dialogue-box.js";
 import { WorldDistrictInspector, type WorldDistrictLinkedObjective } from "./world-district-inspector.js";
 import { WorldDistrictQuickMenu } from "./world-district-quick-menu.js";
+import { WorldEmoteWheel, type WorldAdmiralEmoteKind } from "./world-emote-wheel.js";
 import { WorldGazette } from "./world-gazette.js";
 import { WorldHud } from "./world-hud.js";
 import { WorldIcon } from "./world-icons.js";
@@ -99,8 +104,10 @@ import {
   type WorldMinimapJumpItem,
 } from "./world-minimap.js";
 import { WorldPanelModal } from "./world-panel-modal.js";
+import { WorldPhotoStudio } from "./world-photo-studio.js";
 import { WorldQuestBoardModal } from "./world-quest-board.js";
 import { WorldRadialMenu } from "./world-radial-menu.js";
+import { WorldSkyCommand, type WorldSkyHoverTarget } from "./world-sky-command.js";
 import { WorldWarRoom } from "./world-war-room.js";
 
 const TOAST_DURATION_MS = 2_800;
@@ -168,6 +175,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [controlsGuideOpen, setControlsGuideOpen] = useState(false);
   const [debugPanelVisible, setDebugPanelVisible] = useState(false);
   const [playerHovered, setPlayerHovered] = useState(false);
+  const [skyHoverTarget, setSkyHoverTarget] = useState<WorldSkyHoverTarget | null>(null);
   const [overviewDragLink, setOverviewDragLink] = useState<{
     readonly fromVillage: WorldVillageSpec;
     readonly startX: number;
@@ -181,6 +189,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   controlsGuideOpenRef.current = controlsGuideOpen;
   const playerHoveredRef = useRef(playerHovered);
   playerHoveredRef.current = playerHovered;
+  const skyHoverTargetRef = useRef(skyHoverTarget);
+  skyHoverTargetRef.current = skyHoverTarget;
 
   const toastTimerRef = useRef<number | null>(null);
   const celebrationTimerRef = useRef<number | null>(null);
@@ -294,6 +304,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       onOverviewAutoExit: () => setOverviewMode(false),
       onCampfireStandUp: () => setSittingAtCampfire(false),
       onCinemaSpotlight: (label) => setCinemaSpotlight(label),
+      onCompanionDutyReturn: (actorId, actorName) => {
+        setCompanionActorId(null);
+        const tNow = getWorldT(deps.commodore.language());
+        pushActorSpeech(actorId, tNow("theWorld.companion.dutyReturnSpeech"));
+        pushToast(tNow("theWorld.companion.dutyReturnToast", { name: actorName }));
+      },
       onLabelsStructureChanged: setLabelMetas,
       onFramePositions: handleFramePositions,
     });
@@ -302,12 +318,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtime.setAdmiralStyle(initial.admiralStyle);
     runtime.setCommodoreGifts(initial.commodoreGifts);
     runtime.setCinemaMode(initial.cinemaMode);
+    runtime.setCompanionActor(initial.companionActorId);
     runtimeRef.current = runtime;
     return () => {
       runtime.dispose();
       runtimeRef.current = null;
     };
-  }, [deps, handleFramePositions]);
+  }, [deps, handleFramePositions, pushToast]);
 
   // 실시간 월드 스냅샷 동기화
   useEffect(() => {
@@ -327,7 +344,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   useEffect(() => {
     runtimeRef.current?.setOverviewMode(store.overviewMode);
+    if (!store.overviewMode) {
+      setSkyHoverTarget(null);
+      closeSkyQuickMenu();
+    }
   }, [store.overviewMode]);
+
+  useEffect(() => {
+    runtimeRef.current?.setCompanionActor(store.companionActorId);
+  }, [store.companionActorId]);
 
   useEffect(() => {
     runtimeRef.current?.setWeather(store.weatherMode);
@@ -599,6 +624,28 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       return;
     }
     const hitDistrict = runtimeRef.current?.pickDistrictAt(event.clientX, event.clientY) ?? null;
+    if (snap.overviewMode) {
+      const hitVillage = hitDistrict
+        ? villagesRef.current.find((v) => v.id === hitDistrict.villageId) ?? null
+        : runtimeRef.current?.pickVillageAt(event.clientX, event.clientY) ?? null;
+      if (hitVillage) {
+        const actor = actorsRef.current.find(
+          (a) => a.role === "commodore" && a.commodoreId === hitVillage.commodoreId,
+        ) ?? null;
+        playDistrictSelect();
+        setSkyHoverTarget(null);
+        openSkyQuickMenu({
+          districtId: hitDistrict?.id ?? "",
+          commodoreId: hitVillage.commodoreId,
+          actorId: actor?.id ?? `commodore:${hitVillage.commodoreId}`,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } else if (snap.skyQuickMenu) {
+        closeSkyQuickMenu();
+      }
+      return;
+    }
     if (hitDistrict) {
       playDistrictSelect();
       openDistrictContextMenu(hitDistrict.id, event.clientX, event.clientY);
@@ -627,16 +674,49 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.admiralCustomizerOpen
       || snap.gazetteOpen
       || snap.cinemaMode
-      || snap.overviewMode
+      || snap.photoMode
+      || snap.emoteWheelOpen
       || controlsGuideOpenRef.current
     ) {
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
       if (playerHoveredRef.current) setPlayerHovered(false);
+      if (skyHoverTargetRef.current !== null) setSkyHoverTarget(null);
       return;
     }
     const now = performance.now();
     if (now - lastHoverPickRef.current < HOVER_PICK_THROTTLE_MS) return;
     lastHoverPickRef.current = now;
+
+    // 하늘 비행(`overviewMode`) 중 공중 호버 스캔 카드 갱신
+    if (snap.overviewMode) {
+      if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
+      if (playerHoveredRef.current) setPlayerHovered(false);
+      if (snap.skyQuickMenu) {
+        if (skyHoverTargetRef.current !== null) setSkyHoverTarget(null);
+        return;
+      }
+      const hitDistrict = runtimeRef.current?.pickDistrictAt(e.clientX, e.clientY) ?? null;
+      const hitVillage = hitDistrict
+        ? villagesRef.current.find((v) => v.id === hitDistrict.villageId) ?? null
+        : runtimeRef.current?.pickVillageAt(e.clientX, e.clientY) ?? null;
+      if (hitVillage) {
+        const actor = actorsRef.current.find(
+          (a) => a.role === "commodore" && a.commodoreId === hitVillage.commodoreId,
+        ) ?? null;
+        setSkyHoverTarget({
+          village: hitVillage,
+          district: hitDistrict,
+          actor,
+          x: e.clientX,
+          y: e.clientY,
+        });
+      } else if (skyHoverTargetRef.current !== null) {
+        setSkyHoverTarget(null);
+      }
+      return;
+    }
+
+    if (skyHoverTargetRef.current !== null) setSkyHoverTarget(null);
 
     // 제독 3D 캐릭터 호버 판정 (이름표 기본 숨김 → 호버 시 노출)
     const pt = labelsOverlayRef.current?.getLastPlayerScreenPoint();
@@ -664,6 +744,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (playerHoveredRef.current) {
       setPlayerHovered(false);
     }
+    if (skyHoverTargetRef.current !== null) {
+      setSkyHoverTarget(null);
+    }
   }, []);
 
   const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -684,6 +767,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     // 별빛 비행(`overviewMode`) 중 클릭 우선순위:
     // 1. 액터 · 퀘스트 게시판 → 2. 마을/구역 유성 급강하 → 3. 일반 초원 땅 어디든 클릭 유성 착지
     if (snap.overviewMode) {
+      if (snap.skyQuickMenu) {
+        closeSkyQuickMenu();
+        return;
+      }
       const hitFlightActorId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
       if (hitFlightActorId) {
         playMongleChirp();
@@ -873,6 +960,65 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleTriggerEmote = useCallback((emote: WorldPlayerEmote) => {
     requestPlayerEmote(emote);
   }, []);
+
+  const handlePhotoGroupPose = useCallback(() => {
+    runtimeRef.current?.triggerPhotoGroupPose();
+  }, []);
+
+  const handlePhotoCapture = useCallback((): string | null => {
+    return runtimeRef.current?.captureSnapshotDataUrl() ?? null;
+  }, []);
+
+  const handlePhotoExit = useCallback(() => {
+    clearPhotoSnapshotPreview();
+    setPhotoMode(false);
+  }, []);
+
+  const handleCloseEmoteWheel = useCallback(() => {
+    setEmoteWheelOpen(false);
+  }, []);
+
+  const handleSelectAdmiralEmote = useCallback((kind: WorldAdmiralEmoteKind) => {
+    runtimeRef.current?.triggerAdmiralEmote(kind);
+    if (kind === "sit") {
+      setSittingAtCampfire(true);
+    }
+  }, []);
+
+  const handleCloseSkyQuickMenu = useCallback(() => {
+    closeSkyQuickMenu();
+  }, []);
+
+  const handleSkyAnswerAsk = useCallback((actorId: string) => {
+    setOverviewMode(false);
+    openActorDialogue(actorId);
+  }, []);
+
+  const handleSkyDiveToTarget = useCallback((x: number, z: number, label: string) => {
+    requestWorldTeleport(x, z);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.flight.diveToast", { label }));
+  }, [deps, pushToast]);
+
+  const handleSkyOpenNotebook = useCallback((actorId: string) => {
+    setOverviewMode(false);
+    openActorPanel(actorId, "chat");
+  }, []);
+
+  const companionActor = useMemo(
+    () => (store.companionActorId ? snapshot.actors.find((a) => a.id === store.companionActorId) ?? null : null),
+    [snapshot.actors, store.companionActorId],
+  );
+
+  const handleEndCompanionWalk = useCallback(() => {
+    const name = companionActor?.name ?? "";
+    setCompanionActorId(null);
+    playDistrictSelect();
+    if (name) {
+      const tNow = getWorldT(deps.commodore.language());
+      pushToast(tNow("theWorld.companion.leftToast", { name }));
+    }
+  }, [companionActor?.name, deps, pushToast]);
 
   const minimapJumpItems = useMemo<readonly WorldMinimapJumpItem[]>(() => {
     const items: WorldMinimapJumpItem[] = [];
@@ -1400,6 +1546,26 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               <span>{t("theWorld.flight.banner")}</span>
             </button>
           ) : null}
+          {companionActor && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode ? (
+            <div
+              className="the-world-companion-pill"
+              role="status"
+              aria-live="polite"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <span className="the-world-companion-pill-dot" aria-hidden="true" />
+              <span className="the-world-companion-pill-text">
+                {t("theWorld.companion.pill", { name: companionActor.name })}
+              </span>
+              <button
+                type="button"
+                className="the-world-companion-pill-end"
+                onClick={handleEndCompanionWalk}
+              >
+                {t("theWorld.companion.endWalk")}
+              </button>
+            </div>
+          ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (
             <button
               type="button"
@@ -1581,20 +1747,35 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               onOpenGoals={handleOpenGoalsFromQuickMenu}
             />
           ) : null}
-          {store.photoMode ? (
-            <button
-              type="button"
-              className="the-world-photo-exit"
-              aria-label={t("theWorld.photoMode.exitAria")}
-              onClick={() => {
-                playPhotoShutter();
-                setPhotoMode(false);
-              }}
-            >
-              <WorldIcon name="camera" size={13} tone="amber" />
-              <span>{t("theWorld.photoMode.exitHint")}</span>
-            </button>
-          ) : null}
+          <WorldPhotoStudio
+            open={store.photoMode}
+            locale={locale}
+            snapshotPreview={store.photoSnapshotPreview}
+            onGroupPose={handlePhotoGroupPose}
+            onCapture={handlePhotoCapture}
+            onExit={handlePhotoExit}
+            onStatusBanner={pushToast}
+          />
+          <WorldEmoteWheel
+            open={store.emoteWheelOpen}
+            locale={locale}
+            onSelectEmote={handleSelectAdmiralEmote}
+            onClose={handleCloseEmoteWheel}
+          />
+          <WorldSkyCommand
+            overviewMode={store.overviewMode && !store.photoMode && !store.cinemaMode && !anyModalOpen}
+            hoverTarget={skyHoverTarget}
+            quickMenu={store.skyQuickMenu}
+            villages={snapshot.villages}
+            actors={snapshot.actors}
+            deps={deps}
+            locale={locale}
+            onCloseQuickMenu={handleCloseSkyQuickMenu}
+            onAnswerAsk={handleSkyAnswerAsk}
+            onDiveToTarget={handleSkyDiveToTarget}
+            onOpenNotebook={handleSkyOpenNotebook}
+            onStatusBanner={pushToast}
+          />
           {store.interactionMode === "radial" && selectedActor ? (
             <WorldRadialMenu
               actor={selectedActor}

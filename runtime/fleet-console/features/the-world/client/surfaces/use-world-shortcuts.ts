@@ -14,6 +14,7 @@ import {
   closeDistrictContextMenu,
   closeGazette,
   closeQuestBoard,
+  closeSkyQuickMenu,
   closeWarRoom,
   deactivateChat,
   exitTheWorld,
@@ -22,10 +23,12 @@ import {
   openGazette,
   requestPlayerEmote,
   setCinemaMode,
+  setEmoteWheelOpen,
   setOverviewMode,
   setPhotoMode,
   setSittingAtCampfire,
   toggleCinemaMode,
+  toggleEmoteWheel,
   toggleOverviewMode,
   togglePhotoMode,
 } from "../world-store.js";
@@ -77,7 +80,9 @@ export function useWorldShortcuts({
             event.preventDefault();
             event.target.blur();
             const current = getWorldStoreSnapshot();
-            if (current.chatActive) {
+            if (current.skyQuickMenu) {
+              closeSkyQuickMenu();
+            } else if (current.chatActive) {
               deactivateChat();
             } else if (controlsGuideOpenRef.current) {
               onCloseControlsGuide();
@@ -201,6 +206,28 @@ export function useWorldShortcuts({
         }
       }
 
+      // B: 별 제독 방사형 이모트 휠 토글
+      if (
+        event.code === "KeyB"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.shiftKey
+      ) {
+        if (snap.emoteWheelOpen) {
+          event.preventDefault();
+          setEmoteWheelOpen(false);
+          return;
+        }
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode && !snap.overviewMode) {
+          event.preventDefault();
+          playDistrictSelect();
+          toggleEmoteWheel();
+          return;
+        }
+      }
+
       if (
         event.code === "KeyP"
         && !event.isComposing
@@ -316,6 +343,14 @@ export function useWorldShortcuts({
         }
         if (snap.sittingAtCampfire) {
           setSittingAtCampfire(false);
+          return;
+        }
+        if (snap.emoteWheelOpen) {
+          setEmoteWheelOpen(false);
+          return;
+        }
+        if (snap.skyQuickMenu) {
+          closeSkyQuickMenu();
           return;
         }
         if (snap.districtContextMenu) {

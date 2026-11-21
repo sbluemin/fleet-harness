@@ -5168,6 +5168,10 @@
 .the-world-root.is-photo-mode .the-world-campfire-banner,
 .the-world-root.is-photo-mode .the-world-overview-drag-svg,
 .the-world-root.is-photo-mode .the-world-quick-menu,
+.the-world-root.is-photo-mode .the-world-companion-pill,
+.the-world-root.is-photo-mode .the-world-sky-hover-card,
+.the-world-root.is-photo-mode .the-world-sky-cmd-popover,
+.the-world-root.is-photo-mode .the-world-emote-wheel,
 .the-world-root.is-cinema-mode .the-world-hud-top,
 .the-world-root.is-cinema-mode .the-world-quick-bar,
 .the-world-root.is-cinema-mode .the-world-chat-shell,
@@ -5177,7 +5181,11 @@
 .the-world-root.is-cinema-mode .the-world-district-card,
 .the-world-root.is-cinema-mode .the-world-overview-banner,
 .the-world-root.is-cinema-mode .the-world-campfire-banner,
-.the-world-root.is-cinema-mode .the-world-quick-menu {
+.the-world-root.is-cinema-mode .the-world-quick-menu,
+.the-world-root.is-cinema-mode .the-world-companion-pill,
+.the-world-root.is-cinema-mode .the-world-sky-hover-card,
+.the-world-root.is-cinema-mode .the-world-sky-cmd-popover,
+.the-world-root.is-cinema-mode .the-world-emote-wheel {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -6494,6 +6502,725 @@
   }
 }
 
+/* ── Sprint 17: 동행 상태 배지 · 스카이 커맨드 · 포토 스튜디오 · 방사형 이모트 휠 ── */
+
+@keyframes the-world-s17-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes the-world-s17-pill-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@keyframes the-world-photo-flash-fade {
+  0% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes the-world-polaroid-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.86) rotate(-5deg);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1.02) rotate(-1.5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(-2deg);
+  }
+}
+
+@keyframes the-world-emote-wheel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.84);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 1. 동행 산책 & 하늘 순찰 상태 배지 (상단 중앙 아래 컴팩트 필) */
+.the-world-companion-pill {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 5px 7px 5px 12px;
+  border-radius: var(--radius-pill);
+  background: oklch(16% 0.022 258 / 92%);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 48%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-soft), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  pointer-events: auto;
+  animation: the-world-s17-pill-in var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-companion-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mongle-amber);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--mongle-amber) 72%, transparent);
+  flex-shrink: 0;
+}
+
+.the-world-companion-pill-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: oklch(22% 0.022 258 / 94%);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  flex-shrink: 0;
+}
+
+.the-world-companion-pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-companion-pill-end {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  background: oklch(24% 0.022 258 / 90%);
+  color: oklch(92% 0.008 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-pill-end:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(25% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 62%, transparent);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-companion-pill-end:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* 2. 스카이 호버 스캔 카드 (공중 비행 중 마을 호버 시 마우스 근처 미니 상태 카드) */
+.the-world-sky-hover-card {
+  position: fixed;
+  z-index: 14;
+  min-width: 214px;
+  max-width: 288px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg);
+  background: oklch(16% 0.022 258 / 94%);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  pointer-events: none;
+  animation: the-world-s17-pop var(--duration-fast) var(--ease-spring) both;
+}
+
+.the-world-sky-hover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.the-world-sky-hover-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.the-world-sky-hover-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: oklch(72% 0.012 255);
+  flex-shrink: 0;
+}
+
+.the-world-sky-hover-dot.is-working {
+  background: var(--mongle-teal);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--mongle-teal) 72%, transparent);
+}
+
+.the-world-sky-hover-dot.is-attention {
+  background: var(--mongle-amber);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--mongle-amber) 76%, transparent);
+}
+
+.the-world-sky-hover-dot.is-error {
+  background: var(--warn);
+}
+
+.the-world-sky-hover-name {
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.006 85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-sky-hover-sub {
+  font-size: var(--t-xs);
+  color: oklch(83% 0.012 255);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-sky-hover-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.the-world-sky-hover-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(23% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  color: oklch(92% 0.008 85);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+}
+
+.the-world-sky-hover-chip.is-urgent {
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(20% 0.022 258 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
+  color: var(--mongle-amber);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-sky-hover-hint {
+  padding-top: 6px;
+  border-top: 1px solid oklch(100% 0 0 / 12%);
+  font-size: var(--t-2xs);
+  color: oklch(82% 0.012 255);
+}
+
+/* 3. 스카이 우클릭 퀵 커맨드 팝오버 (320px 스타라이트 글래스) */
+.the-world-sky-cmd-popover {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  position: fixed;
+  z-index: 16;
+  width: min(320px, calc(100vw - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-lg);
+  background: oklch(16% 0.022 258 / 95%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 40%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 18%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  pointer-events: auto;
+  animation: the-world-s17-pop var(--duration-fast) var(--ease-spring) both;
+}
+
+.the-world-sky-cmd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
+}
+
+.the-world-sky-cmd-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.the-world-sky-cmd-kicker {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--mongle-amber);
+}
+
+.the-world-sky-cmd-who {
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.006 85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-sky-cmd-close {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 15%);
+  background: oklch(23% 0.022 258 / 88%);
+  color: oklch(86% 0.012 255);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-sky-cmd-close:hover {
+  background: oklch(30% 0.024 258 / 96%);
+  color: oklch(98% 0.006 85);
+}
+
+.the-world-sky-cmd-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-sky-cmd-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.the-world-sky-cmd-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.the-world-sky-cmd-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 20%);
+  background: oklch(21% 0.022 258 / 94%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  outline: none;
+  transition: border-color var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-sky-cmd-input::placeholder {
+  color: oklch(80% 0.012 255);
+}
+
+.the-world-sky-cmd-input:focus {
+  border-color: color-mix(in oklch, var(--mongle-amber) 68%, oklch(100% 0 0 / 24%));
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--mongle-amber) 18%, transparent);
+}
+
+.the-world-sky-cmd-send {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 28%));
+  background: var(--mongle-amber);
+  color: oklch(14% 0.018 258);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: filter var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-sky-cmd-send:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.the-world-sky-cmd-send:disabled {
+  opacity: 0.45;
+}
+
+.the-world-sky-cmd-send:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-sky-cmd-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.the-world-sky-cmd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(23% 0.022 258 / 92%);
+  color: oklch(95% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-sky-cmd-btn:hover {
+  background: oklch(29% 0.024 258 / 96%);
+  border-color: oklch(100% 0 0 / 28%);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-sky-cmd-btn.is-ask {
+  grid-column: 1 / -1;
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(21% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 68%, transparent);
+  color: oklch(98% 0.006 85);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-sky-cmd-btn.is-ask:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 34%, oklch(22% 0.022 258 / 98%));
+  border-color: var(--mongle-amber);
+}
+
+.the-world-sky-cmd-btn.is-dive {
+  border-color: color-mix(in oklch, var(--mongle-cerulean) 48%, oklch(100% 0 0 / 18%));
+}
+
+.the-world-sky-cmd-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* 4. 포토 스튜디오 플로팅 셔터 바 (is-photo-mode에서도 항상 표시) + 플래시 + 폴라로이드 토스트 */
+.the-world-photo-studio-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 15;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(16% 0.022 258 / 92%);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
+  pointer-events: auto;
+  animation: the-world-s17-pill-in var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-root.is-photo-mode .the-world-photo-studio-bar {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.the-world-photo-studio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--radius-pill);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(23% 0.022 258 / 90%);
+  color: oklch(95% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-photo-studio-btn:hover {
+  background: oklch(29% 0.024 258 / 96%);
+  border-color: oklch(100% 0 0 / 28%);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-photo-studio-btn.is-snap {
+  background: var(--mongle-amber);
+  border-color: color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 35%));
+  color: oklch(14% 0.018 258);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-photo-studio-btn.is-snap:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 88%, oklch(98% 0.006 85));
+  color: oklch(14% 0.018 258);
+}
+
+.the-world-photo-studio-btn.is-pose {
+  background: color-mix(in oklch, var(--mongle-teal) 22%, oklch(21% 0.022 258 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-teal) 56%, transparent);
+  color: oklch(97% 0.006 85);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-photo-studio-btn.is-pose:hover {
+  background: color-mix(in oklch, var(--mongle-teal) 32%, oklch(22% 0.022 258 / 98%));
+  border-color: var(--mongle-teal);
+}
+
+.the-world-photo-studio-btn:active {
+  transform: scale(0.97);
+}
+
+.the-world-photo-studio-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-photo-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: oklch(99% 0.004 85);
+  pointer-events: none;
+  animation: the-world-photo-flash-fade 420ms ease-out forwards;
+}
+
+.the-world-polaroid-toast {
+  position: absolute;
+  right: 18px;
+  bottom: 72px;
+  z-index: 16;
+  width: 184px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(97% 0.006 85 / 96%);
+  border: 1px solid oklch(100% 0 0 / 50%);
+  box-shadow: var(--shadow-floating);
+  color: oklch(20% 0.022 258);
+  pointer-events: auto;
+  animation: the-world-polaroid-pop 380ms var(--ease-spring) both;
+}
+
+.the-world-root.is-photo-mode .the-world-polaroid-toast {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.the-world-polaroid-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--radius-xs);
+  background: oklch(16% 0.022 258);
+}
+
+.the-world-polaroid-caption {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(22% 0.022 258);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 5. 방사형 별 제독 이모트 휠 (B) */
+.the-world-emote-wheel {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.the-world-emote-backdrop {
+  position: absolute;
+  inset: 0;
+  background: oklch(7% 0.018 258 / 32%);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.the-world-emote-ring {
+  position: relative;
+  width: 296px;
+  height: 296px;
+  pointer-events: none;
+  animation: the-world-emote-wheel-in var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-emote-ring::before {
+  content: "";
+  position: absolute;
+  inset: 34px;
+  border-radius: 50%;
+  border: 1px dashed oklch(100% 0 0 / 20%);
+  box-shadow: 0 0 36px color-mix(in oklch, var(--mongle-amber) 14%, transparent);
+  pointer-events: none;
+}
+
+.the-world-emote-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 88px;
+  height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px;
+  border-radius: 50%;
+  background: oklch(16% 0.022 258 / 95%);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1.5px solid color-mix(in oklch, var(--mongle-amber) 62%, oklch(100% 0 0 / 22%));
+  box-shadow: var(--shadow-floating), 0 0 24px color-mix(in oklch, var(--mongle-amber) 24%, transparent), inset 0 1px 0 oklch(98% 0.01 85 / 18%);
+  color: oklch(98% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-emote-center:hover {
+  background: oklch(22% 0.022 258 / 98%);
+  border-color: var(--mongle-amber);
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.the-world-emote-center:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-emote-petal {
+  --petal-x: 0px;
+  --petal-y: 0px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(calc(-50% + var(--petal-x)), calc(-50% + var(--petal-y)));
+  width: 80px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 50%;
+  background: oklch(17% 0.022 258 / 94%);
+  backdrop-filter: blur(16px) saturate(135%);
+  border: 1px solid oklch(100% 0 0 / 20%);
+  box-shadow: var(--shadow-soft), inset 0 1px 0 oklch(98% 0.01 85 / 14%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-emote-petal:hover,
+.the-world-emote-petal.is-active {
+  transform: translate(calc(-50% + var(--petal-x)), calc(-50% + var(--petal-y))) scale(1.1);
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(21% 0.022 258 / 98%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 26%));
+  box-shadow: var(--shadow-floating), 0 0 20px color-mix(in oklch, var(--mongle-amber) 34%, transparent);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-emote-petal:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-emote-petal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mongle-amber);
+}
+
+.the-world-emote-petal-label {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.2;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.the-world-emote-petal-key {
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  color: oklch(82% 0.012 255);
+  line-height: 1;
+}
+
 /* ── Sprint 16: 「더 월드」 전용 커스텀 SVG 포인터 커서 캐스케이드 ───────────── */
 
 .the-world-root :is(
@@ -6568,13 +7295,29 @@
   .the-world-minimap-node.is-working,
   .the-world-chat-icon-btn.is-spinning svg,
   .the-world-working-dot,
-  .the-world-chat-cursor {
+  .the-world-chat-cursor,
+  .the-world-companion-pill,
+  .the-world-sky-hover-card,
+  .the-world-sky-cmd-popover,
+  .the-world-photo-studio-bar,
+  .the-world-photo-flash,
+  .the-world-polaroid-toast,
+  .the-world-emote-ring,
+  .the-world-emote-petal,
+  .the-world-emote-center {
     animation: none;
     transition: none;
   }
 }
 
 @media (forced-colors: active) {
+  .the-world-companion-pill-end:focus-visible,
+  .the-world-sky-cmd-close:focus-visible,
+  .the-world-sky-cmd-send:focus-visible,
+  .the-world-sky-cmd-btn:focus-visible,
+  .the-world-photo-studio-btn:focus-visible,
+  .the-world-emote-center:focus-visible,
+  .the-world-emote-petal:focus-visible,
   .the-world-portal-btn:focus-visible,
   .the-world-btn:focus-visible,
   .the-world-quick-btn:focus-visible,

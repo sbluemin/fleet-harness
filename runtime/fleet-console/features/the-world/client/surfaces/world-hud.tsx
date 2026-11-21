@@ -28,6 +28,7 @@ import {
   setWorldTimeMode,
   toggleBgm,
   toggleCinemaMode,
+  toggleEmoteWheel,
   toggleGazette,
   toggleOverviewMode,
   togglePhotoMode,
@@ -43,11 +44,11 @@ const TIME_MODES: readonly {
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
 }[] = [
+  { id: "realtime", key: "theWorld.hud.timeAuto", icon: "clock", tone: "cerulean" },
   { id: "cycle", key: "theWorld.hud.timeCycle", icon: "cycle", tone: "teal" },
   { id: "day", key: "theWorld.hud.timeDay", icon: "sun", tone: "amber" },
   { id: "sunset", key: "theWorld.hud.timeSunset", icon: "sunset", tone: "rose" },
   { id: "night", key: "theWorld.hud.timeNight", icon: "moon", tone: "indigo" },
-  { id: "realtime", key: "theWorld.hud.timeRealtime", icon: "clock", tone: "cerulean" },
 ];
 
 const CAMERA_MODES: readonly {
@@ -348,6 +349,22 @@ export const WorldHud = memo(function WorldHud({
                 tone={envOpen ? "amber" : activeWeatherMeta.tone}
               />
               <span>{t("theWorld.hud.envLabel")}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`the-world-btn is-icon-only${store.emoteWheelOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.emoteBtn")}
+              aria-pressed={store.emoteWheelOpen}
+              title={t("theWorld.hud.emoteBtn")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                toggleEmoteWheel();
+              }}
+            >
+              <WorldIcon name="cheer" size={14} tone={store.emoteWheelOpen ? "amber" : "rose"} />
             </button>
 
             <button

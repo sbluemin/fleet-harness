@@ -239,6 +239,19 @@ export interface WorldDistrictContextMenu {
   readonly clientY: number;
 }
 
+export interface WorldSkyQuickMenu {
+  readonly districtId: string;
+  readonly commodoreId: string;
+  readonly actorId: string;
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface WorldPhotoSnapshotPreview {
+  readonly dataUrl: string;
+  readonly savedAt: number;
+}
+
 export interface WorldStoreSnapshot {
   readonly lifecycle: WorldLifecycleState;
   readonly selectedActorId: string | null;
@@ -248,6 +261,10 @@ export interface WorldStoreSnapshot {
   readonly selectedDistrictId: string | null;
   readonly hoveredDistrictId: string | null;
   readonly districtContextMenu: WorldDistrictContextMenu | null;
+  readonly companionActorId: string | null;
+  readonly emoteWheelOpen: boolean;
+  readonly skyQuickMenu: WorldSkyQuickMenu | null;
+  readonly photoSnapshotPreview: WorldPhotoSnapshotPreview | null;
   readonly pendingChatMention: {
     readonly nonce: number;
     readonly actorId: string;
@@ -292,6 +309,10 @@ let state: WorldStoreSnapshot = {
   selectedDistrictId: null,
   hoveredDistrictId: null,
   districtContextMenu: null,
+  companionActorId: null,
+  emoteWheelOpen: false,
+  skyQuickMenu: null,
+  photoSnapshotPreview: null,
   pendingChatMention: null,
   questBoardOpen: false,
   warRoomOpen: false,
@@ -380,6 +401,10 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     selectedDistrictId: null,
     hoveredDistrictId: null,
     districtContextMenu: null,
+    companionActorId: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
+    photoSnapshotPreview: null,
     pendingChatMention: null,
     questBoardOpen: false,
     warRoomOpen: false,
@@ -415,6 +440,10 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     selectedDistrictId: null,
     hoveredDistrictId: null,
     districtContextMenu: null,
+    companionActorId: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
+    photoSnapshotPreview: null,
     pendingChatMention: null,
     questBoardOpen: false,
     warRoomOpen: false,
@@ -440,6 +469,10 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         selectedDistrictId: null,
         hoveredDistrictId: null,
         districtContextMenu: null,
+        companionActorId: null,
+        emoteWheelOpen: false,
+        skyQuickMenu: null,
+        photoSnapshotPreview: null,
         pendingChatMention: null,
         questBoardOpen: false,
         warRoomOpen: false,
@@ -466,6 +499,8 @@ export function openActorRadialMenu(actorId: string): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
@@ -486,6 +521,8 @@ export function openActorDialogue(actorId: string): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     chatActive: false,
     questBoardOpen: false,
     warRoomOpen: false,
@@ -507,6 +544,8 @@ export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objec
     inspectedObjectiveId: objectiveId ?? null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     chatActive: false,
     questBoardOpen: false,
     warRoomOpen: false,
@@ -553,6 +592,8 @@ export function selectDistrict(districtId: string | null): void {
     interactionMode: "closed",
     inspectedObjectiveId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
@@ -641,6 +682,8 @@ export function setPhotoMode(enabled: boolean): void {
           inspectedObjectiveId: null,
           selectedDistrictId: null,
           districtContextMenu: null,
+          emoteWheelOpen: false,
+          skyQuickMenu: null,
           questBoardOpen: false,
           warRoomOpen: false,
           admiralCustomizerOpen: false,
@@ -649,7 +692,9 @@ export function setPhotoMode(enabled: boolean): void {
           cinemaSpotlight: "",
           chatActive: false,
         }
-      : {}),
+      : {
+          photoSnapshotPreview: null,
+        }),
   };
   emit();
 }
@@ -687,6 +732,8 @@ export function openWarRoom(): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
@@ -757,6 +804,8 @@ export function openGazette(): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
@@ -791,6 +840,8 @@ export function setCinemaMode(enabled: boolean): void {
           inspectedObjectiveId: null,
           selectedDistrictId: null,
           districtContextMenu: null,
+          emoteWheelOpen: false,
+          skyQuickMenu: null,
           questBoardOpen: false,
           warRoomOpen: false,
           admiralCustomizerOpen: false,
@@ -866,6 +917,8 @@ export function openAdmiralCustomizer(): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
     gazetteOpen: false,
@@ -1000,6 +1053,8 @@ export function openQuestBoard(): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
@@ -1050,7 +1105,10 @@ export function setOverviewMode(enabled: boolean): void {
           selectedActorId: null,
           interactionMode: "closed" as const,
           inspectedObjectiveId: null,
+          selectedDistrictId: null,
           districtContextMenu: null,
+          emoteWheelOpen: false,
+          skyQuickMenu: null,
           questBoardOpen: false,
           warRoomOpen: false,
           admiralCustomizerOpen: false,
@@ -1059,7 +1117,9 @@ export function setOverviewMode(enabled: boolean): void {
           cinemaSpotlight: "",
           sittingAtCampfire: false,
         }
-      : {}),
+      : {
+          skyQuickMenu: null,
+        }),
   };
   emit();
 }
@@ -1085,6 +1145,8 @@ export function closeActorInteraction(): void {
     && state.selectedActorId === null
     && state.selectedDistrictId === null
     && state.districtContextMenu === null
+    && !state.emoteWheelOpen
+    && state.skyQuickMenu === null
     && !state.questBoardOpen
     && !state.warRoomOpen
     && !state.admiralCustomizerOpen
@@ -1099,12 +1161,77 @@ export function closeActorInteraction(): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
   };
   emit();
+}
+
+export function setCompanionActorId(id: string | null): void {
+  const next = id && id.length > 0 ? id : null;
+  if (state.companionActorId === next) return;
+  state = { ...state, companionActorId: next };
+  emit();
+}
+
+export function setEmoteWheelOpen(open: boolean): void {
+  if (state.emoteWheelOpen === open) return;
+  state = {
+    ...state,
+    emoteWheelOpen: open,
+    ...(open
+      ? {
+          districtContextMenu: null,
+          skyQuickMenu: null,
+          interactionMode: "closed" as const,
+          selectedActorId: null,
+          questBoardOpen: false,
+          warRoomOpen: false,
+          admiralCustomizerOpen: false,
+          gazetteOpen: false,
+          photoMode: false,
+          cinemaMode: false,
+          cinemaSpotlight: "",
+        }
+      : {}),
+  };
+  emit();
+}
+
+export function toggleEmoteWheel(): void {
+  setEmoteWheelOpen(!state.emoteWheelOpen);
+}
+
+export function setSkyQuickMenu(menu: WorldSkyQuickMenu | null): void {
+  if (state.skyQuickMenu === null && menu === null) return;
+  state = {
+    ...state,
+    skyQuickMenu: menu,
+    ...(menu ? { districtContextMenu: null, emoteWheelOpen: false } : {}),
+  };
+  emit();
+}
+
+export function openSkyQuickMenu(menu: WorldSkyQuickMenu): void {
+  setSkyQuickMenu(menu);
+}
+
+export function closeSkyQuickMenu(): void {
+  setSkyQuickMenu(null);
+}
+
+export function setPhotoSnapshotPreview(preview: WorldPhotoSnapshotPreview | null): void {
+  if (state.photoSnapshotPreview === null && preview === null) return;
+  state = { ...state, photoSnapshotPreview: preview };
+  emit();
+}
+
+export function clearPhotoSnapshotPreview(): void {
+  setPhotoSnapshotPreview(null);
 }
 
 export function setNearWorldActor(actorId: string | null): void {

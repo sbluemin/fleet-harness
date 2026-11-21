@@ -1,6 +1,8 @@
 import {
   AdditiveBlending,
   BackSide,
+  BufferAttribute,
+  BufferGeometry,
   Color,
   DirectionalLight,
   DoubleSide,
@@ -15,7 +17,9 @@ import {
   Mesh,
   MeshBasicMaterial,
   OctahedronGeometry,
+  PlaneGeometry,
   PointLight,
+  Points,
   Quaternion,
   RingGeometry,
   Scene,
@@ -252,11 +256,83 @@ void main() {
 }
 `;
 
+const FIREFLY_POINTS_VERTEX = /* glsl */ `
+in vec4 aSeed;   // x=phase, y=speed, z=blinkSpeed, w=driftR
+in vec3 aColor;
+uniform float uTime;
+uniform float uFade;
+out vec3 vColor;
+out float vGlow;
+
+void main() {
+  float t = uTime * aSeed.y + aSeed.x;
+  vec3 pos = position;
+  pos.x += sin(t) * aSeed.w;
+  pos.z += cos(t * 0.82 + 0.6) * aSeed.w;
+  pos.y += sin(t * 1.45) * 0.42;
+
+  float blink = 0.22 + 0.78 * pow(0.5 + 0.5 * sin(uTime * aSeed.z + aSeed.x * 2.1), 1.6);
+  vGlow = blink * uFade;
+  vColor = aColor;
+
+  vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+  float dist = max(3.0, -mvPos.z);
+  gl_PointSize = clamp((135.0 / dist) * (0.65 + 0.55 * blink), 2.5, 18.0);
+}
+`;
+
+const FIREFLY_POINTS_FRAGMENT = /* glsl */ `
+in vec3 vColor;
+in float vGlow;
+out vec4 fragColor;
+
+void main() {
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float r = length(p);
+  if (r > 1.0) discard;
+  float core = pow(clamp(1.0 - r, 0.0, 1.0), 3.0);
+  float halo = pow(clamp(1.0 - r, 0.0, 1.0), 1.45) * 0.62;
+  float alpha = (core + halo) * vGlow;
+  if (alpha < 0.006) discard;
+  vec3 col = mix(vColor, vec3(1.0, 0.99, 0.86), core * 0.75);
+  fragColor = vec4(col * 1.35, clamp(alpha, 0.0, 1.0));
+}
+`;
+
+const SKY_METEOR_VERTEX = /* glsl */ `
+out vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const SKY_METEOR_FRAGMENT = /* glsl */ `
+uniform float uAlpha;
+in vec2 vUv;
+out vec4 fragColor;
+
+void main() {
+  // vUv.x: 0 = tail, 1 = bright leading head
+  float crossDist = abs(vUv.y * 2.0 - 1.0);
+  float core = pow(clamp(1.0 - crossDist, 0.0, 1.0), 2.4);
+  float tail = pow(clamp(vUv.x, 0.0, 1.0), 2.2) * smoothstep(1.0, 0.92, vUv.x);
+  float headGlow = exp(-pow((vUv.x - 0.94) * 14.0, 2.0)) * core;
+  float a = (tail * core * 0.85 + headGlow * 1.25) * uAlpha;
+  if (a < 0.004) discard;
+  vec3 col = mix(vec3(0.68, 0.82, 1.0), vec3(1.0, 0.96, 0.80), smoothstep(0.35, 0.95, vUv.x));
+  fragColor = vec4(col * 1.45, clamp(a, 0.0, 1.0));
+}
+`;
+
 export interface SkyAndLightingRig {
   readonly group: Group;
   readonly sunDir: Vector3;
   readonly avatarWorldTint: Vector3;
   nightFactor: number;
+  /** 현재 밤 가중치(`0` 한낮 .. `1` 깊은 별밤)를 반환한다. */
+  getNightFactor(): number;
   /** 그림자 카메라·야간 가로등 풀 중심을 플레이어/주시점으로 텍셀 스냅 추적한다. */
   updateShadowFocus(x: number, z: number): void;
   /** 날씨 파티클 모드(`clear` / `sakura` / `rain` / `snow`) 전환. `clear` 시 draw call 0. */
@@ -277,27 +353,36 @@ export interface SkyAndLightingRig {
 let cachedWallHour = 12;
 let cachedWallHourAt = -Infinity;
 
+function smoothstep01(t: number): number {
+  const c = Math.max(0, Math.min(1, t));
+  return c * c * (3 - 2 * c);
+}
+
 function resolveTargetBlend(mode: WorldTimeMode, elapsed: number): number {
   if (mode === "day") return 0.0;
   if (mode === "sunset") return 0.5;
   if (mode === "night") return 1.0;
   if (mode === "cycle") return 0.5 - 0.5 * Math.cos(elapsed * 0.24);
+  // realtime: 실제 로컬 시계(new Date) 기준으로 새벽·아침·낮·지브리 노을·별밤을 부드럽게 보간
   const nowMs = performance.now();
   if (nowMs - cachedWallHourAt > 10_000) {
     const now = new Date();
-    cachedWallHour = now.getHours() + now.getMinutes() / 60;
+    cachedWallHour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
     cachedWallHourAt = nowMs;
   }
   const hour = cachedWallHour;
-  if (hour >= 8 && hour <= 16.5) return 0.0;
-  if (hour > 16.5 && hour < 19.5) return ((hour - 16.5) / 3.0) * 0.85;
-  if (hour >= 5.5 && hour < 8) return (1 - (hour - 5.5) / 2.5) * 0.85;
+  if (hour >= 8.5 && hour <= 16.5) return 0.0;
+  if (hour > 16.5 && hour < 18.5) return smoothstep01((hour - 16.5) / 2.0) * 0.5;
+  if (hour >= 18.5 && hour < 20.5) return 0.5 + smoothstep01((hour - 18.5) / 2.0) * 0.5;
+  if (hour >= 5.0 && hour < 6.5) return 1.0 - smoothstep01((hour - 5.0) / 1.5) * 0.5;
+  if (hour >= 6.5 && hour < 8.5) return 0.5 * (1.0 - smoothstep01((hour - 6.5) / 2.0));
   return 1.0;
 }
 
 const MAX_NIGHT_LAMP_LIGHTS = 6;
 const MAX_ANTENNA_LIGHTS = 4;
 const MAX_GOLDEN_FIREFLIES = 96;
+const MAX_SKY_METEORS = 3;
 const MAX_WEATHER_PARTICLES = 320;
 const SHADOW_BOUNDS = 36;
 const SHADOW_MAP_SIZE = 2048;
@@ -380,39 +465,135 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     return pl;
   });
 
-  // 야간·노을 황금 반딧불이 풀 (단일 InstancedMesh draw call, 주간 visible=false)
-  const fireflyGeo = new SphereGeometry(0.058, 6, 5);
-  const fireflyMat = new MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
-  const fireflyInstanced = new InstancedMesh(fireflyGeo, fireflyMat, MAX_GOLDEN_FIREFLIES);
-  fireflyInstanced.instanceMatrix.setUsage(DynamicDrawUsage);
-  fireflyInstanced.frustumCulled = false;
-  fireflyInstanced.visible = false;
-
-  const ffSeeds = Array.from({ length: MAX_GOLDEN_FIREFLIES }, (_, i) => {
-    const goldenAng = i * 2.3999632297;
-    const rad = 7.5 + Math.sqrt((i + 0.5) / MAX_GOLDEN_FIREFLIES) * 54.0;
-    const baseX = Math.cos(goldenAng) * rad;
-    const baseZ = Math.sin(goldenAng) * rad;
-    const baseY = 0.65 + ((i * 37) % 100) * 0.028;
-    const phase = i * 1.73;
-    const speed = 0.45 + ((i * 19) % 10) * 0.06;
-    const blinkSpeed = 1.6 + ((i * 23) % 11) * 0.22;
-    const driftR = 0.9 + ((i * 13) % 7) * 0.25;
-    return { baseX, baseZ, baseY, phase, speed, blinkSpeed, driftR };
-  });
-
-  const ffMat4 = new Matrix4();
-  const ffPos = new Vector3();
-  const ffQuat = new Quaternion();
-  const ffScale = new Vector3();
-  const ffPalette = [0xffe066, 0xffc247, 0xfef08a, 0xffd166] as const;
+  // 야간·노을 황금-연두 반딧불이 (`THREE.Points` GPU 포인트 셰이더 96기, 강가·소나무 숲·마을 가장자리, 주간 visible=false)
+  const ffPositions = new Float32Array(MAX_GOLDEN_FIREFLIES * 3);
+  const ffSeedsAttr = new Float32Array(MAX_GOLDEN_FIREFLIES * 4);
+  const ffColors = new Float32Array(MAX_GOLDEN_FIREFLIES * 3);
+  const ffPalette = [0xffe066, 0xd9f99d, 0xfef08a, 0xbef264, 0xffd166] as const;
   const ffColor = new Color();
   for (let i = 0; i < MAX_GOLDEN_FIREFLIES; i += 1) {
-    ffColor.setHex(ffPalette[i % ffPalette.length]!).multiplyScalar(1.48);
-    fireflyInstanced.setColorAt(i, ffColor);
+    let baseX: number;
+    let baseZ: number;
+    if (i < 34) {
+      // 시냇물 강가 주변 34기
+      const tStream = (i / 33) * 2 - 1;
+      baseX = tStream * 44 + Math.sin(i * 4.3) * 2.2;
+      const brookZ = 9.2 + Math.sin(baseX * 0.095) * 2.9 + Math.cos(baseX * 0.04) * 1.1;
+      baseZ = brookZ + ((i % 2 === 0 ? 1 : -1) * (2.4 + (i % 5) * 0.75));
+    } else {
+      // 소나무 숲 · 마을 가장자리 62기
+      const idx = i - 34;
+      const goldenAng = idx * 2.3999632297;
+      const rad = 12.0 + Math.sqrt((idx + 0.5) / (MAX_GOLDEN_FIREFLIES - 34)) * 44.0;
+      baseX = Math.cos(goldenAng) * rad;
+      baseZ = Math.sin(goldenAng) * rad;
+    }
+    const baseY = 0.72 + ((i * 37) % 100) * 0.026;
+    ffPositions[i * 3 + 0] = baseX;
+    ffPositions[i * 3 + 1] = baseY;
+    ffPositions[i * 3 + 2] = baseZ;
+
+    ffSeedsAttr[i * 4 + 0] = i * 1.73; // phase
+    ffSeedsAttr[i * 4 + 1] = 0.45 + ((i * 19) % 10) * 0.06; // speed
+    ffSeedsAttr[i * 4 + 2] = 1.55 + ((i * 23) % 11) * 0.22; // blinkSpeed
+    ffSeedsAttr[i * 4 + 3] = 0.95 + ((i * 13) % 7) * 0.28; // driftR
+
+    ffColor.setHex(ffPalette[i % ffPalette.length]!);
+    ffColors[i * 3 + 0] = ffColor.r;
+    ffColors[i * 3 + 1] = ffColor.g;
+    ffColors[i * 3 + 2] = ffColor.b;
   }
-  if (fireflyInstanced.instanceColor) fireflyInstanced.instanceColor.needsUpdate = true;
-  group.add(fireflyInstanced);
+  const fireflyGeo = new BufferGeometry();
+  fireflyGeo.setAttribute("position", new BufferAttribute(ffPositions, 3));
+  fireflyGeo.setAttribute("aSeed", new BufferAttribute(ffSeedsAttr, 4));
+  fireflyGeo.setAttribute("aColor", new BufferAttribute(ffColors, 3));
+  const fireflyMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uFade: { value: 0 },
+    },
+    vertexShader: FIREFLY_POINTS_VERTEX,
+    fragmentShader: FIREFLY_POINTS_FRAGMENT,
+  });
+  const fireflyPoints = new Points(fireflyGeo, fireflyMat);
+  fireflyPoints.frustumCulled = false;
+  fireflyPoints.renderOrder = 3;
+  fireflyPoints.visible = false;
+  group.add(fireflyPoints);
+
+  // 배경 밤하늘 유성우 풀 (3기 풀링된 스트릭 메시, 주간·비활성 시 visible=false → Draw Call +0)
+  const meteorGeo = new PlaneGeometry(14.5, 0.52);
+  interface SkyMeteorSlot {
+    readonly mesh: Mesh;
+    readonly mat: ShaderMaterial;
+    active: boolean;
+    age: number;
+    duration: number;
+    startPos: Vector3;
+    endPos: Vector3;
+    dir: Vector3;
+    side: Vector3;
+  }
+  const meteorSlots: SkyMeteorSlot[] = Array.from({ length: MAX_SKY_METEORS }, () => {
+    const mat = new ShaderMaterial({
+      glslVersion: GLSL3,
+      transparent: true,
+      depthWrite: false,
+      fog: false,
+      side: DoubleSide,
+      blending: AdditiveBlending,
+      uniforms: { uAlpha: { value: 0 } },
+      vertexShader: SKY_METEOR_VERTEX,
+      fragmentShader: SKY_METEOR_FRAGMENT,
+    });
+    const mesh = new Mesh(meteorGeo, mat);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 1;
+    mesh.visible = false;
+    group.add(mesh);
+    return {
+      mesh,
+      mat,
+      active: false,
+      age: 0,
+      duration: 1.4,
+      startPos: new Vector3(),
+      endPos: new Vector3(),
+      dir: new Vector3(),
+      side: new Vector3(),
+    };
+  });
+  const meteorScratchPos = new Vector3();
+  const meteorScratchBasis = new Matrix4();
+  const meteorScratchNormal = new Vector3();
+  let nextMeteorCooldown = 3.5;
+
+  function spawnSkyMeteor(): void {
+    const slot = meteorSlots.find((s) => !s.active);
+    if (!slot) return;
+    const az = Math.random() * Math.PI * 2;
+    const elev = 0.44 + Math.random() * 0.42; // 25°..50° 밤하늘 고도
+    const domeR = 156;
+    const cx = Math.cos(az) * Math.cos(elev) * domeR;
+    const cy = Math.sin(elev) * domeR;
+    const cz = Math.sin(az) * Math.cos(elev) * domeR;
+    // 접선 + 하강 대각선 궤적 (길이 ~44m)
+    const tangX = -Math.sin(az);
+    const tangZ = Math.cos(az);
+    const sign = Math.random() < 0.5 ? 1 : -1;
+    slot.dir.set(tangX * sign * 0.84, -0.46, tangZ * sign * 0.84).normalize();
+    const span = 42 + Math.random() * 18;
+    slot.startPos.set(cx - slot.dir.x * span * 0.5, cy - slot.dir.y * span * 0.5, cz - slot.dir.z * span * 0.5);
+    slot.endPos.set(cx + slot.dir.x * span * 0.5, cy + slot.dir.y * span * 0.5, cz + slot.dir.z * span * 0.5);
+    slot.age = 0;
+    slot.duration = 1.15 + Math.random() * 0.55;
+    slot.active = true;
+    slot.mesh.visible = true;
+  }
 
   // 날씨 파티클 풀 (단일 InstancedMesh 320기 — sakura/rain/snow 공용, clear 시 visible=false로 비용 0)
   const weatherGeo = new OctahedronGeometry(0.5, 0);
@@ -567,6 +748,9 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     sunDir,
     avatarWorldTint,
     nightFactor: 0,
+    getNightFactor() {
+      return rig.nightFactor;
+    },
     updateShadowFocus(x, z) {
       shadowFocusX = Math.round(x / SHADOW_SNAP_STEP) * SHADOW_SNAP_STEP;
       shadowFocusZ = Math.round(z / SHADOW_SNAP_STEP) * SHADOW_SNAP_STEP;
@@ -680,24 +864,43 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
         }
       }
 
-      // 야간·노을 황금 반딧불이 (주간 visible=false로 CPU/GPU 비용 0)
-      const fireflyFade = Math.max(0, Math.min(1, (night - 0.22) / 0.42));
-      fireflyInstanced.visible = fireflyFade > 0.01;
-      if (fireflyInstanced.visible) {
-        for (let i = 0; i < MAX_GOLDEN_FIREFLIES; i += 1) {
-          const s = ffSeeds[i]!;
-          const t = elapsed * s.speed + s.phase;
-          const x = s.baseX + Math.sin(t) * s.driftR;
-          const z = s.baseZ + Math.cos(t * 0.82 + 0.6) * s.driftR;
-          const y = s.baseY + Math.sin(t * 1.45) * 0.42;
-          const pulse = 0.22 + 0.78 * Math.pow(0.5 + 0.5 * Math.sin(elapsed * s.blinkSpeed + s.phase * 2.1), 1.6);
-          const sc = pulse * fireflyFade;
-          ffPos.set(x, y, z);
-          ffScale.set(sc, sc, sc);
-          ffMat4.compose(ffPos, ffQuat, ffScale);
-          fireflyInstanced.setMatrixAt(i, ffMat4);
+      // 야간·노을 황금-연두 반딧불이 (`THREE.Points` GPU 셰이더 96기, 주간 visible=false로 CPU/GPU 비용 0)
+      const fireflyFade = Math.max(0, Math.min(1, (night - 0.28) / 0.36));
+      fireflyPoints.visible = fireflyFade > 0.01;
+      if (fireflyPoints.visible) {
+        fireflyMat.uniforms["uTime"]!.value = elapsed;
+        fireflyMat.uniforms["uFade"]!.value = fireflyFade;
+      }
+
+      // 배경 밤하늘 유성우 (밤 시간대 10~18초 간격, 3기 풀링 0-GC)
+      if (night > 0.35) {
+        nextMeteorCooldown -= dt;
+        if (nextMeteorCooldown <= 0) {
+          spawnSkyMeteor();
+          nextMeteorCooldown = 10.0 + Math.random() * 8.0;
         }
-        fireflyInstanced.instanceMatrix.needsUpdate = true;
+      }
+      for (let i = 0; i < meteorSlots.length; i += 1) {
+        const slot = meteorSlots[i]!;
+        if (!slot.active) continue;
+        slot.age += dt;
+        const p = slot.age / slot.duration;
+        if (p >= 1 || night <= 0.25) {
+          slot.active = false;
+          slot.mesh.visible = false;
+          slot.mat.uniforms["uAlpha"]!.value = 0;
+          continue;
+        }
+        meteorScratchPos.lerpVectors(slot.startPos, slot.endPos, p);
+        slot.mesh.position.copy(meteorScratchPos);
+        // X축 = 유성 진행 방향, Z축 = 원점(지상 관측자)을 향하는 법선
+        meteorScratchNormal.copy(meteorScratchPos).negate().normalize();
+        slot.side.crossVectors(meteorScratchNormal, slot.dir).normalize();
+        meteorScratchNormal.crossVectors(slot.dir, slot.side).normalize();
+        meteorScratchBasis.makeBasis(slot.dir, slot.side, meteorScratchNormal);
+        slot.mesh.quaternion.setFromRotationMatrix(meteorScratchBasis);
+        const env = Math.sin(p * Math.PI);
+        slot.mat.uniforms["uAlpha"]!.value = env * Math.min(1, (night - 0.25) / 0.45);
       }
 
       // 날씨 파티클 갱신 (단일 InstancedMesh 320기, clear 시 0 비용)
@@ -775,9 +978,12 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     dispose() {
       skyGeo.dispose();
       skyMat.dispose();
-      fireflyInstanced.dispose();
       fireflyGeo.dispose();
       fireflyMat.dispose();
+      meteorGeo.dispose();
+      for (const slot of meteorSlots) {
+        slot.mat.dispose();
+      }
       weatherInstanced.dispose();
       weatherGeo.dispose();
       weatherMat.dispose();
