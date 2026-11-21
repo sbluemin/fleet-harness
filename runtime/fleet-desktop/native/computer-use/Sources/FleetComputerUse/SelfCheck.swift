@@ -47,7 +47,8 @@ private final class ProbeView: NSView {
   panel.orderBack(nil)
   defer { panel.close() }
   let id = CGWindowID(panel.windowNumber)
-  let point = CGPoint(x: 9, y: 12)
+  // 중앙을 피해야 축이 뒤집혀도 좌표가 우연히 일치하지 않는다.
+  let point = CGPoint(x: 9, y: 7)
   do {
     try await pause(16)
     guard let row = (CGWindowListCopyWindowInfo([.optionIncludingWindow], id) as? [Object])?.first,
