@@ -53,3 +53,28 @@ export interface ContextRailSession {
 export type ContextRailScope =
   | { readonly kind: "surface"; readonly surfaceId: string; readonly params: Readonly<Record<string, unknown>> }
   | { readonly kind: "objective"; readonly objectiveId: string; readonly bodyObjectiveId: string };
+
+/**
+ * 대화 우측 부유 엣지 스택에 함께 쌓이는 보조 칩(사령관 목표·루틴 등).
+ * 컨텍스트 창 링 칩 아래 같은 세로 축에 서며, 호버 미리보기 말풍선과 좌향 플라이아웃을 공유한다.
+ * 컨텍스트 창 끄기(`context-rail-toggle`)의 영향을 받지 않고 채팅 중에 남는다.
+ */
+export interface ContextRailExtraItem {
+  readonly id: string;
+  /** 칩 버튼의 접근 이름. */
+  readonly label: string;
+  /** 칩 아이콘(16px 안팎). */
+  readonly icon: ReactNode;
+  /** 칩 하단 짧은 수치(예: "1/3", "2"). */
+  readonly value: string;
+  /** 진행 중·활성 등 은은한 상태 점. */
+  readonly dot?: boolean;
+  /** 호버·키보드 포커스 시 왼쪽에 뜨는 미리보기 말풍선. */
+  readonly bubbleTitle: string;
+  readonly bubbleDetail?: string;
+  /** 좌향 플라이아웃 카드 머리 제목·보조 문구. */
+  readonly panelTitle: string;
+  readonly panelSubtitle?: string;
+  /** 플라이아웃 닫기 핸들을 받아 본문을 그린다. */
+  readonly render: (close: () => void) => ReactNode;
+}

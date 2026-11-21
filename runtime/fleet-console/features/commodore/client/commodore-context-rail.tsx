@@ -1,35 +1,133 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
+import { openCommanderConversation } from "../../workspace/client/commander-tab/commander-navigation.js";
 import { registerContextRailProvider, type ContextRailProvider } from "../../workspace/client/conversation/context-rail/registry.js";
-import type { ContextRailMeasure } from "../../workspace/shared/context-rail.js";
-import type { MongleState } from "../../workspace/shared/avatars.js";
+import type { ContextRailExtraItem, ContextRailMeasure } from "../../workspace/shared/context-rail.js";
+import { commodoreAvatarKey, type MongleState } from "../../workspace/shared/avatars.js";
 import type { CommodoreRunStatus } from "../shared/contracts/types.js";
+import { finishedObjectives, isRunningObjective, useObjectiveTheater } from "./board.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
-import { useCommodoreName } from "./commodore-name.js";
-import { commodoreName } from "./commodore-name.js";
-import { loadCommodore, readCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { nextRoutineWord } from "./commodore-header.js";
+import { useCommodoreName, commodoreName } from "./commodore-name.js";
+import { CommodoreRoutines } from "./commodore-routines.js";
+import { commodoreTasksList, loadCommodore, readCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
 import { TASKFORCE_SURFACE_ID } from "./taskforce/taskforce.js";
 import { useTaskforce } from "./taskforce/state.js";
 import { getT } from "./i18n/index.js";
 
+const GoalsChipGlyph = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+    <circle cx="8" cy="8" r="5.5" />
+    <circle cx="8" cy="8" r="2.3" />
+  </svg>
+);
+
+const RoutinesChipGlyph = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M13 8a5 5 0 1 1-1.45-3.55" />
+    <path d="M13 3.2v2.7h-2.7" />
+  </svg>
+);
+
 /**
- * 사령관 대화의 컨텍스트 레일 제공자. 사령관 상주 세션의 카드 한 장이고, 내용은 지휘관·구성원 원장과 같은 컨텍스트 창이다.
- * 사령관의 75% 요약·이어 가기 같은 내부 정책은 호스트가 그대로 쥐고 있고, 여기는 보이는 방식만 통일한다. 사령관 기록을 읽기 전용으로
- * 보는 목표 화면에서는 그리지 않는다.
+ * 사령관 대화의 우측 부유 엣지 스택 제공자. 컨텍스트 창 링 칩 아래에 목표·루틴 미니 칩을 세로로 적층한다.
+ * 사령관의 75% 요약·이어 가기 같은 내부 정책은 호스트가 그대로 쥐고 있고, 여기는 보이는 방식만 통일한다.
+ * 사령관 기록을 읽기 전용으로 보는 목표 화면에서는 그리지 않는다.
  */
 const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  const t = getT(language);
   const commodoreId = scope.kind === "surface" && scope.surfaceId === COMMODORE_SURFACE_ID && scope.params.readOnly !== true && typeof scope.params.commodoreId === "string"
     ? scope.params.commodoreId
     : null;
   const { view } = useCommodore(commodoreId);
-  const name = useCommodoreName(commodoreId ?? "", getT(language));
+  const board = useObjectiveTheater(commodoreId);
+  const name = useCommodoreName(commodoreId ?? "", t);
+  const accent = useAvatarAccent(commodoreId ? commodoreAvatarKey(commodoreId) : null);
+  const tasks = commodoreTasksList();
   if (commodoreId === null) return null;
+
   const measure = measureOf(view?.run?.context);
   // 사령관은 대화가 창의 일정 비율에 닿으면 요약해 같은 세션에서 이어 간다 — 그 정책은 그대로이고 꼬리 문구가 말한다.
-  const footnote = measure?.compactAt !== undefined ? getT(language)("commodore.context.foot", { percent: Math.round((measure.compactAt / measure.max) * 100) }) : undefined;
+  const footnote = measure?.compactAt !== undefined ? t("commodore.context.foot", { percent: Math.round((measure.compactAt / measure.max) * 100) }) : undefined;
+
+  const openGoals = board.objectives.filter((objective) => objective.removed === null && objective.done === null);
+  const activeGoals = openGoals.filter((objective) => objective.commenced || isRunningObjective(objective));
+  const leadGoal = activeGoals[0] ?? null;
+  const leadProgress = leadGoal && leadGoal.missions.length > 0
+    ? ` (${leadGoal.missions.filter((mission) => mission.done !== null).length}/${leadGoal.missions.length})`
+    : "";
+  const goalsValue = activeGoals.length > 0 && activeGoals.length < openGoals.length
+    ? `${activeGoals.length}/${openGoals.length}`
+    : String(openGoals.length);
+  const goalsBubbleTitle = openGoals.length > 0 ? t("commodore.edge.goalsCount", { n: openGoals.length }) : t("commodore.tasks.goals");
+  const goalsBubbleDetail = leadGoal
+    ? t("commodore.edge.goalsRunning", { title: `${leadGoal.title}${leadProgress}` })
+    : openGoals.length > 0
+      ? t("commodore.edge.goalsIdle")
+      : t("commodore.edge.goalsEmpty");
+  const hasAnyGoals = openGoals.length > 0 || finishedObjectives(commodoreId).length > 0 || !board.loaded;
+
+  const routines = view?.state.routines ?? [];
+  const enabledRoutines = routines.filter((routine) => routine.enabled).length;
+  const nextRoutine = nextRoutineWord(t, view);
+  const routinesBubbleTitle = routines.length > 0
+    ? t("commodore.routines.count", { n: enabledRoutines, total: routines.length })
+    : t("commodore.tasks.routines");
+  const routinesBubbleDetail = nextRoutine ?? t("commodore.edge.routinesEmpty");
+
+  const extras: ContextRailExtraItem[] = [];
+  if (tasks !== null) {
+    extras.push({
+      id: "goals",
+      label: t("commodore.edge.goalsAria", { summary: goalsBubbleTitle }),
+      icon: <GoalsChipGlyph />,
+      value: goalsValue,
+      dot: activeGoals.length > 0,
+      bubbleTitle: goalsBubbleTitle,
+      bubbleDetail: goalsBubbleDetail,
+      panelTitle: t("commodore.tasks.goals"),
+      panelSubtitle: name,
+      render: (close) => (
+        <div className="commodore-edge-panel workspace-avatar-panel" style={accent ?? undefined}>
+          {hasAnyGoals ? (
+            <tasks.List
+              commodoreId={commodoreId}
+              selectedId={null}
+              heading={null}
+              onSelect={({ objectiveId, open }) => {
+                close();
+                if (objectiveId !== null) openCommanderConversation(commodoreId, objectiveId);
+                else open?.();
+              }}
+            />
+          ) : (
+            <p className="commodore-edge-empty">{t("commodore.edge.goalsEmptyBody")}</p>
+          )}
+        </div>
+      ),
+    });
+  }
+  extras.push({
+    id: "routines",
+    label: t("commodore.edge.routinesAria", { summary: routinesBubbleTitle }),
+    icon: <RoutinesChipGlyph />,
+    value: String(enabledRoutines),
+    dot: enabledRoutines > 0,
+    bubbleTitle: routinesBubbleTitle,
+    bubbleDetail: routinesBubbleDetail,
+    panelTitle: t("commodore.tasks.routines"),
+    panelSubtitle: name,
+    render: () => (
+      <div className="commodore-edge-panel workspace-avatar-panel" style={accent ?? undefined}>
+        <CommodoreRoutines commodoreId={commodoreId} language={language} />
+      </div>
+    ),
+  });
+
   return <>{children([{
     id: commodoreId,
     name,
@@ -38,7 +136,7 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
     focus: true,
     avatar: <CommodoreAvatar commodoreId={commodoreId} state={railMongleState(view)} size={26} label="" decorative />,
     ...(footnote ? { footnote } : {}),
-  }])}</>;
+  }], extras)}</>;
 };
 
 /**

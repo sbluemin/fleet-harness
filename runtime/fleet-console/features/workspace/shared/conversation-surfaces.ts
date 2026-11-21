@@ -63,6 +63,8 @@ export interface ConversationSurfaceDescriptor {
    * 없거나 null 이면(예: 읽기 전용 대화) 이름은 글로만 선다.
    */
   readonly rename?: (ctx: ConversationSurfaceContext) => ((title: string) => void) | null;
+  /** 오른쪽 패널 탭이 없는 대화에서 상단 이름 pill 을 눌렀을 때 열리는 프로필 팝오버 하단에 붙이는 보조 내용. */
+  readonly profileFooter?: (ctx: ConversationSurfaceContext, close: () => void) => ReactNode;
   /** `avatar`(와 머리의 다른 값)가 읽는 플러그인 상태가 바뀌면 깨운다 — 호스트가 머리 pill·오른쪽 패널 머리를 다시 그린다. */
   readonly subscribe?: (listener: () => void) => () => void;
   readonly render: (ctx: ConversationSurfaceContext) => ReactNode;

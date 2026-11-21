@@ -420,6 +420,92 @@
   overflow-wrap: break-word;
 }
 
+.commodore-map-top-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.commodore-map-panel-open {
+  height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--dialog-face) 84%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.commodore-map-panel-open:hover {
+  background: var(--popover-face);
+  border-color: var(--hairline-strong);
+}
+
+.commodore-map-panel-open:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+/* 데스크톱 무대 우측 부유 글래스 인스펙터 — 우측 사이드바 대신 무대 안에서 요약·설명·정보 편집을 맡는다. */
+.commodore-map-stage[data-panel-open="true"] .commodore-map-top,
+.commodore-map-stage[data-panel-open="true"] .commodore-map-legend {
+  right: calc(min(316px, calc(100% - 24px)) + 24px);
+}
+
+.commodore-map-stage[data-panel-open="true"] .commodore-map-notice {
+  left: calc((100% - min(316px, calc(100% - 24px)) - 12px) / 2);
+  max-width: calc(100% - min(316px, calc(100% - 24px)) - 56px);
+}
+
+.commodore-map-stage-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  width: min(316px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--popover-radius);
+  background: color-mix(in oklch, var(--popover-face) 92%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--popover-surface-shadow);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+html[data-desktop-shell="true"] .commodore-map-stage-panel {
+  -webkit-app-region: no-drag;
+}
+
+.commodore-map-stage-panel .commodore-map-panel {
+  flex: 1 1 auto;
+  border-left: 0;
+  padding: 16px 16px 20px;
+}
+
+.commodore-map-stage-panel .commodore-map-soma {
+  align-items: flex-start;
+}
+
+.commodore-map-soma-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.commodore-map-stage-panel .objectives-commodore-failure {
+  margin: 0 16px 12px;
+}
+
 /* 우측 사이드바 틀(.conversation-panel-frame)이 이미 경계선·거터·스크롤을 맡으므로 중복 테두리·여백·스크롤을 뺀다. */
 .commodore-map-panel[data-in-rail="true"] {
   border-left: 0;
