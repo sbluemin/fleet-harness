@@ -67,16 +67,21 @@ function finalizeTexture(
   return tex;
 }
 
-/** 타일 경계에서 끊기지 않게 3x3 래핑으로 브러시 스트로크를 찍는다. */
+/** 타일 경계에서 끊기지 않게 3x3 래핑으로 브러시 스트로크를 찍는다 (화면 밖 타일은 스킵). */
 function drawWrapped(
   size: number,
   x: number,
   y: number,
+  margin: number,
   draw: (ox: number, oy: number) => void,
 ): void {
   for (let ox = -size; ox <= size; ox += size) {
+    const px = x + ox;
+    if (px + margin < 0 || px - margin > size) continue;
     for (let oy = -size; oy <= size; oy += size) {
-      draw(x + ox, y + oy);
+      const py = y + oy;
+      if (py + margin < 0 || py - margin > size) continue;
+      draw(px, py);
     }
   }
 }
@@ -103,7 +108,7 @@ function buildTerrainPair(): [CanvasTexture, CanvasTexture] {
     const shade = Math.round(218 + rng() * 34);
     const warm = Math.round((rng() - 0.5) * 10);
     const bVal = Math.round(112 + rng() * 34);
-    drawWrapped(size, x, y, (px, py) => {
+    drawWrapped(size, x, y, Math.max(rx, ry) + 2, (px, py) => {
       ctxC.save();
       ctxC.translate(px, py);
       ctxC.rotate(rot);
@@ -166,7 +171,7 @@ function buildPlasterPair(): [CanvasTexture, CanvasTexture] {
     const r = 8 + rng() * 24;
     const v = Math.round(226 + rng() * 24);
     const bv = Math.round(108 + rng() * 44);
-    drawWrapped(size, x, y, (px, py) => {
+    drawWrapped(size, x, y, r + 2, (px, py) => {
       ctxC.fillStyle = `rgba(${v}, ${v - 7}, ${v - 16}, 0.18)`;
       ctxC.beginPath();
       ctxC.ellipse(px, py, r, r * 0.65, rng() * Math.PI, 0, Math.PI * 2);
@@ -272,7 +277,7 @@ function buildBarkPair(): [CanvasTexture, CanvasTexture] {
     while (y < size) {
       const seg = 18 + rng() * 40;
       const drift = (rng() - 0.5) * 3;
-      drawWrapped(size, x + drift, y, (px, py) => {
+      drawWrapped(size, x + drift, y, Math.max(w, seg) + 2, (px, py) => {
         ctxC.fillRect(px, py, w, seg);
         ctxB.fillRect(px, py, w, seg);
       });
@@ -416,7 +421,7 @@ function buildFoliagePair(): [CanvasTexture, CanvasTexture] {
     const light = rng();
     const shade = Math.round(176 + light * 76);
     const bVal = Math.round(68 + light * 165);
-    drawWrapped(size, x, y, (px, py) => {
+    drawWrapped(size, x, y, Math.max(rx, ry) + 2, (px, py) => {
       ctxC.save();
       ctxC.translate(px, py);
       ctxC.rotate(rot);
@@ -458,7 +463,16 @@ function buildContactShadowMap(): CanvasTexture {
   return tex;
 }
 
-export function createMeadowTexturePack(): MeadowTexturePack {
+interface CachedMeadowTextures {
+  readonly pack: Omit<MeadowTexturePack, "dispose">;
+  readonly all: readonly Texture[];
+}
+
+let cachedMeadowTextures: CachedMeadowTextures | null = null;
+
+function ensureCachedMeadowTextures(): CachedMeadowTextures {
+  if (cachedMeadowTextures) return cachedMeadowTextures;
+
   const [terrainMap, terrainBump] = buildTerrainPair();
   const [plasterMap, plasterBump] = buildPlasterPair();
   const [woodMap, woodBump] = buildWoodPair();
@@ -486,24 +500,45 @@ export function createMeadowTexturePack(): MeadowTexturePack {
     contactShadowMap,
   ];
 
+  cachedMeadowTextures = {
+    pack: {
+      terrainMap,
+      terrainBump,
+      plasterMap,
+      plasterBump,
+      woodMap,
+      woodBump,
+      barkMap,
+      barkBump,
+      stoneMap,
+      stoneBump,
+      roofMap,
+      roofBump,
+      foliageMap,
+      foliageBump,
+      contactShadowMap,
+    },
+    all,
+  };
+  return cachedMeadowTextures;
+}
+
+/**
+ * 초원 PBR 텍스처 팩을 모듈 싱글톤 캐시에서 반환한다.
+ * 더 월드를 닫았다 다시 입장해도 15개 Canvas2D 텍스처를 재생성하지 않아 재입장 히치가 0ms가 된다.
+ */
+export function createMeadowTexturePack(): MeadowTexturePack {
+  const { pack } = ensureCachedMeadowTextures();
   return {
-    terrainMap,
-    terrainBump,
-    plasterMap,
-    plasterBump,
-    woodMap,
-    woodBump,
-    barkMap,
-    barkBump,
-    stoneMap,
-    stoneBump,
-    roofMap,
-    roofBump,
-    foliageMap,
-    foliageBump,
-    contactShadowMap,
+    ...pack,
     dispose() {
-      for (const tex of all) tex.dispose();
+      // 모듈 싱글톤 캐시가 수명 동안 텍스처를 보관한다.
     },
   };
+}
+
+export function disposeMeadowTexturePackCache(): void {
+  if (!cachedMeadowTextures) return;
+  for (const tex of cachedMeadowTextures.all) tex.dispose();
+  cachedMeadowTextures = null;
 }

@@ -28,6 +28,22 @@ import { currentAvatarFuzz } from "../../../../features/workspace/client/compone
 import { readCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
 import { createTheWorldClient, type TheWorldClient } from "../../../../features/the-world/client/index.js";
+import {
+  createUseWorldQuestBoard,
+  ensureCommodoreTranscript,
+  ensureObjectiveTimeline,
+  ensureTheaterMetrics,
+  isTheaterMetricsLoading,
+  openApprovals,
+  openCreateCommodore,
+  readTheaterMetrics,
+  renderCommodoreAsks,
+  renderCommodorePanel,
+  renderObjectivePanel,
+  subscribeTheaterMetrics,
+  useActorConversation,
+  useWorldChatFeed,
+} from "./world-bridge.js";
 import { getState, subscribe } from "./store.js";
 import { getViewedCommodoreId } from "./viewed-theater.js";
 import { getViewModeSnapshot } from "./view-mode-store.js";
@@ -107,6 +123,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
   const objectiveRecordClusters = combineClusterSources(
     baseProviders.flatMap((plugin) => (plugin.objectiveRecordClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.objectiveRecordClusters }] : [])),
   );
+  const useWorldQuestBoard = createUseWorldQuestBoard(objectiveRecordClusters);
   const theWorld = createTheWorldClient({
     commodore: commodore.host,
     readCommodores: readCommodoreList,
@@ -147,6 +164,20 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
+    ensureCommodoreTranscript,
+    ensureObjectiveTimeline,
+    readTheaterMetrics,
+    subscribeTheaterMetrics,
+    isTheaterMetricsLoading,
+    ensureTheaterMetrics,
+    useWorldChatFeed,
+    useWorldQuestBoard,
+    useActorConversation,
+    openCreateCommodore,
+    openApprovals,
+    renderCommodorePanel,
+    renderCommodoreAsks,
+    renderObjectivePanel,
   });
   const providers: readonly ClientFeatureDescriptor[] = [...baseProviders, theWorld.descriptor];
   const railPanelIds = new Set<string>();

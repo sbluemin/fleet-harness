@@ -4,6 +4,7 @@ import type { ConsoleControlHost } from "../../../features/execution/shared/cont
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
+import { createTheWorldFeature } from "../../../features/the-world/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
@@ -3258,6 +3259,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
       });
       for (const route of quotaFeature.routes) {
+        routeRegistry.register(route.path, route.handler);
+        executionApiCatalog.push(...route.catalog);
+      }
+      const theWorldFeature = createTheWorldFeature({
+        listCommodoreTheaters: (commodoreId) => {
+          if (!ownership) return [];
+          const ids = commodoreId ? [commodoreId] : ownership.entities.ids();
+          return ids.flatMap((id) =>
+            ownership!.entities.theatersOf(id).map((row) => ({
+              theaterId: consoleFeaturePorts.paths.workspaceHash(row.path),
+              rootPath: row.path,
+            })),
+          );
+        },
+        http: consoleFeaturePorts.http,
+        security: consoleFeaturePorts.security,
+      });
+      featureCleanupCallbacks.add(() => theWorldFeature.dispose());
+      for (const route of theWorldFeature.routes) {
         routeRegistry.register(route.path, route.handler);
         executionApiCatalog.push(...route.catalog);
       }

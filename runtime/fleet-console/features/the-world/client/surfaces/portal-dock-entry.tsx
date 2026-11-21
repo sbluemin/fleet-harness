@@ -4,6 +4,7 @@ import type { TheWorldClientDeps } from "../deps.js";
 import { getWorldT } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import { enterTheWorld } from "../world-store.js";
+import { WorldIcon } from "./world-icons.js";
 
 /**
  * 데스크톱 사이드바 하단 시스템 독(`ConversationSideBarBottom`)에 장착되는 「더 월드」 특수 진입 포털.
@@ -48,7 +49,8 @@ export function PortalDockEntry({
       />
       <span>{t("theWorld.portal.label")}</span>
       <span className="the-world-portal-count">
-        ✦{snapshot.activeCount > 0 ? snapshot.activeCount : snapshot.totalPopulation}
+        <WorldIcon name="commodore" size={11} tone="amber" />
+        <span>{snapshot.activeCount > 0 ? snapshot.activeCount : snapshot.totalPopulation}</span>
       </span>
     </button>
   );

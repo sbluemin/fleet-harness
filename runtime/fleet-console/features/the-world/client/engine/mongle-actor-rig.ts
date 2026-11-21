@@ -314,6 +314,9 @@ void main() {
 
   float tStart = max(0.0, -b - sqrt(disc));
   float tEnd = -b + sqrt(disc);
+  float camDist = length(ro) * uCharScale;
+  int maxSteps = (camDist > 26.0) ? 28 : 48;
+  float minStep = (camDist > 26.0) ? 0.014 : 0.008;
   AnimRig rig = computeAnim();
 
   float t = tStart;
@@ -323,6 +326,7 @@ void main() {
   float minPlushT = tStart;
 
   for (int i = 0; i < 48; i++) {
+    if (i >= maxSteps) break;
     vec3 p = ro + rd * t;
     vec2 h = mapScene(p, rig);
     if ((h.y == 0.0 || h.y == 7.0) && h.x < minPlushD) {
@@ -334,7 +338,7 @@ void main() {
       tHit = t;
       break;
     }
-    t += max(h.x * 0.88, 0.008);
+    t += max(h.x * 0.88, minStep);
     if (t > tEnd) break;
   }
 
@@ -392,17 +396,22 @@ void main() {
       grazeMask *= (1.0 - eyeMask);
 
       vec3 baseLin = toLinear(pCol);
-      vec3 fp = q * 38.0;
-      float n0 = noise3(fp);
-      vec3 fGrad = vec3(noise3(fp + vec3(0.18,0,0)) - n0, noise3(fp + vec3(0,0.18,0)) - n0, noise3(fp + vec3(0,0,0.18)) - n0);
-      vec3 Nf = normalize(N + fGrad * 0.62);
+      vec3 Nf = N;
+      if (camDist < 24.0) {
+        vec3 fp = q * 38.0;
+        float n0 = noise3(fp);
+        vec3 fGrad = vec3(noise3(fp + vec3(0.18,0,0)) - n0, noise3(fp + vec3(0,0.18,0)) - n0, noise3(fp + vec3(0,0,0.18)) - n0);
+        Nf = normalize(N + fGrad * 0.62);
+      }
       float diff = clamp((dot(Nf, L1) + 0.38) / 1.38, 0.0, 1.0);
       vec3 deepCol = pow(max(baseLin, vec3(0.002)), vec3(1.38)) * 0.16;
       vec3 hiCol = baseLin * 1.12 + vec3(0.024);
       coreCol = mix(deepCol, hiCol, pow(diff, 1.05));
       float velvet = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.5);
       coreCol += mix(baseLin, vec3(0.95), 0.25) * velvet * 0.34;
-      coreCol *= (1.0 + (noise3(q * 105.0) - 0.5) * 0.14);
+      if (camDist < 24.0) {
+        coreCol *= (1.0 + (noise3(q * 105.0) - 0.5) * 0.14);
+      }
       if (isWing) coreCol *= 0.88;
 
       if (eyeMask > 0.001) {
@@ -441,7 +450,8 @@ void main() {
     coreAlpha = 1.0;
   }
 
-  float furLen = 0.082 * uFuzz;
+  float furLod = 1.0 - smoothstep(16.0, 22.0, camDist);
+  float furLen = 0.082 * uFuzz * furLod;
   vec3 furAccum = vec3(0.0);
   float furAlpha = 0.0;
   if (furLen > 0.004 && minPlushD < furLen && grazeMask > 0.02) {
@@ -519,6 +529,7 @@ export interface MongleActorRig {
 }
 
 const sharedCubeGeo = new BoxGeometry(2, 2, 2);
+sharedCubeGeo.computeBoundingSphere();
 const sharedShadowSphereGeo = new SphereGeometry(0.55, 10, 8);
 const sharedContactGeo = new CircleGeometry(0.68, 24);
 sharedContactGeo.rotateX(-Math.PI * 0.5);
@@ -545,6 +556,18 @@ void main() {
   fragColor = vec4(0.03, 0.06, 0.04, a);
 }
 `;
+
+// 모든 액터가 완전히 동일하게 사용하는 보조 머티리얼은 모듈 스코프에서 1회 공유한다.
+const sharedShadowMat = new MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+const sharedContactMat = new ShaderMaterial({
+  glslVersion: GLSL3,
+  transparent: true,
+  depthWrite: false,
+  vertexShader: CONTACT_AO_VERTEX,
+  fragmentShader: CONTACT_AO_FRAGMENT,
+});
+const sharedCrateMat = new MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.55, roughness: 0.35 });
+const sharedBeaconMat = new MeshStandardMaterial({ color: 0xfde047, emissive: 0xfacc15, emissiveIntensity: 1.45, roughness: 0.22 });
 
 export function createMongleActorRig(params: MongleActorRigParams): MongleActorRig {
   const group = new Group();
@@ -577,27 +600,21 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
     fragmentShader: ACTOR_FRAGMENT,
   });
 
+  // 실제 바운딩 큐브 크기(1.46 * scale)와 일치시켜 카메라 프러스텀 컬링을 정확히 활성화한다.
   const volumeMesh = new Mesh(sharedCubeGeo, mat);
-  volumeMesh.frustumCulled = false;
+  volumeMesh.scale.setScalar(1.46 * params.scale);
+  volumeMesh.frustumCulled = true;
   volumeMesh.renderOrder = 10;
   group.add(volumeMesh);
 
   // 보이지 않는 그림자 캐스터 코어
-  const shadowMat = new MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-  const shadowCaster = new Mesh(sharedShadowSphereGeo, shadowMat);
+  const shadowCaster = new Mesh(sharedShadowSphereGeo, sharedShadowMat);
   shadowCaster.castShadow = true;
   shadowCaster.scale.setScalar(params.scale);
   group.add(shadowCaster);
 
   // 발밑 소프트 그라데이션 밀착 접지 그림자 (Contact AO — 각진 테두리 없음)
-  const contactMat = new ShaderMaterial({
-    glslVersion: GLSL3,
-    transparent: true,
-    depthWrite: false,
-    vertexShader: CONTACT_AO_VERTEX,
-    fragmentShader: CONTACT_AO_FRAGMENT,
-  });
-  const contactDisc = new Mesh(sharedContactGeo, contactMat);
+  const contactDisc = new Mesh(sharedContactGeo, sharedContactMat);
   contactDisc.scale.setScalar(params.scale);
   contactDisc.renderOrder = 2;
   group.add(contactDisc);
@@ -616,13 +633,11 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
   group.add(targetRing);
 
   // 결과 운반용 3D 선물 상자 & 승인 대기 다이아몬드 비콘
-  const crateMat = new MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.55, roughness: 0.35 });
-  const crateMesh = new Mesh(sharedCrateGeo, crateMat);
+  const crateMesh = new Mesh(sharedCrateGeo, sharedCrateMat);
   crateMesh.visible = false;
   group.add(crateMesh);
 
-  const beaconMat = new MeshStandardMaterial({ color: 0xfde047, emissive: 0xfacc15, emissiveIntensity: 1.45, roughness: 0.22 });
-  const beaconMesh = new Mesh(sharedBeaconGemGeo, beaconMat);
+  const beaconMesh = new Mesh(sharedBeaconGemGeo, sharedBeaconMat);
   beaconMesh.visible = false;
   group.add(beaconMesh);
 
@@ -673,11 +688,7 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
     },
     dispose() {
       mat.dispose();
-      shadowMat.dispose();
-      contactMat.dispose();
       ringMat.dispose();
-      crateMat.dispose();
-      beaconMat.dispose();
     },
   };
 }

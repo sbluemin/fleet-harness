@@ -25,5 +25,8 @@ export default defineConfig({
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
+    // CSP `connect-src 'self'`는 data: URI fetch를 차단하므로 4KB 미만 소형 .glb/.gltf(예: grass-tuft.glb)도
+    // base64 인라인하지 않고 /console/assets/*.glb 정적 파일로 내보낸다.
+    assetsInlineLimit: (filePath) => (/\.(?:glb|gltf)$/iu.test(filePath) ? false : undefined),
   },
 });

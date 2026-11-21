@@ -319,6 +319,13 @@ function renameCommodoreSpeakers(snapshot: GroupTimelineSnapshot, alias: string 
   return { ...snapshot, entries, working, preview };
 }
 
+/** 지정한 루트 Objective의 그룹 대화 원장(라이브 소켓·휴면 이력)을 구독 수요에 등록한다. */
+export function demandGroupTimeline(rootObjectiveId: string): void {
+  if (!rootObjectiveId || demanded.has(rootObjectiveId)) return;
+  demanded.add(rootObjectiveId);
+  resync?.();
+}
+
 export function useGroupTimeline(rootObjectiveId: string | null): GroupTimelineSnapshot {
   const t = useT();
   const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
@@ -331,6 +338,36 @@ export function useGroupTimeline(rootObjectiveId: string | null): GroupTimelineS
     resync?.();
   }, [rootObjectiveId]);
   return useMemo(() => snapshot(rootObjectiveId, clusters.find((cluster) => cluster.conversation?.objectiveId === rootObjectiveId)?.conversation, t("cluster.picker.coordinator")), [rootObjectiveId, clusters, state, tick, t]);
+}
+
+/** 여러 활성 루트 Objective의 실시간 그룹 대화 타임라인을 한꺼번에 투영한다(더 월드 전역 채팅·말풍선용). */
+export function useGroupTimelines(rootObjectiveIds: readonly string[]): ReadonlyMap<string, GroupTimelineSnapshot> {
+  const t = useT();
+  const tick = useSyncExternalStore(subscribe, getRevision, getRevision);
+  const state = useConsoleState();
+  const clusters = useGroupClusters();
+  const idKey = rootObjectiveIds.join(",");
+  useEffect(() => {
+    let added = false;
+    for (const rootId of rootObjectiveIds) {
+      if (!rootId || demanded.has(rootId)) continue;
+      demanded.add(rootId);
+      added = true;
+    }
+    if (added) resync?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idKey가 rootObjectiveIds 변경을 대표한다.
+  }, [idKey]);
+  return useMemo(() => {
+    const map = new Map<string, GroupTimelineSnapshot>();
+    const boards = new Map(clusters.flatMap((cluster) => cluster.conversation ? [[cluster.conversation.objectiveId, cluster.conversation] as const] : []));
+    const coordinatorLabel = t("cluster.picker.coordinator");
+    for (const rootId of rootObjectiveIds) {
+      if (!rootId) continue;
+      map.set(rootId, snapshot(rootId, boards.get(rootId), coordinatorLabel));
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- idKey가 rootObjectiveIds 변경을 대표한다.
+  }, [idKey, clusters, state, tick, t]);
 }
 
 /**

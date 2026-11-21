@@ -6,17 +6,18 @@ import type { TheWorldClientDeps } from "../deps.js";
 import { getWorldT } from "../i18n/index.js";
 import {
   closeActorInteraction,
-  exitTheWorld,
   openActorDialogue,
-  openActorInspect,
+  openActorPanel,
   requestActorEmote,
   requestApproachActor,
   triggerWorldChoreography,
 } from "../world-store.js";
+import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
 interface RadialAction {
   readonly id: string;
-  readonly icon: string;
+  readonly icon: WorldIconName;
+  readonly iconTone: WorldIconTone;
   readonly label: string;
   readonly tone?: "primary" | "default";
   readonly run: () => void;
@@ -44,7 +45,7 @@ const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
 /**
  * 심즈 / MMORPG 스타일 캐릭터 중심 방사형 상호작용 메뉴.
  *
- * 대상의 3D 화면 투영 좌표 주변으로 액션 페탈이 원형으로 펼쳐지며,
+ * 모든 항목이 2D 콘솔로 이탈하지 않고 더 월드 내부의 게임 창(대화·목표 보드·상태/정보·설정·감정표현)으로 이어지며,
  * 마우스 클릭뿐 아니라 숫자키(`1`–`6`), 방향키/Tab + `Enter`로 즉시 선택할 수 있다.
  */
 export function WorldRadialMenu({
@@ -64,26 +65,14 @@ export function WorldRadialMenu({
   const [activeIndex, setActiveIndex] = useState(0);
 
   const actions = useMemo<readonly RadialAction[]>(() => {
-    const openInConsole = (tab?: "log" | "info" | "memory" | "settings" | "goals") => {
-      exitTheWorld({
-        reducedMotion: deps.isReducedMotion(),
-        onExited: () => {
-          if (actor.role === "commodore" && actor.commodoreId) {
-            deps.openCommodoreInConsole(actor.commodoreId, tab ? { tab } : undefined);
-          } else if (actor.commodoreId && (actor.rootObjectiveId ?? actor.objectiveId)) {
-            deps.openObjectiveInConsole(actor.commodoreId, (actor.rootObjectiveId ?? actor.objectiveId)!);
-          }
-        },
-      });
-    };
-
     const approachAction: RadialAction = {
       id: "approach",
-      icon: "🏃",
+      icon: "approach",
+      iconTone: "teal",
       label: "다가가기",
       run: () => {
         requestApproachActor(actor.id);
-        onStatusBanner(`🏃 ${actor.name} 앞으로 다가갔습니다.`);
+        onStatusBanner(`${actor.name} 앞으로 다가갔습니다.`);
       },
     };
 
@@ -91,47 +80,46 @@ export function WorldRadialMenu({
       return [
         {
           id: "talk",
-          icon: "💬",
+          icon: "chat",
+          iconTone: "amber",
           label: "말 걸기",
           tone: "primary",
           run: () => openActorDialogue(actor.id),
         },
         {
-          id: "inspect",
-          icon: "🔍",
-          label: "상태 살피기",
-          run: () => openActorInspect(actor.id),
+          id: "goals",
+          icon: "questMap",
+          iconTone: "moss",
+          label: "목표·루틴",
+          run: () => openActorPanel(actor.id, "goals"),
+        },
+        {
+          id: "info",
+          icon: "inspect",
+          iconTone: "cerulean",
+          label: "상태·정보",
+          run: () => openActorPanel(actor.id, "info"),
+        },
+        {
+          id: "settings",
+          icon: "settings",
+          iconTone: "indigo",
+          label: "설정",
+          run: () => openActorPanel(actor.id, "settings"),
         },
         isNear
           ? {
             id: "greet",
-            icon: "👋",
+            icon: "greet",
+            iconTone: "rose",
             label: "인사하기",
             run: () => {
               requestActorEmote(actor.id, "greet");
               closeActorInteraction();
-              onStatusBanner(`👋 ${actor.name} 사령관에게 반갑게 인사했습니다!`);
+              onStatusBanner(`${actor.name} 사령관에게 반갑게 인사했습니다.`);
             },
           }
           : approachAction,
-        {
-          id: "goals",
-          icon: "🗺️",
-          label: "목표 보드",
-          run: () => openInConsole("goals"),
-        },
-        {
-          id: "settings",
-          icon: "⚙️",
-          label: "설정 열기",
-          run: () => openInConsole("settings"),
-        },
-        {
-          id: "console",
-          icon: "↗",
-          label: "대화창 열기",
-          run: () => openInConsole("log"),
-        },
       ];
     }
 
@@ -139,82 +127,91 @@ export function WorldRadialMenu({
       return [
         {
           id: "talk",
-          icon: "💬",
-          label: "지시 전달",
+          icon: "chat",
+          iconTone: "amber",
+          label: "지시·대화",
           tone: "primary",
           run: () => openActorDialogue(actor.id),
         },
         {
-          id: "inspect",
-          icon: "🗺️",
-          label: "임무 현황",
-          run: () => openActorInspect(actor.id),
+          id: "goals",
+          icon: "questMap",
+          iconTone: "moss",
+          label: "목표 보드",
+          run: () => openActorPanel(actor.id, "goals", actor.rootObjectiveId ?? actor.objectiveId),
+        },
+        {
+          id: "crew",
+          icon: "crew",
+          iconTone: "cerulean",
+          label: "구성원·임무",
+          run: () => openActorPanel(actor.id, "info", actor.rootObjectiveId ?? actor.objectiveId),
         },
         {
           id: "rally",
-          icon: "📣",
+          icon: "rally",
+          iconTone: "amber",
           label: "구성원 소집",
           run: () => {
             triggerWorldChoreography("delegate", actor.zoneId);
             closeActorInteraction();
-            onStatusBanner(`📣 ${actor.name} 지휘관이 캠프 구성원을 브리핑 테이블로 소집합니다.`);
+            onStatusBanner(`${actor.name} 지휘관이 캠프 구성원을 브리핑 테이블로 소집합니다.`);
           },
         },
         isNear
           ? {
             id: "cheer",
-            icon: "👏",
+            icon: "cheer",
+            iconTone: "rose",
             label: "격려하기",
             run: () => {
               requestActorEmote(actor.id, "cheer");
               closeActorInteraction();
-              onStatusBanner(`👏 ${actor.name} 지휘관에게 힘찬 격려를 보냈습니다!`);
+              onStatusBanner(`${actor.name} 지휘관에게 힘찬 격려를 보냈습니다.`);
             },
           }
           : approachAction,
-        {
-          id: "console",
-          icon: "↗",
-          label: "대화창 열기",
-          run: () => openInConsole(),
-        },
       ];
     }
 
     return [
       {
         id: "talk",
-        icon: "💬",
-        label: "메시지 보내기",
+        icon: "chat",
+        iconTone: "amber",
+        label: "대화·로그",
         tone: "primary",
         run: () => openActorDialogue(actor.id),
       },
       {
-        id: "inspect",
-        icon: "🔍",
-        label: "임무 살피기",
-        run: () => openActorInspect(actor.id),
+        id: "crew",
+        icon: "inspect",
+        iconTone: "cerulean",
+        label: "임무 상세",
+        run: () => openActorPanel(actor.id, "info", actor.rootObjectiveId ?? actor.objectiveId),
+      },
+      {
+        id: "goals",
+        icon: "questMap",
+        iconTone: "moss",
+        label: "소속 목표",
+        run: () => openActorPanel(actor.id, "goals", actor.rootObjectiveId ?? actor.objectiveId),
       },
       isNear
         ? {
           id: "highfive",
-          icon: "🙌",
+          icon: "highfive",
+          iconTone: "rose",
           label: "하이파이브",
           run: () => {
             requestActorEmote(actor.id, "highfive");
             closeActorInteraction();
-            onStatusBanner(`🙌 ${actor.name}와(과) 하이파이브를 나눴습니다!`);
+            onStatusBanner(`${actor.name}와(과) 하이파이브를 나눴습니다.`);
           },
         }
         : approachAction,
-      {
-        id: "console",
-        icon: "↗",
-        label: "세션 열기",
-        run: () => openInConsole(),
-      },
     ];
-  }, [actor, deps, isNear, onStatusBanner]);
+  }, [actor, isNear, onStatusBanner]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -268,8 +265,8 @@ export function WorldRadialMenu({
   const cx = Math.max(240, Math.min(vw - 240, rawX));
   const cy = Math.max(195, Math.min(vh - 195, rawY));
 
-  const rx = actions.length >= 6 ? 168 : 156;
-  const ry = actions.length >= 6 ? 124 : 114;
+  const rx = actions.length >= 6 ? 172 : 158;
+  const ry = actions.length >= 6 ? 126 : 114;
 
   const petalCoords = actions.map((_, index) => {
     const angle = -Math.PI * 0.5 + (index / actions.length) * Math.PI * 2;
@@ -348,7 +345,9 @@ export function WorldRadialMenu({
               onClick={action.run}
             >
               <span className="the-world-radial-key">{idx + 1}</span>
-              <span className="the-world-radial-icon" aria-hidden="true">{action.icon}</span>
+              <span className={`the-world-radial-icon-badge is-tone-${action.iconTone}`} aria-hidden="true">
+                <WorldIcon name={action.icon} size={14} tone={isHighlighted ? "inherit" : action.iconTone} />
+              </span>
               <span className="the-world-radial-label">{action.label}</span>
             </button>
           );
