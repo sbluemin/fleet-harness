@@ -180,7 +180,7 @@ When the claim needs a live agent process, MCP tools, or chat protocol traffic b
 
 ### Computer Use fixture (macOS)
 
-Computer Use is available only on macOS when `FLEET_COMPUTER_USE_HELPER` points to an executable. For an isolated MCP injection or authorization check, use the helper built by the current Desktop checkout, or an executable stub under the run directory (the status call does not start it). Read the full `experiments` value from `GET /api/v1/settings/global`, enable `computerUse` through `PUT`, then launch and authorize the Objective. An already-running session that did not receive the server must be relaunched. Call only `computer_session` with `{"op":"status"}` for this check; it does not exercise native capture, permission prompts, or input.
+Computer Use is available only on macOS when `FLEET_COMPUTER_USE_HELPER` points to an executable. For an isolated MCP injection or authorization check, use the helper built by the current Desktop checkout, or an executable stub under the run directory (the status call does not start it). Read the full `experiments` value from `GET /api/v1/settings/global` and send it back whole with `computerUse: true` through `PUT` (the field replaces the whole object, so a partial one turns other experiments off), then launch the Objective and answer its use-request card with `always` (`approve` is refused for this request type). An already-running session that did not receive the server must be relaunched. Call only `computer_session` with `{"op":"status"}` for this check; it does not exercise native capture, permission prompts, or input.
 
 ### No-cost fake Commodore
 
