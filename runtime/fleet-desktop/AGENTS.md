@@ -6,7 +6,7 @@
 
 | Directory | Responsibility |
 |---|---|
-| `src/` | Native app, window, menu, tray, and dialog lifecycle |
+| `src/` | Native app, window, menu, tray, and dialog lifecycle; Fleet Browser host and history I/O (`browser-history.ts`); entry and farewell presentation (`entry-page.ts`, `quit-farewell.ts`) |
 | `src/runtime/` | Managed Node and Console procurement and supervision |
 | `assets/entry/` | Passive bootstrap status surface |
 | `assets/browser-chrome/`, `src/chrome/` | Fleet Browser chrome documents and the program main injects into them |
