@@ -844,7 +844,6 @@
 }
 
 .quota-toolbar-summary__ring:focus-visible {
-  outline: none;
   box-shadow: var(--focus-face);
 }
 
