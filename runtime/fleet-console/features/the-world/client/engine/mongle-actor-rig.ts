@@ -82,6 +82,8 @@ uniform float uLookYaw;
 uniform float uLookPitch;
 uniform float uBlush;
 uniform float uHatBounce;
+uniform float uFlightRoll;
+uniform float uFlightPitch;
 uniform vec3 uBaseCol;
 uniform vec3 uWorldLightDir;
 uniform vec3 uWorldTint;
@@ -331,7 +333,32 @@ AnimRig computeAnim() {
     r.offset.y += max(0.0, p) * 0.045;
     r.wingFlapL = p * 0.25;
     r.wingFlapR = p * 0.25;
+  } else if (uWorldAnim == 16) {
+    // fly: 별빛 상공 자유 비행 — 슈퍼히어로 전방 글라이드 + 우아한 부유 호버
+    float spd = clamp(uMoveSpeed / 18.0, 0.0, 1.85);
+    float hover = sin(t * 3.4);
+    r.offset.y += hover * 0.085;
+    r.pitchAdd = 0.24 + spd * 0.22;
+    r.roll = sin(t * 2.1) * 0.06;
+    r.scale = vec3(1.0 - spd * 0.035, 1.0 + spd * 0.045, 1.0 + spd * 0.06);
+    r.wingFlapL = 0.34 + sin(t * (5.2 + spd * 2.6)) * 0.14;
+    r.wingFlapR = r.wingFlapL;
+    if (spd > 1.15 && r.exprMode == 0) r.exprMode = 1;
+  } else if (uWorldAnim == 17) {
+    // dive: 별똥별 유성 급강하 — 빠른 360° 코멧 회전 + 유선형 스트레치
+    float ph = (uAnimPhase > 0.001) ? uAnimPhase : t;
+    r.yawAdd = ph * 12.0;
+    r.pitchAdd = 0.56;
+    r.roll = sin(ph * 9.0) * 0.10;
+    r.scale = vec3(0.90, 1.16, 0.92);
+    r.wingFlapL = 0.58;
+    r.wingFlapR = 0.58;
+    r.exprMode = 1;
   }
+
+  // 비행 뱅킹/피치 기울기 (player-controller 물리 연동)
+  r.roll += clamp(uFlightRoll, -0.75, 0.75);
+  r.pitchAdd += clamp(uFlightPitch, -0.75, 0.85);
 
   // 착지 스쿼시-앤-스트레치 (모든 모드 공통 오버레이)
   float ls = clamp(uLandSquash, 0.0, 1.0);
@@ -398,9 +425,10 @@ float sdMarioStar(vec3 q, AnimRig rig) {
 float sdStarlightCape(vec3 q, float t) {
   // 몽글 노란 별의 앞면은 깨끗하게 비우고 등 뒤에서만 아담하게 펄럭이는 미니 별빛 망토
   float u = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
-  float spd = clamp(uMoveSpeed, 0.0, 7.0);
-  float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (u * u);
-  float flutter = sin(t * (4.1 + spd * 1.4) - u * 4.5 + q.x * 3.8) * (0.018 + spd * 0.0085) * (u * u);
+  float flightWind = (uWorldAnim == 17) ? 5.2 : (uWorldAnim == 16 ? 3.2 : 0.0);
+  float spd = clamp(uMoveSpeed + flightWind, 0.0, 10.0);
+  float billow = (0.10 + spd * 0.046 + max(0.0, -uJumpVel) * 0.048) * (u * u);
+  float flutter = sin(t * (4.1 + spd * 1.5) - u * 4.8 + q.x * 3.8) * (0.018 + spd * 0.009) * (u * u);
   float hemY = -0.56 + billow * 0.22;
   float midY = 0.5 * (-0.09 + hemY);
   float halfH = max(0.08, 0.5 * (-0.09 - hemY));
@@ -773,6 +801,15 @@ void main() {
       coreCol += baseLin * 0.14;
       coreCol += vec3(1.0, 0.97, 0.84) * (specSoft * 0.22 + specBroad * 0.24);
       coreCol += mix(baseLin, vec3(1.0, 0.96, 0.72), 0.60) * rim * 0.54;
+      if (uWorldAnim == 16) {
+        // 별빛 비행 시 따뜻한 황금 별빛 림 글로우 부스트
+        float flyPulse = 0.86 + 0.14 * sin(tAnim * 5.2);
+        coreCol += vec3(1.0, 0.90, 0.42) * (rim * 0.52 + 0.08) * flyPulse;
+      } else if (uWorldAnim == 17) {
+        // 유성 급강하 코멧 발광 오라 부스트
+        float divePulse = 0.90 + 0.15 * sin(tAnim * 14.0);
+        coreCol += vec3(1.0, 0.88, 0.36) * (0.26 + rim * 0.98) * divePulse;
+      }
 
       if (eyeMask > 0.001) {
         vec3 eyeGloss = vec3(0.012, 0.012, 0.022) + vec3(0.30) * specSoft * 0.30;
@@ -963,9 +1000,10 @@ void main() {
           : (uCape == 2 ? vec3(0.42, 0.84, 0.54) : vec3(0.38, 0.48, 0.92));
         vec3 capeVelvet = toLinear(baseCloth) * (0.42 + 0.72 * wrap)
           + toLinear(rimTint) * capeRim * 0.30;
-        float spd = clamp(uMoveSpeed, 0.0, 7.0);
+        float flightWind = (uWorldAnim == 17) ? 5.2 : (uWorldAnim == 16 ? 3.2 : 0.0);
+        float spd = clamp(uMoveSpeed + flightWind, 0.0, 10.0);
         float capeU = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
-        float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (capeU * capeU);
+        float billow = (0.10 + spd * 0.046 + max(0.0, -uJumpVel) * 0.048) * (capeU * capeU);
         float hemY = -0.56 + billow * 0.22;
         float hemDist = q.y - hemY;
         float trimBand = (uCape == 1) ? 0.046 : 0.036;
@@ -1062,7 +1100,9 @@ export type WorldAnimMode =
   | "work-edit"
   | "work-read"
   | "work-think"
-  | "work-run";
+  | "work-run"
+  | "fly"
+  | "dive";
 
 export type WorldExpression = "normal" | "happy" | "sleepy" | "surprised" | "focused";
 
@@ -1112,6 +1152,8 @@ export interface MongleActorRig {
     readonly lookPitch?: number | undefined;
     readonly blush?: number | undefined;
     readonly hatBounce?: number | undefined;
+    readonly flightRoll?: number | undefined;
+    readonly flightPitch?: number | undefined;
   }): void;
   dispose(): void;
 }
@@ -1188,6 +1230,8 @@ const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
   "work-read": 13,
   "work-think": 14,
   "work-run": 15,
+  fly: 16,
+  dive: 17,
 };
 
 const WORLD_EXPRESSION_CODE: Readonly<Record<WorldExpression, number>> = {
@@ -1258,6 +1302,8 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uLookPitch: { value: 0 },
       uBlush: { value: 0 },
       uHatBounce: { value: 0 },
+      uFlightRoll: { value: 0 },
+      uFlightPitch: { value: 0 },
       uBaseCol: { value: new Vector3(initR, initG, initB) },
       uWorldLightDir: { value: new Vector3(0.5, 0.85, 0.4) },
       uWorldTint: { value: new Vector3(1, 1, 1) },
@@ -1348,10 +1394,13 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       charCenter.set(opts.x, centerY, opts.z);
       volumeMesh.position.copy(charCenter);
       shadowCaster.position.set(opts.x, centerY - 0.08 * params.scale, opts.z);
-      contactDisc.position.set(opts.x, opts.groundY + 0.025, opts.z);
-
-      const shrink = Math.max(0.45, 1 - opts.liftY * 0.45);
-      contactDisc.scale.set(params.scale * shrink, params.scale * shrink, params.scale * shrink);
+      const showContact = opts.liftY < 2.2;
+      contactDisc.visible = showContact;
+      if (showContact) {
+        contactDisc.position.set(opts.x, opts.groundY + 0.025, opts.z);
+        const shrink = Math.max(0.35, 1 - opts.liftY * 0.35);
+        contactDisc.scale.set(params.scale * shrink, params.scale * shrink, params.scale * shrink);
+      }
 
       // 선택 링 또는 [E] 근접 링 표시
       const showRing = Boolean(opts.isSelected || opts.isNearPlayer);
@@ -1380,6 +1429,8 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       mat.uniforms["uLookPitch"]!.value = opts.lookPitch ?? 0;
       mat.uniforms["uBlush"]!.value = opts.blush ?? 0;
       mat.uniforms["uHatBounce"]!.value = opts.hatBounce ?? 0;
+      mat.uniforms["uFlightRoll"]!.value = opts.flightRoll ?? 0;
+      mat.uniforms["uFlightPitch"]!.value = opts.flightPitch ?? 0;
       (mat.uniforms["uWorldLightDir"]!.value as Vector3).copy(opts.sunDir);
       (mat.uniforms["uWorldTint"]!.value as Vector3).copy(opts.worldTint);
 

@@ -77,9 +77,9 @@ export const theWorldEn = {
   "theWorld.village.emptyDistricts": "Open territory",
   "theWorld.hud.villagesHeading": "Commodore Villages",
   "theWorld.hud.zonesHeading": "Meadow Landmarks",
-  "theWorld.hud.overviewAria": "Toggle strategic sky overview (M)",
-  "theWorld.hud.overviewTitle": "Strategic Sky Overview (M)",
-  "theWorld.hud.overviewLabel": "Sky View",
+  "theWorld.hud.overviewAria": "Toggle Starlight Sky Flight & Overview (M)",
+  "theWorld.hud.overviewTitle": "Starlight Sky Flight & Overview (M)",
+  "theWorld.hud.overviewLabel": "Sky Flight",
   "theWorld.hud.soundOnAria": "Mute world sound effects",
   "theWorld.hud.soundOffAria": "Unmute world sound effects",
   "theWorld.hud.soundOnTitle": "Sound effects on",
@@ -214,7 +214,7 @@ export const theWorldEn = {
   "theWorld.emote.waveToast": "You waved to nearby Commodores!",
   "theWorld.emote.cheerToast": "You cheered on the fleet!",
   "theWorld.emote.jumpToast": "You hopped with joy!",
-  "theWorld.overview.dragLinkHint": "Drag village to village for joint order",
+  "theWorld.overview.dragLinkHint": "WASD fly · Shift boost · Click village to meteor dive · Drag village→village joint order",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[Joint: {from} ↔ {to}] ",
   "theWorld.overview.dragLinkToast": "Joint dispatch ready: @{from} & @{to}",
@@ -253,7 +253,7 @@ export const theWorldEn = {
   "theWorld.guide.interactDesc": "Interact with nearby character",
   "theWorld.guide.campfireDesc": "Sit / relax by the campfire",
   "theWorld.guide.emoteDesc": "Wave · Cheer · 360° Spin",
-  "theWorld.guide.overviewDesc": "Toggle sky overview map",
+  "theWorld.guide.overviewDesc": "Starlight sky flight & overview map",
   "theWorld.guide.photoDesc": "Toggle photo mode (hide UI)",
   "theWorld.guide.quickMenuKeys": "Right-Click",
   "theWorld.guide.quickMenuDesc": "District quick dispatch menu",
@@ -495,6 +495,10 @@ export const theWorldEn = {
   "theWorld.guide.urgentDesc": "Focus Commodore needing attention",
   "theWorld.guide.cinemaDesc": "Companion Cinema Mode",
   "theWorld.guide.gazetteDesc": "Fleet Daily Gazette",
+  // Sprint 14: Shooting Star Flight & Meteor Dive
+  "theWorld.flight.banner": "Starlight Flight · WASD fly · Shift boost · Click village to meteor dive · Drag village→village · M land",
+  "theWorld.flight.diveToast": "Meteor diving to {label}!",
+  "theWorld.flight.landToast": "Landing back on the meadow!",
 };
 
 export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
@@ -573,9 +577,9 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.village.emptyDistricts": "개척 대기 영지",
   "theWorld.hud.villagesHeading": "사령관 마을",
   "theWorld.hud.zonesHeading": "초원 명소",
-  "theWorld.hud.overviewAria": "전략 하늘 조망 모드 전환 (M)",
-  "theWorld.hud.overviewTitle": "전략 하늘 조망 (M)",
-  "theWorld.hud.overviewLabel": "하늘 조망",
+  "theWorld.hud.overviewAria": "별빛 하늘 비행 모드 전환 (M)",
+  "theWorld.hud.overviewTitle": "별빛 하늘 비행 · 전략 조망 (M)",
+  "theWorld.hud.overviewLabel": "별빛 비행",
   "theWorld.hud.soundOnAria": "월드 효과음 끄기",
   "theWorld.hud.soundOffAria": "월드 효과음 켜기",
   "theWorld.hud.soundOnTitle": "효과음 켜짐",
@@ -710,7 +714,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.emote.waveToast": "주변 사령관들에게 손을 흔들었습니다!",
   "theWorld.emote.cheerToast": "함대 사령관들에게 환호를 보냈습니다!",
   "theWorld.emote.jumpToast": "기분 좋게 깡충 뛰었습니다!",
-  "theWorld.overview.dragLinkHint": "마을→마을 드래그로 합동 연락",
+  "theWorld.overview.dragLinkHint": "WASD 비행 · Shift 별똥별 부스트 · 마을 클릭 급강하 · 마을→마을 드래그 합동",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[합동: {from} ↔ {to}] ",
   "theWorld.overview.dragLinkToast": "합동 연락 준비 완료: @{from} & @{to}",
@@ -749,7 +753,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.guide.interactDesc": "근처 사령관·구성원과 상호작용",
   "theWorld.guide.campfireDesc": "모닥불 벤치 불멍 착석 / 기상",
   "theWorld.guide.emoteDesc": "인사 · 환호 · 360° 회전",
-  "theWorld.guide.overviewDesc": "하늘 조망 지도 전환",
+  "theWorld.guide.overviewDesc": "별빛 하늘 비행 & 전략 지도",
   "theWorld.guide.photoDesc": "포토 모드 (UI 숨기기)",
   "theWorld.guide.quickMenuKeys": "구역 우클릭",
   "theWorld.guide.quickMenuDesc": "Theater 구역 빠른 명령 메뉴",
@@ -991,6 +995,10 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.guide.urgentDesc": "확인 필요 사령관 즉시 포커스",
   "theWorld.guide.cinemaDesc": "관전 / 작업 동반자 모드",
   "theWorld.guide.gazetteDesc": "오늘의 초원 일보",
+  // Sprint 14: 별똥별 자유 비행 & 유성 급강하 착지
+  "theWorld.flight.banner": "별빛 비행 · WASD 이동 · Shift 별똥별 부스트 · 마을 클릭 급강하 · 마을→마을 합동 · M 착지",
+  "theWorld.flight.diveToast": "{label}(으)로 별똥별 급강하!",
+  "theWorld.flight.landToast": "초원으로 별똥별 착지!",
 };
 
 export type TheWorldMessageKey = keyof typeof theWorldEn;

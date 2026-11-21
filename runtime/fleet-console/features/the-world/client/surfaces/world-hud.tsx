@@ -274,7 +274,7 @@ export const WorldHud = memo(function WorldHud({
                 toggleOverviewMode();
               }}
             >
-              <WorldIcon name="mapOverview" size={14} tone={store.overviewMode ? "amber" : "moss"} />
+              <WorldIcon name={store.overviewMode ? "sparkle" : "mapOverview"} size={14} tone={store.overviewMode ? "amber" : "moss"} />
               <span>{t("theWorld.hud.overviewLabel")}</span>
             </button>
 

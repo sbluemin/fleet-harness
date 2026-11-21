@@ -627,6 +627,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.admiralCustomizerOpen
       || snap.gazetteOpen
       || snap.cinemaMode
+      || snap.overviewMode
       || controlsGuideOpenRef.current
     ) {
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
@@ -680,7 +681,27 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       return;
     }
 
-    // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. (하늘 조망 중) 사령관 마을 → 7. 빈 땅 해제/이동
+    // 별빛 비행(`overviewMode`) 중에는 마을/구역 클릭이 별똥별 급강하 착지로 우선 연결된다.
+    if (snap.overviewMode) {
+      const hitVillage = runtimeRef.current?.pickVillageAt(e.clientX, e.clientY) ?? null;
+      if (hitVillage) {
+        const landX = hitVillage.x + Math.cos(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
+        const landZ = hitVillage.z + Math.sin(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
+        requestWorldTeleport(landX, landZ);
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(tNow("theWorld.flight.diveToast", { label: hitVillage.label }));
+        return;
+      }
+      const hitFlightDistrict = runtimeRef.current?.pickDistrictAt(e.clientX, e.clientY) ?? null;
+      if (hitFlightDistrict) {
+        requestWorldTeleport(hitFlightDistrict.x, hitFlightDistrict.z);
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(tNow("theWorld.flight.diveToast", { label: hitFlightDistrict.label }));
+        return;
+      }
+    }
+
+    // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. 빈 땅 해제/이동
     const hitActorId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
     if (hitActorId) {
       playMongleChirp();
@@ -711,18 +732,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       playDistrictSelect();
       selectDistrict(hitDistrict.id);
       return;
-    }
-
-    if (snap.overviewMode) {
-      const hitVillage = runtimeRef.current?.pickVillageAt(e.clientX, e.clientY) ?? null;
-      if (hitVillage) {
-        const landX = hitVillage.x + Math.cos(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
-        const landZ = hitVillage.z + Math.sin(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
-        requestWorldTeleport(landX, landZ);
-        const tNow = getWorldT(deps.commodore.language());
-        pushToast(tNow("theWorld.stage.warpVillageToast", { name: hitVillage.label }));
-        return;
-      }
     }
 
     if (snap.questBoardOpen) {
@@ -761,11 +770,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, []);
 
   const handleMinimapSelectVillage = useCallback((village: WorldVillageSpec) => {
+    const wasFlying = getWorldStoreSnapshot().overviewMode;
     const landX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     const landZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     requestWorldTeleport(landX, landZ);
     const tNow = getWorldT(deps.commodore.language());
-    pushToast(tNow("theWorld.stage.warpVillageToast", { name: village.label }));
+    pushToast(
+      wasFlying
+        ? tNow("theWorld.flight.diveToast", { label: village.label })
+        : tNow("theWorld.stage.warpVillageToast", { name: village.label }),
+    );
   }, [deps, pushToast]);
 
   const handleVillageSignClick = useCallback((village: WorldVillageSpec) => {
@@ -774,16 +788,25 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [handleMinimapSelectVillage]);
 
   const handleMinimapSelectPlaza = useCallback(() => {
+    const wasFlying = getWorldStoreSnapshot().overviewMode;
     requestWorldTeleport(0, 1.5);
     const tNow = getWorldT(deps.commodore.language());
-    pushToast(tNow("theWorld.stage.warpPlazaToast"));
+    pushToast(
+      wasFlying
+        ? tNow("theWorld.flight.diveToast", { label: tNow("theWorld.projection.plazaLabel") })
+        : tNow("theWorld.stage.warpPlazaToast"),
+    );
   }, [deps, pushToast]);
 
   const handleMinimapToggleOverview = useCallback(() => {
     const next = !getWorldStoreSnapshot().overviewMode;
     playOverviewToggle(next);
     toggleOverviewMode();
-  }, []);
+    if (!next) {
+      const tNow = getWorldT(deps.commodore.language());
+      pushToast(tNow("theWorld.flight.landToast"));
+    }
+  }, [deps, pushToast]);
 
   const handleMinimapClickPoint = useCallback((wx: number, wz: number) => {
     requestWorldTeleport(wx, wz);
@@ -1240,6 +1263,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     window.addEventListener("pointercancel", onCancel);
   }, [deps, pushToast]);
 
+  const visibleLabelMetas = useMemo(
+    () => (store.overviewMode
+      ? labelMetas.map((lbl) => (lbl.isNearPlayer ? { ...lbl, isNearPlayer: false } : lbl))
+      : labelMetas),
+    [labelMetas, store.overviewMode],
+  );
+
   const anyModalOpen = store.questBoardOpen
     || store.warRoomOpen
     || store.admiralCustomizerOpen
@@ -1247,7 +1277,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     || controlsGuideOpen;
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
-  const playerLabelRevealed = playerHovered || store.admiralCustomizerOpen;
+  const playerLabelRevealed = !store.overviewMode && (playerHovered || store.admiralCustomizerOpen);
 
   return (
     <div
@@ -1281,10 +1311,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         anyModalOpen={anyModalOpen}
         photoMode={store.photoMode}
         cinemaMode={store.cinemaMode}
-        sittingAtCampfire={store.sittingAtCampfire}
+        sittingAtCampfire={store.sittingAtCampfire || store.overviewMode}
         playerLabelRevealed={playerLabelRevealed}
         villages={snapshot.villages}
-        labelMetas={labelMetas}
+        labelMetas={visibleLabelMetas}
         hoveredDistrict={hoveredDistrict}
         selectedDistrictId={store.selectedDistrictId}
         dragTargetVillageId={overviewDragLink?.targetVillage?.id ?? null}
@@ -1339,15 +1369,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               </>
             );
           })() : null}
-          {store.overviewMode && store.interactionMode === "closed" && !anyModalOpen && !toastMessage && !celebrationToast ? (
+          {store.overviewMode && store.interactionMode === "closed" && !anyModalOpen && !store.photoMode && !store.cinemaMode && !toastMessage && !celebrationToast ? (
             <button
               type="button"
               className="the-world-overview-banner"
               aria-label={t("theWorld.hud.overviewAria")}
               onClick={handleMinimapToggleOverview}
             >
-              <WorldIcon name="mapOverview" size={14} tone="amber" />
-              <span>{t("theWorld.hud.overviewLabel")} · {t("theWorld.overview.dragLinkHint")} · M / Esc</span>
+              <WorldIcon name="sparkle" size={14} tone="amber" />
+              <span>{t("theWorld.flight.banner")}</span>
             </button>
           ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (

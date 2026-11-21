@@ -24,6 +24,18 @@ export interface PlayerState {
   moveSpeed: number;
   /** 모닥불 벤치 착석 경과 초 (8초 초과 시 sit → doze 전환). */
   campfireSitSec: number;
+  /** 별빛 상공 비행 고도 (지상 0, 자유 비행 ~14.5m). */
+  flightAlt: number;
+  /** 별빛 상공 자유 비행 활성 여부. */
+  flying: boolean;
+  /** 유성 급강하 착지 아크 진행 중 여부. */
+  diving: boolean;
+  /** 비행 중 `Shift` 별똥별 부스트 활성 여부. */
+  boosting: boolean;
+  /** 비행 회전 시 좌우 뱅킹 기울기 (rad). */
+  flightRoll: number;
+  /** 비행 전진·급강하 시 앞뒤 피치 기울기 (rad). */
+  flightPitch: number;
   yaw: number;
   walking: boolean;
   sprinting: boolean;
@@ -68,7 +80,18 @@ export interface PlayerAndCameraController {
     readonly onJump?: (() => void) | undefined;
     readonly onLand?: (() => void) | undefined;
     readonly onStandUp?: (() => void) | undefined;
+    readonly onStarTakeoff?: (() => void) | undefined;
+    readonly onMeteorDive?: (() => void) | undefined;
+    readonly onMeteorImpact?: ((x: number, z: number) => void) | undefined;
+    readonly onStarBoost?: (() => void) | undefined;
+    readonly onFlightSpin?: (() => void) | undefined;
   }): void;
+  startMeteorDive(
+    targetX: number,
+    targetZ: number,
+    getGroundHeight: (x: number, z: number) => number,
+    resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+  ): void;
   teleportTo(
     x: number,
     z: number,
@@ -118,6 +141,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     landSquash: 0,
     moveSpeed: 0,
     campfireSitSec: 0,
+    flightAlt: 0,
+    flying: false,
+    diving: false,
+    boosting: false,
+    flightRoll: 0,
+    flightPitch: 0,
     yaw: Math.PI, // 정면의 길드 회관(-Z)을 바라보며 시작
     walking: false,
     sprinting: false,
@@ -148,8 +177,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   const orbitAnchor = new Vector3(0, 1.0, 1.5);
   const cameraTarget = new Vector3(0.4, 1.45, 2.2);
 
-  // 심시티 구역 선택 시 일시적인 쿼터뷰 포커스 상태 & RTS 하늘 조망 모드 상태
+  // 심시티 구역 선택 시 일시적인 쿼터뷰 포커스 상태 & RTS 하늘 비행 모드 상태
   const ORBIT_CLAMP = 50;
+  const FLIGHT_CLAMP = 54;
+  const FLIGHT_TARGET_ALT = 14.5;
   let districtFocus: {
     x: number;
     y: number;
@@ -159,9 +190,80 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   } | null = null;
 
   let overviewMode = false;
-  const overviewAnchor = new Vector3(0, 1.0, 4.0);
-  let overviewDist = 86;
-  let overviewPitch = 1.20;
+  const overviewAnchor = new Vector3(0, 1.0, 3.0);
+  let overviewDist = 72;
+  let overviewPitch = 1.06;
+
+  // 유성 급강하 착지 아크 상태 & 비행 큐
+  interface MeteorDiveState {
+    startX: number;
+    startY: number;
+    startZ: number;
+    endX: number;
+    endY: number;
+    endZ: number;
+    arcBoost: number;
+    duration: number;
+    elapsed: number;
+    faceYaw: number;
+  }
+  let diveState: MeteorDiveState | null = null;
+  let pendingTakeoffCue = false;
+  let pendingDiveCue = false;
+  let pendingLandDive = false;
+  let flightClock = 0;
+  let flightSpinWave = 0;
+  let prevSpacePressed = false;
+  let prevBoostActive = false;
+
+  function beginMeteorDiveTo(
+    safeX: number,
+    safeZ: number,
+    endGy: number,
+    faceYaw: number,
+  ): void {
+    const startX = player.x;
+    const startY = player.y;
+    const startZ = player.z;
+    const dist = Math.hypot(safeX - startX, safeZ - startZ);
+    const fromSky = player.flightAlt > 1.5 || overviewMode;
+    const arcBoost = fromSky
+      ? 2.4
+      : Math.min(14.5, Math.max(7.2, dist * 0.34));
+    const duration = fromSky
+      ? Math.max(0.56, Math.min(0.80, 0.62 + dist * 0.004))
+      : Math.max(0.52, Math.min(0.78, 0.58 + dist * 0.0045));
+
+    districtFocus = null;
+    overviewMode = false;
+    sittingAtCampfire = false;
+    pendingLandDive = false;
+    player.flying = false;
+    player.diving = true;
+    player.boosting = false;
+    player.walking = false;
+    player.sprinting = false;
+    player.onGround = false;
+    player.vx = 0;
+    player.vz = 0;
+    player.vy = 0;
+    player.campfireSitSec = 0;
+    jumpedFromGround = false;
+
+    diveState = {
+      startX,
+      startY,
+      startZ,
+      endX: safeX,
+      endY: endGy,
+      endZ: safeZ,
+      arcBoost,
+      duration,
+      elapsed: 0,
+      faceYaw,
+    };
+    pendingDiveCue = true;
+  }
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) return;
@@ -184,27 +286,54 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   return {
     player,
     cameraTarget,
+    startMeteorDive(targetX, targetZ, getGroundHeight, resolveMovement) {
+      const safe = resolveMovement(targetX, targetZ, targetX, targetZ, 0.55);
+      const endGy = Math.max(0.05, getGroundHeight(safe.x, safe.z));
+      const dx = safe.x - player.x;
+      const dz = safe.z - player.z;
+      const faceYaw = Math.hypot(dx, dz) > 0.25 ? Math.atan2(dx, dz) : player.yaw;
+      beginMeteorDiveTo(safe.x, safe.z, endGy, faceYaw);
+      orbitAnchor.set(
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, safe.x)),
+        Math.max(0.5, endGy) + 0.8,
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, safe.z)),
+      );
+    },
     teleportTo(x, z, getGroundHeight, resolveMovement) {
-      districtFocus = null;
-      overviewMode = false;
-      sittingAtCampfire = false;
-      // 캠프·마을 앞마당(남쪽 입구) 안전한 오솔길 지점으로 착지
+      // 캠프·마을 앞마당(남쪽 입구) 안전한 오솔길 지점으로 유성 급강하 착지
       const rawX = x;
       const rawZ = z + 3.0;
       const safe = resolveMovement(x, z, rawX, rawZ, 0.55);
-      player.x = safe.x;
-      player.z = safe.z;
-      player.vx = 0;
-      player.vz = 0;
-      player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.35;
-      player.vy = 0;
-      player.playerJumpY = 0;
-      player.jumpVel = 0;
-      player.landSquash = 0;
-      player.moveSpeed = 0;
-      player.campfireSitSec = 0;
-      jumpedFromGround = false;
-      player.yaw = Math.atan2(x - player.x, z - player.z);
+      const endGy = Math.max(0.05, getGroundHeight(safe.x, safe.z));
+      const faceYaw = Math.atan2(x - safe.x, z - safe.z);
+      const dist = Math.hypot(safe.x - player.x, safe.z - player.z);
+      if (overviewMode || player.flying || player.flightAlt > 1.5 || dist > 3.5) {
+        beginMeteorDiveTo(safe.x, safe.z, endGy, faceYaw);
+      } else {
+        districtFocus = null;
+        overviewMode = false;
+        sittingAtCampfire = false;
+        diveState = null;
+        player.flying = false;
+        player.diving = false;
+        player.boosting = false;
+        player.flightAlt = 0;
+        player.flightRoll = 0;
+        player.flightPitch = 0;
+        player.x = safe.x;
+        player.z = safe.z;
+        player.vx = 0;
+        player.vz = 0;
+        player.y = endGy + 0.35;
+        player.vy = 0;
+        player.playerJumpY = 0;
+        player.jumpVel = 0;
+        player.landSquash = 0;
+        player.moveSpeed = 0;
+        player.campfireSitSec = 0;
+        jumpedFromGround = false;
+        player.yaw = faceYaw;
+      }
       orbitAnchor.set(
         Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x)),
         Math.max(0.5, getGroundHeight(x, z)) + 0.8,
@@ -215,6 +344,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       districtFocus = null;
       overviewMode = false;
       sittingAtCampfire = false;
+      diveState = null;
+      pendingLandDive = false;
+      player.flying = false;
+      player.diving = false;
+      player.boosting = false;
+      player.flightAlt = 0;
+      player.flightRoll = 0;
+      player.flightPitch = 0;
       const dx = player.x - targetX;
       const dz = player.z - targetZ;
       const d = Math.hypot(dx, dz);
@@ -275,16 +412,27 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       if (enabled) {
         districtFocus = null;
         sittingAtCampfire = false;
-        overviewAnchor.set(0, 1.0, 4.0);
-        overviewDist = 86;
-        overviewPitch = 1.20;
+        diveState = null;
+        pendingLandDive = false;
+        player.diving = false;
+        player.flying = true;
+        player.boosting = false;
+        player.onGround = false;
+        player.walking = false;
+        pendingTakeoffCue = true;
+        overviewAnchor.set(player.x * 0.48, 1.0, player.z * 0.48 + 3.0);
+        overviewDist = 72;
+        overviewPitch = 1.06;
+      } else if (player.flying || player.flightAlt > 1.2) {
+        // 비행 중 M/Esc 종료 시 현재 위치 바로 아래 안전한 지면으로 부드러운 유성 급강하 착지 예약
+        pendingLandDive = true;
       }
     },
     isOverviewMode() {
       return overviewMode;
     },
     isSprinting() {
-      return player.sprinting && player.walking;
+      return (player.sprinting && player.walking) || player.boosting;
     },
     setCampfireSit(sitting) {
       if (sitting === sittingAtCampfire) return;
@@ -293,6 +441,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       if (sitting) {
         districtFocus = null;
         overviewMode = false;
+        diveState = null;
+        pendingLandDive = false;
+        player.flying = false;
+        player.diving = false;
+        player.boosting = false;
+        player.flightAlt = 0;
+        player.flightRoll = 0;
+        player.flightPitch = 0;
         player.x = CAMPFIRE_BENCH_X;
         player.z = CAMPFIRE_BENCH_Z;
         player.vx = 0;
@@ -316,7 +472,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       autoDialogueYaw = null;
       camYaw -= dx * 0.0062;
       if (overviewMode) {
-        overviewPitch = Math.max(0.70, Math.min(1.36, overviewPitch + dy * 0.0042));
+        overviewPitch = Math.max(0.62, Math.min(1.36, overviewPitch + dy * 0.0042));
       } else if (districtFocus) {
         districtFocus.pitch = Math.max(0.22, Math.min(1.16, districtFocus.pitch + dy * 0.0048));
       } else {
@@ -326,7 +482,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onWheelZoom(deltaY) {
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
-        overviewDist = Math.max(46.0, Math.min(112.0, overviewDist * Math.exp(clamped * 0.0012)));
+        overviewDist = Math.max(32.0, Math.min(112.0, overviewDist * Math.exp(clamped * 0.0012)));
       } else if (districtFocus) {
         districtFocus.dist = Math.max(7.2, Math.min(34.0, districtFocus.dist * Math.exp(clamped * 0.0012)));
       } else {
@@ -347,7 +503,77 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         cineProgress = Math.min(1, cineProgress + opts.dt / 0.8);
       }
 
-      if (opts.lifecycle === "open" && !opts.inputLocked) {
+      if (pendingTakeoffCue) {
+        pendingTakeoffCue = false;
+        opts.onStarTakeoff?.();
+      }
+      if (pendingLandDive) {
+        pendingLandDive = false;
+        const safe = opts.resolveMovement(0, 2.2, player.x, player.z, 0.55);
+        const endGy = Math.max(0.05, opts.getGroundHeight(safe.x, safe.z));
+        beginMeteorDiveTo(safe.x, safe.z, endGy, player.yaw);
+      }
+      if (pendingDiveCue) {
+        pendingDiveCue = false;
+        opts.onMeteorDive?.();
+      }
+
+      if (flightSpinWave > 0) {
+        flightSpinWave = Math.max(0, flightSpinWave - opts.dt * 2.4);
+      }
+
+      if (diveState) {
+        // 별똥별 유성 급강하 포물선 아크 (~0.72초)
+        diveState.elapsed += opts.dt;
+        const rawT = opts.reducedMotion ? 1 : Math.min(1, diveState.elapsed / diveState.duration);
+        const xzEase = 1 - Math.pow(1 - rawT, 2.15);
+        const prevX = player.x;
+        const prevY = player.y;
+        const prevZ = player.z;
+        player.x = diveState.startX + (diveState.endX - diveState.startX) * xzEase;
+        player.z = diveState.startZ + (diveState.endZ - diveState.startZ) * xzEase;
+        const linearY = diveState.startY + (diveState.endY - diveState.startY) * rawT;
+        player.y = linearY + 4 * diveState.arcBoost * rawT * (1 - rawT);
+        const curGy = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
+        player.flightAlt = Math.max(0, player.y - curGy);
+        player.playerJumpY = player.flightAlt;
+        player.jumpVel = opts.dt > 0.0005 ? (player.y - prevY) / opts.dt : -12;
+        player.moveSpeed = opts.dt > 0.0005 ? Math.hypot(player.x - prevX, player.z - prevZ) / opts.dt : 24;
+        player.yaw = diveState.faceYaw;
+        player.flying = false;
+        player.diving = true;
+        player.boosting = false;
+        player.walking = false;
+        player.sprinting = false;
+        player.onGround = false;
+        player.flightRoll *= Math.max(0, 1 - opts.dt * 8);
+        player.flightPitch += (0.78 - player.flightPitch) * Math.min(1, opts.dt * 12);
+        prevBoostActive = false;
+
+        if (rawT >= 1) {
+          const impactX = diveState.endX;
+          const impactZ = diveState.endZ;
+          player.x = impactX;
+          player.z = impactZ;
+          player.y = diveState.endY;
+          player.vy = 0;
+          player.vx = 0;
+          player.vz = 0;
+          player.flightAlt = 0;
+          player.playerJumpY = 0;
+          player.jumpVel = 0;
+          player.moveSpeed = 0;
+          player.flying = false;
+          player.diving = false;
+          player.boosting = false;
+          player.flightRoll = 0;
+          player.flightPitch = 0;
+          player.onGround = true;
+          player.landSquash = 1.0;
+          diveState = null;
+          opts.onMeteorImpact?.(impactX, impactZ);
+        }
+      } else if (opts.lifecycle === "open" && !opts.inputLocked) {
         let ix = 0;
         let iz = 0;
         if (keys.has("KeyW") || keys.has("ArrowUp")) iz -= 1;
@@ -355,6 +581,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         if (keys.has("KeyA") || keys.has("ArrowLeft")) ix -= 1;
         if (keys.has("KeyD") || keys.has("ArrowRight")) ix += 1;
         const spacePressed = keys.has("Space");
+        const spaceEdge = spacePressed && !prevSpacePressed;
+        prevSpacePressed = spacePressed;
         player.sprinting = keys.has("ShiftLeft") || keys.has("ShiftRight");
 
         // 불멍 중 WASD/방향키 또는 Space 입력 시 자동 기상!
@@ -365,12 +593,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         }
 
         if (ix !== 0 || iz !== 0) {
-          // WASD/방향키 이동 시작 시 구역 포커스를 해제하고, 추적 모드에서 하늘 조망 중이면 부드럽게 급강하 복귀
+          // WASD/방향키 이동 시작 시 구역 포커스만 해제 (비행 중 WASD는 별빛 상공 자유 비행!)
           districtFocus = null;
-          if (overviewMode && opts.cameraMode !== "orbit") {
-            overviewMode = false;
-            opts.onOverviewAutoExit?.();
-          }
         }
 
         const cy = Math.cos(camYaw);
@@ -386,32 +610,93 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           player.moveSpeed = 0;
           player.walking = false;
           player.sprinting = false;
+          player.flying = false;
+          player.boosting = false;
+          player.flightAlt = 0;
+          player.flightRoll = 0;
+          player.flightPitch = 0;
           player.yaw = Math.atan2(CAMPFIRE_FIRE_X - CAMPFIRE_BENCH_X, CAMPFIRE_FIRE_Z - CAMPFIRE_BENCH_Z);
           if (!opts.reducedMotion) {
             camYaw += opts.dt * 0.14;
           }
         } else if (overviewMode) {
-          // RTS 하늘 조망(orbit 조합)에서는 WASD로 상공 주시점 패닝
+          // 🌠 별빛 상공 자유 비행 (`14.5m` 고도, `WASD` 18m/s · `Shift` 33m/s 별똥별 부스트 · `Space` 공중 스핀 웨이브)
+          flightClock += opts.dt;
           player.campfireSitSec = 0;
+          player.flying = true;
+          player.diving = false;
           player.walking = false;
-          player.vx = 0;
-          player.vz = 0;
-          player.moveSpeed = 0;
+          player.onGround = false;
+
+          const boostNow = player.sprinting && (ix !== 0 || iz !== 0);
+          player.boosting = boostNow;
+          if (boostNow && !prevBoostActive) {
+            opts.onStarBoost?.();
+          }
+          prevBoostActive = boostNow;
+
+          let targetVx = 0;
+          let targetVz = 0;
+          let targetRoll = 0;
           if (ix !== 0 || iz !== 0) {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
             const mz = -sy * (ix / len) + cy * (iz / len);
-            const panSpeed = (player.sprinting ? 38 : 24) * opts.dt;
-            overviewAnchor.x = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, overviewAnchor.x + mx * panSpeed));
-            overviewAnchor.z = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, overviewAnchor.z + mz * panSpeed));
+            const flySpeed = boostNow ? 33.0 : 18.0;
+            targetVx = mx * flySpeed;
+            targetVz = mz * flySpeed;
+
+            const targetRot = Math.atan2(mx, mz);
+            let diff = targetRot - player.yaw;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            player.yaw += diff * Math.min(1, opts.dt * 9.5);
+            targetRoll = Math.max(-0.52, Math.min(0.52, -diff * 0.72));
           }
+
+          const flyAccel = (ix !== 0 || iz !== 0) ? 7.5 : 5.2;
+          player.vx += (targetVx - player.vx) * Math.min(1, opts.dt * flyAccel);
+          player.vz += (targetVz - player.vz) * Math.min(1, opts.dt * flyAccel);
+
+          const speedMag = Math.hypot(player.vx, player.vz);
+          player.moveSpeed = speedMag;
+          player.x = Math.max(-FLIGHT_CLAMP, Math.min(FLIGHT_CLAMP, player.x + player.vx * opts.dt));
+          player.z = Math.max(-FLIGHT_CLAMP, Math.min(FLIGHT_CLAMP, player.z + player.vz * opts.dt));
+
+          if (spaceEdge) {
+            flightSpinWave = 1.0;
+            opts.onFlightSpin?.();
+          }
+
+          const bob = opts.reducedMotion ? 0 : Math.sin(flightClock * 2.2) * 0.42;
+          const spinLift = Math.sin(flightSpinWave * Math.PI) * 1.45;
+          const desiredAlt = FLIGHT_TARGET_ALT + bob + spinLift;
+          const prevAlt = player.flightAlt;
+          const altLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 5.2);
+          player.flightAlt += (desiredAlt - player.flightAlt) * altLerp;
+          const gyUnder = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
+          player.y = gyUnder + player.flightAlt;
+          player.playerJumpY = player.flightAlt;
+          player.jumpVel = opts.dt > 0.0005 ? (player.flightAlt - prevAlt) / opts.dt : 0;
+
+          const targetPitch = Math.min(0.42, (speedMag / 33.0) * 0.42 + (boostNow ? 0.08 : 0));
+          player.flightRoll += (targetRoll - player.flightRoll) * Math.min(1, opts.dt * 8.5);
+          player.flightPitch += (targetPitch - player.flightPitch) * Math.min(1, opts.dt * 8.0);
+
+          // 8개 마을 전체 시야를 유지하면서 비행 중인 별 제독을 부드럽게 따라가는 상공 주시점
+          const anchorX = Math.max(-28, Math.min(28, player.x * 0.52));
+          const anchorZ = Math.max(-24, Math.min(28, player.z * 0.52 + 3.0));
+          overviewAnchor.set(anchorX, 1.0 + player.flightAlt * 0.14, anchorZ);
         } else if (opts.cameraMode === "orbit") {
           // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±50m) 위로 부드럽게 패닝!
           player.campfireSitSec = 0;
           player.walking = false;
+          player.flying = false;
+          player.boosting = false;
           player.vx = 0;
           player.vz = 0;
           player.moveSpeed = 0;
+          prevBoostActive = false;
           if (ix !== 0 || iz !== 0) {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
@@ -424,6 +709,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         } else {
           // 3인칭 추적 모드: 부드러운 가감속 물리 이동(`Shift` 1.65x 대시 질주) + 슬라이딩 장애물 충돌
           player.campfireSitSec = 0;
+          player.flying = false;
+          player.boosting = false;
+          prevBoostActive = false;
+          player.flightRoll *= Math.max(0, 1 - opts.dt * 10);
+          player.flightPitch *= Math.max(0, 1 - opts.dt * 10);
           let targetVx = 0;
           let targetVz = 0;
           if (ix !== 0 || iz !== 0) {
@@ -470,11 +760,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           }
         }
       } else {
+        prevSpacePressed = false;
+        prevBoostActive = false;
         player.vx *= Math.max(0, 1 - opts.dt * 14);
         player.vz *= Math.max(0, 1 - opts.dt * 14);
         player.moveSpeed = Math.hypot(player.vx, player.vz);
         player.walking = false;
         player.sprinting = false;
+        player.boosting = false;
+        player.flightRoll *= Math.max(0, 1 - opts.dt * 10);
+        player.flightPitch *= Math.max(0, 1 - opts.dt * 10);
         // 상호작용 대상이 있으면 플레이어가 대상을 자연스럽게 마주본다
         if (opts.focusActorPos) {
           const targetRot = Math.atan2(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z);
@@ -486,22 +781,25 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
 
       const gy = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
-      const wasOnGround = player.onGround;
-      player.vy -= 17.8 * opts.dt;
-      player.y += player.vy * opts.dt;
-      if (player.y <= gy) {
-        player.y = gy;
-        player.vy = 0;
-        player.onGround = true;
-        if (!wasOnGround && jumpedFromGround) {
-          jumpedFromGround = false;
-          player.landSquash = 1.0;
-          opts.onDustParticle(player.x, gy + 0.06, player.z);
-          opts.onLand?.();
+      if (!player.flying && !player.diving) {
+        const wasOnGround = player.onGround;
+        player.vy -= 17.8 * opts.dt;
+        player.y += player.vy * opts.dt;
+        if (player.y <= gy) {
+          player.y = gy;
+          player.vy = 0;
+          player.onGround = true;
+          if (!wasOnGround && jumpedFromGround) {
+            jumpedFromGround = false;
+            player.landSquash = 1.0;
+            opts.onDustParticle(player.x, gy + 0.06, player.z);
+            opts.onLand?.();
+          }
         }
+        player.playerJumpY = Math.max(0, player.y - gy);
+        player.flightAlt = 0;
+        player.jumpVel = player.onGround ? 0 : player.vy;
       }
-      player.playerJumpY = Math.max(0, player.y - gy);
-      player.jumpVel = player.onGround ? 0 : player.vy;
       if (player.landSquash > 0) {
         player.landSquash = Math.max(0, player.landSquash - opts.dt * 4.6);
       }
@@ -558,6 +856,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = player.x + Math.cos(camYaw) * 0.95;
         desiredTargetY = player.y + 0.72;
         desiredTargetZ = player.z - Math.sin(camYaw) * 0.95;
+      } else if (player.diving) {
+        // 별똥별 유성 급강하: 낙하 중인 별 제독을 극적으로 추적하며 착지점으로 급강하
+        desiredTargetX = player.x;
+        desiredTargetY = player.y + 0.85;
+        desiredTargetZ = player.z;
       } else if (cinemaFraming && opts.cinemaTarget) {
         desiredTargetX = opts.cinemaTarget.x;
         desiredTargetY = opts.cinemaTarget.y;
@@ -600,12 +903,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming;
       const targetLerp = opts.reducedMotion
         ? 1
-        : 1 - Math.exp(-opts.dt * (cinemaFraming ? 2.2 : overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
+        : 1 - Math.exp(-opts.dt * (player.diving ? 10.5 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
       cameraTarget.x += (desiredTargetX - cameraTarget.x) * targetLerp;
       cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
-      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔RPG/드로어/드레스업/시네마↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
+      // 줌 거리 및 추적↔조망↔하늘 비행↔유성 급강하↔구역 포커스↔RPG/드로어/드레스업/시네마↔불멍 전환을 부드럽게 보간
       const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
 
@@ -613,56 +916,62 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const desiredEffDist =
         customizerFraming
           ? 4.35
-          : cinemaFraming && opts.cinemaTarget
-            ? opts.cinemaTarget.dist
-            : overviewMode && !opts.inputLocked
-              ? overviewDist
-              : districtFocus && !opts.inputLocked
-                ? districtFocus.dist
-                : dialogueFraming
-                  ? 6.1
-                  : drawerFraming
-                    ? 7.2
-                    : sittingAtCampfire && !opts.inputLocked
-                      ? 4.45
-                      : opts.cameraMode === "orbit"
-                        ? Math.max(28, camDist * 2.65)
-                        : focusDist;
+          : player.diving
+            ? Math.max(camDist, 12.5 + player.flightAlt * 0.95)
+            : cinemaFraming && opts.cinemaTarget
+              ? opts.cinemaTarget.dist
+              : overviewMode && !opts.inputLocked
+                ? overviewDist
+                : districtFocus && !opts.inputLocked
+                  ? districtFocus.dist
+                  : dialogueFraming
+                    ? 6.1
+                    : drawerFraming
+                      ? 7.2
+                      : sittingAtCampfire && !opts.inputLocked
+                        ? 4.45
+                        : opts.cameraMode === "orbit"
+                          ? Math.max(28, camDist * 2.65)
+                          : focusDist;
       const desiredEffPitch =
         customizerFraming
           ? 0.18
-          : cinemaFraming && opts.cinemaTarget
-            ? opts.cinemaTarget.pitch
-            : overviewMode && !opts.inputLocked
-              ? overviewPitch
-              : districtFocus && !opts.inputLocked
-                ? districtFocus.pitch
-                : dialogueFraming
-                  ? 0.21
-                  : drawerFraming
-                    ? 0.25
-                    : sittingAtCampfire && !opts.inputLocked
-                      ? 0.26
-                      : opts.cameraMode === "orbit"
-                        ? Math.max(0.54, camPitch)
-                        : camPitch;
+          : player.diving
+            ? Math.max(camPitch, 0.34 + Math.min(0.45, player.flightAlt * 0.028))
+            : cinemaFraming && opts.cinemaTarget
+              ? opts.cinemaTarget.pitch
+              : overviewMode && !opts.inputLocked
+                ? overviewPitch
+                : districtFocus && !opts.inputLocked
+                  ? districtFocus.pitch
+                  : dialogueFraming
+                    ? 0.21
+                    : drawerFraming
+                      ? 0.25
+                      : sittingAtCampfire && !opts.inputLocked
+                        ? 0.26
+                        : opts.cameraMode === "orbit"
+                          ? Math.max(0.54, camPitch)
+                          : camPitch;
       const modeLerp = opts.reducedMotion
         ? 1
-        : 1 - Math.exp(-opts.dt * (cinemaFraming ? 2.2 : overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
+        : 1 - Math.exp(-opts.dt * (player.diving ? 6.8 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
 
-      // 질주(`Shift`) 동적 FOV 44→49 부드러운 보간
+      // 질주(`Shift` 44→49) · 비행 별똥별 부스트(`50→58`) · 유성 급강하(`54`) 동적 FOV 부드러운 보간
       const desiredFov =
-        cinemaFraming
-          ? 42
-          : overviewMode && !opts.inputLocked
-            ? 50
-            : sittingAtCampfire && !opts.inputLocked
-              ? 42
-              : player.sprinting && player.walking
-                ? 49
-                : 44;
+        player.diving
+          ? 54
+          : cinemaFraming
+            ? 42
+            : overviewMode && !opts.inputLocked
+              ? (player.boosting ? 58 : 50)
+              : sittingAtCampfire && !opts.inputLocked
+                ? 42
+                : player.sprinting && player.walking
+                  ? 49
+                  : 44;
       const fovLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 7.5);
       smoothedFov += (desiredFov - smoothedFov) * fovLerp;
 

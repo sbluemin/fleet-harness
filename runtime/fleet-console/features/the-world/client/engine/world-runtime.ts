@@ -1,14 +1,20 @@
 import {
   ACESFilmicToneMapping,
+  AdditiveBlending,
+  BufferAttribute,
+  BufferGeometry,
   CircleGeometry,
+  DoubleSide,
   DynamicDrawUsage,
   GLSL3,
   HalfFloatType,
   InstancedBufferAttribute,
   InstancedMesh,
   Matrix4,
+  Mesh,
   PCFShadowMap,
   PerspectiveCamera,
+  PlaneGeometry,
   PMREMGenerator,
   Quaternion,
   Raycaster,
@@ -68,8 +74,12 @@ import {
   playFootstep,
   playJump,
   playLevelUpFanfare,
+  playMeteorDive,
+  playMeteorImpact,
   playMongleChirp,
   playRallyHorn,
+  playStarBoost,
+  playStarTakeoff,
   setBgmEnabled,
   setRainAmbience,
   updateBgmEnvironment,
@@ -307,6 +317,112 @@ void main() {
 }
 `;
 
+// 3D 유성 꼬리 리본 (Shooting Star Ribbon Trail, 28세그먼트 Additive GLSL3)
+const METEOR_RIBBON_SEGMENTS = 28;
+const METEOR_RIBBON_VERTEX = /* glsl */ `
+out vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const METEOR_RIBBON_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uAlpha;
+uniform float uBoost;
+uniform int uTrailMode;
+in vec2 vUv;
+out vec4 fragColor;
+
+vec3 rainbowPastel(float t) {
+  vec3 c = 0.58 + 0.42 * cos(6.28318 * (t + vec3(0.0, 0.33, 0.67)));
+  return mix(c, vec3(1.0), 0.16);
+}
+
+void main() {
+  float crossDist = abs(vUv.y * 2.0 - 1.0);
+  float edge = clamp(1.0 - crossDist, 0.0, 1.0);
+  float core = pow(edge, 2.8);
+  float halo = pow(edge, 1.25);
+
+  float headSoft = smoothstep(0.0, 0.045, vUv.x);
+  float tailFade = pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.38);
+  float shimmer = 0.86 + 0.14 * sin(vUv.x * 26.0 - uTime * 11.0);
+
+  vec3 colHead = vec3(1.0, 0.98, 0.88);
+  vec3 colMid = vec3(1.0, 0.84, 0.34);
+  vec3 colTail = vec3(0.76, 0.66, 1.0);
+  if (uTrailMode == 1) {
+    colHead = vec3(1.0, 0.96, 0.98);
+    colMid = vec3(1.0, 0.66, 0.84);
+    colTail = vec3(0.95, 0.42, 0.72);
+  } else if (uTrailMode == 2) {
+    colMid = rainbowPastel(vUv.x * 1.15 - uTime * 0.45);
+    colTail = rainbowPastel(vUv.x * 1.15 + 0.24 - uTime * 0.45);
+  } else if (uTrailMode == 3) {
+    colMid = vec3(0.96, 0.93, 0.78);
+    colTail = vec3(0.68, 0.76, 0.95);
+  }
+
+  vec3 col = mix(colMid, colTail, smoothstep(0.15, 0.88, vUv.x));
+  col = mix(col, colHead, core * 0.82);
+
+  float modeGain = (uTrailMode == 3) ? 0.42 : 1.0;
+  float alpha = (halo * 0.55 + core * 0.85) * headSoft * tailFade * shimmer * uAlpha * modeGain * (1.0 + uBoost * 0.42);
+  if (alpha < 0.004) discard;
+  fragColor = vec4(col * (1.1 + uBoost * 0.45), clamp(alpha, 0.0, 1.0));
+}
+`;
+
+// 지면 별빛 스포트라이트 & 유성 착지 충격파 링 (단일 PlaneGeometry 재사용)
+const STAR_GROUND_RING_VERTEX = /* glsl */ `
+out vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const STAR_GROUND_RING_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uMode;
+uniform float uProgress;
+uniform vec3 uColor;
+in vec2 vUv;
+out vec4 fragColor;
+
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  if (r > 1.0) discard;
+
+  if (uMode < 0.5) {
+    // 비행 중 지면 별빛 스포트라이트 링 + 은은한 회전 4각 별 광채
+    float pulse = 0.86 + 0.14 * sin(uTime * 3.4);
+    float softDisc = pow(clamp(1.0 - r, 0.0, 1.0), 2.4) * 0.36;
+    float outerRing = exp(-pow((r - 0.78) * 14.0, 2.0)) * 0.62;
+    float innerRing = exp(-pow((r - 0.42) * 16.0, 2.0)) * 0.28;
+    float ang = atan(p.y, p.x) + uTime * 0.85;
+    float starRays = pow(abs(cos(ang * 2.0)), 6.0) * smoothstep(0.75, 0.05, r) * 0.34;
+    float a = (softDisc + outerRing + innerRing + starRays) * pulse * 0.85;
+    if (a < 0.004) discard;
+    vec3 col = mix(uColor, vec3(1.0, 0.98, 0.88), softDisc + starRays);
+    fragColor = vec4(col * 1.15, clamp(a, 0.0, 0.92));
+  } else {
+    // 착지 충격파 링 (0.4m -> 7.6m 확장, 이중 황금 파동)
+    float fade = pow(clamp(1.0 - uProgress, 0.0, 1.0), 1.35);
+    float ring1 = exp(-pow((r - 0.88) * 18.0, 2.0)) * 1.15;
+    float ring2 = exp(-pow((r - 0.66) * 13.0, 2.0)) * 0.55;
+    float coreFlash = pow(clamp(1.0 - r, 0.0, 1.0), 2.2) * pow(clamp(1.0 - uProgress * 2.2, 0.0, 1.0), 1.4) * 0.85;
+    float a = (ring1 + ring2 + coreFlash) * fade;
+    if (a < 0.004) discard;
+    vec3 col = mix(uColor, vec3(1.0, 0.98, 0.90), clamp(ring1 * 0.55 + coreFlash, 0.0, 1.0));
+    fragColor = vec4(col * 1.35, clamp(a, 0.0, 1.0));
+  }
+}
+`;
+
 type MeadowSceneS8 = ReturnType<typeof createMeadowScene> & {
   getSurfaceType?: ((x: number, z: number) => WorldFootstepSurface) | undefined;
   getCameraOccluders?: (() => readonly CameraOccluder[]) | undefined;
@@ -404,6 +520,91 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const aoPos = new Vector3();
   const aoQuat = new Quaternion();
   const aoScale = new Vector3();
+
+  // 🌠 3D 유성 꼬리 리본 (28세그먼트 0-GC 링버퍼, 비행·급강하 중 +1 Draw Call, 지상 visible=false로 +0)
+  const ribbonVertCount = METEOR_RIBBON_SEGMENTS * 2;
+  const ribbonPositions = new Float32Array(ribbonVertCount * 3);
+  const ribbonUvs = new Float32Array(ribbonVertCount * 2);
+  const ribbonIndices = new Uint16Array((METEOR_RIBBON_SEGMENTS - 1) * 6);
+  for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
+    const u = i / (METEOR_RIBBON_SEGMENTS - 1);
+    ribbonUvs[i * 4 + 0] = u;
+    ribbonUvs[i * 4 + 1] = 0;
+    ribbonUvs[i * 4 + 2] = u;
+    ribbonUvs[i * 4 + 3] = 1;
+    if (i < METEOR_RIBBON_SEGMENTS - 1) {
+      const bi = i * 2;
+      const ii = i * 6;
+      ribbonIndices[ii + 0] = bi;
+      ribbonIndices[ii + 1] = bi + 1;
+      ribbonIndices[ii + 2] = bi + 2;
+      ribbonIndices[ii + 3] = bi + 1;
+      ribbonIndices[ii + 4] = bi + 3;
+      ribbonIndices[ii + 5] = bi + 2;
+    }
+  }
+  const ribbonGeo = new BufferGeometry();
+  const ribbonPosAttr = new BufferAttribute(ribbonPositions, 3);
+  ribbonPosAttr.setUsage(DynamicDrawUsage);
+  ribbonGeo.setAttribute("position", ribbonPosAttr);
+  ribbonGeo.setAttribute("uv", new BufferAttribute(ribbonUvs, 2));
+  ribbonGeo.setIndex(new BufferAttribute(ribbonIndices, 1));
+  const ribbonMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uAlpha: { value: 0 },
+      uBoost: { value: 0 },
+      uTrailMode: { value: 0 },
+    },
+    vertexShader: METEOR_RIBBON_VERTEX,
+    fragmentShader: METEOR_RIBBON_FRAGMENT,
+  });
+  const ribbonMesh = new Mesh(ribbonGeo, ribbonMat);
+  ribbonMesh.frustumCulled = false;
+  ribbonMesh.renderOrder = 4;
+  ribbonMesh.visible = false;
+  scene.add(ribbonMesh);
+
+  const ribbonPtsX = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsY = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsZ = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  let ribbonPrimed = false;
+  let ribbonFade = 0;
+
+  // 🌠 지면 별빛 스포트라이트 & 착지 충격파 링 (단일 PlaneGeometry 재사용, 비활성 시 Draw Call +0)
+  const groundRingGeo = new PlaneGeometry(2, 2);
+  groundRingGeo.rotateX(-Math.PI * 0.5);
+  const groundRingColor = new Vector3(1.0, 0.86, 0.36);
+  const groundRingMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uMode: { value: 0 },
+      uProgress: { value: 0 },
+      uColor: { value: groundRingColor },
+    },
+    vertexShader: STAR_GROUND_RING_VERTEX,
+    fragmentShader: STAR_GROUND_RING_FRAGMENT,
+  });
+  const groundRingMesh = new Mesh(groundRingGeo, groundRingMat);
+  groundRingMesh.frustumCulled = false;
+  groundRingMesh.renderOrder = 3;
+  groundRingMesh.visible = false;
+  scene.add(groundRingMesh);
+
+  let shockwaveTimer = 0;
+  const SHOCKWAVE_DURATION = 0.65;
+  let shockwaveX = 0;
+  let shockwaveZ = 0;
 
   // 플레이어 제독 3D 아바타 (⭐ 노란 통통 별빛 몽글이 — 도리는 사령관으로 자유 배정 가능)
   const playerRig = createMongleActorRig({
@@ -815,6 +1016,72 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         }
       },
       onStandUp: config.onCampfireStandUp,
+      onStarTakeoff: () => {
+        playStarTakeoff();
+        ribbonPrimed = false;
+        const pCur = playerCtrl.player;
+        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        for (let k = 0; k < 10; k += 1) {
+          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+          const ang = (k / 10) * Math.PI * 2;
+          director.spawnTrailSparkle(
+            pCur.x + Math.cos(ang) * 0.55,
+            pCur.y + 0.45 + (k % 3) * 0.16,
+            pCur.z + Math.sin(ang) * 0.55,
+            c,
+            0.92,
+            true,
+          );
+        }
+      },
+      onMeteorDive: () => {
+        playMeteorDive();
+        ribbonPrimed = false;
+      },
+      onStarBoost: () => {
+        playStarBoost();
+      },
+      onFlightSpin: () => {
+        playMongleChirp(6);
+        const pCur = playerCtrl.player;
+        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        for (let k = 0; k < 8; k += 1) {
+          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+          const ang = (k / 8) * Math.PI * 2;
+          director.spawnTrailSparkle(
+            pCur.x + Math.cos(ang) * 0.65,
+            pCur.y + 0.55,
+            pCur.z + Math.sin(ang) * 0.65,
+            c,
+            0.88,
+            true,
+          );
+        }
+      },
+      onMeteorImpact: (ix, iz) => {
+        playMeteorImpact();
+        shockwaveX = ix;
+        shockwaveZ = iz;
+        shockwaveTimer = SHOCKWAVE_DURATION;
+        const impactGy = Math.max(-0.05, meadow.getGroundHeight(ix, iz));
+        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        const burstColor = resolveTrailColor(theme, 0) ?? 0xffe57f;
+        director.spawnBurst(ix, impactGy + 0.42, iz, burstColor, 22);
+        for (let k = 0; k < 12; k += 1) {
+          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+          const ang = (k / 12) * Math.PI * 2;
+          const rad = 0.55 + (k % 3) * 0.35;
+          director.spawnTrailSparkle(
+            ix + Math.cos(ang) * rad,
+            impactGy + 0.22 + (k % 2) * 0.16,
+            iz + Math.sin(ang) * rad,
+            c,
+            0.96,
+            true,
+          );
+        }
+        director.reactToMeteorLanding(ix, iz);
+      },
     });
 
     if (playerEmoteHop > 0) {
@@ -849,18 +1116,30 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     }
 
     // ⭐ 드레스업 시즌2 제독 4종 이동 궤적(`stardust`/`sakura`/`rainbow`/`none`, 기존 단일 파티클 풀 재사용, Draw Call +0)
+    // 지상 보행·질주·체공 + 별빛 비행·유성 급강하 코멧 스파클 통합 처리
     if (
-      currentAdmiralTrail !== "none"
-      && currentLifecycle === "open"
-      && !playerCtrl.isOverviewMode()
+      currentLifecycle === "open"
       && !config.isReducedMotion()
+      && (currentAdmiralTrail !== "none" || playerCtrl.player.flying || playerCtrl.player.diving)
     ) {
       const pCur = playerCtrl.player;
-      const isAirborne = !pCur.onGround && pCur.playerJumpY > 0.12;
-      const isSprintingNow = playerCtrl.isSprinting() && pCur.onGround;
-      const isWalkingNow = pCur.walking && pCur.onGround && !isSprintingNow;
-      if (isSprintingNow || isWalkingNow || isAirborne) {
-        const interval = isSprintingNow ? 0.083 : isAirborne ? 0.14 : 0.285;
+      const isDivingNow = pCur.diving;
+      const isFlyingNow = pCur.flying;
+      const isAirborne = !isFlyingNow && !isDivingNow && !pCur.onGround && pCur.playerJumpY > 0.12;
+      const isSprintingNow = !isFlyingNow && !isDivingNow && playerCtrl.isSprinting() && pCur.onGround;
+      const isWalkingNow = !isFlyingNow && !isDivingNow && pCur.walking && pCur.onGround && !isSprintingNow;
+      const trailTheme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+
+      if (isDivingNow || isFlyingNow || isSprintingNow || isWalkingNow || isAirborne) {
+        const interval = isDivingNow
+          ? 0.032
+          : isFlyingNow
+            ? (pCur.boosting ? 0.055 : 0.11)
+            : isSprintingNow
+              ? 0.083
+              : isAirborne
+                ? 0.14
+                : 0.285;
         stardustAccum += dt;
         if (stardustAccum >= interval) {
           stardustAccum -= interval;
@@ -869,21 +1148,21 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           const backZ = -Math.cos(pCur.yaw);
           const sideX = Math.cos(pCur.yaw);
           const sideZ = -Math.sin(pCur.yaw);
-          const jitter = ((stardustStep % 5) - 2) * 0.11;
-          const trailDist = isSprintingNow ? 0.44 : 0.30;
+          const jitter = ((stardustStep % 5) - 2) * (isFlyingNow || isDivingNow ? 0.16 : 0.11);
+          const trailDist = isDivingNow ? 0.55 : isFlyingNow ? 0.52 : isSprintingNow ? 0.44 : 0.30;
           const sx = pCur.x + backX * trailDist + sideX * jitter;
           const sz = pCur.z + backZ * trailDist + sideZ * jitter;
-          const sy = pCur.y + (isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
-          const colorHex = resolveTrailColor(currentAdmiralTrail, stardustStep);
+          const sy = pCur.y + (isDivingNow ? 0.62 : isFlyingNow ? 0.48 : isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
+          const colorHex = resolveTrailColor(trailTheme, stardustStep);
           stardustStep = (stardustStep + 1) % 42;
           if (colorHex !== null) {
-            const driftUp = currentAdmiralTrail !== "sakura";
-            const scale = isSprintingNow ? 0.78 : isAirborne ? 0.72 : 0.64;
+            const driftUp = trailTheme !== "sakura";
+            const scale = isDivingNow ? 0.94 : isFlyingNow ? (pCur.boosting ? 0.88 : 0.74) : isSprintingNow ? 0.78 : isAirborne ? 0.72 : 0.64;
             director.spawnTrailSparkle(sx, sy, sz, colorHex, scale, driftUp);
-            if (isSprintingNow && stardustStep % 2 === 0) {
-              const color2 = resolveTrailColor(currentAdmiralTrail, stardustStep + 1);
+            if ((isSprintingNow || isDivingNow || (isFlyingNow && pCur.boosting)) && stardustStep % 2 === 0) {
+              const color2 = resolveTrailColor(trailTheme, stardustStep + 1);
               if (color2 !== null) {
-                director.spawnTrailSparkle(sx - sideX * 0.16, sy + 0.12, sz - sideZ * 0.16, color2, 0.58, driftUp);
+                director.spawnTrailSparkle(sx - sideX * 0.18, sy + 0.12, sz - sideZ * 0.18, color2, scale * 0.82, driftUp);
               }
             }
           }
@@ -917,7 +1196,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     prevPlayerX = playerCtrl.player.x;
     prevPlayerZ = playerCtrl.player.z;
 
-    const nearId = director.update(
+    const nearIdRaw = director.update(
       dt,
       elapsed,
       skyLighting.nightFactor,
@@ -926,6 +1205,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       meadow.isWalkable,
       meadow.resolveMovement,
     );
+    const nearId = (playerCtrl.player.flying || playerCtrl.player.diving) ? null : nearIdRaw;
     config.onNearActorChanged(nearId);
 
     // 살아 움직이는 공방 FX 에미터 주기 방출 (0 할당, 단일 InstancedMesh 풀)
@@ -965,7 +1245,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     scene.environmentIntensity = 0.42 * (1 - skyLighting.nightFactor * 0.65);
     meadow.update(dt, elapsed, skyLighting.nightFactor, skyLighting.sunDir);
 
-    const useBloom = skyLighting.nightFactor > 0.02 || director.hasActiveFx();
+    const useBloom =
+      skyLighting.nightFactor > 0.02
+      || director.hasActiveFx()
+      || playerCtrl.player.flying
+      || playerCtrl.player.diving
+      || shockwaveTimer > 0;
     bloomPass.enabled = useBloom;
     if (useBloom) {
       bloomPass.threshold = 1.12 - skyLighting.nightFactor * 0.22;
@@ -986,6 +1271,154 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       : 0;
     const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
 
+    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 비행·급강하 중 +1 Draw Call, 지상 visible=false로 +0)
+    const ribbonActive = currentLifecycle === "open" && (p.flying || p.diving);
+    ribbonFade = ribbonActive
+      ? Math.min(1, ribbonFade + dt * 6.5)
+      : Math.max(0, ribbonFade - dt * 3.8);
+    if (ribbonActive || ribbonFade > 0.005) {
+      const headX = p.x - Math.sin(p.yaw) * 0.32;
+      const headY = pGround + pTotalLift + 0.56;
+      const headZ = p.z - Math.cos(p.yaw) * 0.32;
+      if (!ribbonPrimed) {
+        ribbonPrimed = true;
+        for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
+          ribbonPtsX[i] = headX;
+          ribbonPtsY[i] = headY;
+          ribbonPtsZ[i] = headZ;
+        }
+      } else {
+        for (let i = METEOR_RIBBON_SEGMENTS - 1; i > 0; i -= 1) {
+          ribbonPtsX[i] = ribbonPtsX[i - 1]!;
+          ribbonPtsY[i] = ribbonPtsY[i - 1]!;
+          ribbonPtsZ[i] = ribbonPtsZ[i - 1]!;
+        }
+        ribbonPtsX[0] = headX;
+        ribbonPtsY[0] = headY;
+        ribbonPtsZ[0] = headZ;
+      }
+
+      const boostAmt = p.diving ? 1.0 : p.boosting ? 0.85 : Math.min(0.4, p.moveSpeed / 30);
+      const baseHalfW = p.diving ? 0.62 : p.boosting ? 0.56 : 0.36;
+      const camX = camera.position.x;
+      const camY = camera.position.y;
+      const camZ = camera.position.z;
+
+      for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
+        const px = ribbonPtsX[i]!;
+        const py = ribbonPtsY[i]!;
+        const pz = ribbonPtsZ[i]!;
+        const prevIdx = i === 0 ? 0 : i - 1;
+        const nextIdx = i === METEOR_RIBBON_SEGMENTS - 1 ? i : i + 1;
+        let tx = ribbonPtsX[prevIdx]! - ribbonPtsX[nextIdx]!;
+        let ty = ribbonPtsY[prevIdx]! - ribbonPtsY[nextIdx]!;
+        let tz = ribbonPtsZ[prevIdx]! - ribbonPtsZ[nextIdx]!;
+        const tLen = Math.hypot(tx, ty, tz);
+        if (tLen > 0.0005) {
+          tx /= tLen;
+          ty /= tLen;
+          tz /= tLen;
+        } else {
+          tx = Math.sin(p.yaw);
+          ty = 0;
+          tz = Math.cos(p.yaw);
+        }
+
+        // 카메라 시선 벡터와 세그먼트 접선의 외적으로 항상 시선 정면을 향하는 리본 폭 생성
+        let vx = camX - px;
+        let vy = camY - py;
+        let vz = camZ - pz;
+        const vLen = Math.hypot(vx, vy, vz);
+        if (vLen > 0.001) {
+          vx /= vLen;
+          vy /= vLen;
+          vz /= vLen;
+        } else {
+          vx = 0;
+          vy = 1;
+          vz = 0;
+        }
+        let sx = ty * vz - tz * vy;
+        let sy = tz * vx - tx * vz;
+        let sz = tx * vy - ty * vx;
+        const sLen = Math.hypot(sx, sy, sz);
+        if (sLen > 0.001) {
+          sx /= sLen;
+          sy /= sLen;
+          sz /= sLen;
+        } else {
+          sx = Math.cos(p.yaw);
+          sy = 0;
+          sz = -Math.sin(p.yaw);
+        }
+
+        const u = i / (METEOR_RIBBON_SEGMENTS - 1);
+        const halfW = baseHalfW * (1 - u * 0.92);
+        const vi = i * 6;
+        ribbonPositions[vi + 0] = px - sx * halfW;
+        ribbonPositions[vi + 1] = py - sy * halfW;
+        ribbonPositions[vi + 2] = pz - sz * halfW;
+        ribbonPositions[vi + 3] = px + sx * halfW;
+        ribbonPositions[vi + 4] = py + sy * halfW;
+        ribbonPositions[vi + 5] = pz + sz * halfW;
+      }
+      ribbonPosAttr.needsUpdate = true;
+      ribbonMat.uniforms["uTime"]!.value = elapsed;
+      ribbonMat.uniforms["uAlpha"]!.value = ribbonFade * (p.diving ? 0.98 : 0.86);
+      ribbonMat.uniforms["uBoost"]!.value = boostAmt;
+      ribbonMat.uniforms["uTrailMode"]!.value =
+        currentAdmiralTrail === "sakura"
+          ? 1
+          : currentAdmiralTrail === "rainbow"
+            ? 2
+            : currentAdmiralTrail === "none"
+              ? 3
+              : 0;
+      ribbonMesh.visible = true;
+    } else {
+      ribbonMesh.visible = false;
+      ribbonPrimed = false;
+    }
+
+    // 🌠 지면 별빛 스포트라이트 & 착지 충격파 링 갱신 (단일 Mesh 재사용, 비활성 시 Draw Call +0)
+    if (shockwaveTimer > 0) {
+      shockwaveTimer = Math.max(0, shockwaveTimer - dt);
+      const progress = 1 - shockwaveTimer / SHOCKWAVE_DURATION;
+      const easeOut = 1 - Math.pow(1 - progress, 3);
+      const radius = 0.4 + easeOut * 7.2;
+      const swGy = Math.max(-0.05, meadow.getGroundHeight(shockwaveX, shockwaveZ));
+      if (currentAdmiralTrail === "sakura") {
+        groundRingColor.set(1.0, 0.66, 0.84);
+      } else if (currentAdmiralTrail === "rainbow") {
+        groundRingColor.set(0.74, 0.88, 1.0);
+      } else {
+        groundRingColor.set(1.0, 0.86, 0.36);
+      }
+      groundRingMesh.position.set(shockwaveX, swGy + 0.09, shockwaveZ);
+      groundRingMesh.scale.set(radius, 1, radius);
+      groundRingMat.uniforms["uTime"]!.value = elapsed;
+      groundRingMat.uniforms["uMode"]!.value = 1.0;
+      groundRingMat.uniforms["uProgress"]!.value = progress;
+      groundRingMesh.visible = shockwaveTimer > 0;
+    } else if (currentLifecycle === "open" && p.flying && p.flightAlt > 1.0) {
+      if (currentAdmiralTrail === "sakura") {
+        groundRingColor.set(1.0, 0.68, 0.86);
+      } else if (currentAdmiralTrail === "rainbow") {
+        groundRingColor.set(0.76, 0.88, 1.0);
+      } else {
+        groundRingColor.set(1.0, 0.86, 0.38);
+      }
+      const spotRadius = p.boosting ? 2.65 : 2.15;
+      groundRingMesh.position.set(p.x, pGround + 0.07, p.z);
+      groundRingMesh.scale.set(spotRadius, 1, spotRadius);
+      groundRingMat.uniforms["uTime"]!.value = elapsed;
+      groundRingMat.uniforms["uMode"]!.value = 0.0;
+      groundRingMat.uniforms["uProgress"]!.value = 0.0;
+      groundRingMesh.visible = true;
+    } else {
+      groundRingMesh.visible = false;
+    }
+
     // 2차 물리 모자/왕관 스프링 (점프·착지·발걸음 수직 변화에 살짝 늦게 반응)
     const pLiftVel = dt > 0.0005 ? (pTotalLift - prevPlayerLiftY) / dt : 0;
     prevPlayerLiftY = pTotalLift;
@@ -998,7 +1431,15 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     let playerAnim: WorldAnimMode = "idle";
     let playerExpr: WorldExpression = "normal";
     let playerBlush = 0;
-    if (playerEmoteTimer > 0 && playerEmoteKind) {
+    if (p.diving) {
+      playerAnim = "dive";
+      playerExpr = "happy";
+      playerBlush = 0.72;
+    } else if (p.flying) {
+      playerAnim = "fly";
+      playerExpr = p.boosting ? "happy" : "focused";
+      playerBlush = p.boosting ? 0.58 : 0.30;
+    } else if (playerEmoteTimer > 0 && playerEmoteKind) {
       playerAnim = playerEmoteKind;
       playerExpr = "happy";
       playerBlush = playerEmoteKind === "spin" ? 0.92 : 0.82;
@@ -1046,6 +1487,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const rel = angleDelta(Math.atan2(camera.position.x - p.x, camera.position.z - p.z), p.yaw);
       targetPLookYaw = clampSigned(rel / 1.35, 0.85);
       targetPLookPitch = 0.08;
+    } else if (p.flying || p.diving) {
+      targetPLookYaw = clampSigned(-p.flightRoll * 1.1, 0.6);
+      targetPLookPitch = p.diving ? -0.35 : -0.18;
     } else if (glanceActor) {
       const distG = Math.hypot(glanceActor.x - p.x, glanceActor.z - p.z);
       if (distG < 7.0 && distG > 0.2) {
@@ -1072,8 +1516,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       liftY: pTotalLift,
       z: p.z,
       yaw: p.yaw,
-      state: p.walking ? "running" : "idle",
-      activity: p.sprinting ? "run" : null,
+      state: p.walking || p.flying || p.diving ? "running" : "idle",
+      activity: p.sprinting || p.boosting ? "run" : null,
       carrying: false,
       needsAttention: false,
       elapsed,
@@ -1091,6 +1535,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       lookPitch: playerLookPitch,
       blush: playerBlush,
       hatBounce: playerHatPos,
+      flightRoll: p.flightRoll,
+      flightPitch: p.flightPitch,
     });
 
     // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · 미니맵 산책 도트 · Direct-DOM 투영 계산
@@ -1102,8 +1548,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     let structSig = isOpen ? "1" : "0";
     let idx = 0;
 
-    // 0번 AO Blob: 플레이어 제독 접촉 그림자 (점프 높이에 따라 크기·투명도 부드럽게 반응)
-    {
+    // 0번 AO Blob: 플레이어 제독 접촉 그림자 (고도 2.2m 이상 비행 시 숨기고 지면 별빛 스포트라이트로 대체)
+    if (pTotalLift < 2.2) {
       const pAoScale = 0.92 * Math.max(0.45, Math.min(1.06, 1 - pTotalLift * 0.28 + p.landSquash * 0.14));
       const pAoAlpha = Math.max(0.06, Math.min(0.44, 0.36 * (1 - pTotalLift * 0.42)));
       aoPos.set(p.x, pGround + 0.022, p.z);
@@ -1143,7 +1589,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       // RPG 대화(`dialogue`) 또는 우측 사령관 수첩 `대화`(`chat`) 탭 열림 중 포커스 NPC는 대화(`talk`/`happy`/시선) 유지
       const conversingFocus = isSelected && isConversing;
 
-      // NPC 부드러운 시선 추적 (대화 중 포커스 제독 → 수다 상대 → 7m 이내 지나가는 제독 → 벚꽃/눈/무지개 하늘)
+      // NPC 부드러운 시선 추적 (대화 중 포커스 제독 → 상공 비행 제독 올려다보기 → 수다 상대 → 7m 이내 지나가는 제독 → 벚꽃/눈/무지개 하늘)
       let targetLookYaw = 0;
       let targetLookPitch = 0;
       const distPlayer = Math.hypot(p.x - m.x, p.z - m.z);
@@ -1152,6 +1598,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           const rel = angleDelta(Math.atan2(p.x - m.x, p.z - m.z), m.yaw);
           targetLookYaw = clampSigned(rel / 1.15, 1);
           targetLookPitch = clampSigned((p.playerJumpY) * 0.35, 0.55);
+        } else if (p.flying && p.flightAlt > 2.0 && distPlayer < 22.0) {
+          // 상공을 나는 별빛 제독 아래 22m 이내 사령관들이 고개를 들어 하늘을 올려다봄
+          if (distPlayer > 0.35) {
+            const rel = angleDelta(Math.atan2(p.x - m.x, p.z - m.z), m.yaw);
+            targetLookYaw = clampSigned(rel / 1.15, 1);
+          }
+          targetLookPitch = 0.62;
         } else if (m.gazeTargetX !== null && m.gazeTargetZ !== null) {
           const rel = angleDelta(Math.atan2(m.gazeTargetX - m.x, m.gazeTargetZ - m.z), m.yaw);
           targetLookYaw = clampSigned(rel / 1.15, 1);
@@ -2074,6 +2527,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       aoBlobGeo.dispose();
       aoBlobMat.dispose();
       scene.remove(aoBlobInstanced);
+      ribbonGeo.dispose();
+      ribbonMat.dispose();
+      scene.remove(ribbonMesh);
+      groundRingGeo.dispose();
+      groundRingMat.dispose();
+      scene.remove(groundRingMesh);
       playerRig.dispose();
       director.dispose();
       playerCtrl.dispose();

@@ -4119,27 +4119,52 @@
   background: currentColor;
 }
 
-/* 하늘 조망(M) 모드 상단 중앙 안내 필 */
+/* 별빛 하늘 비행(M) 모드 상단 중앙 안내 필 */
 .the-world-overview-banner {
   position: absolute;
   top: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
+  max-width: calc(100vw - 32px);
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 5px var(--space-3);
   border-radius: var(--radius-pill);
-  background: oklch(12% 0.014 255 / 88%);
-  backdrop-filter: blur(12px);
-  border: 1px solid color-mix(in oklch, var(--mongle-amber) 52%, oklch(100% 0 0 / 14%));
-  box-shadow: var(--shadow-floating);
-  color: oklch(96% 0.005 255);
+  background: oklch(12% 0.014 255 / 86%);
+  backdrop-filter: blur(18px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 56%, oklch(100% 0 0 / 16%));
+  box-shadow: 0 0 20px color-mix(in oklch, var(--mongle-amber) 18%, transparent), var(--shadow-floating);
+  color: oklch(97% 0.005 255);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
   pointer-events: auto;
+  cursor: pointer;
+  animation: the-world-cinema-rise var(--duration-base) var(--ease-spring) both;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-overview-banner > svg {
+  flex-shrink: 0;
+}
+
+.the-world-overview-banner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.the-world-overview-banner:hover {
+  background: oklch(16% 0.014 255 / 92%);
+  border-color: color-mix(in oklch, var(--mongle-amber) 76%, transparent);
+}
+
+.the-world-overview-banner:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
 }
 
 /* ── 중앙 광장 3D 퀘스트 게시판 푯말 & 「제독 퀘스트 게시판」 모달 ────────────── */
@@ -5973,6 +5998,7 @@
   .the-world-chat-panel-wrap,
   .the-world-interact-prompt,
   .the-world-urgent-beacon,
+  .the-world-overview-banner,
   .the-world-cinema-pill,
   .the-world-cinema-dot,
   .the-world-radial-aperture,
@@ -6002,6 +6028,7 @@
   .the-world-quick-btn:focus-visible,
   .the-world-nametag:focus-visible,
   .the-world-urgent-beacon:focus-visible,
+  .the-world-overview-banner:focus-visible,
   .the-world-cinema-exit-btn:focus-visible,
   .the-world-gazette-kpi.is-mvp:focus-visible,
   .the-world-gazette-row:focus-visible,

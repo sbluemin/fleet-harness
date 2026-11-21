@@ -17,6 +17,7 @@ let lastHoverAt = 0;
 let lastChimeAt = 0;
 let lastChirpAt = 0;
 let lastFootstepAt = 0;
+let lastBoostAt = 0;
 let cachedNoiseCtx: AudioContext | null = null;
 let cachedNoiseBuf: AudioBuffer | null = null;
 let cachedRainCtx: AudioContext | null = null;
@@ -44,6 +45,7 @@ const HOVER_COOLDOWN_MS = 90;
 const CHIME_COOLDOWN_MS = 380;
 const CHIRP_COOLDOWN_MS = 140;
 const FOOTSTEP_COOLDOWN_MS = 280;
+const BOOST_COOLDOWN_MS = 380;
 
 function getAudioEngine(): { readonly ctx: AudioContext; readonly out: GainNode } | null {
   if (muted) return null;
@@ -1093,4 +1095,111 @@ export function updateBgmEnvironment(night: number, weather: WorldWeatherMode): 
       syncBgmRainBed(eng, bgmOut);
     }
   }
+}
+
+// --- Sprint 14: 별빛 상공 비행 & 유성 급강하 착지 효과음 4종 ---
+
+/** `M` 별빛 비행 이륙 시 영롱하게 솟아오르는 상승 하프 글리산도. */
+export function playStarTakeoff(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const notes = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98] as const; // C5 E5 G5 B5 D6 G6
+  for (let i = 0; i < notes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i % 2 === 0 ? "sine" : "triangle",
+      freqStart: notes[i]!,
+      freqEnd: notes[i]! * 1.015,
+      delay: i * 0.042,
+      duration: 0.24,
+      peakGain: 0.24 - i * 0.018,
+      attack: 0.008,
+    });
+  }
+}
+
+/** 별똥별 급강하 시작 시 하늘을 가르는 슈웅~ 쉬머 하강 스윕. */
+export function playMeteorDive(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 1380,
+    freqEnd: 340,
+    duration: 0.48,
+    peakGain: 0.26,
+    attack: 0.015,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 1860,
+    freqEnd: 520,
+    delay: 0.04,
+    duration: 0.42,
+    peakGain: 0.16,
+    attack: 0.012,
+  });
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.44,
+    centerFreq: 1650,
+    q: 1.4,
+    peakGain: 0.22,
+    attack: 0.03,
+  });
+}
+
+/** 유성 급강하 착지 순간 닌텐도 스타 차임 + 포근한 저음 착지 쿵. */
+export function playMeteorImpact(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 부드러운 저음 쿵
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 155,
+    freqEnd: 52,
+    duration: 0.18,
+    peakGain: 0.48,
+    attack: 0.005,
+  });
+  // 반짝이는 스타 착지 차임 화음 (C5 · G5 · C6 · E6)
+  const chime = [523.25, 783.99, 1046.5, 1318.51] as const;
+  for (let i = 0; i < chime.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i < 2 ? "triangle" : "sine",
+      freqStart: chime[i]!,
+      delay: 0.018 + i * 0.034,
+      duration: 0.34,
+      peakGain: 0.26 - i * 0.032,
+      attack: 0.006,
+    });
+  }
+}
+
+/** 별빛 비행 중 `Shift` 별똥별 부스트 점화 스윕 (380ms 쿨다운). */
+export function playStarBoost(): void {
+  const now = performance.now();
+  if (now - lastBoostAt < BOOST_COOLDOWN_MS) return;
+  const eng = getAudioEngine();
+  if (!eng) return;
+  lastBoostAt = now;
+
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 480,
+    freqEnd: 1120,
+    duration: 0.22,
+    peakGain: 0.26,
+    attack: 0.01,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 720,
+    freqEnd: 1480,
+    delay: 0.03,
+    duration: 0.20,
+    peakGain: 0.16,
+    attack: 0.01,
+  });
 }
