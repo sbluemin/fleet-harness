@@ -27,9 +27,9 @@ struct WindowSymbols {
   private let activeSpace: ActiveSpace?
   private let displaySpaces: DisplaySpaces?
 
-  init() {
+  init(omitWindowLocation: Bool = false) {
     _ = dlopen("/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight", RTLD_LAZY | RTLD_GLOBAL)
-    setLocation = loadSymbol("CGEventSetWindowLocation", SetLocation.self)
+    setLocation = omitWindowLocation ? nil : loadSymbol("CGEventSetWindowLocation", SetLocation.self)
     postRecord = loadSymbol("SLPSPostEventRecordTo", PostRecord.self)
     mainConnection = loadSymbol("CGSMainConnectionID", MainConnection.self)
     owner = loadSymbol("SLSGetWindowOwner", Owner.self)

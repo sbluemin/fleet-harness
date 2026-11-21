@@ -196,8 +196,11 @@ private struct Expectation {
 }
 
 @MainActor final class HelperService {
+  private enum Fault: String { case selfCheck = "self_check", symbols }
+
   let symbols: WindowSymbols
   private let catalog: WindowCatalog
+  private let fault: Fault?
   private let ax = AXSession()
   private var cursor: AICursorControlling?
   private var cursorKey: WindowKey?
@@ -205,13 +208,19 @@ private struct Expectation {
   private var check: Object = ["ok": false, "reason": "not_ready", "ms": 0]
 
   init() {
-    let symbols = WindowSymbols()
+    let fault = ProcessInfo.processInfo.environment["FLEET_COMPUTER_USE_FAULT"].flatMap(Fault.init(rawValue:))
+    let symbols = WindowSymbols(omitWindowLocation: fault == .symbols)
+    self.fault = fault
     self.symbols = symbols
     self.catalog = WindowCatalog(symbols: symbols)
   }
 
   func initialize() async -> Object {
-    check = await selfCheck(symbols: symbols, permissions: HelperPermissions())
+    if fault == .selfCheck {
+      check = ["ok": false, "reason": "fault_injected_self_check", "ms": 0]
+    } else {
+      check = await selfCheck(symbols: symbols, permissions: HelperPermissions())
+    }
     return check
   }
 
@@ -235,7 +244,10 @@ private struct Expectation {
       if let query, !query.isEmpty { result["installed"] = catalog.installed(query: query) }
       return result
     case "snapshot": return try await snapshot(p)
-    case "act": return try await act(p, record: record)
+    case "act":
+      // 장애를 주입한 경우 대상 조회나 입력 준비에도 들어가지 않는다.
+      if fault != nil { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
+      return try await act(p, record: record)
     case "focus": return try focus(p)
     case "verify": return try await verify(p)
     case "cursor":
