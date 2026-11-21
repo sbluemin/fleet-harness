@@ -500,6 +500,7 @@ function LoginCard({
   api,
   provider,
   expired,
+  spotlight,
   now,
   t,
   logout,
@@ -508,6 +509,7 @@ function LoginCard({
   readonly api: ClientApiCapability;
   readonly provider: LoginProvider;
   readonly expired: boolean;
+  readonly spotlight: boolean;
   readonly now: number;
   readonly t: T;
   readonly logout: (provider: LogoutProvider) => void;
@@ -521,7 +523,7 @@ function LoginCard({
     void startLogin(api, provider);
   };
   return (
-    <section className="quota-connect-card" data-provider={provider}>
+    <section className={`quota-connect-card${spotlight ? " quota-provider--spotlight" : ""}`} data-provider={provider}>
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${provider}`}>{providerGlyph(provider)}</span>
         <h3>{name}</h3>
@@ -623,6 +625,7 @@ function ProviderCard({
   id,
   mobile,
   provider,
+  spotlight,
   now,
   locale,
   t,
@@ -634,6 +637,7 @@ function ProviderCard({
   readonly id: ProviderId;
   readonly mobile: boolean;
   readonly provider: ProviderDto;
+  readonly spotlight: boolean;
   readonly now: number;
   readonly locale: ConsoleLocale;
   readonly t: T;
@@ -649,10 +653,10 @@ function ProviderCard({
   const budgetEditor = useBudgetEditor(provider.spend?.budget, (usd) =>
     spendProvider === undefined ? Promise.resolve(false) : saveBudget(spendProvider, usd));
   if (needsConsoleLogin(id, provider.status)) {
-    return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} disconnect={() => connect("claude", false)} />;
+    return <LoginCard api={api} provider={id} expired={provider.status === "expired"} spotlight={spotlight} now={now} t={t} logout={logout} disconnect={() => connect("claude", false)} />;
   }
   return (
-    <section className="quota-provider" data-provider={id}>
+    <section className={`quota-provider${spotlight ? " quota-provider--spotlight" : ""}`} data-provider={id}>
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
@@ -911,20 +915,47 @@ export function useQuotaData(api: ClientApiCapability) {
  * 「사이드바에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
  * 연결 안 됨 묶음도 같은 순서를 따르되, 묶음은 연결된 카드 아래에 그대로 둔다.
  */
-export function QuotaPanel({ api, locale, labelId, mobile = false }: {
+const SPOTLIGHT_DURATION_MS = 900;
+
+export function QuotaPanel({ api, locale, labelId, mobile = false, spotlightProvider = null }: {
   readonly api: ClientApiCapability;
   readonly locale: ConsoleLocale;
   readonly labelId: string;
   readonly mobile?: boolean;
+  /** 상단 요약 링 클릭으로 열렸을 때 해당 공급자 구역으로 부드럽게 스크롤하고 은은히 강조한다. */
+  readonly spotlightProvider?: ProviderId | null;
 }) {
   const t = useMemo(() => getT(locale, mobile), [locale, mobile]);
   const { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget } = useQuotaData(api);
   const { providerOrder } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [activeSpotlight, setActiveSpotlight] = useState<ProviderId | null>(null);
+  const hasData = data !== null;
+
+  useEffect(() => {
+    if (spotlightProvider === null || !hasData) return;
+    setActiveSpotlight(spotlightProvider);
+    const frame = window.requestAnimationFrame(() => {
+      const target = bodyRef.current?.querySelector<HTMLElement>(`[data-provider="${spotlightProvider}"]`);
+      if (target) {
+        const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+        target.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
+      }
+    });
+    const timer = window.setTimeout(() => {
+      setActiveSpotlight((current) => (current === spotlightProvider ? null : current));
+    }, SPOTLIGHT_DURATION_MS);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [spotlightProvider, hasData]);
+
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
   const disconnected = (id: ProviderId) => ["not_connected", "signed_out", "expired"].includes(data?.providers[id]?.status ?? "error");
-  const renderProvider = (id: ProviderId) => <ProviderCard key={id} id={id} mobile={mobile} provider={data?.providers[id] ?? UNREPORTED_PROVIDER} now={now} locale={locale} t={t} api={api} connect={connect} logout={logout} saveBudget={saveBudget} />;
+  const renderProvider = (id: ProviderId) => <ProviderCard key={id} id={id} mobile={mobile} provider={data?.providers[id] ?? UNREPORTED_PROVIDER} spotlight={activeSpotlight === id} now={now} locale={locale} t={t} api={api} connect={connect} logout={logout} saveBudget={saveBudget} />;
   return (
     <div className="quota-root">
       <header className="quota-head">
@@ -939,7 +970,7 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
         <BarLegend t={t} />
         <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>
       </header>
-      <div className="quota-body">
+      <div className="quota-body" ref={bodyRef}>
         {requestError ? <div className="quota-error">{t(requestError)}</div> : null}
         {!data && !requestError ? (
           <div className="quota-state" role="status">

@@ -209,7 +209,24 @@
 /* 공급자 구역은 카드가 아니라 팝업 면 위의 한 구역이다 — 구역 사이는 구분선 하나, 이름은 제목이 말한다. */
 .quota-provider,
 .quota-connect-card {
+  position: relative;
   padding: 14px 0;
+}
+
+.quota-provider::before,
+.quota-connect-card::before {
+  content: "";
+  position: absolute;
+  inset: 2px -8px;
+  border-radius: var(--radius-xs);
+  background: var(--wash-selected);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--duration-base) var(--ease-glide);
+}
+
+.quota-provider--spotlight::before {
+  opacity: 1;
 }
 
 .quota-body > * + :is(.quota-provider, .quota-connect-card) {
@@ -685,43 +702,48 @@
 }
 
 /* ── 도구모음 요약(Bridge) ─────────────────────────────────────────
-   도구 아이콘(.right-rail-ico)과 같은 26px 높이 — 겨눔과 팝업이 열린 동안만 유리 면을 입는다. 공급자 칸은
-   글리프에 숫자를 바짝 붙인 내용 폭이라, 자릿수가 바뀔 때만 몇 px 움직인다. 숫자는 고정폭 숫자라 같은 자릿수
-   안에서는 흔들리지 않는다. 숫자의 색은 패널 미터와 같은 판정의 신호 채널(warn·coral)만 탄다. */
+   공급자 글리프를 23px 원형 링으로 감싼 고정 폭 메달리온 줄이다 — 숫자 스택과 자릿수 흔들림이 없고,
+   평상 링은 패널 미터와 같은 중립 무게(--ink-fog × --gauge-weight-quiet), 경고·위험에만
+   신호 채널(--warn·--coral)을 발화한다. 글리프는 고유 공급자 색(--provider-*)만 가진다. */
 .quota-toolbar-summary {
   position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   height: 36px;
-  padding: 0 2px;
+  padding: 0 3px;
   border: 0;
-  border-radius: var(--radius-xs);
-  background: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
   color: var(--text-tertiary);
-  cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide);
+    background var(--duration-fast) var(--ease-glide);
 }
 
-.quota-toolbar-summary:hover,
-.quota-toolbar-summary:focus-visible {
-  color: var(--text-secondary);
-  background: var(--wash-hover);
+.quota-toolbar-summary.is-open,
+.quota-toolbar-summary[aria-expanded="true"] {
+  background: var(--control-wash);
 }
 
-.quota-toolbar-summary:focus-visible { box-shadow: var(--focus-face); }
-
-.quota-toolbar-summary[aria-expanded="true"] { background: var(--control-wash); }
-
-/* 고른 공급자가 없을 때의 입구 — 도구 아이콘과 같은 정사각 자리에 막대 글리프 하나. */
+/* 고른 공급자가 없을 때의 입구 — 정사각 자리에 막대 글리프 하나. */
 .quota-toolbar-summary--glyph {
   justify-content: center;
   width: 26px;
   padding: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+}
+
+.quota-toolbar-summary--glyph:hover,
+.quota-toolbar-summary--glyph:focus-visible {
+  color: var(--text-secondary);
+  background: var(--wash-hover);
+}
+
+.quota-toolbar-summary--glyph:focus-visible {
+  box-shadow: var(--focus-face);
 }
 
 .quota-toolbar-summary--glyph svg {
@@ -732,7 +754,7 @@
 /* 캡슐 안(보내기 버튼 왼쪽) 배치 — 원형 단추와 같은 28px 알약이고, 캡슐이 420px 이하로 좁으면 막대 글리프로 접힌다. */
 .quota-toolbar-summary--capsule {
   height: var(--fc-composer-circle, 28px);
-  padding: 0 7px;
+  padding: 0 5px;
   border-radius: var(--radius-pill);
 }
 
@@ -744,8 +766,24 @@
 .quota-toolbar-summary__compact-glyph {
   display: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: var(--fc-composer-circle, 28px);
+  height: var(--fc-composer-circle, 28px);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.quota-toolbar-summary__compact-glyph:hover,
+.quota-toolbar-summary__compact-glyph:focus-visible {
+  color: var(--text-secondary);
+  background: var(--wash-hover);
+}
+
+.quota-toolbar-summary__compact-glyph:focus-visible {
+  box-shadow: var(--focus-face);
 }
 
 .quota-toolbar-summary__compact-glyph svg {
@@ -760,7 +798,7 @@
     padding: 0;
   }
 
-  .quota-toolbar-summary--capsule .quota-toolbar-summary__cell {
+  .quota-toolbar-summary--capsule .quota-toolbar-summary__ring {
     display: none;
   }
 
@@ -777,7 +815,7 @@
     padding: 0;
   }
 
-  .fc-composer-capsule:has(> :is(.fc-mention-chip, .group-composer-chip)) .quota-toolbar-summary--capsule .quota-toolbar-summary__cell {
+  .fc-composer-capsule:has(> :is(.fc-mention-chip, .group-composer-chip)) .quota-toolbar-summary--capsule .quota-toolbar-summary__ring {
     display: none;
   }
 
@@ -786,50 +824,435 @@
   }
 }
 
-.quota-toolbar-summary__cell {
-  display: inline-flex;
+.quota-toolbar-summary__ring {
+  position: relative;
+  display: inline-grid;
   flex: none;
-  align-items: center;
-  gap: 3px;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    transform var(--duration-base) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-glide);
 }
 
-.quota-toolbar-summary__mark {
+.quota-toolbar-summary__ring:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.quota-toolbar-summary__ring:active {
+  transform: scale(0.92);
+  transition-duration: var(--motion-tap);
+}
+
+/* 이웃 링을 훑을 때 비활성 링만 살짝 물러나 초점이 자연스럽게 잡힌다. */
+.quota-toolbar-summary.is-hovering .quota-toolbar-summary__ring:not(.is-hovered) {
+  opacity: 0.72;
+}
+
+.quota-toolbar-summary__ring.is-hovered,
+.quota-toolbar-summary__ring:hover {
+  background: var(--wash-hover);
+  opacity: 1;
+}
+
+.quota-toolbar-summary__dial {
+  position: relative;
   display: grid;
   flex: none;
   place-items: center;
-  width: 14px;
-  height: 14px;
+  width: 23px;
+  height: 23px;
+  transition: transform var(--duration-base) var(--ease-spring);
 }
 
-.quota-toolbar-summary__mark svg {
-  width: 14px;
-  height: 14px;
+.quota-toolbar-summary__ring.is-hovered .quota-toolbar-summary__dial,
+.quota-toolbar-summary__ring:hover .quota-toolbar-summary__dial {
+  transform: scale(1.07);
 }
 
-.quota-toolbar-summary__lines {
+.quota-toolbar-summary__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transform: rotate(-90deg);
+}
+
+.quota-toolbar-summary__track {
+  fill: none;
+  stroke: color-mix(in oklch, var(--text-primary) 11%, transparent);
+  transition: stroke var(--duration-fast) var(--ease-glide);
+}
+
+.quota-toolbar-summary__track--dotted {
+  stroke-dasharray: 2.1 2.7;
+  stroke-linecap: round;
+}
+
+.quota-toolbar-summary__exhaust {
+  fill: var(--coral-glow);
+}
+
+.quota-toolbar-summary__arc {
+  fill: none;
+  stroke-linecap: round;
+  transition:
+    stroke-dashoffset var(--duration-slow) var(--ease-spring),
+    stroke var(--duration-base) var(--ease-glide),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+.quota-toolbar-summary__arc--normal {
+  stroke: color-mix(in oklab, var(--ink-fog) var(--gauge-weight-quiet), transparent);
+}
+
+.quota-toolbar-summary__arc--warning {
+  stroke: color-mix(in oklab, var(--warn) var(--gauge-weight-warn), transparent);
+}
+
+.quota-toolbar-summary__arc--critical {
+  stroke: color-mix(in oklab, var(--coral) var(--gauge-weight-critical), transparent);
+}
+
+.quota-toolbar-summary__ring--stale .quota-toolbar-summary__arc {
+  opacity: 0.58;
+}
+
+.quota-toolbar-summary__glyph {
+  position: relative;
+  z-index: 1;
   display: grid;
-  flex: none;
-  justify-items: end;
-  min-width: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-ui);
-  font-size: var(--t-2xs);
-  font-variant-numeric: tabular-nums;
-  line-height: 11px;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  transition: opacity var(--duration-fast) var(--ease-glide), filter var(--duration-fast) var(--ease-glide);
 }
 
-.quota-toolbar-summary__pct--warning {
+.quota-toolbar-summary__glyph svg {
+  width: 11.5px;
+  height: 11.5px;
+}
+
+.quota-toolbar-summary__glyph.quota-provider__mark--opencode svg {
+  width: 9.5px;
+  height: 11.5px;
+}
+
+.quota-toolbar-summary__ring--muted .quota-toolbar-summary__glyph {
+  opacity: 0.36;
+  filter: grayscale(1);
+}
+
+.quota-toolbar-summary__pip {
+  position: absolute;
+  z-index: 2;
+  border-radius: var(--radius-pill);
+  box-shadow: 0 0 0 1.5px var(--canvas-abyss);
+}
+
+.quota-toolbar-summary__pip--stale {
+  right: 1px;
+  bottom: 1px;
+  width: 4.5px;
+  height: 4.5px;
+  background: var(--warn);
+}
+
+.quota-toolbar-summary__pip--secondary {
+  right: 1px;
+  top: 1px;
+  width: 4px;
+  height: 4px;
+}
+
+.quota-toolbar-summary__pip--warning {
+  background: var(--warn);
+}
+
+.quota-toolbar-summary__pip--critical {
+  background: var(--coral);
+}
+
+/* ── 공급자 개별 호버 프리뷰 카드 ────────────────────────────────────
+   document.body로 포털되는 공유 1장 카드다. 이웃 링으로 이동할 때 DOM을 갈지 않고
+   --quota-hover-x/y를 transform으로 스프링 글라이드해 깜빡임 없이 사용량을 훑게 한다. */
+.quota-hover-card {
+  --quota-hover-x: 0px;
+  --quota-hover-y: 0px;
+  --quota-hover-arrow-x: 50%;
+  --quota-hover-offset: 6px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--z-overlay);
+  width: 248px;
+  padding: 11px 13px 10px;
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(var(--quota-hover-x), calc(var(--quota-hover-y) + var(--quota-hover-offset)), 0) scale(0.975);
+  transform-origin: bottom center;
+  transition: opacity var(--duration-fast) var(--ease-glide);
+  will-change: transform, opacity;
+}
+
+.quota-hover-card[data-placement="below"] {
+  --quota-hover-offset: -6px;
+  transform-origin: top center;
+}
+
+.quota-hover-card.is-visible {
+  --quota-hover-offset: 0px;
+  opacity: 1;
+  transform: translate3d(var(--quota-hover-x), var(--quota-hover-y), 0) scale(1);
+  transition:
+    transform var(--duration-base) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+.quota-hover-card.is-gliding {
+  transition:
+    transform var(--duration-base) var(--ease-spring),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+.quota-hover-card__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.quota-hover-card__mark {
+  flex: none;
+}
+
+.quota-hover-card__mark svg {
+  width: 14px;
+  height: 14px;
+}
+
+.quota-hover-card__mark.quota-provider__mark--opencode svg {
+  width: 11.5px;
+  height: 14px;
+}
+
+.quota-hover-card__mark.is-muted {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.quota-hover-card__name {
+  margin-right: auto;
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.quota-hover-card__status {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.45;
+}
+
+.quota-hover-card__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.quota-hover-card__row {
+  --quota-hover-accent: var(--ink-fog);
+  --quota-hover-weight: var(--gauge-weight-quiet);
+}
+
+.quota-hover-card__row--warning {
+  --quota-hover-accent: var(--warn);
+  --quota-hover-weight: var(--gauge-weight-warn);
+}
+
+.quota-hover-card__row--critical {
+  --quota-hover-accent: var(--coral);
+  --quota-hover-weight: var(--gauge-weight-critical);
+}
+
+.quota-hover-card__row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.quota-hover-card__label {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.quota-hover-card__val {
+  color: var(--text-primary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-hover-card__row--warning .quota-hover-card__val,
+.quota-hover-card__row--warning .quota-hover-card__alert {
   color: var(--warn-ink);
 }
 
-.quota-toolbar-summary__pct--critical {
+.quota-hover-card__row--critical .quota-hover-card__val,
+.quota-hover-card__row--critical .quota-hover-card__alert {
   color: var(--coral-ink);
+}
+
+.quota-hover-card__bar {
+  position: relative;
+  height: 5px;
+  overflow: hidden;
+  border: 1px solid var(--gauge-rim);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+}
+
+.quota-hover-card__fill {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--quota-hover-accent) var(--quota-hover-weight), transparent);
+  transition: width var(--duration-base) var(--ease-spring), background-color var(--duration-base) var(--ease-glide);
+}
+
+.quota-hover-card__projection {
+  position: absolute;
+  inset-block: 0;
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--quota-hover-accent) calc(var(--quota-hover-weight) * 0.42), transparent) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.quota-hover-card__elapsed {
+  position: absolute;
+  inset-block: -2px;
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: color-mix(in oklab, var(--text-primary) 62%, transparent);
+}
+
+.quota-hover-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-hover-card__alert {
+  font-weight: var(--weight-medium);
+}
+
+.quota-hover-card__notice {
+  margin: 0;
+  padding: 5px 8px;
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+  line-height: 1.4;
+}
+
+.quota-hover-card__notice--stale {
+  border-left: 2px solid var(--warn);
+  background: var(--warn-glow);
+}
+
+.quota-hover-card__notice--error {
+  border-left: 2px solid var(--coral);
+  background: var(--coral-glow);
+}
+
+.quota-hover-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 9px;
+  padding-top: 7px;
+  border-top: 1px solid var(--popover-divider);
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+}
+
+.quota-hover-card__enter {
+  opacity: 0.7;
+}
+
+.quota-hover-card__arrow {
+  position: absolute;
+  bottom: -4px;
+  left: var(--quota-hover-arrow-x);
+  width: 8px;
+  height: 8px;
+  background: var(--popover-face);
+  box-shadow: 0.5px 0.5px 0 0 var(--popover-rim);
+  transform: translateX(-50%) rotate(45deg);
+  transition: left var(--duration-base) var(--ease-spring);
+}
+
+.quota-hover-card[data-placement="below"] .quota-hover-card__arrow {
+  top: -4px;
+  bottom: auto;
+  box-shadow: -0.5px -0.5px 0 0 var(--popover-rim);
+}
+
+@media (forced-colors: active) {
+  .quota-toolbar-summary__track {
+    stroke: GrayText;
+  }
+
+  .quota-toolbar-summary__arc {
+    stroke: CanvasText;
+  }
+
+  .quota-toolbar-summary__arc--warning,
+  .quota-toolbar-summary__arc--critical {
+    stroke: Highlight;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .quota-meter__fill,
   .quota-legend__bubble,
+  .quota-provider::before,
+  .quota-connect-card::before,
   .quota-toolbar-summary,
+  .quota-toolbar-summary__ring,
+  .quota-toolbar-summary__dial,
+  .quota-toolbar-summary__track,
+  .quota-toolbar-summary__arc,
+  .quota-toolbar-summary__glyph,
+  .quota-hover-card,
+  .quota-hover-card__fill,
+  .quota-hover-card__arrow,
   .quota-toolbar-pick,
   .quota-toolbar-pick svg {
     transition: none;
