@@ -1,10 +1,50 @@
+// Objective 생성 메뉴용 Agent CLI 목록: 설치(available)·로그인(signedIn) 상태를 결합해(combineAgentCliLaunchMetadata)
+// 런치 종류(buildAgentCliLaunchKinds)로 옮긴다.
+//
+// 정책을 새로 만들지 않고 기존 SSoT만 합친다: 설치 여부는 cliCommand(바이너리) 기준 탐지 결과로 판정한다.
+// available/signedIn은 불린만 노출하며 경로·버전·providerId는 싣지 않는다(Token Boundary).
+// IO(탐지)는 호출자가 수행하고, 결합 함수는 환경에 의존하지 않는 deterministic 단위 테스트가 가능하다.
+
 import type { ObjectiveLaunchKind, ObjectiveLaunchVariantGroup } from "../../../objectives/shared/records/types.js";
+import type { AgentCliId } from "@fleet-console/agent-runtime/fleet";
 import type { ProviderStatusMap } from "@fleet-console/ai-gateway";
 
 import { buildModelRoster, buildRosterFallbackGroup } from "../../../ai-gateway/host/model-roster.js";
-import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 
 export { EFFORT_LABELS } from "../../../ai-gateway/host/model-roster.js";
+
+export interface AgentCliLaunchMetadata {
+  readonly id: AgentCliId;
+  readonly label: string;
+  readonly available: boolean;
+  readonly signedIn: boolean;
+}
+
+export interface AgentCliInstallStatus {
+  // 탐지 단위인 바이너리 명령(cliCommand): claude.
+  readonly id: string;
+  readonly available: boolean;
+}
+
+export function combineAgentCliLaunchMetadata(
+  metadata: readonly { readonly id: AgentCliId; readonly label: string }[],
+  installStatuses: readonly AgentCliInstallStatus[],
+): AgentCliLaunchMetadata[] {
+  const availableByCommand = new Map(installStatuses.map((entry) => [entry.id, entry.available]));
+  return metadata.map((meta) => ({
+    id: meta.id,
+    label: meta.label,
+    available: availableByCommand.get(resolveCliCommand(meta.id)) ?? false,
+    signedIn: true,
+  }));
+}
+
+// claude-gateway가 실행하는 바이너리는 claude 하나이므로 설치 판정도 claude를 따른다.
+const LAUNCH_CLI_COMMAND = "claude";
+
+function resolveCliCommand(_id: AgentCliId): string {
+  return LAUNCH_CLI_COMMAND;
+}
 
 export function buildAgentCliLaunchKinds(
   metadata: readonly AgentCliLaunchMetadata[],

@@ -21,8 +21,7 @@ import { PRIOR_WRITER_EXIT_WAIT_MS, readTicketChannel } from "../terminal/index.
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
-import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
-import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
+import { buildAgentCliLaunchKinds, combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-kinds.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { findGatewayModel, visibleGatewayModels, type ProviderStatusMap } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
