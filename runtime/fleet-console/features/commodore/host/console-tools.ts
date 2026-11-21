@@ -10,7 +10,7 @@ import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
 import { commodoreSessionToolName } from "../shared/tool-names.js";
 import { refuse, text } from "./tool-results.js";
-import { CommodoreStoreError } from "./errors.js";
+import { CommodoreStoreError, safeErrorCode } from "./errors.js";
 
 /** 생성 성공 응답에만 싣는 안내 — 상시 프롬프트가 아니라 그 상황에서만 필요하다. */
 const CREATED_HINT = "After successful creation, offer one small openui-lang Card containing Button(\"Open Commodore\", @OpenUrl(target)), using the exact returned target. This navigation-only offer is an exception to the usual visual-block conditions; it needs no confirmation.";
@@ -63,7 +63,7 @@ export function createCommodoreManagementTools(options: {
         const code = error instanceof Error ? error.message : "commodore_failed";
         // 모델·강도 거절은 고칠 수 있게 후보 강도까지 돌려준다.
         const details = error instanceof CommodoreStoreError && (code === "invalid_effort" || code === "model_not_in_roster" || code === "model_not_enabled") ? error.details ?? {} : {};
-        return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
+        return refuse(safeErrorCode(code), details);
       }
     },
   }, { caller: "commodore" });

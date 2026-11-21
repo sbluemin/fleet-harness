@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { MAX_TRANSCRIPT_TEXT } from "../shared/contracts/types.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_MESSAGE_IMAGES } from "../shared/contracts/attachment-budget.js";
 import type { AttachmentHost } from "../../execution/shared/agent.js";
+import { safeErrorCode } from "./errors.js";
 import type { CommodoreStore } from "./store.js";
 
 type SendableImage = ReturnType<AttachmentHost["read"]>[number];
@@ -50,8 +51,7 @@ export function createCommodoreMessenger(deps: {
       try {
         images = resolveSendableImages(turn!, attachmentIds);
       } catch (error) {
-        const code = error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : "attachment_not_available";
-        fail(code);
+        fail(safeErrorCode(error instanceof Error ? error.message : "", "attachment_not_available"));
       }
       if (images.length !== attachmentIds.length || images.some((image, index) => image.id !== attachmentIds[index])) fail("attachment_not_available");
       if (images.reduce((sum, image) => sum + image.bytes.byteLength, 0) > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) fail("attachment_budget_exceeded");

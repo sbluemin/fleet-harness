@@ -12,7 +12,7 @@ import type { ModelRosterHost } from "../../ai-gateway/host/model-ports.js";
 import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExperimentSettings } from "../../settings/shared/experiments.js";
 
 import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "../../objectives/shared/commodore-board.js";
-import { CommodoreStoreError } from "./errors.js";
+import { CommodoreStoreError, safeErrorCode } from "./errors.js";
 import { classifyFailure, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnInput, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
@@ -1883,5 +1883,5 @@ function failureCode(error: unknown, fallback: string): string {
   const message = error instanceof Error ? error.message : String(error);
   if (/gateway_unavailable|agent_host_disposed/.test(message)) return "session_failed";
   if (/model/i.test(message)) return "model_unavailable";
-  return /^[a-z_]{1,64}$/.test(message) ? message : fallback;
+  return safeErrorCode(message, fallback);
 }

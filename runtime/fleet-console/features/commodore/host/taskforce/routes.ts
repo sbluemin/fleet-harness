@@ -17,7 +17,7 @@ import {
   type TaskforceJudgingStatus,
   type TaskforceState,
 } from "../../shared/contracts/taskforce.js";
-import { TaskforceStoreError } from "../errors.js";
+import { safeErrorCode, TaskforceStoreError } from "../errors.js";
 import type { TaskforceStore } from "./store.js";
 
 /**
@@ -75,7 +75,7 @@ export function createTaskforceRoutes(
       return;
     }
     const code = error instanceof Error ? error.message : "taskforce_failed";
-    ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "taskforce_failed" });
+    ctx.host.http.writeJson(res, 500, { error: safeErrorCode(code, "taskforce_failed") });
   };
   const known = (commodoreId: string): void => {
     if (hooks.isKnownCommodore && !hooks.isKnownCommodore(commodoreId)) throw new TaskforceStoreError("invalid_request");
