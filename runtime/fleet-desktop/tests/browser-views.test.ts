@@ -155,16 +155,17 @@ describe("desktop native browser views across a Console restart", () => {
     surface.apply({ id: "surface-1", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
     const [bar, rail, , , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
     const send = (doc: ReturnType<typeof makeView>, message: unknown[], frame = doc.webContents.mainFrame) => doc.webContents.emit("console-message", { frame, message: JSON.stringify(message) });
-    // 첫 배치: 선호 폭 560 — Console | 손잡이 | (주소줄·레일·페이지) 가 한 번에 정해진다.
-    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
-    expect(divider.setBounds).toHaveBeenLastCalledWith({ x: 832, y: 0, width: 8, height: 900 });
+    // 첫 배치: 선호 폭 560 — Console | 1px 경계(투명 7px 히트 영역) | (주소줄·레일·페이지) 가 한 번에 정해진다.
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 839, height: 900 });
+    expect(divider.setBackgroundColor).toHaveBeenCalledWith("#00000000");
+    expect(divider.setBounds).toHaveBeenLastCalledWith({ x: 836, y: 0, width: 7, height: 900 });
     expect(bar.setBounds).toHaveBeenLastCalledWith({ x: 840, y: 0, width: 560, height: 52 });
     expect(rail.setBounds).toHaveBeenLastCalledWith({ x: 840, y: 52, width: 54, height: 848 });
     expect(surface.target()?.page).toEqual({ x: 894, y: 52, width: 506, height: 848 });
     const dividerSend = (action: string, x: number, frame = divider.webContents.mainFrame) => divider.webContents.emit("console-message", { frame, message: JSON.stringify(["fleet-pane", action, x]) });
     dividerSend("start", 850); dividerSend("move", 750);
     expect(surface.target()?.page).toEqual({ x: 794, y: 52, width: 606, height: 848 });
-    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 732, height: 900 });
+    expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 739, height: 900 });
     // 다른 frame 메시지는 폭을 못 바꾸고, 끝난 끌기는 더 움직이지 않는다.
     dividerSend("move", 400, { url: divider.webContents.mainFrame.url });
     dividerSend("end", 750); dividerSend("move", 400);
@@ -182,7 +183,7 @@ describe("desktop native browser views across a Console restart", () => {
     // 창이 좁아지면 Console 은 600 을 먼저 지키고 칸이 줄어든다 — 선호 폭(660)은 덮어쓰지 않는다.
     content = { ...content, width: 1100, height: 700 }; base.emit("resize");
     surface.refresh();
-    expect(surface.target()?.page).toEqual({ x: 845, y: 52, width: 255, height: 648 });
+    expect(surface.target()?.page).toEqual({ x: 838, y: 52, width: 262, height: 648 });
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 600, height: 700 });
     // Console 을 확대하면 주소줄·레일 치수도 같은 배율로 따라가고 크롬 문서의 줌도 함께 바뀐다.
     zoomFactor = 1.25; surface.refresh();
@@ -228,7 +229,7 @@ describe("desktop native browser views across a Console restart", () => {
       // Ready bar so closing state pushes shellClosing: true
       bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "ready", {}]) });
       // Frame 0 claims settled Console width once without 60fps reflow and starts page 10px down (no width resize)
-      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 839, height: 900 });
       expect(surface.target()?.page.width).toBe(506);
       expect(surface.target()?.page.y).toBe(62);
 
@@ -241,7 +242,7 @@ describe("desktop native browser views across a Console restart", () => {
 
       nowMs += 320;
       vi.advanceTimersByTime(320);
-      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 839, height: 900 });
       expect(surface.target()?.page).toEqual({ x: 894, y: 52, width: 506, height: 848 });
 
       // Asymmetric close (320ms) restores Console width once underneath while gliding the pane out
@@ -264,7 +265,7 @@ describe("desktop native browser views across a Console restart", () => {
       // Reduced motion completes open and close immediately
       reduce = true;
       surface.apply({ id: "surface-rm", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
-      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 839, height: 900 });
       surface.apply(null, null, null);
       expect(surface.target()).toBeNull();
       expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });

@@ -17,7 +17,10 @@ export const BROWSER_RAIL_EXPANDED_PX = 237;
 export const BROWSER_TABSTRIP_PX = BROWSER_STRIP_PX;
 /** 알림이 떠 있는 동안 주소줄 뷰가 아래로 더 가지는 높이. */
 const TOAST_BAND_PX = 52;
-const DIVIDER_PX = 8;
+/** 경계선이 차지하는 배치 폭(1px hairline)과 실제 포인터가 잡히는 투명 히트 영역 폭. */
+const DIVIDER_PX = 1;
+const DIVIDER_HIT_PX = 7;
+const DIVIDER_HIT_PAD_PX = Math.floor((DIVIDER_HIT_PX - DIVIDER_PX) / 2);
 const MIN_PANE_PX = 320;
 /** 칸을 줄이더라도 Console 이 지키는 폭. */
 const MIN_CONSOLE_PX = 600;
@@ -339,7 +342,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         // Console 뷰는 열림·닫힘 시작 시 한 번만 목표 폭으로 바꾸어 60fps 리플로우 번짐을 막는다.
         const consoleWidth = closingSurface ? Math.max(1, main.getContentBounds().width) : left;
         main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth, guardOnTop });
-        divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
+        divider.setBounds({ x: Math.max(0, left - DIVIDER_HIT_PAD_PX), y: 0, width: DIVIDER_HIT_PX, height: rect.height });
       }
     }
     deps.changed();
@@ -364,12 +367,20 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     };
   };
 
-  let dividerScheme = "";
+  let dividerTheme = "";
   const push = (): void => {
     if (!docs) return;
-    // 손잡이 문서는 상태를 받지 않는다 — 색 구성표만 Console 테마에 맞춘다(그 문서의 light-dark() 가 이 값을 읽는다).
-    const scheme = deps.colors()?.scheme ?? "";
-    if (divider && scheme && scheme !== dividerScheme && !divider.webContents.isDestroyed()) { dividerScheme = scheme; void divider.webContents.executeJavaScript(`document.documentElement.style.colorScheme = ${JSON.stringify(scheme)}`).catch(() => undefined); }
+    // 손잡이 문서는 상태를 받지 않는다 — 색 구성표와 경계선 토큰만 Console 테마에 맞춘다.
+    const palette = deps.colors();
+    const scheme = palette?.scheme ?? "";
+    const line = palette?.tokens["hairline"] ?? "";
+    const lineActive = palette?.tokens["ink-fog"] ?? "";
+    const lineFocus = palette?.tokens["ink-pearl"] ?? "";
+    const nextDividerTheme = JSON.stringify([scheme, line, lineActive, lineFocus]);
+    if (divider && scheme && nextDividerTheme !== dividerTheme && !divider.webContents.isDestroyed()) {
+      dividerTheme = nextDividerTheme;
+      void divider.webContents.executeJavaScript(`(()=>{const s=document.documentElement.style;s.colorScheme=${JSON.stringify(scheme)};const set=(k,v)=>v?s.setProperty(k,v):s.removeProperty(k);set('--line',${JSON.stringify(line)});set('--line-active',${JSON.stringify(lineActive)});set('--line-focus',${JSON.stringify(lineFocus)});})()`).catch(() => undefined);
+    }
     const full = state();
     // 문서마다 읽는 상태만 보낸다 — 같은 모양이 된 문서는 갱신하지 않는다. 같은 모양은 한 번만 직렬화한다.
     const serialized = new Map<string, string>();
@@ -468,7 +479,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       else if (action === "end") drag = null;
       else if (action === "key") { paneWidth = limit(current.width + x); update(); }
     });
-    contents.on("did-finish-load", () => { dividerScheme = ""; push(); });
+    contents.on("did-finish-load", () => { dividerTheme = ""; push(); });
+    view.setBackgroundColor("#00000000");
     void contents.loadURL(DIVIDER_URL).catch(() => undefined);
   };
 
@@ -586,7 +598,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     detachFromHost();
     destroyWindow();
     const oldDivider = divider;
-    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; viewOnly = null; viewFrame = null; focusSeen = 0; drag = null; heldSeen = "";
+    docs = null; divider = null; dividerTheme = ""; surface = null; chrome = null; chromeJson = ""; viewOnly = null; viewFrame = null; focusSeen = 0; drag = null; heldSeen = "";
     spaces.observe(null);
     for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, old?.guard.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
     ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null, guardPill: null };
@@ -776,16 +788,21 @@ function createWindowStack(base: BaseWindow) {
 }
 
 // 셸의 수동 문서는 Node·주입 스크립트·IPC 없이 pointer capture와 진단 이벤트만 쓴다.
+// 히트 영역은 투명 7px이고 실제 보이는 선은 가운데 1px hairline이며, 호버·드래그·포커스에서만 2px로 강조된다.
 const DIVIDER_HTML = `<!doctype html><meta charset="utf-8"><meta name="color-scheme" content="light dark"><style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;user-select:none;cursor:col-resize;background:light-dark(#e4e4e5,#202023)}
-body{box-sizing:border-box;border-left:1px solid light-dark(#c8c8ca,#39393e);border-right:1px solid light-dark(#c8c8ca,#39393e);box-shadow:inset 2px 0 4px #0002;touch-action:none}
-body:hover,body:focus-visible{background:light-dark(#d2d2d5,#35353b);outline:none}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;user-select:none;cursor:col-resize;background:transparent}
+body{position:relative;touch-action:none}
+body::before{content:"";position:absolute;inset-block:0;left:50%;width:1px;transform:translateX(-50%);background:var(--line,light-dark(oklch(86% 0 0),oklch(28.5% 0 0)));transition:background-color 140ms,width 140ms}
+body:hover::before,body.is-dragging::before{width:2px;background:var(--line-active,light-dark(oklch(55% 0 0),oklch(58% 0 0)))}
+body:focus-visible{outline:none}
+body:focus-visible::before{width:2px;background:var(--line-focus,light-dark(oklch(22.5% 0 0),oklch(97% 0 0)))}
+@media (prefers-reduced-motion:reduce){body::before{transition:none}}
 </style><body role="separator" aria-label="Resize browser pane" aria-orientation="vertical" tabindex="0"><script>
 const send=(action,x)=>console.log(JSON.stringify(['fleet-pane',action,x]));
 let pointer=null;
-addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();document.body.setPointerCapture(e.pointerId);pointer=e.pointerId;send('start',e.screenX)});
+addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();document.body.setPointerCapture(e.pointerId);document.body.classList.add('is-dragging');pointer=e.pointerId;send('start',e.screenX)});
 addEventListener('pointermove',e=>{if(pointer===e.pointerId)send('move',e.screenX)});
-const end=e=>{if(pointer!==e.pointerId)return;pointer=null;send('end',e.screenX)};
+const end=e=>{if(pointer!==e.pointerId)return;pointer=null;document.body.classList.remove('is-dragging');send('end',e.screenX)};
 addEventListener('pointerup',end);addEventListener('pointercancel',end);addEventListener('lostpointercapture',end);
 addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();send('key',(e.key==='ArrowLeft'?1:-1)*(e.shiftKey?64:16))}});
 </script>`;
