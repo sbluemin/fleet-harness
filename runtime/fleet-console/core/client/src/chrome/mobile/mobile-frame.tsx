@@ -9,7 +9,7 @@ import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { focusObjective } from "../../integration/store.js";
 import type { ConsoleState } from "../../integration/types.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { MobileAttentionProvider } from "./mobile-attention-context.js";
+import { MobileAttentionProvider } from "./mobile-attention.js";
 import { mobileHomeCommodoreId, useMobileAttention, useMobileDestinationBindings } from "./mobile-destinations.js";
 import { MobileRequestBanner } from "./mobile-request-banner.js";
 import { MobileToastHost } from "./mobile-toast.js";
