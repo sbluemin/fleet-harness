@@ -6,7 +6,7 @@ import { describeRefusedConsoleLock } from "@fleet-console/protocol/lifecycle";
 
 import { bootSessionsDiffer, currentConsoleBootSession } from "./boot-session.js";
 import { isLockAuthorReplaced, isPidAlive } from "./process.js";
-import { observeConsoleLockFile, type ConsoleLockFilePayload, type ConsoleLockTrustOptions } from "./lock-file.js";
+import { currentUid, observeConsoleLockFile, type ConsoleLockFilePayload, type ConsoleLockTrustOptions } from "./lock-file.js";
 
 const UPDATE_PROGRESS_FILE = "update-progress.json";
 const UPDATE_RUNNING_PHASES = new Set(["starting", "preflight-ok", "stopping-console", "installing", "starting-daemon"]);
@@ -308,10 +308,6 @@ function copyOwnedEntry(from: string, to: string): void {
   const stat = fs.lstatSync(from);
   if (stat.isSymbolicLink()) throw new Error(`refusing to copy symbolic link ${from}`);
   fs.cpSync(from, to, { recursive: true, dereference: false });
-}
-
-function currentUid(): number | null {
-  return typeof process.getuid === "function" ? process.getuid() : null;
 }
 
 /** The boot session a lock payload recorded, when it has one. Shared so callers do not re-parse the file. */
