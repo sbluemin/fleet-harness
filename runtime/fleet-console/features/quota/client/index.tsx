@@ -1,4 +1,5 @@
-import type { QuotaClientDeps } from "./deps.js";
+import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
+import type { ClientSettingsCapability } from "../../settings/shared/client-ports.js";
 import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
 
 import { quotaSettingsSection } from "./mobile-settings.js";
@@ -9,6 +10,11 @@ import { QUOTA_PLUGIN_ID } from "./section-id.js";
 import { QuotaSignInHost } from "./sign-in-host.js";
 import { QuotaToolbarSummary } from "./toolbar-summary.js";
 import "./quota.css";
+
+interface QuotaClientDeps {
+  readonly api: ClientApiCapability;
+  readonly settings: ClientSettingsCapability;
+}
 
 export const quotaClient: ClientFeatureDescriptor = {
   id: QUOTA_PLUGIN_ID,
