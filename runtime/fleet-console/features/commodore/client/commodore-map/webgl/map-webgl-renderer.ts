@@ -17,6 +17,7 @@ import {
 } from "three";
 import type { MapBranchKey, MapNode } from "../map-graph.js";
 import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
+import { rng32 } from "../map-random.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 import { prefersReducedMotion } from "../../../../../core/client/src/integration/reduced-motion.js";
 
@@ -611,16 +612,6 @@ const FALLBACK_BRANCH_ANGLE: Record<MapBranchKey, number> = {
   person: (-5 * Math.PI) / 6,
   intel: (5 * Math.PI) / 6,
 };
-
-function rng32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let x = Math.imul(s ^ (s >>> 15), 1 | s);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 interface EdgeRecord {
   readonly a: number;
