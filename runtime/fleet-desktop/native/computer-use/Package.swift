@@ -6,6 +6,7 @@ import PackageDescription
 let package = Package(
   name: "FleetComputerUse",
   platforms: [.macOS(.v14)],
+  products: [.executable(name: "fleet-computer-use", targets: ["FleetComputerUse"])],
   targets: [
     .executableTarget(
       name: "FleetComputerUse",
