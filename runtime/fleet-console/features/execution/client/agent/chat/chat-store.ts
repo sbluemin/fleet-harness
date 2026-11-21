@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createConversationStream } from "../../../shared/conversation/stream.js";
 
+import { INITIAL_RECONNECT_DELAY_MS, nextReconnectDelay, waitForReconnectDelay } from "../../reconnect-delay.js";
 import { TerminalTicketError, buildTerminalWsUrl } from "../../terminal/shared/terminal-connection.js";
 import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatLogState } from "./chat-events.js";
 
@@ -23,8 +24,6 @@ export interface AgentChatViewState extends AgentChatLogState {
 
 const CHAT_TICKET_PATH = "/api/v1/agent/ticket";
 const CHAT_WS_PATH = "/api/v1/terminal/ws";
-const INITIAL_RECONNECT_DELAY_MS = 250;
-const MAX_RECONNECT_DELAY_MS = 5_000;
 const OPEN_READY_STATE = 1;
 const COMMAND_WAIT_MS = 8_000;
 const TERMINAL_CHAT_ERROR_CODES = new Set(["chat_transcript_missing", "session_id_conflict"]);
@@ -219,8 +218,8 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
         options.onConnection("lost");
       }
       if (terminalError || abort.signal.aborted) return;
-      await delay(reconnectDelay, abort.signal);
-      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+      await waitForReconnectDelay(reconnectDelay, abort.signal);
+      reconnectDelay = nextReconnectDelay(reconnectDelay);
     }
   };
 
@@ -268,16 +267,4 @@ async function requestChatTicket(objectiveId: string, signal: AbortSignal, fetch
 
 function defaultChatWebSocketFactory(url: string): ChatWebSocketLike {
   return new WebSocket(url) as unknown as ChatWebSocketLike;
-}
-
-async function delay(ms: number, signal: AbortSignal): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const finish = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    const timer = setTimeout(finish, ms);
-    signal.addEventListener("abort", finish);
-  });
 }
