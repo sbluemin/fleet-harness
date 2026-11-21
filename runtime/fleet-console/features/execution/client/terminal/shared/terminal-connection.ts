@@ -1,3 +1,5 @@
+import { INITIAL_RECONNECT_DELAY_MS, nextReconnectDelay, waitForReconnectDelay } from "../../reconnect-delay.js";
+
 /**
  * 소켓 역할. 서버의 같은 이름 타입과 값이 일치해야 하지만 타입을 건너 들여오지는 않는다 —
  * 브라우저 코드가 서버 모듈을 참조하기 시작하면 그 경계는 조용히 사라진다. 서버는
@@ -115,13 +117,11 @@ export class TerminalTicketError extends Error {
   }
 }
 
-const INITIAL_RECONNECT_DELAY_MS = 250;
 const TERMINAL_SOCKET_ERROR = "Terminal WebSocket error";
 /** fetch나 소켓이 서버에 닿지 못했다. 서버가 거절한 코드와 섞이지 않게 따로 이름을 붙인다. */
 const CONSOLE_UNREACHABLE = "console_unreachable";
 /** 이 횟수만큼 연달아 실패해야 화면이 실패를 말한다 — 한 번의 끊김은 재연결이 조용히 삼킨다. */
 const FAILURE_REPORT_THRESHOLD = 2;
-const MAX_RECONNECT_DELAY_MS = 5_000;
 const OPEN_READY_STATE = 1;
 const TERMINAL_UNAVAILABLE_CLOSE_CODE = 1013;
 const TERMINAL_REPLACED_CLOSE_CODE = 4000;
@@ -206,8 +206,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
             : err instanceof Error ? err.message : String(err);
         if (consecutiveFailures >= FAILURE_REPORT_THRESHOLD) options.onStatus?.("failed", code);
       }
-      await delay(reconnectDelay, abort.signal);
-      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+      await waitForReconnectDelay(reconnectDelay, abort.signal);
+      reconnectDelay = nextReconnectDelay(reconnectDelay);
     }
   };
 
@@ -425,17 +425,4 @@ function binaryStringToBytes(data: string): Uint8Array {
   const bytes = new Uint8Array(data.length);
   for (let index = 0; index < data.length; index += 1) bytes[index] = data.charCodeAt(index) & 0xff;
   return bytes;
-}
-
-async function delay(ms: number, signal: AbortSignal): Promise<void> {
-  if (signal.aborted) return;
-  await new Promise<void>((resolve) => {
-    const finish = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    const timer = setTimeout(finish, ms);
-    signal.addEventListener("abort", finish);
-  });
 }

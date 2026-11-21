@@ -4,6 +4,7 @@ export { sessionRuntime, sessionActivity } from "../../../objectives/shared/reco
 import type { ClientNotificationsCapability } from "../../shared/notification-ports.js";
 import type { ClientObjectiveRuntimeCapability, ClientObjectiveRecordsCapability, ObjectiveActivity, ObjectiveRuntimeState } from "../../shared/client-contract.js";
 
+import { INITIAL_RECONNECT_DELAY_MS, nextReconnectDelay, waitForReconnectDelay } from "../reconnect-delay.js";
 import { currentTerminalLocale, getT } from "./i18n/index.js";
 import { fetchAgentState, fetchObjectiveRecordsSnapshot, fetchSessions } from "./api.js";
 import { createSseFrameParser, interpretAgentSessionFrame } from "./sse.js";
@@ -17,8 +18,6 @@ export interface AgentConnectionOptions {
   readonly refreshObjectiveRecords: () => void;
 }
 
-const INITIAL_RECONNECT_DELAY_MS = 250;
-const MAX_RECONNECT_DELAY_MS = 5_000;
 // 세션별 직전 보고 activity. idle/awaiting 전이를 감지해 중복 없이 notification을 보내기 위함.
 const lastActivity = new Map<string, ObjectiveActivity | "dormant">();
 // 채팅이 인수한 Objective의 축도 이제 서버 세션 스냅샷이 진다(chatActive/chatWorking). 그래서
@@ -53,8 +52,8 @@ async function runConnectionLoop(signal: AbortSignal, options: AgentConnectionOp
       options.runtime.setHydration("degraded", message);
     }
     if (signal.aborted) return;
-    await delay(reconnectDelay, signal);
-    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+    await waitForReconnectDelay(reconnectDelay, signal);
+    reconnectDelay = nextReconnectDelay(reconnectDelay);
   }
 }
 
@@ -126,16 +125,4 @@ async function resyncSnapshots(signal: AbortSignal, options: AgentConnectionOpti
   hydrateSessions(sessions);
   for (const session of sessions) applyRuntime(options, session.sessionId, sessionRuntime(session));
 
-}
-
-async function delay(ms: number, signal: AbortSignal): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const finish = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", finish);
-      resolve();
-    };
-    const timer = setTimeout(finish, ms);
-    signal.addEventListener("abort", finish);
-  });
 }

@@ -1,4 +1,4 @@
-import { forwardRef, useLayoutEffect, useRef, type RefObject, type TextareaHTMLAttributes } from "react";
+import { forwardRef, useLayoutEffect, useRef, type KeyboardEvent, type RefObject, type TextareaHTMLAttributes } from "react";
 
 /**
  * textarea의 값을 React 제어 대신 DOM에 직접 맞춘다 — 호출부는 `value`/`defaultValue` prop 없이 ref와 함께 쓴다.
@@ -34,6 +34,29 @@ export const SyncedTextarea = forwardRef<HTMLTextAreaElement, SyncedTextareaProp
     />
   );
 });
+
+/**
+ * 미러를 textarea의 **client** 박스에 맞춘다. 테두리 박스로 맞추면 스크롤바가 서는 순간
+ * textarea만 줄바꿈 폭을 잃어 두 층이 다른 곳에서 접힌다. 스크롤 위치도 같은 값으로 끌고 간다.
+ * 조립은 문면·자동 높이가 바뀐 프레임(useLayoutEffect)과 textarea 리사이즈(ResizeObserver)에서
+ * 이 함수를 부른다.
+ */
+export function syncComposerHighlight(
+  input: HTMLTextAreaElement | null,
+  highlight: HTMLElement | null,
+): void {
+  if (!input || !highlight) return;
+  highlight.style.width = `${input.clientWidth}px`;
+  highlight.style.height = `${input.clientHeight}px`;
+  highlight.scrollTop = input.scrollTop;
+}
+
+/** 조합 중 Enter와 Shift+Enter는 입력에 남기고, 평문 Enter만 전송 키로 소비한다. */
+export function consumeComposerSubmitKey(event: KeyboardEvent<HTMLTextAreaElement>): boolean {
+  if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return false;
+  event.preventDefault();
+  return true;
+}
 
 export interface ComposerInputProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   readonly value: string;

@@ -13,7 +13,7 @@ export type { ComposerAttachmentDraftItem, ComposerAttachmentLimits, ComposerAtt
 export { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "./attachment-input.js";
 export { EffortGaugeGlyph, EffortTrack, effortLadderPosition, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
 export type { EffortTrackProps } from "./effort-track.js";
-export { ComposerInput, SyncedTextarea, useTextareaValue } from "./input.js";
+export { ComposerInput, SyncedTextarea, syncComposerHighlight, useTextareaValue } from "./input.js";
 export type { ComposerInputProps, SyncedTextareaProps } from "./input.js";
 export { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerRestStrip, ComposerSubmitButton } from "./primitives.js";
 export type { ComposerAttachControlProps, ComposerChipProps, ComposerSubmitButtonProps } from "./primitives.js";
@@ -30,4 +30,3 @@ export type { ComposerQuote, ComposerQuoteAttachResult, ComposerQuoteItem, Compo
 export { ComposerQuoteList, ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "./quote-tray.js";
 export type { ComposerQuoteTrayProps } from "./quote-tray.js";
 export type { ComposerMessageKey } from "./messages.js";
-export { syncComposerHighlight } from "./composer-mirror.js";

@@ -1,6 +1,6 @@
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { OpenUINavigationContext } from "../../openui-boundary.js";
-import type { ConversationSpeaker } from "../../../../shared/conversation/types.js";
+import type { ConversationSpeaker, GroupConversationActions } from "../../../../shared/conversation/types.js";
 import * as React from "react";
 
 import { getState, selectNestedBody, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
@@ -17,12 +17,11 @@ import { useOpenBoardActionRecord } from "../../../../../workspace/client/conver
 import { stopAgentChatTurn } from "../../api.js";
 import { CliFailureCard } from "../../../../../commodore/client/commodore-cli-status.js";
 import { getT as getCommodoreT } from "../../../../../commodore/client/i18n/index.js";
-import { ComputerScreenShare, useComputerActor } from "../../../../../computer-use/client/computer-screen-share.js";
+import { ComputerScreenShare, useAllObjectiveUseRequests, useComputerActor, type ObjectiveUseRequest } from "../../../../../computer-use/client/computer-screen-share.js";
 import { BrowserActivityLines } from "../../../../../browser/client/browser-activity.js";
 import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useObjectiveLinks } from "../../objective-links.js";
-import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
@@ -184,6 +183,22 @@ function GroupLinkBoundary({ root, language, ports, children }: {
       {links.card}
     </MarkdownLinkBoundary>
   );
+}
+
+/** 플러그인이 소유한 검증·저장·전달 경로만 노출한다. */
+function useGroupConversationActions(rootObjectiveId: string | null): GroupConversationActions | null {
+  return useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === rootObjectiveId)?.conversation?.actions ?? null;
+}
+
+/** 답변 좌표는 원 요청의 objectiveId다. 그룹 뿌리로 바꾸지 않는다. */
+function useGroupUseRequests(rootObjectiveId: string | null): readonly ObjectiveUseRequest[] {
+  const state = useConsoleState();
+  const requests = useAllObjectiveUseRequests();
+  return React.useMemo(() => {
+    if (!rootObjectiveId) return [];
+    const ids = new Set([rootObjectiveId, ...state.nestedObjectiveRecords.filter((objectiveRecord) => objectiveRecord.parentObjectiveId === rootObjectiveId).map((objectiveRecord) => objectiveRecord.id)]);
+    return requests.filter((request) => ids.has(request.objectiveId));
+  }, [rootObjectiveId, state.nestedObjectiveRecords, requests]);
 }
 
 function RootConversation({ root, language, phone = false, fileLinkError = null }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly fileLinkError?: string | null }) {
