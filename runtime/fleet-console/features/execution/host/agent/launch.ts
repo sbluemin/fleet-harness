@@ -11,8 +11,11 @@ export interface AiGatewayLaunchBinding {
   origin(): string | null;
 }
 
-/** Chat Mode 세션을 열 때 넘기는 좌표 — admiral의 세션 옵션에서 CLI 식별자와 도구 목록(여기서 정책으로 채운다)을 뺀 것이다. */
-export type ChatSessionPreparationDeps = Omit<PrepareClaudeSessionOptions, "cliId" | "claudeCodeDisabledTools"> & {
+/**
+ * Chat Mode 세션을 열 때 넘기는 좌표 — admiral의 세션 옵션 가운데 채팅이 실제로 읽어 넘기는 것만 고른다.
+ * CLI 식별자와 도구 목록은 여기서 정책으로 채운다. 옵션에 필드가 늘어도 채팅이 넘기기 전까지는 받지 않는다.
+ */
+export type ChatSessionPreparationDeps = Pick<PrepareClaudeSessionOptions, "cwd" | "origin" | "pluginDirs" | "pluginEnv" | "claudeCodeSystemPrompt" | "claudeCodeDisabledAgents" | "disableAutoMemory"> & {
   /** 목표 세션(지휘관·구성원)이면 피어 도구를 더 뺀다. */
   readonly objectiveMessaging?: boolean;
 };
