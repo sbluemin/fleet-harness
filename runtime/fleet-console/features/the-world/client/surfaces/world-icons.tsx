@@ -62,7 +62,8 @@ export type WorldIconName =
   | "note"
   | "fire"
   | "rainbow"
-  | "hat";
+  | "hat"
+  | "spin";
 
 export type WorldIconTone =
   | "inherit"
@@ -467,6 +468,13 @@ const ICON_PATHS: Record<WorldIconName, () => ReactElement> = {
     <>
       <path d="M5.5 14.5c1.5-5.2 3.4-7.5 6.5-7.5s5 2.3 6.5 7.5H5.5Z" fill="currentColor" fillOpacity="0.24" />
       <path d="M3.2 14.8c2.8 1.5 14.8 1.5 17.6 0M12 10.2v2.2M10.9 11.3h2.2" />
+    </>
+  ),
+  spin: () => (
+    <>
+      <path d="M19.5 10.5A7.5 7.5 0 1 0 18.2 16.5" />
+      <path d="M19.8 6.4v4.2h-4.2" />
+      <path d="M12 8.8l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="currentColor" fillOpacity="0.34" />
     </>
   ),
 };

@@ -1,5 +1,14 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo, useMemo, useState, type MouseEvent, type RefObject } from "react";
+import {
+  forwardRef,
+  memo,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 
 import type { WorldVillageSpec, WorldZoneSpec } from "../../shared/world-types.js";
 import { getWorldT } from "../i18n/index.js";
@@ -10,6 +19,8 @@ export const MINIMAP_CENTER = MINIMAP_VIEW_SIZE / 2;
 export const MINIMAP_RADIUS = 74;
 export const MINIMAP_WORLD_RADIUS = 56;
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
 type MinimapVillageRecord = WorldVillageSpec & {
   readonly workStep?: string | null | undefined;
   readonly needsAttention?: boolean | undefined;
@@ -17,6 +28,27 @@ type MinimapVillageRecord = WorldVillageSpec & {
   readonly routineCount?: number | undefined;
   readonly completedObjectiveCount?: number | undefined;
 };
+
+export interface WorldMinimapRoamingActor {
+  readonly id: string;
+  readonly x: number;
+  readonly z: number;
+  readonly color: string;
+  readonly walking: boolean;
+}
+
+export interface WorldMinimapJumpItem {
+  readonly id: string;
+  readonly label: string;
+  readonly x: number;
+  readonly z: number;
+  readonly tone?: string | undefined;
+  readonly tier?: number | undefined;
+}
+
+export interface WorldMinimapHandle {
+  updateRoamingDots?(actors: readonly WorldMinimapRoamingActor[]): void;
+}
 
 export interface WorldMinimapProps {
   readonly villages: readonly WorldVillageSpec[];
@@ -29,6 +61,8 @@ export interface WorldMinimapProps {
   readonly onSelectPlaza: () => void;
   readonly onToggleOverview: () => void;
   readonly onClickPoint?: ((x: number, z: number) => void) | undefined;
+  readonly districtJumpItems?: readonly WorldMinimapJumpItem[] | undefined;
+  readonly onJumpToDistrict?: ((item: WorldMinimapJumpItem) => void) | undefined;
 }
 
 /** 월드 좌표 `(x, z)` → 미니맵 SVG 좌표 `(mx, my)` 변환 (반경 56m 원형 클램프). */
@@ -75,258 +109,411 @@ const EAST_BRIDGE_COORDS = worldToMinimapCoords(8.6, 9.2 + Math.sin(8.6 * 0.095)
 const WEST_BRIDGE_COORDS = worldToMinimapCoords(-11.5, 9.2 + Math.sin(-11.5 * 0.095) * 2.9 + Math.cos(-11.5 * 0.04) * 1.1);
 
 /**
- * 다크 크리스탈 RTS 전략 미니맵 (`React.memo`).
+ * 다크 크리스탈 RTS 전략 미니맵 (`React.memo` + `forwardRef`).
  *
- * - 전체 56m 초원의 중앙 광장 · 시냇물 · 사령관 마을(발전도 Tier · 작업 펄스 · 경보 핑)을 한눈에 표시한다.
- * - 플레이어 위치/방향 화살표는 `playerMarkerRef`를 통해 Direct-DOM 갱신되어 React 리렌더가 0Hz로 유지된다.
- * - `M` 하늘 조망 토글 버튼 및 마을/지점 클릭 즉시 이동을 지원한다.
+ * - 전체 56m 초원의 중앙 광장 · 시냇물 · 사령관 마을(호버 툴팁 · Tier · 작업 펄스 · 경보 핑)을 한눈에 표시한다.
+ * - 플레이어 위치/방향 화살표(`playerMarkerRef`)와 사령관 실시간 산책 도트(`updateRoamingDots`)를
+ *   Direct-DOM으로 갱신해 React 리렌더가 0Hz로 유지된다.
+ * - 하단 푸터에 `구역 이동` 팝오버를 통합해 우하단 UI 중복을 제거했다.
  */
-export const WorldMinimap = memo(function WorldMinimap({
-  villages,
-  zones,
-  selectedDistrictId,
-  overviewMode,
-  locale,
-  playerMarkerRef,
-  onSelectVillage,
-  onSelectPlaza,
-  onToggleOverview,
-  onClickPoint,
-}: WorldMinimapProps) {
-  const t = getWorldT(locale);
-  const [collapsed, setCollapsed] = useState(false);
+export const WorldMinimap = memo(
+  forwardRef<WorldMinimapHandle, WorldMinimapProps>(function WorldMinimap(
+    {
+      villages,
+      zones,
+      selectedDistrictId,
+      overviewMode,
+      locale,
+      playerMarkerRef,
+      onSelectVillage,
+      onSelectPlaza,
+      onToggleOverview,
+      onClickPoint,
+      districtJumpItems,
+      onJumpToDistrict,
+    },
+    ref,
+  ) {
+    const t = getWorldT(locale);
+    const [collapsed, setCollapsed] = useState(false);
+    const [warpOpen, setWarpOpen] = useState(false);
+    const [hoveredVillageId, setHoveredVillageId] = useState<string | null>(null);
 
-  const typedVillages = villages as readonly MinimapVillageRecord[];
+    const roamingGroupRef = useRef<SVGGElement | null>(null);
+    const roamingDotsRef = useRef<Map<string, SVGCircleElement>>(new Map());
+    const activeIdsScratchRef = useRef<Set<string>>(new Set());
 
-  const selectedVillageId = useMemo(() => {
-    if (!selectedDistrictId) return null;
-    for (const v of villages) {
-      if (v.districts.some((d) => d.id === selectedDistrictId)) return v.id;
+    useImperativeHandle(
+      ref,
+      () => ({
+        updateRoamingDots(actors) {
+          const group = roamingGroupRef.current;
+          if (!group) return;
+          const pool = roamingDotsRef.current;
+          const activeIds = activeIdsScratchRef.current;
+          activeIds.clear();
+
+          for (let i = 0; i < actors.length; i += 1) {
+            const a = actors[i]!;
+            activeIds.add(a.id);
+            let circle = pool.get(a.id);
+            if (!circle) {
+              circle = document.createElementNS(SVG_NS, "circle");
+              circle.setAttribute("class", "the-world-minimap-roam-dot");
+              group.appendChild(circle);
+              pool.set(a.id, circle);
+            }
+            const { mx, my } = worldToMinimapCoords(a.x, a.z);
+            circle.setAttribute("cx", mx.toFixed(1));
+            circle.setAttribute("cy", my.toFixed(1));
+            circle.setAttribute("r", a.walking ? "2.6" : "2.1");
+            circle.setAttribute("fill", a.color);
+            circle.style.display = "";
+          }
+
+          for (const [id, circle] of pool.entries()) {
+            if (!activeIds.has(id)) {
+              circle.style.display = "none";
+            }
+          }
+        },
+      }),
+      [],
+    );
+
+    const typedVillages = villages as readonly MinimapVillageRecord[];
+
+    const selectedVillageId = useMemo(() => {
+      if (!selectedDistrictId) return null;
+      for (const v of villages) {
+        if (v.districts.some((d) => d.id === selectedDistrictId)) return v.id;
+      }
+      return null;
+    }, [selectedDistrictId, villages]);
+
+    const hoveredVillage = useMemo(
+      () => (hoveredVillageId ? typedVillages.find((v) => v.id === hoveredVillageId) ?? null : null),
+      [hoveredVillageId, typedVillages],
+    );
+
+    const outposts = useMemo(
+      () => zones.filter((z) => z.kind === "outpost"),
+      [zones],
+    );
+
+    const jumpList = useMemo<readonly WorldMinimapJumpItem[]>(() => {
+      if (districtJumpItems && districtJumpItems.length > 0) return districtJumpItems;
+      return zones.map((z) => ({
+        id: z.id,
+        label: z.label,
+        x: z.x,
+        z: z.z,
+        tone: z.roofTone,
+        tier: z.overallTier,
+      }));
+    }, [districtJumpItems, zones]);
+
+    const workingCount = useMemo(
+      () => typedVillages.filter((v) => Boolean(v.workStep)).length,
+      [typedVillages],
+    );
+    const attentionCount = useMemo(
+      () => typedVillages.filter((v) => v.needsAttention || v.hasError).length,
+      [typedVillages],
+    );
+
+    const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
+      if (!onClickPoint) return;
+      if ((event.target as HTMLElement).closest("button")) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const nx = ((event.clientX - rect.left) / rect.width) * MINIMAP_VIEW_SIZE - MINIMAP_CENTER;
+      const ny = ((event.clientY - rect.top) / rect.height) * MINIMAP_VIEW_SIZE - MINIMAP_CENTER;
+      const scale = MINIMAP_WORLD_RADIUS / MINIMAP_RADIUS;
+      const wx = nx * scale;
+      const wz = ny * scale;
+      if (Math.hypot(wx, wz) > MINIMAP_WORLD_RADIUS) return;
+      onClickPoint(wx, wz);
+    };
+
+    const hoveredStatusLabel = hoveredVillage
+      ? hoveredVillage.hasError
+        ? t("theWorld.minimap.statusError")
+        : hoveredVillage.needsAttention
+          ? t("theWorld.minimap.statusAlert")
+          : hoveredVillage.workStep
+            ? t("theWorld.minimap.statusWorking")
+            : t("theWorld.minimap.statusIdle")
+      : "";
+
+    if (collapsed) {
+      return (
+        <div
+          className="the-world-minimap-collapsed"
+          onPointerDown={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className={`the-world-btn${overviewMode ? " is-active" : ""}`}
+            aria-label={t("theWorld.minimap.collapseAria")}
+            onClick={() => setCollapsed(false)}
+          >
+            <WorldIcon name="mapOverview" size={14} tone={overviewMode ? "amber" : "cerulean"} />
+            <span>{t("theWorld.minimap.title")}</span>
+            {attentionCount > 0 ? <span className="the-world-minimap-badge is-alert">{attentionCount}</span> : null}
+          </button>
+        </div>
+      );
     }
-    return null;
-  }, [selectedDistrictId, villages]);
 
-  const outposts = useMemo(
-    () => zones.filter((z) => z.kind === "outpost"),
-    [zones],
-  );
-
-  const workingCount = useMemo(
-    () => typedVillages.filter((v) => Boolean(v.workStep)).length,
-    [typedVillages],
-  );
-  const attentionCount = useMemo(
-    () => typedVillages.filter((v) => v.needsAttention || v.hasError).length,
-    [typedVillages],
-  );
-
-  const handleCanvasClick = (event: MouseEvent<HTMLDivElement>) => {
-    if (!onClickPoint) return;
-    if ((event.target as HTMLElement).closest("button")) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-    const nx = ((event.clientX - rect.left) / rect.width) * MINIMAP_VIEW_SIZE - MINIMAP_CENTER;
-    const ny = ((event.clientY - rect.top) / rect.height) * MINIMAP_VIEW_SIZE - MINIMAP_CENTER;
-    const scale = MINIMAP_WORLD_RADIUS / MINIMAP_RADIUS;
-    const wx = nx * scale;
-    const wz = ny * scale;
-    if (Math.hypot(wx, wz) > MINIMAP_WORLD_RADIUS) return;
-    onClickPoint(wx, wz);
-  };
-
-  if (collapsed) {
     return (
-      <div
-        className="the-world-minimap-collapsed"
+      <section
+        className={`the-world-minimap${overviewMode ? " is-overview" : ""}`}
+        aria-label={t("theWorld.minimap.aria")}
         onPointerDown={(e) => e.stopPropagation()}
         onWheel={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          className={`the-world-btn${overviewMode ? " is-active" : ""}`}
-          aria-label={t("theWorld.minimap.collapseAria")}
-          onClick={() => setCollapsed(false)}
-        >
-          <WorldIcon name="mapOverview" size={14} tone={overviewMode ? "amber" : "cerulean"} />
-          <span>{t("theWorld.minimap.title")}</span>
-          {attentionCount > 0 ? <span className="the-world-minimap-badge is-alert">{attentionCount}</span> : null}
-        </button>
-      </div>
-    );
-  }
+        {/* 미니맵 통합 구역 이동 팝오버 (위쪽으로 펼침) */}
+        {warpOpen && jumpList.length > 0 ? (
+          <div
+            className="the-world-minimap-warp-menu"
+            role="menu"
+            aria-label={t("theWorld.minimap.warpMenuAria")}
+          >
+            <div className="the-world-crest" aria-hidden="true" />
+            <div className="the-world-warp-list">
+              {jumpList.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="menuitem"
+                  className="the-world-warp-item"
+                  onClick={() => {
+                    setWarpOpen(false);
+                    if (onJumpToDistrict) onJumpToDistrict(item);
+                    else onClickPoint?.(item.x, item.z);
+                  }}
+                >
+                  {item.tone ? (
+                    <span className="the-world-tone-dot" data-tone={item.tone} />
+                  ) : (
+                    <WorldIcon name="compass" size={12} tone="amber" />
+                  )}
+                  <span className="the-world-warp-item-label">{item.label}</span>
+                  {item.tier !== undefined ? (
+                    <span className="the-world-warp-item-tier">T{item.tier}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
-  return (
-    <section
-      className={`the-world-minimap${overviewMode ? " is-overview" : ""}`}
-      aria-label={t("theWorld.minimap.aria")}
-      onPointerDown={(e) => e.stopPropagation()}
-      onWheel={(e) => e.stopPropagation()}
-    >
-      <div className="the-world-crest" aria-hidden="true" />
+        <div className="the-world-crest" aria-hidden="true" />
 
-      <header className="the-world-minimap-head">
-        <span className="the-world-minimap-title">
-          <WorldIcon name="mapOverview" size={13} tone={overviewMode ? "amber" : "cerulean"} />
-          <span>{t("theWorld.minimap.title")}</span>
-        </span>
-        <div className="the-world-minimap-tools">
+        <header className="the-world-minimap-head">
+          <span className="the-world-minimap-title">
+            <WorldIcon name="mapOverview" size={13} tone={overviewMode ? "amber" : "cerulean"} />
+            <span>{t("theWorld.minimap.title")}</span>
+          </span>
+          <div className="the-world-minimap-tools">
+            <button
+              type="button"
+              className={`the-world-minimap-keybtn${overviewMode ? " is-active" : ""}`}
+              aria-label={t("theWorld.minimap.expandAria")}
+              aria-pressed={overviewMode}
+              title={t("theWorld.hud.overviewTitle")}
+              onClick={onToggleOverview}
+            >
+              M
+            </button>
+            <button
+              type="button"
+              className="the-world-chat-icon-btn"
+              aria-label={t("theWorld.minimap.collapseAria")}
+              onClick={() => {
+                setWarpOpen(false);
+                setCollapsed(true);
+              }}
+            >
+              <WorldIcon name="close" size={12} />
+            </button>
+          </div>
+        </header>
+
+        <div className="the-world-minimap-stage" onClick={handleCanvasClick}>
+          <svg
+            className="the-world-minimap-svg"
+            viewBox={`0 0 ${MINIMAP_VIEW_SIZE} ${MINIMAP_VIEW_SIZE}`}
+            aria-hidden="true"
+          >
+            {/* 초원 외곽 경계 (56m) 및 거리 동심원 */}
+            <circle
+              className="the-world-minimap-meadow"
+              cx={MINIMAP_CENTER}
+              cy={MINIMAP_CENTER}
+              r={MINIMAP_RADIUS}
+            />
+            <circle
+              className="the-world-minimap-ring"
+              cx={MINIMAP_CENTER}
+              cy={MINIMAP_CENTER}
+              r={MINIMAP_RADIUS * (24 / MINIMAP_WORLD_RADIUS)}
+            />
+            <circle
+              className="the-world-minimap-ring"
+              cx={MINIMAP_CENTER}
+              cy={MINIMAP_CENTER}
+              r={MINIMAP_RADIUS * (42 / MINIMAP_WORLD_RADIUS)}
+            />
+
+            {/* 시냇물 & 목교 */}
+            <path className="the-world-minimap-brook" d={BROOK_SVG_PATH} />
+            <rect
+              className="the-world-minimap-bridge"
+              x={EAST_BRIDGE_COORDS.mx - 2.5}
+              y={EAST_BRIDGE_COORDS.my - 4}
+              width={5}
+              height={8}
+              rx={1.2}
+            />
+            <rect
+              className="the-world-minimap-bridge"
+              x={WEST_BRIDGE_COORDS.mx - 2.5}
+              y={WEST_BRIDGE_COORDS.my - 4}
+              width={5}
+              height={8}
+              rx={1.2}
+            />
+
+            {/* 아웃포스트 캠프 다이아몬드 마커 */}
+            {outposts.map((op) => {
+              const { mx, my } = worldToMinimapCoords(op.x, op.z);
+              return (
+                <polygon
+                  key={op.id}
+                  className="the-world-minimap-outpost"
+                  points={`${mx},${my - 3.5} ${mx + 3.5},${my} ${mx},${my + 3.5} ${mx - 3.5},${my}`}
+                />
+              );
+            })}
+
+            {/* 사령관 실시간 산책 위치 도트 레이어 (0Hz Direct-DOM) */}
+            <g ref={roamingGroupRef} className="the-world-minimap-roaming" aria-hidden="true" />
+
+            {/* 제독(플레이어) 실시간 위치 & 시선 화살표 — Direct-DOM transform 갱신 */}
+            <g
+              ref={playerMarkerRef}
+              className="the-world-minimap-player"
+              transform={formatMinimapPlayerTransform(0.4, 2.2, Math.PI)}
+            >
+              <polygon className="the-world-minimap-player-cone" points="0,0 -6,12 6,12" />
+              <polygon className="the-world-minimap-player-arrow" points="0,5.6 -3.8,-3.6 0,-1.6 3.8,-3.6" />
+            </g>
+          </svg>
+
+          <span className="the-world-minimap-north" aria-hidden="true">N</span>
+
+          {/* 마을 노드 호버 시 사령관 이름 · Tier · 상태 툴팁 */}
+          {hoveredVillage ? (
+            <div className="the-world-minimap-tooltip" role="status" aria-live="polite">
+              <span className="the-world-tone-dot" data-tone={hoveredVillage.tone} />
+              <span className="the-world-minimap-tooltip-name">{hoveredVillage.label}</span>
+              <span className="the-world-minimap-tooltip-meta">
+                T{hoveredVillage.overallTier} · {hoveredStatusLabel}
+              </span>
+            </div>
+          ) : null}
+
+          {/* 중앙 길드 광장 클릭 노드 */}
           <button
             type="button"
-            className={`the-world-minimap-keybtn${overviewMode ? " is-active" : ""}`}
-            aria-label={t("theWorld.minimap.expandAria")}
-            aria-pressed={overviewMode}
-            title={t("theWorld.hud.overviewTitle")}
-            onClick={onToggleOverview}
-          >
-            M
-          </button>
-          <button
-            type="button"
-            className="the-world-chat-icon-btn"
-            aria-label={t("theWorld.minimap.collapseAria")}
-            onClick={() => setCollapsed(true)}
-          >
-            <WorldIcon name="close" size={12} />
-          </button>
-        </div>
-      </header>
-
-      <div className="the-world-minimap-stage" onClick={handleCanvasClick}>
-        <svg
-          className="the-world-minimap-svg"
-          viewBox={`0 0 ${MINIMAP_VIEW_SIZE} ${MINIMAP_VIEW_SIZE}`}
-          aria-hidden="true"
-        >
-          {/* 초원 외곽 경계 (56m) 및 거리 동심원 */}
-          <circle
-            className="the-world-minimap-meadow"
-            cx={MINIMAP_CENTER}
-            cy={MINIMAP_CENTER}
-            r={MINIMAP_RADIUS}
-          />
-          <circle
-            className="the-world-minimap-ring"
-            cx={MINIMAP_CENTER}
-            cy={MINIMAP_CENTER}
-            r={MINIMAP_RADIUS * (24 / MINIMAP_WORLD_RADIUS)}
-          />
-          <circle
-            className="the-world-minimap-ring"
-            cx={MINIMAP_CENTER}
-            cy={MINIMAP_CENTER}
-            r={MINIMAP_RADIUS * (42 / MINIMAP_WORLD_RADIUS)}
+            className="the-world-minimap-plaza"
+            style={{
+              left: `${(PLAZA_COORDS.mx / MINIMAP_VIEW_SIZE) * 100}%`,
+              top: `${(PLAZA_COORDS.my / MINIMAP_VIEW_SIZE) * 100}%`,
+            }}
+            aria-label={t("theWorld.minimap.plazaAria")}
+            title={t("theWorld.minimap.plazaAria")}
+            onClick={onSelectPlaza}
           />
 
-          {/* 시냇물 & 목교 */}
-          <path className="the-world-minimap-brook" d={BROOK_SVG_PATH} />
-          <rect
-            className="the-world-minimap-bridge"
-            x={EAST_BRIDGE_COORDS.mx - 2.5}
-            y={EAST_BRIDGE_COORDS.my - 4}
-            width={5}
-            height={8}
-            rx={1.2}
-          />
-          <rect
-            className="the-world-minimap-bridge"
-            x={WEST_BRIDGE_COORDS.mx - 2.5}
-            y={WEST_BRIDGE_COORDS.my - 4}
-            width={5}
-            height={8}
-            rx={1.2}
-          />
-
-          {/* 아웃포스트 캠프 다이아몬드 마커 */}
-          {outposts.map((op) => {
-            const { mx, my } = worldToMinimapCoords(op.x, op.z);
+          {/* 사령관별 마을 클릭 노드 */}
+          {typedVillages.map((village) => {
+            const { mx, my } = worldToMinimapCoords(village.x, village.z);
+            const isSelected = selectedVillageId === village.id;
+            const isWorking = Boolean(village.workStep);
+            const isAttention = village.needsAttention === true;
+            const isError = village.hasError === true;
+            const sizePx = Math.max(16, Math.min(24, Math.round(14 + village.overallTier * 1.8)));
             return (
-              <polygon
-                key={op.id}
-                className="the-world-minimap-outpost"
-                points={`${mx},${my - 3.5} ${mx + 3.5},${my} ${mx},${my + 3.5} ${mx - 3.5},${my}`}
-              />
+              <button
+                key={village.id}
+                type="button"
+                className={`the-world-minimap-node${isSelected ? " is-selected" : ""}${isWorking ? " is-working" : ""}${isAttention ? " is-attention" : ""}${isError ? " is-error" : ""}`}
+                data-tone={village.tone}
+                style={{
+                  left: `${(mx / MINIMAP_VIEW_SIZE) * 100}%`,
+                  top: `${(my / MINIMAP_VIEW_SIZE) * 100}%`,
+                  width: `${sizePx}px`,
+                  height: `${sizePx}px`,
+                }}
+                aria-label={t("theWorld.minimap.villageAria", {
+                  name: village.label,
+                  tier: village.overallTier,
+                })}
+                title={t("theWorld.minimap.villageAria", {
+                  name: village.label,
+                  tier: village.overallTier,
+                })}
+                onMouseEnter={() => setHoveredVillageId(village.id)}
+                onMouseLeave={() => setHoveredVillageId((cur) => (cur === village.id ? null : cur))}
+                onFocus={() => setHoveredVillageId(village.id)}
+                onBlur={() => setHoveredVillageId((cur) => (cur === village.id ? null : cur))}
+                onClick={() => onSelectVillage(village)}
+              >
+                <span className="the-world-minimap-node-tier">{village.overallTier}</span>
+                {isAttention || isError ? (
+                  <span className="the-world-minimap-node-ping" aria-hidden="true">!</span>
+                ) : null}
+              </button>
             );
           })}
-
-          {/* 제독(플레이어) 실시간 위치 & 시선 화살표 — Direct-DOM transform 갱신 */}
-          <g
-            ref={playerMarkerRef}
-            className="the-world-minimap-player"
-            transform={formatMinimapPlayerTransform(0.4, 2.2, Math.PI)}
-          >
-            <polygon className="the-world-minimap-player-cone" points="0,0 -6,12 6,12" />
-            <polygon className="the-world-minimap-player-arrow" points="0,5.6 -3.8,-3.6 0,-1.6 3.8,-3.6" />
-          </g>
-        </svg>
-
-        <span className="the-world-minimap-north" aria-hidden="true">N</span>
-
-        {/* 중앙 길드 광장 클릭 노드 */}
-        <button
-          type="button"
-          className="the-world-minimap-plaza"
-          style={{
-            left: `${(PLAZA_COORDS.mx / MINIMAP_VIEW_SIZE) * 100}%`,
-            top: `${(PLAZA_COORDS.my / MINIMAP_VIEW_SIZE) * 100}%`,
-          }}
-          aria-label={t("theWorld.minimap.plazaAria")}
-          title={t("theWorld.minimap.plazaAria")}
-          onClick={onSelectPlaza}
-        />
-
-        {/* 사령관별 마을 클릭 노드 */}
-        {typedVillages.map((village) => {
-          const { mx, my } = worldToMinimapCoords(village.x, village.z);
-          const isSelected = selectedVillageId === village.id;
-          const isWorking = Boolean(village.workStep);
-          const isAttention = village.needsAttention === true;
-          const isError = village.hasError === true;
-          const sizePx = Math.max(16, Math.min(24, Math.round(14 + village.overallTier * 1.8)));
-          return (
-            <button
-              key={village.id}
-              type="button"
-              className={`the-world-minimap-node${isSelected ? " is-selected" : ""}${isWorking ? " is-working" : ""}${isAttention ? " is-attention" : ""}${isError ? " is-error" : ""}`}
-              data-tone={village.tone}
-              style={{
-                left: `${(mx / MINIMAP_VIEW_SIZE) * 100}%`,
-                top: `${(my / MINIMAP_VIEW_SIZE) * 100}%`,
-                width: `${sizePx}px`,
-                height: `${sizePx}px`,
-              }}
-              aria-label={t("theWorld.minimap.villageAria", {
-                name: village.label,
-                tier: village.overallTier,
-              })}
-              title={`${village.label} · Tier ${village.overallTier}`}
-              onClick={() => onSelectVillage(village)}
-            >
-              <span className="the-world-minimap-node-tier">{village.overallTier}</span>
-              {isAttention || isError ? (
-                <span className="the-world-minimap-node-ping" aria-hidden="true">!</span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <footer className="the-world-minimap-foot">
-        <span className="the-world-minimap-hint">{t("theWorld.minimap.overviewHint")}</span>
-        <div className="the-world-minimap-counts">
-          {workingCount > 0 ? (
-            <span className="the-world-minimap-stat is-working">
-              <span className="the-world-minimap-stat-dot" aria-hidden="true" />
-              <span>{t("theWorld.minimap.workingLegend")} {workingCount}</span>
-            </span>
-          ) : null}
-          {attentionCount > 0 ? (
-            <span className="the-world-minimap-stat is-alert">
-              <span className="the-world-minimap-stat-dot" aria-hidden="true" />
-              <span>{t("theWorld.minimap.alertLegend")} {attentionCount}</span>
-            </span>
-          ) : null}
         </div>
-      </footer>
-    </section>
-  );
-});
+
+        <footer className="the-world-minimap-foot">
+          {jumpList.length > 0 ? (
+            <button
+              type="button"
+              className={`the-world-minimap-warp-btn${warpOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.minimap.warpAria")}
+              aria-expanded={warpOpen}
+              onClick={() => setWarpOpen((prev) => !prev)}
+            >
+              <WorldIcon name="compass" size={12} tone="amber" />
+              <span>{t("theWorld.minimap.warpLabel")}</span>
+              <span aria-hidden="true">{warpOpen ? "▾" : "▴"}</span>
+            </button>
+          ) : (
+            <span className="the-world-minimap-hint">{t("theWorld.minimap.overviewHint")}</span>
+          )}
+          <div className="the-world-minimap-counts">
+            {workingCount > 0 ? (
+              <span className="the-world-minimap-stat is-working">
+                <span className="the-world-minimap-stat-dot" aria-hidden="true" />
+                <span>{t("theWorld.minimap.workingLegend")} {workingCount}</span>
+              </span>
+            ) : null}
+            {attentionCount > 0 ? (
+              <span className="the-world-minimap-stat is-alert">
+                <span className="the-world-minimap-stat-dot" aria-hidden="true" />
+                <span>{t("theWorld.minimap.alertLegend")} {attentionCount}</span>
+              </span>
+            ) : null}
+          </div>
+        </footer>
+      </section>
+    );
+  }),
+);

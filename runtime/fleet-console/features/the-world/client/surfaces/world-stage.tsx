@@ -2,13 +2,15 @@ import { NATIVE_VIEW_COVER_ATTRIBUTE } from "@fleet-console/ui/native-view";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
-  WORLD_CAMPFIRE_BENCH_POS,
   type WorldActorPanelMode,
   type WorldAdmiralStyle,
   type WorldDevelopmentTier,
   type WorldDistrictSpec,
+  type WorldPlayerEmote,
+  type WorldTimeMode,
   type WorldVillageBiome,
   type WorldVillageSpec,
+  type WorldWeatherMode,
 } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
 import {
@@ -32,7 +34,6 @@ import {
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
-  activateChat,
   clearDispatchFlag,
   closeActorInteraction,
   closeAdmiralCustomizer,
@@ -40,7 +41,6 @@ import {
   closeQuestBoard,
   closeWarRoom,
   deactivateChat,
-  exitTheWorld,
   getWorldStoreSnapshot,
   openActorDialogue,
   openActorPanel,
@@ -66,18 +66,27 @@ import {
   setPhotoMode,
   setSittingAtCampfire,
   setVillageBiome,
+  setWeatherMode,
+  setWorldTimeMode,
   toggleOverviewMode,
-  togglePhotoMode,
   useWorldStore,
 } from "../world-store.js";
+import { useWorldShortcuts } from "./use-world-shortcuts.js";
 import { WorldAdmiralCustomizer } from "./world-admiral-customizer.js";
 import { WorldChatLog, WorldSpeechSync } from "./world-chat-log.js";
+import { WorldControlsGuide } from "./world-controls-guide.js";
 import { WorldDialogueBox } from "./world-dialogue-box.js";
 import { WorldDistrictInspector, type WorldDistrictLinkedObjective } from "./world-district-inspector.js";
 import { WorldDistrictQuickMenu } from "./world-district-quick-menu.js";
 import { WorldHud } from "./world-hud.js";
-import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
-import { formatMinimapPlayerTransform, WorldMinimap } from "./world-minimap.js";
+import { WorldIcon } from "./world-icons.js";
+import { WorldLabelsOverlay, type WorldLabelsOverlayHandle } from "./world-labels-overlay.js";
+import {
+  formatMinimapPlayerTransform,
+  WorldMinimap,
+  type WorldMinimapHandle,
+  type WorldMinimapJumpItem,
+} from "./world-minimap.js";
 import { WorldPanelModal } from "./world-panel-modal.js";
 import { WorldQuestBoardModal } from "./world-quest-board.js";
 import { WorldRadialMenu } from "./world-radial-menu.js";
@@ -86,7 +95,7 @@ import { WorldWarRoom } from "./world-war-room.js";
 const TOAST_DURATION_MS = 2_800;
 const CELEBRATION_TOAST_DURATION_MS = 3_800;
 const HOVER_PICK_THROTTLE_MS = 33;
-const POS_DEADZONE_PX = 0.5;
+const PLAYER_HOVER_RADIUS_PX = 46;
 
 const TIER_NAME_KEYS: Readonly<Record<WorldDevelopmentTier, TheWorldMessageKey>> = {
   0: "theWorld.tier.0.name",
@@ -97,40 +106,8 @@ const TIER_NAME_KEYS: Readonly<Record<WorldDevelopmentTier, TheWorldMessageKey>>
   5: "theWorld.tier.5.name",
 };
 
-const SPEECH_BADGES: Readonly<Record<string, { readonly icon: WorldIconName; readonly tone: WorldIconTone }>> = {
-  wake: { icon: "systemWake", tone: "amber" },
-  ask: { icon: "question", tone: "amber" },
-  tool: { icon: "tool", tone: "cerulean" },
-  warn: { icon: "warning", tone: "warn" },
-  chat: { icon: "chat", tone: "teal" },
-  quest: { icon: "scroll", tone: "amber" },
-  rally: { icon: "rally", tone: "amber" },
-  gift: { icon: "crate", tone: "rose" },
-  baton: { icon: "baton", tone: "cerulean" },
-  party: { icon: "confetti", tone: "amber" },
-  greet: { icon: "greet", tone: "rose" },
-  cheer: { icon: "cheer", tone: "amber" },
-  highfive: { icon: "highfive", tone: "rose" },
-};
-
-function parseSpeech(raw: string): { readonly badge: { readonly icon: WorldIconName; readonly tone: WorldIconTone } | null; readonly text: string } {
-  const match = /^\[([a-z]+)\]\s*(.*)$/i.exec(raw);
-  if (match) {
-    const badge = SPEECH_BADGES[match[1]!.toLowerCase()] ?? null;
-    if (badge) return { badge, text: match[2]! };
-  }
-  return { badge: null, text: raw };
-}
-
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
   return mode === "goals" || mode === "info" || mode === "settings";
-}
-
-interface AppliedAnchorState {
-  x: number;
-  y: number;
-  visible: boolean;
-  distant: boolean;
 }
 
 function findDistrictInVillages(
@@ -161,11 +138,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const rootRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<WorldRuntimeHandle | null>(null);
+  const labelsOverlayRef = useRef<WorldLabelsOverlayHandle | null>(null);
+  const minimapRef = useRef<WorldMinimapHandle | null>(null);
+  const minimapPlayerRef = useRef<SVGGElement | null>(null);
+  const lastMinimapPoseRef = useRef({ x: Number.NaN, z: Number.NaN, yaw: Number.NaN });
 
   // 구조 상태만 React state에 보관(목록·말풍선·근접·선택 변경 시에만 갱신, 평시 0Hz)
   const [labelMetas, setLabelMetas] = useState<readonly WorldActorLabelMeta[]>([]);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [celebrationToast, setCelebrationToast] = useState<string | null>(null);
+  const [controlsGuideOpen, setControlsGuideOpen] = useState(false);
+  const [debugPanelVisible, setDebugPanelVisible] = useState(false);
+  const [playerHovered, setPlayerHovered] = useState(false);
   const [overviewDragLink, setOverviewDragLink] = useState<{
     readonly fromVillage: WorldVillageSpec;
     readonly startX: number;
@@ -174,6 +158,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     readonly curY: number;
     readonly targetVillage: WorldVillageSpec | null;
   } | null>(null);
+
+  const controlsGuideOpenRef = useRef(controlsGuideOpen);
+  controlsGuideOpenRef.current = controlsGuideOpen;
+  const playerHoveredRef = useRef(playerHovered);
+  playerHoveredRef.current = playerHovered;
+
   const toastTimerRef = useRef<number | null>(null);
   const celebrationTimerRef = useRef<number | null>(null);
   const prevDistrictTiersRef = useRef<Map<string, WorldDevelopmentTier>>(new Map());
@@ -181,227 +171,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const villagesRef = useRef<readonly WorldVillageSpec[]>(snapshot.villages);
   villagesRef.current = snapshot.villages;
 
-  // Direct-DOM `translate3d` 좌표 갱신용 ref 맵 + 0.5px 데드존 캐시 + 안정화된 ref 콜백 풀
-  const actorAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const villageAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const playerAnchorRef = useRef<HTMLDivElement | null>(null);
-  const districtTooltipRef = useRef<HTMLDivElement | null>(null);
-  const noticeBoardAnchorRef = useRef<HTMLDivElement | null>(null);
-  const guildHallAnchorRef = useRef<HTMLDivElement | null>(null);
-  const campfireBenchAnchorRef = useRef<HTMLDivElement | null>(null);
-  const minimapPlayerRef = useRef<SVGGElement | null>(null);
-  const lastMinimapPoseRef = useRef({ x: Number.NaN, z: Number.NaN, yaw: Number.NaN });
-  const appliedPosCacheRef = useRef<Map<string, AppliedAnchorState>>(new Map());
-  const actorRefCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
-  const villageRefCallbacks = useRef<Map<string, (el: HTMLDivElement | null) => void>>(new Map());
-
-  const getActorAnchorRef = useCallback((actorId: string) => {
-    let cb = actorRefCallbacks.current.get(actorId);
-    if (!cb) {
-      cb = (el: HTMLDivElement | null) => {
-        if (el) {
-          if (actorAnchorRefs.current.get(actorId) !== el) {
-            el.style.visibility = "hidden";
-            actorAnchorRefs.current.set(actorId, el);
-            appliedPosCacheRef.current.delete(`actor:${actorId}`);
-          }
-        } else {
-          actorAnchorRefs.current.delete(actorId);
-          appliedPosCacheRef.current.delete(`actor:${actorId}`);
-          actorRefCallbacks.current.delete(actorId);
-        }
-      };
-      actorRefCallbacks.current.set(actorId, cb);
-    }
-    return cb;
-  }, []);
-
-  const getVillageAnchorRef = useCallback((villageId: string) => {
-    let cb = villageRefCallbacks.current.get(villageId);
-    if (!cb) {
-      cb = (el: HTMLDivElement | null) => {
-        if (el) {
-          if (villageAnchorRefs.current.get(villageId) !== el) {
-            el.style.visibility = "hidden";
-            villageAnchorRefs.current.set(villageId, el);
-            appliedPosCacheRef.current.delete(`village:${villageId}`);
-          }
-        } else {
-          villageAnchorRefs.current.delete(villageId);
-          appliedPosCacheRef.current.delete(`village:${villageId}`);
-          villageRefCallbacks.current.delete(villageId);
-        }
-      };
-      villageRefCallbacks.current.set(villageId, cb);
-    }
-    return cb;
-  }, []);
-
-  const setPlayerAnchorRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      if (playerAnchorRef.current !== el) {
-        el.style.visibility = "hidden";
-        playerAnchorRef.current = el;
-        appliedPosCacheRef.current.delete("player");
-      }
-    } else {
-      playerAnchorRef.current = null;
-      appliedPosCacheRef.current.delete("player");
-    }
-  }, []);
-
-  const setDistrictTooltipRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      if (districtTooltipRef.current !== el) {
-        el.style.visibility = "hidden";
-        districtTooltipRef.current = el;
-        appliedPosCacheRef.current.delete("district-tooltip");
-      }
-    } else {
-      districtTooltipRef.current = null;
-      appliedPosCacheRef.current.delete("district-tooltip");
-    }
-  }, []);
-
-  const setNoticeBoardAnchorRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      if (noticeBoardAnchorRef.current !== el) {
-        el.style.visibility = "hidden";
-        noticeBoardAnchorRef.current = el;
-        appliedPosCacheRef.current.delete("notice-board");
-      }
-    } else {
-      noticeBoardAnchorRef.current = null;
-      appliedPosCacheRef.current.delete("notice-board");
-    }
-  }, []);
-
-  const setGuildHallAnchorRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      if (guildHallAnchorRef.current !== el) {
-        el.style.visibility = "hidden";
-        guildHallAnchorRef.current = el;
-        appliedPosCacheRef.current.delete("guild-hall");
-      }
-    } else {
-      guildHallAnchorRef.current = null;
-      appliedPosCacheRef.current.delete("guild-hall");
-    }
-  }, []);
-
-  const setCampfireBenchAnchorRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
-      if (campfireBenchAnchorRef.current !== el) {
-        el.style.visibility = "hidden";
-        campfireBenchAnchorRef.current = el;
-        appliedPosCacheRef.current.delete("campfire-bench");
-      }
-    } else {
-      campfireBenchAnchorRef.current = null;
-      appliedPosCacheRef.current.delete("campfire-bench");
-    }
-  }, []);
-
-  const applyAnchorPosition = useCallback((
-    key: string,
-    el: HTMLDivElement | null | undefined,
-    x: number,
-    y: number,
-    visible: boolean,
-    distant = false,
-  ) => {
-    if (!el) return;
-    const cache = appliedPosCacheRef.current;
-    let prev = cache.get(key);
-    if (!visible) {
-      if (!prev) {
-        el.style.visibility = "hidden";
-        cache.set(key, { x: Number.NaN, y: Number.NaN, visible: false, distant: false });
-      } else if (prev.visible) {
-        el.style.visibility = "hidden";
-        prev.visible = false;
-      }
-      return;
-    }
-
-    if (!prev) {
-      prev = { x: Number.NaN, y: Number.NaN, visible: false, distant: false };
-      cache.set(key, prev);
-    }
-
-    if (!prev.visible) {
-      el.style.visibility = "visible";
-      prev.visible = true;
-    }
-
-    if (
-      Number.isNaN(prev.x)
-      || Math.abs(x - prev.x) >= POS_DEADZONE_PX
-      || Math.abs(y - prev.y) >= POS_DEADZONE_PX
-    ) {
-      el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -100%)`;
-      prev.x = x;
-      prev.y = y;
-    }
-
-    if (prev.distant !== distant || el.classList.contains("is-distant") !== distant) {
-      el.classList.toggle("is-distant", distant);
-      prev.distant = distant;
-    }
-  }, []);
-
   const handleFramePositions = useCallback((positions: WorldFrameOverlayPositions) => {
-    const actorMap = actorAnchorRefs.current;
-    for (let i = 0; i < positions.actorCount; i += 1) {
-      const p = positions.actors[i]!;
-      applyAnchorPosition(`actor:${p.actorId}`, actorMap.get(p.actorId), p.x, p.y, p.visible, p.isDistant);
-    }
-
-    applyAnchorPosition(
-      "player",
-      playerAnchorRef.current,
-      positions.player.x,
-      positions.player.y,
-      positions.player.visible,
-    );
-
-    const villageMap = villageAnchorRefs.current;
-    for (let i = 0; i < positions.villageCount; i += 1) {
-      const v = positions.villages[i]!;
-      applyAnchorPosition(`village:${v.villageId}`, villageMap.get(v.villageId), v.x, v.y, v.visible);
-    }
-
-    applyAnchorPosition(
-      "district-tooltip",
-      districtTooltipRef.current,
-      positions.hoveredDistrict.x,
-      positions.hoveredDistrict.y,
-      positions.hoveredDistrict.visible,
-    );
-
-    applyAnchorPosition(
-      "notice-board",
-      noticeBoardAnchorRef.current,
-      positions.noticeBoard.x,
-      positions.noticeBoard.y,
-      positions.noticeBoard.visible,
-    );
-
-    applyAnchorPosition(
-      "guild-hall",
-      guildHallAnchorRef.current,
-      positions.guildHall.x,
-      positions.guildHall.y,
-      positions.guildHall.visible,
-    );
-
-    applyAnchorPosition(
-      "campfire-bench",
-      campfireBenchAnchorRef.current,
-      positions.campfireBench.x,
-      positions.campfireBench.y,
-      positions.campfireBench.visible,
-    );
+    labelsOverlayRef.current?.applyFramePositions(positions);
+    minimapRef.current?.updateRoamingDots?.(positions.minimapActors);
 
     // 전략 미니맵 플레이어 위치/방향 마커 0Hz Direct-DOM 갱신 (정지 중 SVG 쓰기 0)
     const markerEl = minimapPlayerRef.current;
@@ -422,7 +194,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         prev.yaw = pyaw;
       }
     }
-  }, [applyAnchorPosition]);
+  }, []);
 
   const pushToast = useCallback((msg: string) => {
     setToastMessage(msg);
@@ -440,6 +212,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       celebrationTimerRef.current = null;
       setCelebrationToast(null);
     }, CELEBRATION_TOAST_DURATION_MS);
+  }, []);
+
+  const handleToggleControlsGuide = useCallback(() => {
+    setControlsGuideOpen((prev) => !prev);
+  }, []);
+
+  const handleCloseControlsGuide = useCallback(() => {
+    setControlsGuideOpen(false);
+  }, []);
+
+  const handleToggleDebugPanel = useCallback(() => {
+    setDebugPanelVisible((prev) => !prev);
   }, []);
 
   const handlePushSpeech = useCallback((actorId: string, text: string) => {
@@ -460,8 +244,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current);
   }, []);
 
-  // 월드에 표시되는 모든 사령관 기록과 활성 Objective 타임라인을 미리 구독해
-  // 좌측 하단 MMORPG 채팅창·3D 말풍선·인월드 대화창이 실시간으로 흐르게 한다.
+  // 월드에 표시되는 모든 사령관 기록과 활성 Objective 타임라인을 미리 구독한다.
   useEffect(() => {
     for (const actor of snapshot.actors) {
       if (actor.role === "commodore" && actor.commodoreId) {
@@ -513,22 +296,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     });
   }, [store.lifecycle, store.timeMode, store.cameraMode, store.interactionMode, store.selectedActorId]);
 
-  // RTS 하늘 조망 모드 3D 카메라 동기화
   useEffect(() => {
     runtimeRef.current?.setOverviewMode(store.overviewMode);
   }, [store.overviewMode]);
 
-  // 날씨 모드 (`clear` / `sakura` / `rain` / `snow`) + 빗소리 앰비언스 동기화
   useEffect(() => {
     runtimeRef.current?.setWeather(store.weatherMode);
   }, [store.weatherMode]);
 
-  // 제독 몽글이 색상·모자 커스터마이징 실시간 동기화
   useEffect(() => {
     runtimeRef.current?.setAdmiralStyle(store.admiralStyle.tone, store.admiralStyle.hat);
   }, [store.admiralStyle]);
 
-  // 모닥불 벤치 불멍 상태 동기화
   useEffect(() => {
     runtimeRef.current?.setCampfireSit(store.sittingAtCampfire);
   }, [store.sittingAtCampfire]);
@@ -594,7 +373,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.setDispatchFlags(activeFlags);
   }, [snapshot.villages, store.dispatchFlags]);
 
-  // 실시간 Theater 구역 Tier 레벨업 감지기 (초기 메트릭 로딩은 제외하고 실제 상승 시에만 축포)
+  // 실시간 Theater 구역 Tier 레벨업 감지기 (초기 메트릭 로딩 제외, 실제 상승 시에만 축포)
   useEffect(() => {
     const prevMap = prevDistrictTiersRef.current;
     const tLive = getWorldT(deps.commodore.language());
@@ -635,12 +414,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const selectedVillage = selectedDistrictMatch?.village ?? null;
   const hoveredDistrict = hoveredDistrictMatch?.district ?? null;
 
-  // 선택·호버 하이라이트 링 3D 동기화
   useEffect(() => {
     runtimeRef.current?.setDistrictHighlight(hoveredDistrict, selectedDistrict);
   }, [hoveredDistrict, selectedDistrict]);
 
-  // 구역 선택 시에만 카메라 포커스 이동 (메트릭 새로고침 등 동일 ID 갱신 시 카메라 유지)
   const focusedDistrictIdRef = useRef<string | null>(null);
   useEffect(() => {
     const nextId = selectedDistrict?.id ?? null;
@@ -649,14 +426,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.focusDistrict(selectedDistrict);
   }, [selectedDistrict]);
 
-  // 선택된 구역이 스냅샷에서 사라지면 선택 해제
   useEffect(() => {
     if (store.selectedDistrictId && !selectedDistrict) {
       selectDistrict(null);
     }
   }, [selectedDistrict, store.selectedDistrictId]);
 
-  // 협동 연출 명령 전달
   useEffect(() => {
     if (!store.choreography) return;
     const ran = runtimeRef.current?.runChoreography(store.choreography);
@@ -665,7 +440,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [pushToast, store.choreography]);
 
-  // 심즈 스타일 감정표현/인사 이모트 전달
   const lastEmoteNonceRef = useRef(0);
   useEffect(() => {
     const cmd = store.emoteCommand;
@@ -675,7 +449,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.playEmote(cmd.actorId, cmd.emote);
   }, [store.emoteCommand]);
 
-  // 대상에게 다가가기 요청 전달
   const lastApproachNonceRef = useRef(0);
   useEffect(() => {
     const req = store.approachRequest;
@@ -684,7 +457,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.approachActor(req.actorId);
   }, [store.approachRequest]);
 
-  // 텔레포트 요청 전달
   const lastTeleportNonceRef = useRef(0);
   useEffect(() => {
     const req = store.teleportRequest;
@@ -694,7 +466,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.teleport(req.x, req.z);
   }, [store.teleportRequest]);
 
-  // 로컬 말풍선 전달
   const appliedSpeechesRef = useRef<Record<string, number>>({});
   useEffect(() => {
     for (const [actorId, entry] of Object.entries(store.localSpeeches)) {
@@ -704,14 +475,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [store.localSpeeches]);
 
-  // 선택 대상이 스냅샷에서 사라지면 상호작용 상태를 정리한다.
   useEffect(() => {
     if (store.selectedActorId && !snapshot.actors.some((a) => a.id === store.selectedActorId)) {
       closeActorInteraction();
     }
   }, [snapshot.actors, store.selectedActorId]);
 
-  // 더 월드 진입 시 배경 콘솔(예: 사이드바 포털 버튼)에 남은 포커스를 해제해 즉시 `Enter` 채팅이 동작하도록 한다.
+  // 더 월드 진입 시 배경 콘솔에 남은 포커스를 해제해 즉시 `Enter` 채팅이 동작하도록 한다.
   useEffect(() => {
     if (store.lifecycle !== "open" && store.lifecycle !== "diving") return;
     const active = document.activeElement;
@@ -720,178 +490,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [store.lifecycle]);
 
-  // 키보드 Enter(채팅 활성화) · E(방사형 메뉴) · M(RTS 하늘 조망 토글) · P(포토 모드) · Escape(우선순위 닫기 → 월드 탈출)
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLElement) {
-        const tag = event.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.target.blur();
-            const current = getWorldStoreSnapshot();
-            if (current.chatActive) {
-              deactivateChat();
-            } else if (current.warRoomOpen) {
-              closeWarRoom();
-            } else if (current.admiralCustomizerOpen) {
-              closeAdmiralCustomizer();
-            } else if (current.questBoardOpen) {
-              closeQuestBoard();
-            } else if (current.interactionMode !== "closed" || current.selectedDistrictId !== null) {
-              closeActorInteraction();
-            }
-          }
-          return;
-        }
-      }
-      const snap = getWorldStoreSnapshot();
-      if (snap.lifecycle !== "open") return;
-      const anyModalOpen = snap.questBoardOpen || snap.warRoomOpen || snap.admiralCustomizerOpen;
-
-      if (
-        event.code === "KeyP"
-        && !event.isComposing
-        && !event.metaKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !event.shiftKey
-      ) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive) {
-          event.preventDefault();
-          playPhotoShutter();
-          togglePhotoMode();
-          return;
-        }
-      }
-
-      if (
-        event.key === "Enter"
-        && !event.isComposing
-        && !event.metaKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !event.shiftKey
-      ) {
-        const targetEl = event.target instanceof HTMLElement ? event.target : null;
-        const isWorldInteractive =
-          targetEl !== null
-          && Boolean(targetEl.closest(".the-world-root"))
-          && (targetEl.tagName === "BUTTON" || targetEl.tagName === "A");
-        if (!isWorldInteractive && !snap.photoMode && snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive) {
-          event.preventDefault();
-          activateChat();
-          return;
-        }
-      }
-
-      if (event.code === "KeyM" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-        if (snap.interactionMode === "closed" && !anyModalOpen) {
-          event.preventDefault();
-          playOverviewToggle(!snap.overviewMode);
-          toggleOverviewMode();
-          return;
-        }
-      }
-
-      if (event.code === "KeyF" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode) {
-          if (snap.sittingAtCampfire) {
-            event.preventDefault();
-            setSittingAtCampfire(false);
-            return;
-          }
-          const pose = lastMinimapPoseRef.current;
-          const px = Number.isNaN(pose.x) ? 0.4 : pose.x;
-          const pz = Number.isNaN(pose.z) ? 2.2 : pose.z;
-          if (Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z) <= 10.5) {
-            event.preventDefault();
-            playDistrictSelect();
-            setSittingAtCampfire(true);
-            return;
-          }
-        }
-      }
-
-      if (
-        (event.code === "Digit1" || event.code === "Digit2" || event.code === "Digit3")
-        && !event.metaKey
-        && !event.ctrlKey
-        && !event.altKey
-        && !event.shiftKey
-      ) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.overviewMode) {
-          event.preventDefault();
-          const emote = event.code === "Digit1" ? "wave" : event.code === "Digit2" ? "cheer" : "jump";
-          requestPlayerEmote(emote);
-          return;
-        }
-      }
-
-      if (event.code === "KeyE" && !anyModalOpen && !snap.photoMode) {
-        if (snap.interactionMode === "radial") {
-          event.preventDefault();
-          closeActorInteraction();
-          return;
-        }
-        if (snap.interactionMode === "closed" && snap.nearActorId) {
-          event.preventDefault();
-          playMongleChirp();
-          openActorRadialMenu(snap.nearActorId);
-          return;
-        }
-      }
-
-      if (event.key === "Escape") {
-        // 더 월드 바깥의 콘솔 전역 모달(승인 목록·폴더 선택·새 사령관 모달 등)이 열려 있을 때만 양보한다.
-        const hasExternalModal = Array.from(document.querySelectorAll('[aria-modal="true"]:not([hidden])'))
-          .some((el) => !rootRef.current?.contains(el));
-        if (hasExternalModal) return;
-        event.preventDefault();
-        if (snap.photoMode) {
-          playPhotoShutter();
-          setPhotoMode(false);
-          return;
-        }
-        if (snap.sittingAtCampfire) {
-          setSittingAtCampfire(false);
-          return;
-        }
-        if (snap.districtContextMenu) {
-          closeDistrictContextMenu();
-          return;
-        }
-        if (snap.warRoomOpen) {
-          closeWarRoom();
-          return;
-        }
-        if (snap.admiralCustomizerOpen) {
-          closeAdmiralCustomizer();
-          return;
-        }
-        if (snap.questBoardOpen) {
-          closeQuestBoard();
-          return;
-        }
-        if (snap.chatActive) {
-          deactivateChat();
-          return;
-        }
-        if (snap.interactionMode !== "closed" || snap.selectedDistrictId !== null) {
-          closeActorInteraction();
-          return;
-        }
-        if (snap.overviewMode) {
-          playOverviewToggle(false);
-          setOverviewMode(false);
-          return;
-        }
-        exitTheWorld({ reducedMotion: deps.isReducedMotion() });
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [deps]);
+  // 전역 키보드 단축키 (`use-world-shortcuts.ts`)
+  useWorldShortcuts({
+    rootRef,
+    lastPlayerPoseRef: lastMinimapPoseRef,
+    controlsGuideOpenRef,
+    onToggleControlsGuide: handleToggleControlsGuide,
+    onCloseControlsGuide: handleCloseControlsGuide,
+    onToggleDebugPanel: handleToggleDebugPanel,
+    isReducedMotion: deps.isReducedMotion,
+  });
 
   // 우클릭 브라우저 기본 컨텍스트 메뉴 차단 (텍스트 입력창 내부만 예외 허용)
   const handleRootContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
@@ -908,7 +516,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleCanvasContextMenu = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     event.preventDefault();
     const snap = getWorldStoreSnapshot();
-    if (snap.lifecycle !== "open" || snap.questBoardOpen || snap.warRoomOpen || snap.admiralCustomizerOpen || snap.photoMode) return;
+    if (
+      snap.lifecycle !== "open"
+      || snap.questBoardOpen
+      || snap.warRoomOpen
+      || snap.admiralCustomizerOpen
+      || controlsGuideOpenRef.current
+      || snap.photoMode
+    ) {
+      return;
+    }
     const hitDistrict = runtimeRef.current?.pickDistrictAt(event.clientX, event.clientY) ?? null;
     if (hitDistrict) {
       playDistrictSelect();
@@ -918,7 +535,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, []);
 
-  // 캔버스 클릭 & 구역 호버 피킹 (드래그 회전과 구분)
+  // 캔버스 클릭 & 구역/제독 호버 피킹 (드래그 회전과 구분)
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
   const lastHoverPickRef = useRef(0);
 
@@ -930,13 +547,33 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (pointerDownRef.current !== null) return;
     const snap = getWorldStoreSnapshot();
-    if (snap.lifecycle !== "open" || snap.interactionMode !== "closed" || snap.questBoardOpen || snap.warRoomOpen || snap.admiralCustomizerOpen) {
+    if (
+      snap.lifecycle !== "open"
+      || snap.interactionMode !== "closed"
+      || snap.questBoardOpen
+      || snap.warRoomOpen
+      || snap.admiralCustomizerOpen
+      || controlsGuideOpenRef.current
+    ) {
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
+      if (playerHoveredRef.current) setPlayerHovered(false);
       return;
     }
     const now = performance.now();
     if (now - lastHoverPickRef.current < HOVER_PICK_THROTTLE_MS) return;
     lastHoverPickRef.current = now;
+
+    // 제독 3D 캐릭터 호버 판정 (이름표 기본 숨김 → 호버 시 노출)
+    const pt = labelsOverlayRef.current?.getLastPlayerScreenPoint();
+    const nearPlayer = Boolean(
+      pt?.visible
+      && !Number.isNaN(pt.x)
+      && Math.hypot(e.clientX - pt.x, e.clientY - (pt.y + 34)) <= PLAYER_HOVER_RADIUS_PX,
+    );
+    if (nearPlayer !== playerHoveredRef.current) {
+      setPlayerHovered(nearPlayer);
+    }
+
     const hit = runtimeRef.current?.pickDistrictAt(e.clientX, e.clientY) ?? null;
     const nextId = hit?.id ?? null;
     if (nextId !== snap.hoveredDistrictId) {
@@ -949,6 +586,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (getWorldStoreSnapshot().hoveredDistrictId !== null) {
       setHoveredDistrict(null);
     }
+    if (playerHoveredRef.current) {
+      setPlayerHovered(false);
+    }
   }, []);
 
   const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -958,12 +598,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (!start || snap.lifecycle !== "open") return;
     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
 
-    // 3D 캔버스 클릭 시 활성화된 채팅창을 앰비언트 상태로 부드럽게 수축한다.
     if (snap.chatActive) {
       deactivateChat();
     }
 
-    // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. (하늘 조망 중) 사령관 마을 → 7. 빈 땅 해제
+    // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. (하늘 조망 중) 사령관 마을 → 7. 빈 땅 해제/이동
     const hitActorId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
     if (hitActorId) {
       playMongleChirp();
@@ -1014,12 +653,27 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
     if (snap.interactionMode !== "closed" || snap.selectedDistrictId !== null) {
       closeActorInteraction();
+      return;
     }
   }, [pushToast]);
 
-  // 제독 퀘스트 게시판 모달 콜백
+  // 모달 & HUD & 미니맵 콜백 (React.memo 안정성 유지)
   const handleCloseQuestBoard = useCallback(() => {
     closeQuestBoard();
+  }, []);
+
+  const handleOpenQuestBoardFromSign = useCallback(() => {
+    playDistrictSelect();
+    openQuestBoard();
+  }, []);
+
+  const handleSitAtCampfireFromSign = useCallback(() => {
+    playDistrictSelect();
+    setSittingAtCampfire(true);
+  }, []);
+
+  const handleInteractActorFromLabel = useCallback((actorId: string) => {
+    openActorRadialMenu(actorId);
   }, []);
 
   const handleVisitQuestCommodore = useCallback((actorId: string) => {
@@ -1027,13 +681,17 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     requestApproachActor(actorId);
   }, []);
 
-  // 전략 미니맵 콜백 (React.memo 안정성 유지)
   const handleMinimapSelectVillage = useCallback((village: WorldVillageSpec) => {
     const landX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     const landZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     requestWorldTeleport(landX, landZ);
     pushToast(`${village.label} 마을로 이동했습니다.`);
   }, [pushToast]);
+
+  const handleVillageSignClick = useCallback((village: WorldVillageSpec) => {
+    if (suppressVillageClickRef.current) return;
+    handleMinimapSelectVillage(village);
+  }, [handleMinimapSelectVillage]);
 
   const handleMinimapSelectPlaza = useCallback(() => {
     requestWorldTeleport(0, 1.5);
@@ -1050,7 +708,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     requestWorldTeleport(wx, wz);
   }, []);
 
-  // SimCity Inspector 콜백 (React.memo 안정성 유지)
   const handleCloseDistrict = useCallback(() => {
     selectDistrict(null);
   }, []);
@@ -1080,6 +737,50 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleOpenDistrictObjective = useCallback((commodoreActorId: string, objectiveId: string) => {
     openActorPanel(commodoreActorId, "goals", objectiveId);
   }, []);
+
+  const handleSelectWeather = useCallback((mode: WorldWeatherMode) => {
+    setWeatherMode(mode);
+  }, []);
+
+  const handleSelectTimeMode = useCallback((mode: WorldTimeMode) => {
+    setWorldTimeMode(mode);
+  }, []);
+
+  const handleTriggerEmote = useCallback((emote: WorldPlayerEmote) => {
+    requestPlayerEmote(emote);
+  }, []);
+
+  const minimapJumpItems = useMemo<readonly WorldMinimapJumpItem[]>(() => {
+    const items: WorldMinimapJumpItem[] = [];
+    for (const z of snapshot.zones) {
+      if (z.kind === "village") continue;
+      items.push({
+        id: z.id,
+        label: z.label,
+        x: z.kind === "plaza" ? 0 : z.x,
+        z: z.kind === "plaza" ? 1.5 : z.z,
+        tone: z.roofTone,
+      });
+    }
+    for (const v of snapshot.villages) {
+      const landX = v.x + Math.cos(v.gateAngle) * Math.max(2.0, v.radius * 0.45);
+      const landZ = v.z + Math.sin(v.gateAngle) * Math.max(2.0, v.radius * 0.45);
+      items.push({
+        id: v.id,
+        label: v.label,
+        x: landX,
+        z: landZ,
+        tone: v.tone,
+        tier: v.overallTier,
+      });
+    }
+    return items;
+  }, [snapshot.villages, snapshot.zones]);
+
+  const handleJumpToDistrict = useCallback((item: WorldMinimapJumpItem) => {
+    requestWorldTeleport(item.x, item.z);
+    pushToast(`${item.label}(으)로 이동했습니다.`);
+  }, [pushToast]);
 
   const selectedActor = useMemo(
     () => (store.selectedActorId ? snapshot.actors.find((a) => a.id === store.selectedActorId) ?? null : null),
@@ -1113,7 +814,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const locale = deps.commodore.language();
   const t = getWorldT(locale);
 
-  // 우클릭 퀵메뉴 & Inspector 작전 깃발 · 바이옴 · 레벨업 테스트 콜백
   const contextMenuDistrict = useMemo(
     () => findDistrictInVillages(snapshot.villages, store.districtContextMenu?.districtId ?? null)?.district ?? null,
     [snapshot.villages, store.districtContextMenu],
@@ -1187,7 +887,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (target) {
       runtimeRef.current?.triggerLevelUpCelebration(target.x, target.z, target.tone);
       if (targetDist > 18) {
-        // 플레이어가 광장 등 멀리 있는 상태에서 테스트해도 시야 정면에서 황금 축포를 즉시 확인
         const yaw = Number.isNaN(pose.yaw) ? 0 : pose.yaw;
         runtimeRef.current?.triggerLevelUpCelebration(
           px + Math.sin(yaw) * 2.2,
@@ -1217,7 +916,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     );
   }, [deps, pushCelebrationToast, selectedDistrict, snapshot.villages]);
 
-  // 함대 상황실 · 제독 꾸미기 · 무지개 · 구역 메모 · 하늘 조망 마을→마을 드래그 합동 연락 콜백
   const handleOpenWarRoom = useCallback(() => {
     playDistrictSelect();
     openWarRoom();
@@ -1367,17 +1065,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     window.addEventListener("pointercancel", onCancel);
   }, [deps, pushToast]);
 
-  const anyModalOpen = store.questBoardOpen || store.warRoomOpen || store.admiralCustomizerOpen;
+  const anyModalOpen = store.questBoardOpen || store.warRoomOpen || store.admiralCustomizerOpen || controlsGuideOpen;
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
-  const showPlayerLabel = store.lifecycle === "open" && store.cameraMode === "follow" && store.interactionMode === "closed" && !anyModalOpen;
-  const showDistrictTooltip =
-    store.lifecycle === "open"
-    && !store.photoMode
-    && !anyModalOpen
-    && store.interactionMode === "closed"
-    && hoveredDistrict !== null
-    && hoveredDistrict.id !== store.selectedDistrictId;
+  const playerLabelRevealed = playerHovered || store.admiralCustomizerOpen;
 
   return (
     <div
@@ -1403,185 +1094,30 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         aria-hidden="true"
       />
 
-      <div className="the-world-labels">
-        {showPlayerLabel ? (
-          <div
-            ref={setPlayerAnchorRef}
-            className="the-world-actor-anchor the-world-player-anchor"
-          >
-            <button
-              type="button"
-              className="the-world-nametag is-player"
-              aria-label={t("theWorld.hud.admiralStyleAria")}
-              onClick={handleOpenAdmiralCustomizer}
-            >
-              <span>나 (제독)</span>
-            </button>
-          </div>
-        ) : null}
-
-        {store.lifecycle === "open" && store.interactionMode === "closed" && !anyModalOpen
-          ? snapshot.villages.map((village) => (
-            <div
-              key={village.id}
-              ref={getVillageAnchorRef(village.id)}
-              className="the-world-actor-anchor"
-            >
-              <button
-                type="button"
-                className={`the-world-village-sign${overviewDragLink?.targetVillage?.id === village.id ? " is-drag-target" : ""}`}
-                data-village-id={village.id}
-                aria-label={t("theWorld.village.warpAria", { name: village.label })}
-                onPointerDown={(e) => handleVillageSignPointerDown(village, e)}
-                onClick={() => {
-                  if (suppressVillageClickRef.current) return;
-                  handleMinimapSelectVillage(village);
-                }}
-              >
-                <span className="the-world-tone-dot" data-tone={village.tone} />
-                <span>{village.label}</span>
-                <span className="the-world-village-sign-tier">
-                  {village.districts.length > 0
-                    ? t("theWorld.village.signSubtitle", {
-                      tier: village.overallTier,
-                      count: village.districts.length,
-                    })
-                    : t("theWorld.village.emptyDistricts")}
-                </span>
-              </button>
-            </div>
-          ))
-          : null}
-
-        {store.lifecycle === "open" && store.interactionMode === "closed" && !anyModalOpen ? (
-          <div
-            ref={setGuildHallAnchorRef}
-            className="the-world-actor-anchor"
-          >
-            <button
-              type="button"
-              className="the-world-guild-sign"
-              aria-label={t("theWorld.guildHall.signAria")}
-              onClick={handleOpenWarRoom}
-            >
-              <WorldIcon name="warRoom" size={13} tone="amber" />
-              <span>{t("theWorld.guildHall.signLabel")}</span>
-            </button>
-          </div>
-        ) : null}
-
-        {store.lifecycle === "open" && store.interactionMode === "closed" && !anyModalOpen && !store.sittingAtCampfire ? (
-          <div
-            ref={setCampfireBenchAnchorRef}
-            className="the-world-actor-anchor"
-          >
-            <button
-              type="button"
-              className="the-world-campfire-sign"
-              aria-label={t("theWorld.campfire.sitAria")}
-              onClick={() => {
-                playDistrictSelect();
-                setSittingAtCampfire(true);
-              }}
-            >
-              <WorldIcon name="fire" size={13} tone="amber" />
-              <span className="the-world-keycap">F</span>
-              <span>{t("theWorld.campfire.sitHint")}</span>
-            </button>
-          </div>
-        ) : null}
-
-        {store.lifecycle === "open" && store.interactionMode === "closed" && !anyModalOpen ? (
-          <div
-            ref={setNoticeBoardAnchorRef}
-            className="the-world-actor-anchor"
-          >
-            <button
-              type="button"
-              className={`the-world-notice-sign${questBoardData.totalUrgentCount > 0 ? " is-urgent" : ""}`}
-              aria-label={t("theWorld.noticeBoard.aria")}
-              onClick={() => {
-                playDistrictSelect();
-                openQuestBoard();
-              }}
-            >
-              <WorldIcon
-                name={questBoardData.totalUrgentCount > 0 ? "bell" : "questBoard"}
-                size={13}
-                tone={questBoardData.totalUrgentCount > 0 ? "amber" : "cerulean"}
-              />
-              <span>{t("theWorld.noticeBoard.label")}</span>
-              {questBoardData.totalUrgentCount > 0 ? (
-                <span className="the-world-notice-sign-badge">
-                  {t("theWorld.noticeBoard.urgentBadge", { count: questBoardData.totalUrgentCount })}
-                </span>
-              ) : null}
-            </button>
-          </div>
-        ) : null}
-
-        {showDistrictTooltip && hoveredDistrict ? (
-          <div
-            ref={setDistrictTooltipRef}
-            className="the-world-district-tooltip"
-            aria-hidden="true"
-          >
-            <span className="the-world-tone-dot" data-tone={hoveredDistrict.tone} />
-            <span>{hoveredDistrict.label}</span>
-            <span className="the-world-district-tooltip-tier">
-              {t("theWorld.tier.badge", { tier: hoveredDistrict.tier })}
-            </span>
-          </div>
-        ) : null}
-
-        {labelMetas.map((lbl) => {
-          const hideForRadial = store.interactionMode === "radial" && lbl.isSelected;
-          const isBackground = store.interactionMode === "radial" && !lbl.isSelected;
-          if (hideForRadial) return null;
-          return (
-            <div
-              key={lbl.actorId}
-              ref={getActorAnchorRef(lbl.actorId)}
-              className={`the-world-actor-anchor${isBackground ? " is-background" : ""}`}
-            >
-              {lbl.speech ? (() => {
-                const parsed = parseSpeech(lbl.speech);
-                return (
-                  <span className="the-world-speech">
-                    {parsed.badge ? <WorldIcon name={parsed.badge.icon} size={13} tone={parsed.badge.tone} /> : null}
-                    <span>{parsed.text}</span>
-                  </span>
-                );
-              })() : null}
-              {lbl.isNearPlayer && store.interactionMode === "closed" ? (
-                <button
-                  type="button"
-                  className="the-world-interact-prompt"
-                  aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
-                  onClick={() => openActorRadialMenu(lbl.actorId)}
-                >
-                  <span className="the-world-keycap">E</span>
-                  <span>상호작용</span>
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className={`the-world-nametag${lbl.isSelected ? " is-selected" : ""}`}
-                aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
-                onClick={() => openActorRadialMenu(lbl.actorId)}
-              >
-                <span className="the-world-tone-dot" data-tone={lbl.tone} />
-                <WorldIcon
-                  name={lbl.quaker ? "quaker" : lbl.role === "commodore" ? "commodore" : lbl.role === "commander" ? "commander" : "member"}
-                  size={12}
-                  tone={lbl.quaker ? "moss" : lbl.role === "commodore" ? "amber" : lbl.role === "commander" ? "cerulean" : "inherit"}
-                />
-                <span>{lbl.name}</span>
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <WorldLabelsOverlay
+        ref={labelsOverlayRef}
+        lifecycle={store.lifecycle}
+        cameraMode={store.cameraMode}
+        interactionMode={store.interactionMode}
+        anyModalOpen={anyModalOpen}
+        photoMode={store.photoMode}
+        sittingAtCampfire={store.sittingAtCampfire}
+        playerLabelRevealed={playerLabelRevealed}
+        villages={snapshot.villages}
+        labelMetas={labelMetas}
+        hoveredDistrict={hoveredDistrict}
+        selectedDistrictId={store.selectedDistrictId}
+        dragTargetVillageId={overviewDragLink?.targetVillage?.id ?? null}
+        totalUrgentCount={questBoardData.totalUrgentCount}
+        locale={locale}
+        onOpenAdmiralCustomizer={handleOpenAdmiralCustomizer}
+        onVillageSignPointerDown={handleVillageSignPointerDown}
+        onVillageSignClick={handleVillageSignClick}
+        onOpenWarRoom={handleOpenWarRoom}
+        onSitAtCampfire={handleSitAtCampfireFromSign}
+        onOpenQuestBoard={handleOpenQuestBoardFromSign}
+        onInteractActor={handleInteractActorFromLabel}
+      />
 
       {store.lifecycle === "open" ? (
         <>
@@ -1652,27 +1188,43 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             toastKind={celebrationToast ? "celebration" : "info"}
             hideBottom={dialogueOpen || panelMode !== null || anyModalOpen || store.sittingAtCampfire}
             urgentQuestCount={questBoardData.totalUrgentCount}
+            weatherMode={store.weatherMode}
+            onSelectWeather={handleSelectWeather}
+            timeMode={store.timeMode}
+            onSelectTimeMode={handleSelectTimeMode}
             onCreateCommodore={deps.openCreateCommodore}
             onStatusBanner={pushToast}
             onTestLevelUp={handleTestLevelUp}
             onTestRainbow={handleTestRainbow}
             onOpenWarRoom={handleOpenWarRoom}
             onOpenAdmiralCustomizer={handleOpenAdmiralCustomizer}
+            onOpenCustomizer={handleOpenAdmiralCustomizer}
+            onTriggerEmote={handleTriggerEmote}
+            onToggleControlsGuide={handleToggleControlsGuide}
+            debugPanelVisible={debugPanelVisible}
           />
           {!dialogueOpen && panelMode === null && !anyModalOpen ? (
             <WorldMinimap
+              ref={minimapRef}
               villages={snapshot.villages}
               zones={snapshot.zones}
               selectedDistrictId={store.selectedDistrictId}
               overviewMode={store.overviewMode}
               locale={locale}
               playerMarkerRef={minimapPlayerRef}
+              districtJumpItems={minimapJumpItems}
+              onJumpToDistrict={handleJumpToDistrict}
               onSelectVillage={handleMinimapSelectVillage}
               onSelectPlaza={handleMinimapSelectPlaza}
               onToggleOverview={handleMinimapToggleOverview}
               onClickPoint={handleMinimapClickPoint}
             />
           ) : null}
+          <WorldControlsGuide
+            open={controlsGuideOpen}
+            onClose={handleCloseControlsGuide}
+            locale={locale}
+          />
           {panelMode === null && !anyModalOpen ? (
             <WorldChatLog
               actors={snapshot.actors}

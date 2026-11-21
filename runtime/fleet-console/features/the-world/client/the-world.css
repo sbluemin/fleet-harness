@@ -373,17 +373,63 @@
   pointer-events: none;
 }
 
-.the-world-hud-bottom {
+/* 좌측 하단 제독 감정표현(1~3) · 외형 미니 퀵 바 */
+.the-world-quick-bar {
   position: absolute;
+  left: var(--space-3);
   bottom: var(--space-3);
-  right: var(--space-3);
-  left: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-2);
-  pointer-events: none;
   z-index: 5;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.the-world-quick-bar-group {
+  gap: 3px;
+}
+
+.the-world-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: oklch(88% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-quick-btn:hover {
+  background: oklch(100% 0 0 / 11%);
+  color: oklch(99% 0 0);
+}
+
+.the-world-quick-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-quick-btn.is-accent {
+  color: oklch(94% 0.006 255);
+}
+
+.the-world-quick-btn.is-accent:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 90%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 48%, transparent);
+  color: oklch(99% 0 0);
+}
+
+@media (max-width: 960px) {
+  .the-world-quick-btn > span {
+    display: none;
+  }
 }
 
 .the-world-hud-cluster {
@@ -455,6 +501,11 @@
 .the-world-btn.is-attention {
   color: var(--mongle-amber);
   font-weight: var(--weight-bold);
+}
+
+.the-world-btn.is-icon-only {
+  padding: 0 7px;
+  gap: 0;
 }
 
 .the-world-hud-badge {
@@ -572,35 +623,8 @@
   font-weight: var(--weight-bold);
 }
 
-.the-world-debug-footnote {
-  padding-top: var(--space-2);
-  border-top: 1px solid oklch(100% 0 0 / 10%);
-  font-size: var(--t-xs);
-  color: oklch(70% 0.01 255);
-  line-height: 1.45;
-}
-
-/* 우측 하단 미니멀 구역 이동 메뉴 */
-.the-world-warp-wrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  pointer-events: auto;
-}
-
-.the-world-warp-menu {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 6px);
-  min-width: 186px;
-  border-radius: var(--radius-md);
-  background: oklch(14% 0.014 255 / 92%);
-  backdrop-filter: blur(14px);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
-  animation: the-world-dialogue-rise var(--duration-fast) var(--ease-spring) both;
+.the-world-env-popover {
+  width: min(304px, calc(100vw - 24px));
 }
 
 .the-world-warp-list {
@@ -614,6 +638,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  width: 100%;
   padding: 6px var(--space-2);
   border: 0;
   border-radius: var(--radius-xs);
@@ -624,11 +649,33 @@
   font-weight: var(--weight-medium);
   text-align: left;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
 }
 
 .the-world-warp-item:hover {
   background: oklch(100% 0 0 / 10%);
   color: oklch(100% 0 0);
+}
+
+.the-world-warp-item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-warp-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-warp-item-tier {
+  flex-shrink: 0;
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(72% 0.01 255);
 }
 
 .the-world-actor-anchor.is-distant {
@@ -1022,20 +1069,6 @@
   flex-shrink: 0;
 }
 
-.the-world-dialogue-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) var(--space-4);
-}
-
-.the-world-dialogue-line {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: var(--t-md);
-  line-height: 1.5;
-}
-
 .the-world-dialogue-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1087,54 +1120,6 @@
   gap: var(--space-2);
 }
 
-.the-world-inspect-grid {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--popover-ring);
-}
-
-.the-world-inspect-item {
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  line-height: 1.5;
-}
-
-.the-world-inspect-missions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  max-height: 140px;
-  overflow-y: auto;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--popover-ring);
-}
-
-.the-world-dialogue-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.the-world-mission-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-  font-size: var(--t-xs);
-}
-
-.the-world-mission-row.is-done {
-  color: var(--text-tertiary);
-  text-decoration: line-through;
-}
-
 .the-world-primary-action {
   display: inline-flex;
   align-items: center;
@@ -1157,31 +1142,6 @@
 }
 
 .the-world-primary-action:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-face);
-}
-
-.the-world-secondary-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 var(--space-3);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-}
-
-.the-world-secondary-action:hover {
-  background: var(--wash-hover);
-}
-
-.the-world-secondary-action:focus-visible {
   outline: none;
   box-shadow: var(--focus-face);
 }
@@ -1569,8 +1529,23 @@
     linear-gradient(180deg, transparent 0%, oklch(6% 0 0 / 26%) 45%, oklch(6% 0 0 / 46%) 100%);
   overflow: hidden;
   pointer-events: none;
+  opacity: 1;
+  transform: translateY(0);
   mask-image: linear-gradient(180deg, transparent 0%, oklch(0% 0 0 / 78%) 20%, oklch(0% 0 0) 44%, oklch(0% 0 0) 100%);
   -webkit-mask-image: linear-gradient(180deg, transparent 0%, oklch(0% 0 0 / 78%) 20%, oklch(0% 0 0) 44%, oklch(0% 0 0) 100%);
+  transition:
+    opacity var(--duration-base) var(--ease-soft),
+    max-height var(--duration-base) var(--ease-soft),
+    padding var(--duration-base) var(--ease-soft),
+    transform var(--duration-base) var(--ease-soft);
+}
+
+.the-world-chat-ambient-lines.is-faded {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .the-world-chat-ambient-lines .the-world-chat-line {
@@ -3138,7 +3113,7 @@
 .the-world-minimap-collapsed {
   position: absolute;
   right: var(--space-3);
-  bottom: 52px;
+  bottom: var(--space-3);
   z-index: 5;
   padding: 3px;
   border-radius: var(--radius-md);
@@ -3152,7 +3127,7 @@
 .the-world-minimap {
   position: absolute;
   right: var(--space-3);
-  bottom: 52px;
+  bottom: var(--space-3);
   z-index: 5;
   width: 196px;
   display: flex;
@@ -3163,7 +3138,7 @@
   border: 1px solid oklch(100% 0 0 / 15%);
   box-shadow: var(--shadow-floating);
   color: oklch(94% 0.006 255);
-  overflow: hidden;
+  overflow: visible;
   pointer-events: auto;
   transition: border-color var(--duration-fast) var(--ease-soft), box-shadow var(--duration-fast) var(--ease-soft);
 }
@@ -3307,6 +3282,52 @@
   stroke-linejoin: round;
 }
 
+.the-world-minimap-roam-dot {
+  stroke: oklch(10% 0.012 255 / 88%);
+  stroke-width: 0.9;
+}
+
+.the-world-minimap-tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  z-index: 4;
+  max-width: 158px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  background: oklch(10% 0.014 255 / 92%);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
+  text-align: center;
+}
+
+.the-world-minimap-tooltip-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 142px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+}
+
+.the-world-minimap-tooltip-meta {
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  color: oklch(76% 0.01 255);
+  white-space: nowrap;
+}
+
 .the-world-minimap-north {
   position: absolute;
   top: 2px;
@@ -3447,6 +3468,57 @@
 .the-world-minimap-hint {
   font-family: var(--font-code);
   white-space: nowrap;
+}
+
+.the-world-minimap-warp-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid oklch(100% 0 0 / 14%);
+  border-radius: var(--radius-xs);
+  background: oklch(18% 0.014 255 / 78%);
+  color: oklch(90% 0.006 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-minimap-warp-btn:hover {
+  background: oklch(24% 0.014 255 / 92%);
+  border-color: oklch(100% 0 0 / 26%);
+  color: oklch(99% 0 0);
+}
+
+.the-world-minimap-warp-btn.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(16% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 62%, transparent);
+  color: oklch(99% 0 0);
+}
+
+.the-world-minimap-warp-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-minimap-warp-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  width: 212px;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: var(--radius-md);
+  background: oklch(13% 0.014 255 / 94%);
+  backdrop-filter: blur(16px);
+  border: 1px solid oklch(100% 0 0 / 15%);
+  box-shadow: var(--shadow-floating);
+  z-index: 8;
+  animation: the-world-dialogue-rise var(--duration-fast) var(--ease-spring) both;
 }
 
 .the-world-minimap-counts {
@@ -3760,8 +3832,7 @@
   font-weight: var(--weight-bold);
 }
 
-.the-world-district-biome-block,
-.the-world-biome-row {
+.the-world-district-biome-block {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -3773,8 +3844,7 @@
   gap: 5px;
 }
 
-.the-world-district-biome-pill,
-.the-world-biome-pill {
+.the-world-district-biome-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3793,23 +3863,20 @@
   transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
 }
 
-.the-world-district-biome-pill:hover,
-.the-world-biome-pill:hover {
+.the-world-district-biome-pill:hover {
   background: oklch(24% 0.014 255 / 90%);
   border-color: oklch(100% 0 0 / 26%);
   color: oklch(98% 0 0);
 }
 
-.the-world-district-biome-pill.is-active,
-.the-world-biome-pill.is-active {
+.the-world-district-biome-pill.is-active {
   background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 92%));
   border-color: color-mix(in oklch, var(--mongle-amber) 62%, transparent);
   color: oklch(99% 0 0);
   font-weight: var(--weight-bold);
 }
 
-.the-world-district-biome-pill:focus-visible,
-.the-world-biome-pill:focus-visible {
+.the-world-district-biome-pill:focus-visible {
   outline: none;
   box-shadow: var(--focus-face);
 }
@@ -3912,7 +3979,7 @@
 
 /* 포토 모드(P): 모든 HUD·채팅·미니맵·푯말 부드럽게 숨김 + 우하단 은은한 복원 필 */
 .the-world-root.is-photo-mode .the-world-hud-top,
-.the-world-root.is-photo-mode .the-world-hud-bottom,
+.the-world-root.is-photo-mode .the-world-quick-bar,
 .the-world-root.is-photo-mode .the-world-chat-shell,
 .the-world-root.is-photo-mode .the-world-minimap,
 .the-world-root.is-photo-mode .the-world-minimap-collapsed,
@@ -4474,9 +4541,86 @@
   box-shadow: var(--shadow-floating);
 }
 
+/* ── Sprint 8: 조작 가이드 모달 (? / H) ───────────────────────────────────────── */
+
+.the-world-guide-modal {
+  width: min(540px, calc(100vw - 32px));
+}
+
+.the-world-guide-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: min(68vh, 520px);
+  overflow-y: auto;
+}
+
+.the-world-guide-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.the-world-guide-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.the-world-guide-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px var(--space-3);
+  border-radius: var(--radius-md);
+  background: oklch(16% 0.014 255 / 82%);
+  border: 1px solid oklch(100% 0 0 / 10%);
+}
+
+.the-world-guide-row-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  background: oklch(100% 0 0 / 6%);
+}
+
+.the-world-guide-desc {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: oklch(93% 0.006 255);
+  line-height: 1.4;
+}
+
+.the-world-guide-kbd {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: var(--radius-xs);
+  background: oklch(11% 0.012 255 / 92%);
+  border: 1px solid oklch(100% 0 0 / 20%);
+  box-shadow: inset 0 -1px 0 oklch(100% 0 0 / 10%);
+  color: oklch(97% 0.004 255);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .the-world-chat-shell,
   .the-world-chat-ambient,
+  .the-world-chat-ambient-lines,
   .the-world-chat-panel-wrap,
   .the-world-interact-prompt,
   .the-world-radial-aperture,
@@ -4485,6 +4629,7 @@
   .the-world-panel,
   .the-world-district-card,
   .the-world-quick-menu,
+  .the-world-minimap-warp-menu,
   .the-world-minimap-node.is-working,
   .the-world-chat-icon-btn.is-spinning svg,
   .the-world-working-dot,
@@ -4497,6 +4642,7 @@
 @media (forced-colors: active) {
   .the-world-portal-btn:focus-visible,
   .the-world-btn:focus-visible,
+  .the-world-quick-btn:focus-visible,
   .the-world-nametag:focus-visible,
   .the-world-village-sign:focus-visible,
   .the-world-notice-sign:focus-visible,
@@ -4507,16 +4653,13 @@
   .the-world-radial-petal:focus-visible,
   .the-world-dialogue-chip:focus-visible,
   .the-world-primary-action:focus-visible,
-  .the-world-secondary-action:focus-visible,
   .the-world-input:focus-visible,
-  .the-world-chat-tab:focus-visible,
   .the-world-chat-input:focus-visible,
   .the-world-chat-ambient-trigger:focus-visible,
   .the-world-panel-tab:focus-visible,
   .the-world-district-owner:focus-visible,
   .the-world-district-objective-chip:focus-visible,
   .the-world-district-biome-pill:focus-visible,
-  .the-world-biome-pill:focus-visible,
   .the-world-district-note-input:focus-visible,
   .the-world-district-note-btn:focus-visible,
   .the-world-district-action:focus-visible,
@@ -4528,6 +4671,8 @@
   .the-world-admiral-hat-pill:focus-visible,
   .the-world-photo-exit:focus-visible,
   .the-world-minimap-keybtn:focus-visible,
+  .the-world-minimap-warp-btn:focus-visible,
+  .the-world-warp-item:focus-visible,
   .the-world-minimap-plaza:focus-visible,
   .the-world-minimap-node:focus-visible {
     outline: 2px solid ButtonText;

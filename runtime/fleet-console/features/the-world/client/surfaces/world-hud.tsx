@@ -1,15 +1,28 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import { ApprovalCapsule } from "../../../execution/client/approval/panel.js";
-import type { WorldCameraMode, WorldSnapshot, WorldTimeMode, WorldWeatherMode } from "../../shared/world-types.js";
+import type {
+  WorldCameraMode,
+  WorldPlayerEmote,
+  WorldSnapshot,
+  WorldTimeMode,
+  WorldWeatherMode,
+} from "../../shared/world-types.js";
+import {
+  playDistrictHover,
+  playDistrictSelect,
+  playOverviewToggle,
+  playPhotoShutter,
+  setWorldAudioMuted,
+} from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   exitTheWorld,
   openAdmiralCustomizer,
   openQuestBoard,
   openWarRoom,
-  requestWorldTeleport,
+  requestPlayerEmote,
   setWeatherMode,
   setWorldCameraMode,
   setWorldTimeMode,
@@ -19,26 +32,19 @@ import {
   triggerWorldChoreography,
   useWorldStore,
 } from "../world-store.js";
-import {
-  playDistrictHover,
-  playDistrictSelect,
-  playOverviewToggle,
-  playPhotoShutter,
-  setWorldAudioMuted,
-} from "../engine/world-audio.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
 const TIME_MODES: readonly {
   readonly id: WorldTimeMode;
-  readonly label: string;
+  readonly key: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
 }[] = [
-  { id: "day", label: "낮", icon: "sun", tone: "amber" },
-  { id: "sunset", label: "노을", icon: "sunset", tone: "rose" },
-  { id: "night", label: "밤", icon: "moon", tone: "indigo" },
-  { id: "cycle", label: "순환", icon: "cycle", tone: "teal" },
-  { id: "realtime", label: "현실", icon: "clock", tone: "cerulean" },
+  { id: "cycle", key: "theWorld.hud.timeCycle", icon: "cycle", tone: "teal" },
+  { id: "day", key: "theWorld.hud.timeDay", icon: "sun", tone: "amber" },
+  { id: "sunset", key: "theWorld.hud.timeSunset", icon: "sunset", tone: "rose" },
+  { id: "night", key: "theWorld.hud.timeNight", icon: "moon", tone: "indigo" },
+  { id: "realtime", key: "theWorld.hud.timeRealtime", icon: "clock", tone: "cerulean" },
 ];
 
 const CAMERA_MODES: readonly {
@@ -63,11 +69,36 @@ const WEATHER_MODES: readonly {
   { id: "snow", key: "theWorld.weather.snow", icon: "snow", tone: "teal" },
 ];
 
+export interface WorldHudProps {
+  readonly snapshot: WorldSnapshot;
+  readonly locale: ConsoleLocale | undefined;
+  readonly reducedMotion: boolean;
+  readonly toastMessage: string | null;
+  readonly toastKind?: "info" | "celebration" | undefined;
+  readonly hideBottom: boolean;
+  readonly urgentQuestCount?: number | undefined;
+  readonly onCreateCommodore: () => void;
+  readonly onStatusBanner: (msg: string) => void;
+  readonly onTestLevelUp?: (() => void) | undefined;
+  readonly onTestRainbow?: (() => void) | undefined;
+  readonly onOpenWarRoom?: (() => void) | undefined;
+  readonly onOpenAdmiralCustomizer?: (() => void) | undefined;
+  readonly weatherMode?: WorldWeatherMode | undefined;
+  readonly onSelectWeather?: ((mode: WorldWeatherMode) => void) | undefined;
+  readonly timeMode?: WorldTimeMode | undefined;
+  readonly onSelectTimeMode?: ((mode: WorldTimeMode) => void) | undefined;
+  readonly onOpenCustomizer?: (() => void) | undefined;
+  readonly onTriggerEmote?: ((emote: WorldPlayerEmote) => void) | undefined;
+  readonly onToggleControlsGuide?: (() => void) | undefined;
+  readonly debugPanelVisible?: boolean | undefined;
+}
+
 /**
- * 미니멀 게임 HUD.
+ * 다이어트된 미니멀 게임 HUD.
  *
- * 화면을 가리는 테스트·환경 버튼(시간대·날씨·카메라·협동 연출 테스트)을 우측 상단의
- * 단일 「디버그·도구」 크리스탈 팝오버 안으로 통합해, 평소 초원 시야를 최대한 넓게 비워 둔다.
+ * - 우상단: 핵심 액션(`상황실` · `퀘스트` · `하늘 조망`) + 환경 퀵 팝오버(날씨·시간대) + `포토` · `사운드` · `?` · `콘솔`
+ * - `디버그` 버튼은 평소 숨겨 두고 `debugPanelVisible` (`Shift+D`)이 켜질 때만 노출한다.
+ * - 하단 좌측: 누구나 바로 클릭하거나 `1/2/3` 키로 실행할 수 있는 컴팩트 이모트·외형 미니 필.
  */
 export const WorldHud = memo(function WorldHud({
   snapshot,
@@ -83,27 +114,57 @@ export const WorldHud = memo(function WorldHud({
   onTestRainbow,
   onOpenWarRoom,
   onOpenAdmiralCustomizer,
-}: {
-  readonly snapshot: WorldSnapshot;
-  readonly locale: ConsoleLocale | undefined;
-  readonly reducedMotion: boolean;
-  readonly toastMessage: string | null;
-  readonly toastKind?: "info" | "celebration" | undefined;
-  readonly hideBottom: boolean;
-  readonly urgentQuestCount?: number | undefined;
-  readonly onCreateCommodore: () => void;
-  readonly onStatusBanner: (msg: string) => void;
-  readonly onTestLevelUp?: (() => void) | undefined;
-  readonly onTestRainbow?: (() => void) | undefined;
-  readonly onOpenWarRoom?: (() => void) | undefined;
-  readonly onOpenAdmiralCustomizer?: (() => void) | undefined;
-}) {
+  weatherMode: weatherModeProp,
+  onSelectWeather,
+  timeMode: timeModeProp,
+  onSelectTimeMode,
+  onOpenCustomizer,
+  onTriggerEmote,
+  onToggleControlsGuide,
+  debugPanelVisible = false,
+}: WorldHudProps) {
   const store = useWorldStore();
+  const [envOpen, setEnvOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
-  const [warpOpen, setWarpOpen] = useState(false);
   const t = getWorldT(locale);
   const effectiveUrgentCount = urgentQuestCount ?? snapshot.attentionCount;
   const attentionActor = snapshot.actors.find((a) => a.needsAttention) ?? null;
+
+  const activeWeather = weatherModeProp ?? store.weatherMode;
+  const activeTime = timeModeProp ?? store.timeMode;
+  const activeWeatherMeta = WEATHER_MODES.find((w) => w.id === activeWeather) ?? WEATHER_MODES[0]!;
+
+  useEffect(() => {
+    if (!debugPanelVisible && debugOpen) {
+      setDebugOpen(false);
+    }
+  }, [debugOpen, debugPanelVisible]);
+
+  const handleSelectWeather = (mode: WorldWeatherMode) => {
+    playDistrictHover();
+    if (onSelectWeather) onSelectWeather(mode);
+    else setWeatherMode(mode);
+  };
+
+  const handleSelectTime = (mode: WorldTimeMode) => {
+    playDistrictHover();
+    if (onSelectTimeMode) onSelectTimeMode(mode);
+    else setWorldTimeMode(mode);
+  };
+
+  const handleOpenCustomizer = () => {
+    playDistrictSelect();
+    setEnvOpen(false);
+    setDebugOpen(false);
+    if (onOpenCustomizer) onOpenCustomizer();
+    else if (onOpenAdmiralCustomizer) onOpenAdmiralCustomizer();
+    else openAdmiralCustomizer();
+  };
+
+  const handleTriggerEmote = (emote: WorldPlayerEmote) => {
+    if (onTriggerEmote) onTriggerEmote(emote);
+    else requestPlayerEmote(emote);
+  };
 
   return (
     <>
@@ -130,8 +191,8 @@ export const WorldHud = memo(function WorldHud({
                 className="the-world-btn is-attention"
                 aria-label={t("theWorld.hud.questBoardAria")}
                 onClick={() => {
+                  setEnvOpen(false);
                   setDebugOpen(false);
-                  setWarpOpen(false);
                   playDistrictSelect();
                   openQuestBoard();
                 }}
@@ -148,6 +209,25 @@ export const WorldHud = memo(function WorldHud({
           ) : null}
 
           <div className="the-world-bar">
+            {/* 핵심 액션 3종: 상황실 · 퀘스트 · 하늘 조망 */}
+            <button
+              type="button"
+              className={`the-world-btn${store.warRoomOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.warRoomAria")}
+              aria-pressed={store.warRoomOpen}
+              title={t("theWorld.hud.warRoomTitle")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                if (onOpenWarRoom) onOpenWarRoom();
+                else openWarRoom();
+              }}
+            >
+              <WorldIcon name="warRoom" size={14} tone={store.warRoomOpen ? "amber" : "teal"} />
+              <span>{t("theWorld.hud.warRoomLabel")}</span>
+            </button>
+
             <button
               type="button"
               className={`the-world-btn${store.questBoardOpen ? " is-active" : ""}${effectiveUrgentCount > 0 ? " is-attention" : ""}`}
@@ -155,8 +235,8 @@ export const WorldHud = memo(function WorldHud({
               aria-pressed={store.questBoardOpen}
               title={t("theWorld.hud.questBoardTitle")}
               onClick={() => {
+                setEnvOpen(false);
                 setDebugOpen(false);
-                setWarpOpen(false);
                 playDistrictSelect();
                 openQuestBoard();
               }}
@@ -172,44 +252,6 @@ export const WorldHud = memo(function WorldHud({
               ) : null}
             </button>
 
-            <span className="the-world-bar-sep" aria-hidden="true" />
-
-            <button
-              type="button"
-              className={`the-world-btn${store.warRoomOpen ? " is-active" : ""}`}
-              aria-label={t("theWorld.hud.warRoomAria")}
-              aria-pressed={store.warRoomOpen}
-              title={t("theWorld.hud.warRoomTitle")}
-              onClick={() => {
-                setDebugOpen(false);
-                setWarpOpen(false);
-                playDistrictSelect();
-                if (onOpenWarRoom) onOpenWarRoom();
-                else openWarRoom();
-              }}
-            >
-              <WorldIcon name="warRoom" size={14} tone={store.warRoomOpen ? "amber" : "teal"} />
-              <span>{t("theWorld.hud.warRoomLabel")}</span>
-            </button>
-
-            <span className="the-world-bar-sep" aria-hidden="true" />
-
-            <button
-              type="button"
-              className="the-world-btn"
-              title={t("theWorld.hud.createCommodoreTitle")}
-              onClick={onCreateCommodore}
-            >
-              <WorldIcon name="recruit" size={14} tone="amber" />
-              <span>새 사령관</span>
-            </button>
-
-            <span className="the-world-bar-sep" aria-hidden="true" />
-
-            <ApprovalCapsule />
-
-            <span className="the-world-bar-sep" aria-hidden="true" />
-
             <button
               type="button"
               className={`the-world-btn${store.overviewMode ? " is-active" : ""}`}
@@ -217,6 +259,8 @@ export const WorldHud = memo(function WorldHud({
               aria-pressed={store.overviewMode}
               title={t("theWorld.hud.overviewTitle")}
               onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
                 playOverviewToggle(!store.overviewMode);
                 toggleOverviewMode();
               }}
@@ -225,30 +269,63 @@ export const WorldHud = memo(function WorldHud({
               <span>{t("theWorld.hud.overviewLabel")}</span>
             </button>
 
+            <button
+              type="button"
+              className="the-world-btn is-icon-only"
+              aria-label={t("theWorld.hud.createCommodoreAria")}
+              title={t("theWorld.hud.createCommodoreTitle")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                onCreateCommodore();
+              }}
+            >
+              <WorldIcon name="recruit" size={14} tone="amber" />
+            </button>
+
+            <ApprovalCapsule />
+
             <span className="the-world-bar-sep" aria-hidden="true" />
+
+            {/* 환경 퀵 팝오버 · 포토 · 사운드 · 조작 가이드(?) · (옵션) 디버그 · 콘솔 */}
+            <button
+              type="button"
+              className={`the-world-btn${envOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.envAria")}
+              aria-expanded={envOpen}
+              title={t("theWorld.hud.envTitle")}
+              onClick={() => {
+                setDebugOpen(false);
+                setEnvOpen((prev) => !prev);
+              }}
+            >
+              <WorldIcon
+                name={activeWeather === "clear" ? "weather" : activeWeatherMeta.icon}
+                size={14}
+                tone={envOpen ? "amber" : activeWeatherMeta.tone}
+              />
+              <span>{t("theWorld.hud.envLabel")}</span>
+            </button>
 
             <button
               type="button"
-              className={`the-world-btn${store.photoMode ? " is-active" : ""}`}
+              className={`the-world-btn is-icon-only${store.photoMode ? " is-active" : ""}`}
               aria-label={t("theWorld.hud.photoModeAria")}
               aria-pressed={store.photoMode}
               title={t("theWorld.hud.photoModeTitle")}
               onClick={() => {
+                setEnvOpen(false);
                 setDebugOpen(false);
-                setWarpOpen(false);
                 playPhotoShutter();
                 togglePhotoMode();
               }}
             >
               <WorldIcon name="camera" size={14} tone={store.photoMode ? "amber" : "cerulean"} />
-              <span>{t("theWorld.hud.photoModeLabel")}</span>
             </button>
-
-            <span className="the-world-bar-sep" aria-hidden="true" />
 
             <button
               type="button"
-              className={`the-world-btn${!store.soundMuted ? " is-active" : ""}`}
+              className={`the-world-btn is-icon-only${!store.soundMuted ? " is-active" : ""}`}
               aria-label={store.soundMuted ? t("theWorld.hud.soundOffAria") : t("theWorld.hud.soundOnAria")}
               aria-pressed={!store.soundMuted}
               title={store.soundMuted ? t("theWorld.hud.soundOffTitle") : t("theWorld.hud.soundOnTitle")}
@@ -266,22 +343,36 @@ export const WorldHud = memo(function WorldHud({
               />
             </button>
 
-            <span className="the-world-bar-sep" aria-hidden="true" />
-
             <button
               type="button"
-              className={`the-world-btn${debugOpen ? " is-active" : ""}`}
-              aria-label={t("theWorld.hud.debugAria")}
-              aria-expanded={debugOpen}
-              title={t("theWorld.hud.debugTitle")}
+              className="the-world-btn is-icon-only"
+              aria-label={t("theWorld.hud.guideAria")}
+              title={t("theWorld.hud.guideTitle")}
               onClick={() => {
-                setWarpOpen(false);
-                setDebugOpen((prev) => !prev);
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                onToggleControlsGuide?.();
               }}
             >
-              <WorldIcon name="tool" size={14} tone={debugOpen ? "amber" : "cerulean"} />
-              <span>디버그</span>
+              <WorldIcon name="question" size={14} tone="amber" />
             </button>
+
+            {debugPanelVisible ? (
+              <button
+                type="button"
+                className={`the-world-btn is-icon-only${debugOpen ? " is-active" : ""}`}
+                aria-label={t("theWorld.hud.debugAria")}
+                aria-expanded={debugOpen}
+                title={t("theWorld.hud.debugTitle")}
+                onClick={() => {
+                  setEnvOpen(false);
+                  setDebugOpen((prev) => !prev);
+                }}
+              >
+                <WorldIcon name="tool" size={14} tone={debugOpen ? "amber" : "cerulean"} />
+              </button>
+            ) : null}
 
             <span className="the-world-bar-sep" aria-hidden="true" />
 
@@ -296,8 +387,79 @@ export const WorldHud = memo(function WorldHud({
           </div>
         </div>
 
-        {/* 통합 디버그 · 환경 도구 크리스탈 팝오버 */}
-        {debugOpen ? (
+        {/* 환경 퀵 팝오버 (날씨 4종 + 시간대 원클릭 전환) */}
+        {envOpen ? (
+          <section
+            className="the-world-debug-popover the-world-env-popover"
+            role="dialog"
+            aria-label={t("theWorld.hud.envAria")}
+            onPointerDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            <div className="the-world-crest" aria-hidden="true" />
+            <header className="the-world-debug-head">
+              <span className="the-world-debug-title">
+                <WorldIcon name="weather" size={13} tone="amber" />
+                <span>{t("theWorld.hud.envTitle")}</span>
+              </span>
+              <button
+                type="button"
+                className="the-world-chat-icon-btn"
+                aria-label={t("theWorld.hud.envCloseAria")}
+                onClick={() => setEnvOpen(false)}
+              >
+                <WorldIcon name="close" size={14} />
+              </button>
+            </header>
+
+            <div className="the-world-debug-body">
+              <div className="the-world-debug-section">
+                <span className="the-world-debug-label">{t("theWorld.weather.label")}</span>
+                <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.weather.groupAria")}>
+                  {WEATHER_MODES.map((item) => {
+                    const active = activeWeather === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`the-world-debug-pill${active ? " is-active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => handleSelectWeather(item.id)}
+                      >
+                        <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
+                        <span>{t(item.key)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="the-world-debug-section">
+                <span className="the-world-debug-label">{t("theWorld.hud.timeLabel")}</span>
+                <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.hud.timeGroupAria")}>
+                  {TIME_MODES.map((item) => {
+                    const active = activeTime === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`the-world-debug-pill${active ? " is-active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => handleSelectTime(item.id)}
+                      >
+                        <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
+                        <span>{t(item.key)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {/* 개발자 디버그 · 연출 테스트 팝오버 (Shift+D 활성 시에만 노출) */}
+        {debugPanelVisible && debugOpen ? (
           <section
             className="the-world-debug-popover"
             role="dialog"
@@ -322,63 +484,6 @@ export const WorldHud = memo(function WorldHud({
             </header>
 
             <div className="the-world-debug-body">
-              <div className="the-world-debug-section">
-                <span className="the-world-debug-label">시간대</span>
-                <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.hud.timeGroupAria")}>
-                  {TIME_MODES.map((item) => {
-                    const active = store.timeMode === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`the-world-debug-pill${active ? " is-active" : ""}`}
-                        onClick={() => setWorldTimeMode(item.id)}
-                      >
-                        <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
-                        <span>{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="the-world-debug-section">
-                <span className="the-world-debug-label">{t("theWorld.weather.label")}</span>
-                <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.weather.groupAria")}>
-                  {WEATHER_MODES.map((item) => {
-                    const active = store.weatherMode === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={`the-world-debug-pill${active ? " is-active" : ""}`}
-                        aria-pressed={active}
-                        onClick={() => {
-                          playDistrictHover();
-                          setWeatherMode(item.id);
-                        }}
-                      >
-                        <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
-                        <span>{t(item.key)}</span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    type="button"
-                    className="the-world-debug-pill"
-                    aria-label={t("theWorld.debug.rainbowTestAria")}
-                    onClick={() => {
-                      playDistrictSelect();
-                      onTestRainbow?.();
-                      onStatusBanner(t("theWorld.rainbow.toast"));
-                    }}
-                  >
-                    <WorldIcon name="rainbow" size={13} tone="rose" />
-                    <span>{t("theWorld.debug.rainbowTest")}</span>
-                  </button>
-                </div>
-              </div>
-
               <div className="the-world-debug-section">
                 <span className="the-world-debug-label">카메라 시점</span>
                 <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.hud.cameraGroupAria")}>
@@ -465,76 +570,81 @@ export const WorldHud = memo(function WorldHud({
                   <button
                     type="button"
                     className="the-world-debug-pill"
-                    aria-label={t("theWorld.hud.admiralStyleAria")}
+                    aria-label={t("theWorld.debug.rainbowTestAria")}
                     onClick={() => {
                       playDistrictSelect();
-                      setDebugOpen(false);
-                      if (onOpenAdmiralCustomizer) onOpenAdmiralCustomizer();
-                      else openAdmiralCustomizer();
+                      onTestRainbow?.();
+                      onStatusBanner(t("theWorld.rainbow.toast"));
                     }}
                   >
-                    <WorldIcon name="hat" size={13} tone="amber" />
-                    <span>{t("theWorld.hud.admiralStyleBtn")}</span>
+                    <WorldIcon name="rainbow" size={13} tone="rose" />
+                    <span>{t("theWorld.debug.rainbowTest")}</span>
                   </button>
                 </div>
-              </div>
-
-              <div className="the-world-debug-footnote">
-                WASD 이동 · Shift 질주 · Space 점프 · 1·2·3 감정표현 · M 하늘 조망 · P 포토 · E 상호작용
               </div>
             </div>
           </section>
         ) : null}
       </div>
 
-      {!hideBottom && snapshot.zones.length > 0 ? (
-        <div className="the-world-hud-bottom">
-          <div className="the-world-warp-wrap">
-            {warpOpen ? (
-              <div
-                className="the-world-warp-menu"
-                role="menu"
-                aria-label={t("theWorld.hud.teleportGroupAria")}
-                onPointerDown={(e) => e.stopPropagation()}
-              >
-                <div className="the-world-crest" aria-hidden="true" />
-                <div className="the-world-warp-list">
-                  {snapshot.zones.map((zone) => (
-                    <button
-                      key={zone.id}
-                      type="button"
-                      role="menuitem"
-                      className="the-world-warp-item"
-                      onClick={() => {
-                        requestWorldTeleport(zone.x, zone.z);
-                        setWarpOpen(false);
-                        onStatusBanner(`${zone.label} 구역으로 이동했습니다.`);
-                      }}
-                    >
-                      <WorldIcon name="compass" size={13} tone="amber" />
-                      <span>{zone.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+      {/* 하단 좌측 미니 액션 필: 이모트(1·2·3) + 제독 외형 꾸미기 */}
+      {!hideBottom && !store.photoMode && !store.chatActive ? (
+        <div
+          className="the-world-quick-bar"
+          role="toolbar"
+          aria-label={t("theWorld.hud.quickBarAria")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <div className="the-world-bar">
+            <button
+              type="button"
+              className="the-world-btn the-world-quick-btn"
+              aria-label={t("theWorld.emote.wave")}
+              title={t("theWorld.emote.wave")}
+              onClick={() => handleTriggerEmote("wave")}
+            >
+              <span className="the-world-keycap">1</span>
+              <WorldIcon name="greet" size={13} tone="amber" />
+              <span>{t("theWorld.hud.emoteWave")}</span>
+            </button>
 
-            <div className="the-world-bar">
-              <button
-                type="button"
-                className={`the-world-btn${warpOpen ? " is-active" : ""}`}
-                aria-label={t("theWorld.hud.warpAria")}
-                aria-expanded={warpOpen}
-                onClick={() => {
-                  setDebugOpen(false);
-                  setWarpOpen((prev) => !prev);
-                }}
-              >
-                <WorldIcon name="compass" size={14} tone="amber" />
-                <span>구역 이동</span>
-                <span aria-hidden="true">{warpOpen ? "▾" : "▴"}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              className="the-world-btn the-world-quick-btn"
+              aria-label={t("theWorld.emote.cheer")}
+              title={t("theWorld.emote.cheer")}
+              onClick={() => handleTriggerEmote("cheer")}
+            >
+              <span className="the-world-keycap">2</span>
+              <WorldIcon name="cheer" size={13} tone="rose" />
+              <span>{t("theWorld.hud.emoteCheer")}</span>
+            </button>
+
+            <button
+              type="button"
+              className="the-world-btn the-world-quick-btn"
+              aria-label={t("theWorld.emote.jump")}
+              title={t("theWorld.emote.jump")}
+              onClick={() => handleTriggerEmote("jump")}
+            >
+              <span className="the-world-keycap">3</span>
+              <WorldIcon name="spin" size={13} tone="cerulean" />
+              <span>{t("theWorld.hud.emoteSpin")}</span>
+            </button>
+
+            <span className="the-world-bar-sep" aria-hidden="true" />
+
+            <button
+              type="button"
+              className={`the-world-btn the-world-quick-btn${store.admiralCustomizerOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.lookAria")}
+              aria-pressed={store.admiralCustomizerOpen}
+              title={t("theWorld.hud.admiralStyleAria")}
+              onClick={handleOpenCustomizer}
+            >
+              <WorldIcon name="hat" size={13} tone="amber" />
+              <span>{t("theWorld.hud.lookLabel")}</span>
+            </button>
           </div>
         </div>
       ) : null}

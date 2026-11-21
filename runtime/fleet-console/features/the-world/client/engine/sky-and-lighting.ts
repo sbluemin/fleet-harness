@@ -354,19 +354,19 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   const hemiLight = new HemisphereLight(0xa4d8ff, 0x56a856, 0.92);
   group.add(hemiLight);
 
-  // 광장 모닥불 광원 (2.8, 1.0)
-  const campfireLight = new PointLight(0xff8c2b, 3.2, 13.0, 1.6);
-  campfireLight.position.set(2.8, 1.35, 1.0);
+  // 광장 모닥불 광원 (2.8, 1.0) — 야간에 따뜻한 호박빛 대비 극대화
+  const campfireLight = new PointLight(0xff8424, 3.2, 15.5, 1.55);
+  campfireLight.position.set(2.8, 1.28, 1.0);
   group.add(campfireLight);
 
   // 플레이어 휴대용 랜턴 광원 (주간에는 visible=false로 PBR 셰이더 PointLight 루프에서 제외)
-  const playerLantern = new PointLight(0xffe484, 0, 8.5, 1.7);
+  const playerLantern = new PointLight(0xffe07d, 0, 9.2, 1.65);
   playerLantern.visible = false;
   group.add(playerLantern);
 
   // 야간 근접 가로등 광원 풀 (최대 6개 — 카메라/주시점 기준 가장 가까운 6개만 활성)
   const lampLights = Array.from({ length: MAX_NIGHT_LAMP_LIGHTS }, () => {
-    const pl = new PointLight(0xffe074, 0, 10.0, 1.7);
+    const pl = new PointLight(0xffd764, 0, 11.5, 1.65);
     pl.visible = false;
     group.add(pl);
     return pl;
@@ -540,23 +540,23 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   let blend = 0.0;
   const cDayTop = new Color(0x3fa4f8);
   const cSunsetTop = new Color(0x47307a);
-  const cNightTop = new Color(0x0b132e);
+  const cNightTop = new Color(0x081028);
 
   const cDayHor = new Color(0xd8f2ff);
   const cSunsetHor = new Color(0xfd9460);
-  const cNightHor = new Color(0x1a2850);
+  const cNightHor = new Color(0x142142);
 
   const cDaySun = new Color(0xfff7e4);
   const cSunsetSun = new Color(0xff8e4f);
-  const cNightMoon = new Color(0x5b7cc0);
+  const cNightMoon = new Color(0x6486cc);
 
   const cDaySkyAmb = new Color(0xa4d8ff);
   const cSunsetSkyAmb = new Color(0x9b6e96);
-  const cNightSkyAmb = new Color(0x2f4375);
+  const cNightSkyAmb = new Color(0x223663);
 
   const cDayGndAmb = new Color(0x58a856);
   const cSunsetGndAmb = new Color(0x594246);
-  const cNightGndAmb = new Color(0x182438);
+  const cNightGndAmb = new Color(0x0f1b2e);
 
   const vDayDir = new Vector3(0.50, 0.84, 0.46).normalize();
   const vSunsetDir = new Vector3(0.84, 0.28, 0.36).normalize();
@@ -613,12 +613,12 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
         uSkyTop.copy(cSunsetTop).lerp(cNightTop, k);
         uSkyHorizon.copy(cSunsetHor).lerp(cNightHor, k);
         dirLight.color.copy(cSunsetSun).lerp(cNightMoon, k);
-        dirLight.intensity = 1.45 - k * 0.68;
+        dirLight.intensity = 1.45 - k * 0.88;
         hemiLight.color.copy(cSunsetSkyAmb).lerp(cNightSkyAmb, k);
         hemiLight.groundColor.copy(cSunsetGndAmb).lerp(cNightGndAmb, k);
-        hemiLight.intensity = 0.78 - k * 0.20;
+        hemiLight.intensity = 0.78 - k * 0.34;
         sunDir.copy(vSunsetDir).lerp(vNightDir, k).normalize();
-        avatarWorldTint.set(1.01 - k * 0.28, 0.88 - k * 0.10, 0.80 + k * 0.18);
+        avatarWorldTint.set(1.01 - k * 0.28, 0.88 - k * 0.12, 0.80 + k * 0.18);
         night = 0.38 + k * 0.62;
       }
 
@@ -635,13 +635,13 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
       skyMat.uniforms["uTime"]!.value = elapsed;
 
       const lampStrength = Math.max(0, (night - 0.22) / 0.78);
-      campfireLight.intensity = (1.5 + lampStrength * 3.0) + Math.sin(elapsed * 12) * 0.32;
+      campfireLight.intensity = (1.8 + lampStrength * 4.2) + Math.sin(elapsed * 11.5) * 0.38 + Math.cos(elapsed * 17.3) * 0.18;
 
       const nightLightsActive = lampStrength > 0.02;
       playerLantern.visible = nightLightsActive;
       if (nightLightsActive) {
         playerLantern.position.set(playerPos.x, playerPos.y + 1.15, playerPos.z);
-        playerLantern.intensity = lampStrength * 1.75;
+        playerLantern.intensity = lampStrength * 1.95;
 
         const focusX = shadowFocusX || playerPos.x;
         const focusZ = shadowFocusZ || playerPos.z;
@@ -656,7 +656,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
           const pl = lampLights[i]!;
           const active = i < activeLampCount.value && pl.position.y > -10;
           pl.visible = active;
-          pl.intensity = active ? lampStrength * (i < 3 ? 2.3 : 1.9) : 0;
+          pl.intensity = active ? lampStrength * (i < 3 ? 2.85 : 2.35) : 0;
         }
       } else {
         playerLantern.intensity = 0;

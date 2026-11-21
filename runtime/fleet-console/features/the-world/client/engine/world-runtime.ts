@@ -1,12 +1,19 @@
 import {
   ACESFilmicToneMapping,
+  CircleGeometry,
+  DynamicDrawUsage,
+  GLSL3,
   HalfFloatType,
+  InstancedBufferAttribute,
+  InstancedMesh,
   Matrix4,
   PCFShadowMap,
   PerspectiveCamera,
   PMREMGenerator,
+  Quaternion,
   Raycaster,
   Scene,
+  ShaderMaterial,
   SRGBColorSpace,
   Vector2,
   Vector3,
@@ -47,7 +54,10 @@ import {
   type WorldAnimMode,
   type WorldExpression,
 } from "./mongle-actor-rig.js";
-import { createPlayerAndCameraController } from "./player-controller.js";
+import {
+  createPlayerAndCameraController,
+  type CameraOccluder,
+} from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
   playFootstep,
@@ -55,6 +65,7 @@ import {
   playMongleChirp,
   playRallyHorn,
   setRainAmbience,
+  type WorldFootstepSurface,
 } from "./world-audio.js";
 
 /**
@@ -97,6 +108,20 @@ export interface WorldFrameActorPosition {
   distance: number;
   visible: boolean;
   isDistant: boolean;
+  /** 거리·포커스 기반 2D 라벨 불투명도 LOD (0.38..1.0). */
+  opacity?: number;
+  /** 거리·포커스 기반 2D 라벨 스케일 LOD (0.84..1.0). */
+  scale?: number;
+  /** 말풍선과 상호작용 힌트 겹침 방지 수직 오프셋(px). */
+  speechOffsetY?: number;
+}
+
+export interface WorldFrameMinimapActor {
+  id: string;
+  x: number;
+  z: number;
+  color: string;
+  walking: boolean;
 }
 
 export interface WorldFrameVillagePosition {
@@ -117,6 +142,7 @@ export interface WorldFramePointPosition {
 export interface WorldFrameOverlayPositions {
   readonly actors: readonly WorldFrameActorPosition[];
   readonly actorCount: number;
+  readonly minimapActors: readonly WorldFrameMinimapActor[];
   readonly player: WorldFramePointPosition;
   readonly playerWorldX: number;
   readonly playerWorldZ: number;
@@ -221,6 +247,48 @@ const MAX_PLAYER_LABEL_DIST = 44;
 const VIEWPORT_MARGIN_X = 160;
 const VIEWPORT_MARGIN_Y = 120;
 const WORKSHOP_FX_INTERVAL_SEC = 0.34;
+const MAX_ACTOR_AO_BLOBS = 64;
+const EMPTY_OCCLUDERS: readonly CameraOccluder[] = [];
+
+const TONE_HEX_CSS: Readonly<Record<IdentityTone, string>> = {
+  crimson: "#fb7185",
+  amber: "#fbbf24",
+  moss: "#84cc16",
+  teal: "#2dd4bf",
+  cerulean: "#38bdf8",
+  indigo: "#818cf8",
+  plum: "#c084fc",
+  rose: "#f472b6",
+};
+
+const AO_BLOB_VERTEX = /* glsl */ `
+attribute float aOpacity;
+out vec2 vUv;
+out float vOpacity;
+void main() {
+  vUv = uv;
+  vOpacity = aOpacity;
+  vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mvPos;
+}
+`;
+
+const AO_BLOB_FRAGMENT = /* glsl */ `
+in vec2 vUv;
+in float vOpacity;
+out vec4 fragColor;
+void main() {
+  float r = length(vUv * 2.0 - 1.0);
+  float a = pow(clamp(1.0 - r, 0.0, 1.0), 2.1) * vOpacity;
+  if (a < 0.004) discard;
+  fragColor = vec4(0.02, 0.05, 0.03, a);
+}
+`;
+
+type MeadowSceneS8 = ReturnType<typeof createMeadowScene> & {
+  getSurfaceType?: ((x: number, z: number) => WorldFootstepSurface) | undefined;
+  getCameraOccluders?: (() => readonly CameraOccluder[]) | undefined;
+};
 
 function isInsideViewport(x: number, y: number, cssW: number, cssH: number): boolean {
   return x >= -VIEWPORT_MARGIN_X
@@ -274,9 +342,35 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   composer.addPass(new OutputPass());
 
   const skyLighting = createSkyAndLighting(scene);
-  const meadow = createMeadowScene(scene);
+  const meadow = createMeadowScene(scene) as MeadowSceneS8;
   const playerCtrl = createPlayerAndCameraController();
   const director = createChoreographyDirector(scene);
+
+  // 플레이어 + 모든 액터 발밑 배치 Soft AO 접촉 그림자 (단일 InstancedMesh 1 draw call, 점프 높이 반응)
+  const aoBlobGeo = new CircleGeometry(0.86, 24);
+  aoBlobGeo.rotateX(-Math.PI * 0.5);
+  const aoOpacityArray = new Float32Array(MAX_ACTOR_AO_BLOBS);
+  const aoOpacityAttr = new InstancedBufferAttribute(aoOpacityArray, 1);
+  aoOpacityAttr.setUsage(DynamicDrawUsage);
+  aoBlobGeo.setAttribute("aOpacity", aoOpacityAttr);
+  const aoBlobMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    vertexShader: AO_BLOB_VERTEX,
+    fragmentShader: AO_BLOB_FRAGMENT,
+  });
+  const aoBlobInstanced = new InstancedMesh(aoBlobGeo, aoBlobMat, MAX_ACTOR_AO_BLOBS);
+  aoBlobInstanced.instanceMatrix.setUsage(DynamicDrawUsage);
+  aoBlobInstanced.frustumCulled = false;
+  aoBlobInstanced.renderOrder = 2;
+  aoBlobInstanced.count = 0;
+  scene.add(aoBlobInstanced);
+
+  const aoMat4 = new Matrix4();
+  const aoPos = new Vector3();
+  const aoQuat = new Quaternion();
+  const aoScale = new Vector3();
 
   // 플레이어 제독 3D 아바타 (진급 퀘이커 도리 Dori)
   const playerRig = createMongleActorRig({
@@ -362,12 +456,18 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const pickNdc = new Vector2();
 
   const actorPosPool: WorldFrameActorPosition[] = [];
+  const visibleActorIdx = new Int32Array(64);
+  const actorHasSpeechFlags = new Uint8Array(64);
+  const actorPriorityFlags = new Uint8Array(64);
+  const minimapActorPool: WorldFrameMinimapActor[] = [];
+  const minimapActorsOut: WorldFrameMinimapActor[] = [];
   const villagePosPool: WorldFrameVillagePosition[] = [];
   const topVillageIdx = new Int32Array(MAX_OVERVIEW_VILLAGE_SIGNS);
   const topVillageDist = new Float64Array(MAX_OVERVIEW_VILLAGE_SIGNS);
   const framePositions: {
     actors: WorldFrameActorPosition[];
     actorCount: number;
+    minimapActors: WorldFrameMinimapActor[];
     player: WorldFramePointPosition;
     playerWorldX: number;
     playerWorldZ: number;
@@ -381,6 +481,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   } = {
     actors: actorPosPool,
     actorCount: 0,
+    minimapActors: minimapActorsOut,
     player: { x: 0, y: 0, visible: false },
     playerWorldX: 0,
     playerWorldZ: 0,
@@ -466,6 +567,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const focusedActorId = interacting ? selectedActorId : null;
     const focusedMotion = focusedActorId ? director.motions.get(focusedActorId) ?? null : null;
 
+    const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
+      meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
+
     playerCtrl.update({
       dt,
       lifecycle: currentLifecycle,
@@ -476,13 +580,25 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       camera,
       getGroundHeight: meadow.getGroundHeight,
       resolveMovement: meadow.resolveMovement,
+      getCameraOccluders: () => meadow.getCameraOccluders?.() ?? EMPTY_OCCLUDERS,
       onDustParticle: director.spawnDust,
       onOverviewAutoExit: config.onOverviewAutoExit,
       onJump: () => {
         playJump();
       },
       onLand: () => {
-        director.spawnDust(playerCtrl.player.x, playerCtrl.player.y + 0.06, playerCtrl.player.z);
+        const px = playerCtrl.player.x;
+        const py = playerCtrl.player.y;
+        const pz = playerCtrl.player.z;
+        const surface = resolveSurface(px, pz);
+        playFootstep(surface);
+        if (surface === "water") {
+          director.spawnBurst(px, py + 0.10, pz, 0x7dd3fc, 8);
+        } else {
+          director.spawnDust(px, py + 0.06, pz);
+          director.spawnDust(px + 0.16, py + 0.06, pz - 0.12);
+          director.spawnDust(px - 0.16, py + 0.06, pz + 0.12);
+        }
       },
       onStandUp: config.onCampfireStandUp,
     });
@@ -502,12 +618,17 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       rainbowLookTimer = Math.max(0, rainbowLookTimer - dt);
     }
 
-    // `Shift` 대시 질주 시 주기적 흙먼지 파티클 방출
+    // `Shift` 대시 질주 시 지면 재질별 미세 먼지/물보라 파티클 방출 (기존 풀 재사용, Draw Call +0)
     if (currentLifecycle === "open" && playerCtrl.isSprinting() && playerCtrl.player.onGround) {
       sprintDustAccum += dt;
-      if (sprintDustAccum >= 0.11) {
+      if (sprintDustAccum >= 0.10) {
         sprintDustAccum = 0;
-        director.spawnDust(playerCtrl.player.x, playerCtrl.player.y + 0.08, playerCtrl.player.z);
+        const surface = resolveSurface(playerCtrl.player.x, playerCtrl.player.z);
+        if (surface === "water") {
+          director.spawnBurst(playerCtrl.player.x, playerCtrl.player.y + 0.10, playerCtrl.player.z, 0x7dd3fc, 3);
+        } else {
+          director.spawnDust(playerCtrl.player.x, playerCtrl.player.y + 0.08, playerCtrl.player.z);
+        }
       }
     } else {
       sprintDustAccum = 0;
@@ -518,7 +639,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     framePositions.playerWorldZ = playerCtrl.player.z;
     framePositions.playerYaw = playerCtrl.player.yaw;
 
-    // 플레이어 지상 보행 발소리 (풀밭 vs 목교 구분, 오디오 내부 280ms 쿨다운)
+    // 플레이어 지상 보행 발소리 (돌길·풀밭·나무다리·물가 재질별, 오디오 내부 280ms 쿨다운)
     if (dt > 0.001) {
       const movedDist = Math.hypot(playerCtrl.player.x - prevPlayerX, playerCtrl.player.z - prevPlayerZ);
       const speed = movedDist / dt;
@@ -529,7 +650,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         && speed > 0.45
         && speed < 24
       ) {
-        playFootstep(meadow.isOnBridge(playerCtrl.player.x, playerCtrl.player.z));
+        playFootstep(resolveSurface(playerCtrl.player.x, playerCtrl.player.z));
       }
     }
     prevPlayerX = playerCtrl.player.x;
@@ -693,11 +814,26 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       hatBounce: playerHatPos,
     });
 
-    // 사령관·지휘관·구성원 포즈 갱신 & Direct-DOM 투영 좌표 계산
+    // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · 미니맵 산책 도트 · Direct-DOM 투영 계산
     const isOpen = currentLifecycle === "open";
     let actorCount = 0;
+    let visibleCount = 0;
+    let minimapActorCount = 0;
+    let aoBlobCount = 0;
     let structSig = isOpen ? "1" : "0";
     let idx = 0;
+
+    // 0번 AO Blob: 플레이어 제독 접촉 그림자 (점프 높이에 따라 크기·투명도 부드럽게 반응)
+    {
+      const pAoScale = 0.92 * Math.max(0.45, Math.min(1.06, 1 - pTotalLift * 0.28 + p.landSquash * 0.14));
+      const pAoAlpha = Math.max(0.06, Math.min(0.44, 0.36 * (1 - pTotalLift * 0.42)));
+      aoPos.set(p.x, pGround + 0.022, p.z);
+      aoScale.set(pAoScale, 1, pAoScale);
+      aoMat4.compose(aoPos, aoQuat, aoScale);
+      aoBlobInstanced.setMatrixAt(aoBlobCount, aoMat4);
+      aoOpacityArray[aoBlobCount] = pAoAlpha;
+      aoBlobCount += 1;
+    }
 
     for (const m of director.motions.values()) {
       idx += 1;
@@ -782,6 +918,34 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         hatBounce: sp.hatPos,
       });
 
+      // 배치 Soft AO 접촉 그림자 (점프/바운스 높이에 따라 크기·투명도 부드럽게 반응)
+      if (aoBlobCount < MAX_ACTOR_AO_BLOBS) {
+        const aAoScale = roleScale * Math.max(0.46, Math.min(1.04, 1 - totalLift * 0.28));
+        const aAoAlpha = Math.max(0.06, Math.min(0.42, 0.34 * (1 - totalLift * 0.40)));
+        aoPos.set(m.x, gy + 0.022, m.z);
+        aoScale.set(aAoScale, 1, aAoScale);
+        aoMat4.compose(aoPos, aoQuat, aoScale);
+        aoBlobInstanced.setMatrixAt(aoBlobCount, aoMat4);
+        aoOpacityArray[aoBlobCount] = aAoAlpha;
+        aoBlobCount += 1;
+      }
+
+      // 미니맵 실시간 사령관 산책 도트 데이터 (0-GC 사전 할당 풀 재사용)
+      if (m.spec.role === "commodore") {
+        let dot = minimapActorPool[minimapActorCount];
+        if (!dot) {
+          dot = { id: "", x: 0, z: 0, color: "#38bdf8", walking: false };
+          minimapActorPool.push(dot);
+        }
+        dot.id = m.spec.id;
+        dot.x = m.x;
+        dot.z = m.z;
+        dot.color = TONE_HEX_CSS[m.spec.tone] ?? "#38bdf8";
+        dot.walking = m.moving;
+        minimapActorsOut[minimapActorCount] = dot;
+        minimapActorCount += 1;
+      }
+
       if (isOpen) {
         structSig += `|${m.spec.id}:${m.spec.name}:${m.spec.tone}:${m.spec.quaker ?? ""}:${isNearPlayer ? 1 : 0}:${isSelected ? 1 : 0}:${m.spec.needsAttention ? 1 : 0}:${m.speech}`;
 
@@ -797,6 +961,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
             distance: 999,
             visible: false,
             isDistant: false,
+            opacity: 1,
+            scale: 1,
+            speechOffsetY: 0,
           };
           actorPosPool.push(slot);
         }
@@ -813,6 +980,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           && projTop.w < MAX_ACTOR_LABEL_DIST
           && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
         ) {
+          const hasSpeech = m.speech.length > 0;
+          const isPriority = isSelected || isNearPlayer || m.spec.needsAttention || hasSpeech;
           slot.x = projTop.x;
           slot.y = projTop.y;
           slot.hitX = projBody.x;
@@ -820,20 +989,88 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           slot.hitRadius = Math.max(26, 360 / projBody.w);
           slot.distance = projTop.w;
           slot.visible = true;
-          slot.isDistant = projTop.w > 25
-            && !isSelected
-            && !isNearPlayer
-            && !m.spec.needsAttention
-            && m.speech.length === 0;
+          slot.isDistant = projTop.w > 25 && !isPriority;
+
+          // 거리·포커스 기반 2D 라벨 LOD (`opacity` / `scale`) + 말풍선-힌트 간격 오프셋
+          if (isPriority || projTop.w <= 16) {
+            slot.opacity = 1;
+            slot.scale = 1;
+          } else {
+            const distT = Math.max(0, Math.min(1, (projTop.w - 16) / 34));
+            slot.opacity = Number((1 - distT * 0.56).toFixed(2));
+            slot.scale = Number((1 - distT * 0.16).toFixed(2));
+          }
+          slot.speechOffsetY = hasSpeech && isNearPlayer ? -26 : 0;
+
+          if (visibleCount < visibleActorIdx.length) {
+            visibleActorIdx[visibleCount] = actorCount;
+            actorHasSpeechFlags[actorCount] = hasSpeech ? 1 : 0;
+            actorPriorityFlags[actorCount] = isPriority ? 1 : 0;
+            visibleCount += 1;
+          }
         } else {
           slot.visible = false;
           slot.distance = 999;
           slot.isDistant = false;
+          slot.opacity = 0;
+          slot.scale = 1;
+          slot.speechOffsetY = 0;
         }
         actorCount += 1;
       }
     }
     framePositions.actorCount = actorCount;
+    minimapActorsOut.length = minimapActorCount;
+
+    // 배치 Soft AO 접촉 그림자 업로드 (단일 InstancedMesh 1 draw call)
+    aoBlobInstanced.count = aoBlobCount;
+    aoBlobInstanced.visible = aoBlobCount > 0;
+    if (aoBlobCount > 0) {
+      aoBlobInstanced.instanceMatrix.needsUpdate = true;
+      aoOpacityAttr.needsUpdate = true;
+    }
+
+    // 0-GC 2D 레이블 충돌 회피(Greedy De-overlap): 우선순위(선택·근접·말풍선·근거리) 순 정렬 후 수직 분리
+    if (visibleCount > 1) {
+      for (let i = 1; i < visibleCount; i += 1) {
+        const keyIdx = visibleActorIdx[i]!;
+        const keyPrio = actorPriorityFlags[keyIdx]!;
+        const keyDist = actorPosPool[keyIdx]!.distance;
+        let j = i - 1;
+        while (j >= 0) {
+          const prevIdx = visibleActorIdx[j]!;
+          const prevPrio = actorPriorityFlags[prevIdx]!;
+          const prevDist = actorPosPool[prevIdx]!.distance;
+          if (keyPrio > prevPrio || (keyPrio === prevPrio && keyDist < prevDist)) {
+            visibleActorIdx[j + 1] = prevIdx;
+            j -= 1;
+          } else {
+            break;
+          }
+        }
+        visibleActorIdx[j + 1] = keyIdx;
+      }
+
+      const LABEL_SEP_X = 110;
+      for (let i = 1; i < visibleCount; i += 1) {
+        const curIdx = visibleActorIdx[i]!;
+        const cur = actorPosPool[curIdx]!;
+        const curH = actorHasSpeechFlags[curIdx] ? 54 : 30;
+        for (let pass = 0; pass < 3; pass += 1) {
+          let moved = false;
+          for (let j = 0; j < i; j += 1) {
+            const prevIdx = visibleActorIdx[j]!;
+            const prev = actorPosPool[prevIdx]!;
+            const minSepY = Math.max(curH, actorHasSpeechFlags[prevIdx] ? 54 : 30);
+            if (Math.abs(cur.x - prev.x) < LABEL_SEP_X && Math.abs(cur.y - prev.y) < minSepY) {
+              cur.y = prev.y - minSepY;
+              moved = true;
+            }
+          }
+          if (!moved) break;
+        }
+      }
+    }
 
     // 구조적 변화가 발생한 프레임에만 React 라벨 메타 목록 갱신 (유휴·이동 시 0Hz)
     if (structSig !== lastStructSig) {
@@ -1425,6 +1662,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
       actorRigs.clear();
       actorPoseSprings.clear();
+      aoBlobInstanced.dispose();
+      aoBlobGeo.dispose();
+      aoBlobMat.dispose();
+      scene.remove(aoBlobInstanced);
       playerRig.dispose();
       director.dispose();
       playerCtrl.dispose();

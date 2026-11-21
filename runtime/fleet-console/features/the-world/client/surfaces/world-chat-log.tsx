@@ -554,6 +554,9 @@ export const WorldChatLog = memo(function WorldChatLog({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [ambientFaded, setAmbientFaded] = useState(false);
+  const [ambientHovered, setAmbientHovered] = useState(false);
+  const [ambientActivityNonce, setAmbientActivityNonce] = useState(0);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -628,6 +631,24 @@ export const WorldChatLog = memo(function WorldChatLog({
     [activeFilters, feed],
   );
   const ambientEntries = useMemo(() => filtered.slice(-5), [filtered]);
+  const latestAmbientId = ambientEntries.at(-1)?.id ?? null;
+
+  // 입력창 비활성 + 비호버 상태에서 마지막 메시지 후 10초 경과 시 프리뷰 로그를 부드럽게 페이드아웃한다.
+  useEffect(() => {
+    if (chatActive || hidden || ambientEntries.length === 0) {
+      setAmbientFaded(false);
+      return;
+    }
+    if (ambientHovered) {
+      setAmbientFaded(false);
+      return;
+    }
+    setAmbientFaded(false);
+    const timer = window.setTimeout(() => {
+      setAmbientFaded(true);
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [ambientEntries.length, ambientHovered, ambientActivityNonce, chatActive, hidden, latestAmbientId]);
 
   // 사라진 캐릭터가 멘션 칩에 남아 있지 않도록 정리한다.
   const mentionedActors = useMemo(
@@ -787,6 +808,7 @@ export const WorldChatLog = memo(function WorldChatLog({
         setDraft("");
         setMentionIds([]);
         setMentionDismissedAt(null);
+        setAmbientActivityNonce((n) => n + 1);
         onStatusBanner(`${delivered.join(", ")}에게 전송했습니다.`);
       }
       if (failed.length > 0) {
@@ -811,10 +833,15 @@ export const WorldChatLog = memo(function WorldChatLog({
       onPointerDown={chatActive ? (e) => e.stopPropagation() : undefined}
       onWheel={chatActive ? (e) => e.stopPropagation() : undefined}
     >
-      {/* 기본 비활성(앰비언트) 상태: 게임 화면 위 투명 플로팅 최근 5줄 + Enter 활성화 트리거 */}
-      <div className="the-world-chat-ambient" aria-hidden={chatActive || hidden}>
+      {/* 기본 비활성(앰비언트) 상태: 게임 화면 위 투명 플로팅 최근 5줄(10초 무활동 시 자동 페이드) + Enter 트리거 */}
+      <div
+        className={`the-world-chat-ambient${ambientFaded ? " is-faded" : ""}`}
+        aria-hidden={chatActive || hidden}
+        onMouseEnter={() => setAmbientHovered(true)}
+        onMouseLeave={() => setAmbientHovered(false)}
+      >
         {ambientEntries.length > 0 ? (
-          <div className="the-world-chat-ambient-lines">
+          <div className={`the-world-chat-ambient-lines${ambientFaded ? " is-faded" : ""}`}>
             {ambientEntries.map((entry) => (
               <ChatLogLine
                 key={entry.id}

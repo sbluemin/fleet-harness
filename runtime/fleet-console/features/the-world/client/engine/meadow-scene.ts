@@ -1,9 +1,9 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
-  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   DynamicDrawUsage,
@@ -40,6 +40,18 @@ import {
   markSharedMaterial,
   type InstancedBucketBuilder,
 } from "./instanced-buckets.js";
+import {
+  BROOK_FRAGMENT,
+  BROOK_VERTEX,
+  CAMPFIRE_COAL_FRAGMENT,
+  CAMPFIRE_COAL_VERTEX,
+  CAMPFIRE_FLAME_FRAGMENT,
+  CAMPFIRE_FLAME_VERTEX,
+  FOUNTAIN_WATER_FRAGMENT,
+  FOUNTAIN_WATER_VERTEX,
+  HIGHLIGHT_FRAGMENT,
+  HIGHLIGHT_VERTEX,
+} from "./meadow-shaders.js";
 import { createMeadowTexturePack } from "./meadow-textures.js";
 import {
   createWorldAssetRegistry,
@@ -80,249 +92,19 @@ const TONE_CRYSTAL_HEX: Readonly<Record<IdentityTone, number>> = {
   rose: 0xf472b6,
 };
 
-const BROOK_VERTEX = /* glsl */ `
-uniform float uTime;
-out vec3 vWorldPos;
-out vec3 vWaveNorm;
-out float vShore;
-out float vBridgeProx;
-
-void main() {
-  vec3 lp = position;
-  float w1 = sin(lp.x * 0.68 - uTime * 2.1) * cos(lp.z * 0.62 + uTime * 1.65) * 0.032;
-  float w2 = sin((lp.x * 1.25 - lp.z * 0.95) - uTime * 2.85) * 0.016;
-  lp.y += w1 + w2;
-  vWaveNorm = normalize(vec3(
-    -0.045 * cos(lp.x * 0.68 - uTime * 2.1),
-    1.0,
-    -0.045 * sin(lp.z * 0.62 + uTime * 1.65)
-  ));
-  vec4 wp = modelMatrix * vec4(lp, 1.0);
-  vWorldPos = wp.xyz;
-
-  // brookProfile(x)와 동일한 해석적 강변 거리 → 구불구불한 강둑/연못 윤곽에 밀착하는 물거품 계산
-  float centerZ = 9.2 + sin(wp.x * 0.095) * 2.9 + cos(wp.x * 0.04) * 1.1;
-  float pondBell = exp(-pow((wp.x - 5.8) / 4.8, 2.0));
-  float halfWidth = 1.45 + pondBell * 2.15;
-  vShore = clamp(abs(wp.z - centerZ) / halfWidth, 0.0, 1.5);
-
-  // 동/서 아치 목교 교각 부근 물결 거품 근접도
-  float dEast = abs(wp.x - 8.6);
-  float dWest = abs(wp.x + 11.5);
-  vBridgeProx = max(
-    smoothstep(1.85, 0.75, dEast) * smoothstep(0.92, 0.15, vShore),
-    smoothstep(1.85, 0.75, dWest) * smoothstep(0.92, 0.15, vShore)
-  );
-
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-
-const BROOK_FRAGMENT = /* glsl */ `
-in vec3 vWorldPos;
-in vec3 vWaveNorm;
-in float vShore;
-in float vBridgeProx;
-out vec4 fragColor;
-
-uniform float uTime;
-uniform float uNight;
-uniform float uRain;
-uniform vec3 uSunDir;
-
-vec2 hash22(vec2 p) {
-  p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-  return fract(sin(p) * 43758.5453);
-}
-
-// 지브리 / 윈드웨이커 스타일 카우스틱 링용 경량 2D 보로노이 셀 거리
-float voronoiEdge(vec2 x) {
-  vec2 n = floor(x);
-  vec2 f = fract(x);
-  float md = 8.0;
-  float md2 = 8.0;
-  for (int j = -1; j <= 1; j++) {
-    for (int i = -1; i <= 1; i++) {
-      vec2 g = vec2(float(i), float(j));
-      vec2 o = hash22(n + g);
-      o = 0.5 + 0.42 * sin(uTime * 1.35 + 6.2831 * o);
-      vec2 r = g + o - f;
-      float d = dot(r, r);
-      if (d < md) {
-        md2 = md;
-        md = d;
-      } else if (d < md2) {
-        md2 = d;
-      }
-    }
-  }
-  return sqrt(md2) - sqrt(md);
-}
-
-void main() {
-  vec3 N = normalize(vWaveNorm);
-  vec3 V = normalize(cameraPosition - vWorldPos);
-  vec3 L = normalize(uSunDir);
-
-  // 에메랄드 얕은 물 → 맑은 코발트 깊은 물 그라데이션 (낮 · 노을 · 밤 연동)
-  float sunsetFactor = clamp(1.0 - abs(uNight - 0.38) * 2.8, 0.0, 1.0);
-  vec3 dayEmerald = vec3(0.22, 0.80, 0.78);
-  vec3 dayCobalt = vec3(0.08, 0.50, 0.82);
-  vec3 sunsetShallow = vec3(0.36, 0.58, 0.68);
-  vec3 sunsetDeep = vec3(0.16, 0.30, 0.54);
-  vec3 nightShallow = vec3(0.08, 0.28, 0.42);
-  vec3 nightDeep = vec3(0.04, 0.13, 0.28);
-
-  float depthT = smoothstep(0.18, 0.92, vShore);
-  vec3 shallowCol = mix(mix(dayEmerald, sunsetShallow, sunsetFactor * 0.65), nightShallow, uNight);
-  vec3 deepCol = mix(mix(dayCobalt, sunsetDeep, sunsetFactor * 0.65), nightDeep, uNight);
-  vec3 baseCol = mix(deepCol, shallowCol, depthT);
-
-  // 2중 흐르는 윈드웨이커 스타일 카우스틱 물결망
-  vec2 flowUv1 = vWorldPos.xz * 0.68 + vec2(-uTime * 0.36, sin(vWorldPos.x * 0.22) * 0.25);
-  vec2 flowUv2 = vWorldPos.xz * 1.08 + vec2(-uTime * 0.24, uTime * 0.16);
-  float c1 = 1.0 - smoothstep(0.03, 0.18, voronoiEdge(flowUv1));
-  float c2 = 1.0 - smoothstep(0.02, 0.15, voronoiEdge(flowUv2));
-  float caustics = clamp(c1 * 0.75 + c2 * 0.45, 0.0, 1.0);
-
-  vec3 causticCol = mix(vec3(0.76, 0.98, 1.0), vec3(0.45, 0.68, 0.92), uNight);
-  vec3 col = mix(baseCol, causticCol, caustics * (0.28 - uNight * 0.10));
-
-  // 강둑(shoreline) & 목교 교각 하얀 물거품 테두리 (수로 밖 서쪽 강변 거품 번짐 방지를 위해 좁은 밴드+알파 클램프)
-  float waveWobble = sin(vWorldPos.x * 2.4 - uTime * 3.1) * 0.05 + cos(vWorldPos.z * 3.2 + uTime * 2.2) * 0.035;
-  float shorePos = vShore + waveWobble;
-  float shoreBand = smoothstep(0.76, 0.92, shorePos) * (1.0 - smoothstep(0.98, 1.12, shorePos));
-  float innerFroth = smoothstep(0.60, 0.78, shorePos) * (1.0 - smoothstep(0.94, 1.06, shorePos)) * c1 * 0.58;
-  float bridgeFoam = vBridgeProx * smoothstep(0.20, 0.75, c1 + 0.35 * sin(vWorldPos.z * 5.0 - uTime * 4.0)) * 0.75;
-  float foamMask = clamp(shoreBand * 0.88 + innerFroth + bridgeFoam, 0.0, 1.0);
-  vec3 foamCol = mix(vec3(0.95, 0.99, 1.0), vec3(0.55, 0.68, 0.84), uNight * 0.78);
-  col = mix(col, foamCol, foamMask);
-
-  // 프레넬 하늘 반사 + 태양/달빛 반짝임(sparkle glints)
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 2.8) * 0.38;
-  vec3 skyRefl = mix(mix(vec3(0.72, 0.93, 1.0), vec3(0.98, 0.68, 0.48), sunsetFactor * 0.75), vec3(0.24, 0.38, 0.62), uNight);
-  col = mix(col, skyRefl, fres * (1.0 - foamMask * 0.6));
-
-  vec3 H = normalize(L + V);
-  float specBase = pow(max(dot(N, H), 0.0), 72.0);
-  float sparkleNoise = sin(vWorldPos.x * 7.5 - uTime * 4.4) * cos(vWorldPos.z * 6.8 + uTime * 3.6);
-  float glint = smoothstep(0.62, 0.96, sparkleNoise) * (0.35 + specBase * 2.2) * (1.0 - foamMask * 0.7);
-  vec3 glintCol = mix(vec3(1.0, 0.98, 0.88), vec3(0.84, 0.92, 1.0), uNight);
-  col += glintCol * (specBase * 0.85 + glint * 0.55) * (1.0 - uNight * 0.35);
-
-  // 비 날씨(uRain > 0)일 때 시냇물 수면 위 동심원 빗방울 파문(ripple)
-  if (uRain > 0.01) {
-    vec2 rp1 = vWorldPos.xz * 1.45;
-    vec2 c1Cell = floor(rp1);
-    vec2 c1Loc = fract(rp1) - 0.5;
-    vec2 rnd1 = hash22(c1Cell);
-    float ph1 = fract(uTime * 1.35 + rnd1.x * 3.7 + rnd1.y * 5.3);
-    float ring1 = smoothstep(0.048, 0.0, abs(length(c1Loc - (rnd1 - 0.5) * 0.52) - ph1 * 0.44)) * (1.0 - ph1) * (1.0 - ph1);
-
-    vec2 rp2 = vWorldPos.xz * 2.15 + vec2(4.3, 2.7);
-    vec2 c2Cell = floor(rp2);
-    vec2 c2Loc = fract(rp2) - 0.5;
-    vec2 rnd2 = hash22(c2Cell);
-    float ph2 = fract(uTime * 1.65 + rnd2.x * 4.1 + rnd2.y * 2.9);
-    float ring2 = smoothstep(0.042, 0.0, abs(length(c2Loc - (rnd2 - 0.5) * 0.50) - ph2 * 0.42)) * (1.0 - ph2) * (1.0 - ph2);
-
-    float rainRipple = clamp((ring1 + ring2 * 0.78) * uRain * (1.0 - foamMask * 0.65), 0.0, 0.85);
-    vec3 rippleCol = mix(vec3(0.92, 0.98, 1.0), vec3(0.62, 0.78, 0.94), uNight);
-    col = mix(col, rippleCol, rainRipple * 0.62);
-  }
-
-  float bankAlpha = 1.0 - smoothstep(0.94, 1.10, vShore);
-  float channelFade = 1.0 - smoothstep(43.0, 53.0, abs(vWorldPos.x));
-  float waterAlpha = mix(0.88, 0.95, foamMask) * bankAlpha * channelFade;
-  if (waterAlpha < 0.02) discard;
-
-  fragColor = vec4(col, waterAlpha);
-}
-`;
-
-const FOUNTAIN_WATER_VERTEX = /* glsl */ `
-out vec2 vLocalXZ;
-void main() {
-  vLocalXZ = position.xz;
-  #ifdef USE_INSTANCING
-    vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
-  #else
-    vec4 wp = modelMatrix * vec4(position, 1.0);
-  #endif
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-
-const FOUNTAIN_WATER_FRAGMENT = /* glsl */ `
-in vec2 vLocalXZ;
-out vec4 fragColor;
-
-uniform float uTime;
-uniform float uNight;
-
-void main() {
-  float r = clamp(length(vLocalXZ) * 2.0, 0.0, 1.0);
-  float ripple = sin(r * 18.0 - uTime * 4.2) * 0.5 + 0.5;
-  float ring = smoothstep(0.66, 0.94, ripple) * (1.0 - r * 0.45);
-  float rimFoam = smoothstep(0.82, 0.98, r);
-  float centerSplash = smoothstep(0.24, 0.04, r);
-
-  vec3 shallow = mix(vec3(0.24, 0.84, 0.84), vec3(0.10, 0.32, 0.48), uNight);
-  vec3 deep = mix(vec3(0.10, 0.54, 0.86), vec3(0.05, 0.18, 0.36), uNight);
-  vec3 col = mix(deep, shallow, r * 0.65 + ring * 0.35);
-  vec3 foam = mix(vec3(0.95, 0.99, 1.0), vec3(0.58, 0.72, 0.88), uNight * 0.75);
-  col = mix(col, foam, clamp(rimFoam * 0.72 + centerSplash * 0.65 + ring * 0.28, 0.0, 0.92));
-
-  fragColor = vec4(col, 0.92);
-}
-`;
-
-const HIGHLIGHT_VERTEX = /* glsl */ `
-out vec2 vUv;
-void main() {
-  vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}
-`;
-
-const HIGHLIGHT_FRAGMENT = /* glsl */ `
-in vec2 vUv;
-out vec4 fragColor;
-
-uniform vec3 uColor;
-uniform float uTime;
-uniform float uSelected;
-
-void main() {
-  vec2 p = vUv * 2.0 - 1.0;
-  float r = length(p);
-  if (r > 1.0) discard;
-
-  float angle = atan(p.y, p.x);
-  float pulse = 0.84 + 0.16 * sin(uTime * (uSelected > 0.5 ? 3.8 : 2.6));
-
-  // 외곽 발광 링
-  float outerRing = smoothstep(0.98, 0.94, r) * smoothstep(0.82, 0.89, r);
-  float dash = smoothstep(-0.1, 0.25, sin(angle * 16.0 - uTime * 2.4));
-  float ringAlpha = outerRing * mix(0.45 + dash * 0.55, 0.95, uSelected) * pulse;
-
-  // 선택 시 내부 이중 링 + 4개 심시티 코너 아크 강조
-  float innerRing = uSelected * smoothstep(0.79, 0.76, r) * smoothstep(0.69, 0.73, r) * 0.65;
-  float cornerArc = uSelected * smoothstep(0.55, 0.85, abs(cos(angle * 2.0))) * smoothstep(1.0, 0.95, r) * smoothstep(0.87, 0.91, r) * 0.55;
-
-  // 바닥 은은한 반투명 워시
-  float fill = smoothstep(0.90, 0.15, r) * mix(0.14, 0.22, uSelected);
-
-  float alpha = clamp(ringAlpha + innerRing + cornerArc + fill, 0.0, 0.92);
-  vec3 col = mix(uColor, vec3(1.0, 0.98, 0.92), (outerRing * 0.35 + cornerArc * 0.45));
-  fragColor = vec4(col, alpha);
-}
-`;
-
 export interface CircleCollider {
   readonly x: number;
   readonly z: number;
   readonly r: number;
+}
+
+export type MeadowSurfaceType = "grass" | "stone" | "wood" | "water";
+
+export interface CameraOccluder {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly height: number;
 }
 
 export type LiveWorkshopFxKind = "smoke" | "spark" | "pulse" | "alert" | "ask";
@@ -349,6 +131,10 @@ export interface MeadowSceneHandle {
   setDistrictNotePins(pins: readonly { readonly x: number; readonly z: number }[]): void;
   /** 좌표가 동/서 아치 목교 데크 위인지 판별한다 (발소리 SFX 구분용). */
   isOnBridge(x: number, z: number): boolean;
+  /** 좌표의 지면 재질을 판별한다 (돌길·광장=`stone`, 목교=`wood`, 시냇물=`water`, 초원=`grass`). */
+  getSurfaceType(x: number, z: number): MeadowSurfaceType;
+  /** 카메라 스프링-암 가림 방지용 경량 수직 실린더 목록(가로등·나무·건물·문주)을 반환한다. */
+  getCameraOccluders(): readonly CameraOccluder[];
   /** 실시간 작업/경보/질문 상태인 마을·구역의 3D 공방 FX 에미터 좌표를 반환한다. */
   getLiveWorkshopEmitters(): readonly LiveWorkshopEmitter[];
   getGroundHeight(x: number, z: number): number;
@@ -598,23 +384,57 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     emissiveIntensity: 0.65,
     roughness: 0.28,
   }));
-  const matFlameOuter = ownMat(new MeshStandardMaterial({
-    color: 0xff7b1c,
-    emissive: 0xff5a00,
-    emissiveIntensity: 1.5,
-    roughness: 0.3,
+  const matFlameOuter = markSharedMaterial(new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uCore: { value: 0 },
+      uNight: { value: 0 },
+    },
+    vertexShader: CAMPFIRE_FLAME_VERTEX,
+    fragmentShader: CAMPFIRE_FLAME_FRAGMENT,
   }));
-  const matFlameCore = ownMat(new MeshStandardMaterial({
-    color: 0xfff078,
-    emissive: 0xffd026,
-    emissiveIntensity: 1.9,
-    roughness: 0.2,
+  const matFlameCore = markSharedMaterial(new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uCore: { value: 1 },
+      uNight: { value: 0 },
+    },
+    vertexShader: CAMPFIRE_FLAME_VERTEX,
+    fragmentShader: CAMPFIRE_FLAME_FRAGMENT,
+  }));
+  const matFlameCoal = markSharedMaterial(new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uNight: { value: 0 },
+    },
+    vertexShader: CAMPFIRE_COAL_VERTEX,
+    fragmentShader: CAMPFIRE_COAL_FRAGMENT,
+  }));
+  const matFlameEmber = ownMat(new MeshBasicMaterial({
+    color: 0xffb347,
+    transparent: true,
+    opacity: 0.92,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    toneMapped: false,
   }));
   const contactShadowMat = ownMat(new MeshBasicMaterial({
     map: textures.contactShadowMap,
     transparent: true,
     depthWrite: false,
-    opacity: 0.74,
+    opacity: 0.86,
   }));
   const matCloud = ownMat(new MeshStandardMaterial({ color: 0xfafcff, roughness: 0.96 }));
   const matSmoke = ownMat(new MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.95, transparent: true, opacity: 0.52 }));
@@ -746,19 +566,82 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   bannerInstanced.count = 0;
   root.add(bannerInstanced);
 
-  const flameOuterGeo = markSharedGeometry(new ConeGeometry(0.32, 0.72, 8));
-  flameOuterGeo.translate(0, 0.36, 0);
-  const flameCoreGeo = markSharedGeometry(new ConeGeometry(0.19, 0.50, 7));
-  flameCoreGeo.translate(0, 0.25, 0);
+  /** 부드러운 물방울형 화염 껍질 지오메트리 (단순 원뿔 실루엣 제거, UV.y = 정규화 높이 0..1) */
+  function createCampfireFlameGeometry(maxRadius: number, height: number, radialSegs: number, heightSegs: number): BufferGeometry {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (let iy = 0; iy <= heightSegs; iy += 1) {
+      const v = iy / heightSegs;
+      const y = v * height;
+      // 바닥 0.45 → h=0.26에서 통통한 화염 배(1.0) → 상단 0.04 부드러운 화염 끝
+      const radiusProfile =
+        v < 0.26
+          ? 0.48 + 0.52 * Math.sin((v / 0.26) * Math.PI * 0.5)
+          : Math.pow(Math.max(0.02, 1 - (v - 0.26) / 0.74), 1.35);
+      const r = maxRadius * radiusProfile;
+      for (let ix = 0; ix <= radialSegs; ix += 1) {
+        const u = ix / radialSegs;
+        const theta = u * Math.PI * 2;
+        const c = Math.cos(theta);
+        const s = Math.sin(theta);
+        positions.push(c * r, y, s * r);
+        normals.push(c, 0.22, s);
+        uvs.push(u, v);
+      }
+    }
+
+    const row = radialSegs + 1;
+    for (let iy = 0; iy < heightSegs; iy += 1) {
+      for (let ix = 0; ix < radialSegs; ix += 1) {
+        const a = iy * row + ix;
+        const b = a + 1;
+        const c = a + row;
+        const d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("normal", new BufferAttribute(new Float32Array(normals), 3));
+    geo.setAttribute("uv", new BufferAttribute(new Float32Array(uvs), 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    return markSharedGeometry(geo);
+  }
+
+  const EMBERS_PER_FLAME = 4;
+  const flameOuterGeo = createCampfireFlameGeometry(0.42, 0.96, 10, 6);
+  const flameCoreGeo = createCampfireFlameGeometry(0.24, 0.66, 8, 5);
+  const flameCoalGeo = markSharedGeometry(new PlaneGeometry(1.18, 1.18));
+  flameCoalGeo.rotateX(-Math.PI * 0.5);
+  const flameEmberGeo = markSharedGeometry(new SphereGeometry(0.032, 5, 4));
+
   const flameOuterInst = new InstancedMesh(flameOuterGeo, matFlameOuter, MAX_ANIM_FLAMES);
   flameOuterInst.instanceMatrix.setUsage(DynamicDrawUsage);
   flameOuterInst.frustumCulled = false;
+  flameOuterInst.renderOrder = 2;
   flameOuterInst.count = 0;
   const flameCoreInst = new InstancedMesh(flameCoreGeo, matFlameCore, MAX_ANIM_FLAMES);
   flameCoreInst.instanceMatrix.setUsage(DynamicDrawUsage);
   flameCoreInst.frustumCulled = false;
+  flameCoreInst.renderOrder = 3;
   flameCoreInst.count = 0;
-  root.add(flameOuterInst, flameCoreInst);
+  const flameCoalInst = new InstancedMesh(flameCoalGeo, matFlameCoal, MAX_ANIM_FLAMES);
+  flameCoalInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  flameCoalInst.frustumCulled = false;
+  flameCoalInst.renderOrder = 1;
+  flameCoalInst.count = 0;
+  const flameEmberInst = new InstancedMesh(flameEmberGeo, matFlameEmber, MAX_ANIM_FLAMES * EMBERS_PER_FLAME);
+  flameEmberInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  flameEmberInst.frustumCulled = false;
+  flameEmberInst.renderOrder = 4;
+  flameEmberInst.count = 0;
+  root.add(flameCoalInst, flameOuterInst, flameCoreInst, flameEmberInst);
 
   const crystalInst = new InstancedMesh(unitGeos.octahedron, matCrystal, MAX_ANIM_CRYSTALS);
   crystalInst.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -1094,6 +977,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   const MAX_FIREFLIES = 64;
   const windTimeUniform = { value: 0 };
   const grassMaxHeightUniform = { value: 0.42 };
+  const meadowNightUniform = { value: 0 };
 
   function createGrassTuftGeometry(): BufferGeometry {
     const positions: number[] = [];
@@ -1131,6 +1015,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   grassMat.onBeforeCompile = (shader) => {
     shader.uniforms["uWindTime"] = windTimeUniform;
     shader.uniforms["uGrassMaxH"] = grassMaxHeightUniform;
+    shader.uniforms["uNight"] = meadowNightUniform;
     shader.vertexShader = `uniform float uWindTime;\nuniform float uGrassMaxH;\nvarying float vBladeH;\nvarying float vGust;\n` + shader.vertexShader
       .replace(
         "#include <beginnormal_vertex>",
@@ -1162,15 +1047,19 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       #endif
       `,
     );
-    shader.fragmentShader = `varying float vBladeH;\nvarying float vGust;\n` + shader.fragmentShader
+    shader.fragmentShader = `uniform float uNight;\nvarying float vBladeH;\nvarying float vGust;\n` + shader.fragmentShader
       .replace(
         "#include <color_fragment>",
         /* glsl */ `
         #include <color_fragment>
         vec3 bladeGrad = mix(vec3(0.74, 0.84, 0.70), vec3(1.16, 1.20, 0.94), smoothstep(0.0, 1.0, vBladeH));
-        // 바람이 스칠 때 잎끝이 햇살을 머금고 연둣빛으로 반짝이는 효과
-        bladeGrad *= mix(1.0, 1.10, vGust * vBladeH);
+        // 바람이 스칠 때 잎끝이 햇살을 머금고 연둣빛으로 반짝이는 효과 (밤에는 차분하게 억제)
+        bladeGrad *= mix(1.0, 1.10, vGust * vBladeH * (1.0 - uNight * 0.75));
         diffuseColor.rgb *= bladeGrad;
+        // 야간 무드 대비: 밤에 형광 녹색 채도를 차분한 지브리 미드나잇 블루/슬레이트로 톤 다운
+        float gLuma = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+        vec3 midnightBlade = mix(vec3(0.16, 0.27, 0.42), vec3(0.24, 0.38, 0.56), vBladeH) * max(0.35, gLuma * 1.45);
+        diffuseColor.rgb = mix(diffuseColor.rgb, midnightBlade, uNight * 0.72);
         `,
       )
       .replace(
@@ -1255,6 +1144,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   });
   flowerMat.onBeforeCompile = (shader) => {
     shader.uniforms["uWindTime"] = windTimeUniform;
+    shader.uniforms["uNight"] = meadowNightUniform;
     shader.vertexShader = `uniform float uWindTime;\nattribute float aPart;\nvarying float vPart;\n` + shader.vertexShader.replace(
       "#include <begin_vertex>",
       /* glsl */ `
@@ -1269,7 +1159,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       #endif
       `,
     );
-    shader.fragmentShader = `varying float vPart;\n` + shader.fragmentShader
+    shader.fragmentShader = `uniform float uNight;\nvarying float vPart;\n` + shader.fragmentShader
       .replace(
         "#include <normal_fragment_begin>",
         /* glsl */ `
@@ -1286,6 +1176,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         } else if (vPart > 1.5) {
           diffuseColor.rgb = vec3(0.99, 0.80, 0.16);
         }
+        diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.52, 0.64, 0.88), uNight * 0.60);
         `,
       );
   };
@@ -1322,6 +1213,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   let currentVillages: readonly WorldVillageSpec[] = [];
   let roadSegments: { ax: number; az: number; bx: number; bz: number; width: number }[] = [];
   let colliders: CircleCollider[] = [];
+  let grassClearZones: CircleCollider[] = [];
+  let cameraOccluders: CameraOccluder[] = [];
   const streetlampAnchors: Vector3[] = [];
   let lastHoveredDistrict: WorldDistrictSpec | null = null;
   let lastSelectedDistrict: WorldDistrictSpec | null = null;
@@ -1552,12 +1445,31 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     list.push(tf);
   }
 
-  function addContactShadow(b: InstancedBucketBuilder, x: number, z: number, radiusX: number, radiusZ = radiusX): void {
+  function addGrassClearZone(x: number, z: number, r: number): void {
+    grassClearZones.push({ x, z, r });
+  }
+
+  function addCameraOccluder(x: number, z: number, radius: number, height: number): void {
+    cameraOccluders.push({ x, z, radius, height });
+  }
+
+  function addContactShadow(
+    b: InstancedBucketBuilder,
+    x: number,
+    z: number,
+    radiusX: number,
+    radiusZ = radiusX,
+    rotY = 0,
+  ): void {
     const gy = getTerrainBaseHeight(x, z);
     if (gy < 0.02) return;
-    b.addPlane(contactShadowMat, [x, gy + 0.032, z], [radiusX * 2, 1, radiusZ * 2], undefined, {
-      renderOrder: 1,
-    });
+    b.addPlane(
+      contactShadowMat,
+      [x, gy + 0.032, z],
+      [radiusX * 2, 1, radiusZ * 2],
+      rotY !== 0 ? [0, rotY, 0] : undefined,
+      { renderOrder: 1 },
+    );
   }
 
   function addFramedWindow(b: InstancedBucketBuilder, wx: number, wy: number, wz: number, rotY = 0, scale = 1, withFlowerBox = true): void {
@@ -1632,6 +1544,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     addContactShadow(b, tx, tz, 1.44 * scale, 1.44 * scale);
+    addGrassClearZone(tx, tz, 1.15 * scale);
+    addCameraOccluder(tx, tz, 0.52 * scale, 4.6 * scale);
     if (addCollider) {
       colliders.push({ x: tx, z: tz, r: 0.42 * scale });
     }
@@ -1653,6 +1567,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     }
     addContactShadow(b, bx, bz, 0.88 * scale, 0.78 * scale);
+    addGrassClearZone(bx, bz, 0.96 * scale);
   }
 
   function addFenceRun(b: InstancedBucketBuilder, ax: number, az: number, bx: number, bz: number, posts: number): void {
@@ -1698,7 +1613,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       b.addCylinder(matLanternGlass, [0, 2.08, 0.48], [0.24, 0.24, 0.24]);
       b.addCylinder(matIron, [0, 1.94, 0.48], [0.18, 0.06, 0.18], undefined, { tapered: true });
     });
-    addContactShadow(b, lx, lz, 0.40, 0.40);
+    addContactShadow(b, lx, lz, 0.44, 0.44);
+    addGrassClearZone(lx, lz, 0.68);
+    addCameraOccluder(lx, lz, 0.30, 2.65);
   }
 
   function addWoodenBench(b: InstancedBucketBuilder, bx: number, bz: number, yaw: number): void {
@@ -1712,7 +1629,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addBox(matTimber, [lx, 0.29, -0.15], [0.10, 0.58, 0.10]);
       }
     });
-    addContactShadow(b, bx, bz, 0.84, 0.50);
+    addContactShadow(b, bx, bz, 0.90, 0.54, yaw);
+    addGrassClearZone(bx, bz, 1.35);
   }
 
   function registerBanner(x: number, y: number, z: number, baseRotY: number, colorHex: number, width = 0.92, height = 0.46): void {
@@ -1838,6 +1756,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     addContactShadow(b, hx, hz + 0.15, 3.55, 2.75);
+    addGrassClearZone(hx, hz + 0.15, 3.75);
+    addCameraOccluder(hx, hz + 0.15, 2.85, 5.4);
     colliders.push({ x: hx, z: hz + 0.15, r: 2.95 });
 
     // 우측 풍차 시계탑 (길드 회관 우측 처마 +2.82m와 날개 반경 2.11m 완전 분리)
@@ -1876,6 +1796,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     parent.add(windmillBlades);
     addContactShadow(b, mx, mz, 2.05, 2.05);
+    addGrassClearZone(mx, mz, 2.25);
+    addCameraOccluder(mx, mz, 1.65, 6.4);
     colliders.push({ x: mx, z: mz, r: 1.55 });
   }
 
@@ -1930,6 +1852,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     }
     addContactShadow(b, wx, wz, 1.35, 1.35);
+    addGrassClearZone(wx, wz, 1.55);
+    addCameraOccluder(wx, wz, 0.95, 2.5);
     colliders.push({ x: wx, z: wz, r: 1.02 });
 
     // 광장 모닥불 (2.8, 1.0)
@@ -1951,6 +1875,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
     registerFlame(fx, fy + 0.12, fz, 1.0);
     addContactShadow(b, fx, fz, 1.15, 1.15);
+    addGrassClearZone(fx, fz, 1.70);
     colliders.push({ x: fx, z: fz, r: 0.92 });
 
     addWoodenBench(b, fx + 1.95, fz - 0.15, -Math.PI * 0.45);
@@ -1966,6 +1891,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       b.addBox(matWood, [-0.20, 1.20, 0], [0.86, 0.20, 0.06], [0, -0.45, 0]);
     });
     addContactShadow(b, sx, sz, 0.55, 0.55);
+    addGrassClearZone(sx, sz, 0.88);
     colliders.push({ x: sx, z: sz, r: 0.38 });
 
     // 5. 중앙 광장 3D 길드 퀘스트 게시판 (WORLD_NOTICE_BOARD_POS: 북동쪽 가로등 옆, 풍차 비충돌)
@@ -2034,7 +1960,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     }
     questAlertGroup.position.set(nbx, nby + 3.05, nbz);
-    addContactShadow(b, nbx, nbz, 1.25, 0.78);
+    addContactShadow(b, nbx, nbz, 1.25, 0.78, nbYaw);
+    addGrassClearZone(nbx, nbz, 1.55);
+    addCameraOccluder(nbx, nbz, 0.95, 2.7);
     colliders.push({ x: nbx, z: nbz, r: 0.92 });
   }
 
@@ -2042,6 +1970,12 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   function buildBrookBridgesAndFlora(b: InstancedBucketBuilder): void {
     const hasCustomBridge = assetRegistry.hasCustomModel("bridge");
     for (const bridge of BRIDGES) {
+      // 다리 양끝 진입로와 중앙부 풀/꽃 관통 제거
+      const endA = fromBridgeLocal(bridge, 0, -bridge.halfSpan);
+      const endB = fromBridgeLocal(bridge, 0, bridge.halfSpan);
+      addGrassClearZone(endA.x, endA.z, 2.25);
+      addGrassClearZone(endB.x, endB.z, 2.25);
+      addGrassClearZone(bridge.x, bridge.z, 2.40);
       if (hasCustomBridge) {
         // bridge.glb는 X축 스팬 6.3m, Z축 폭 2.41m 기준 → 로컬 Z 스팬과 90° 정렬 후 실제 강폭에 맞춰 스케일링
         queueInstancedSlot("bridge", {
@@ -2472,8 +2406,10 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     addContactShadow(b, d.x, d.z, d.radius * 0.78, d.radius * 0.78);
+    addGrassClearZone(d.x, d.z, d.radius * 0.85);
     if (d.tier >= 1) {
       colliders.push({ x: d.x, z: d.z, r: d.radius * 0.42 });
+      addCameraOccluder(d.x, d.z, d.radius * 0.62, districtRoofHeight(d.tier) + 0.6);
     }
     void parent;
   }
@@ -2570,7 +2506,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           scale: 1.0,
           roofTintHex: toneHex,
         });
-        addContactShadow(b, gx, gz, isStoneWall ? 2.55 : 2.15, 0.95);
+        addContactShadow(b, gx, gz, isStoneWall ? 2.55 : 2.15, 0.95, gateFaceYaw);
       }
     } else {
       for (const side of [-1, 1]) {
@@ -2599,6 +2535,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addBox(matRoofBase, [gx, gpy + 2.48, gz], [gateHalfW * 2 + 0.94, 0.18, 0.54], [0, gateFaceYaw, 0], { color: toneHex });
       }
     }
+    // 마을 정문 양쪽 문주 카메라 가림 방지 및 입구 잔디 정리
+    addGrassClearZone(gx, gz, 2.55);
+    for (const side of [-1, 1]) {
+      addCameraOccluder(gx + perpX * gateHalfW * side, gz + perpZ * gateHalfW * side, 0.46, isStoneWall ? 3.8 : 3.2);
+    }
 
     // 마을 입구 푯말 (오른쪽 바깥, Blender village-signpost.glb 우선)
     const signX = gx + perpX * (gateHalfW + 1.05) + gateCos * 0.45;
@@ -2622,6 +2563,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         });
       }
       addContactShadow(b, signX, signZ, 0.56, 0.56);
+      addGrassClearZone(signX, signZ, 1.12);
     }
 
     // 입구 가로등 1기 (성채 바이옴이면 입구 양쪽 + 내부 추가 가로등으로 웅장한 야경 연출)
@@ -2774,6 +2716,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           scale: isSakuraBiome ? 0.96 : 0.86,
         });
         addContactShadow(b, fbx, fbz, 0.85, 0.85);
+        addGrassClearZone(fbx, fbz, 1.15);
       }
     }
 
@@ -2818,6 +2761,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addSphere(matBrass, [0, 3.74, 0], [0.26, 0.26, 0.26]);
       });
       addContactShadow(b, zone.x, zone.z, 3.05, 3.05);
+      addGrassClearZone(zone.x, zone.z, 3.25);
+      addCameraOccluder(zone.x, zone.z, 2.2, 3.8);
       addWoodenBench(b, zone.x - 3.1, zone.z + 0.6, 0.65);
       addTree(b, parent, zone.x + 3.6, zone.z + 1.2, 1.12, "blossom");
       addTree(b, parent, zone.x - 3.6, zone.z + 2.0, 1.02, "blossom");
@@ -2859,6 +2804,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       b.addBox(matStoneDark, [0.85, 2.55, -0.45], [0.42, 1.25, 0.42], undefined, { castShadow: true });
     });
     addContactShadow(b, cx, cz, 2.05, 1.85);
+    addGrassClearZone(cx, cz, 2.25);
+    addCameraOccluder(cx, cz, 1.85, 3.4);
     colliders.push({ x: cx, z: cz, r: 1.78 });
 
     // 2. 캠프 상징 컬러 깃발
@@ -2958,6 +2905,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
     streetlampAnchors.length = 0;
     colliders = [];
+    grassClearZones = [];
+    cameraOccluders = [];
     animatedBanners = [];
     animatedFlames = [];
     animatedCrystals = [];
@@ -3165,6 +3114,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           scale: fsc,
         });
         addContactShadow(bucketBuilder, fx, fz, 0.92 * fsc, 0.92 * fsc);
+        addGrassClearZone(fx, fz, 1.18 * fsc);
       }
     }
 
@@ -3193,6 +3143,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     flameOuterInst.count = animatedFlames.length;
     flameCoreInst.count = animatedFlames.length;
+    flameCoalInst.count = animatedFlames.length;
+    flameEmberInst.count = animatedFlames.length * EMBERS_PER_FLAME;
 
     crystalInst.count = animatedCrystals.length;
     crystalRingInst.count = animatedCrystals.length;
@@ -3231,6 +3183,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (rd.dist < rd.halfWidth + 0.28) continue;
       if (villages.some((v) => Math.hypot(gx - v.x, gz - v.z) < v.radius - 0.15)) continue;
       if (colliders.some((c) => Math.hypot(gx - c.x, gz - c.z) < c.r + 0.25)) continue;
+      if (grassClearZones.some((z) => Math.hypot(gx - z.x, gz - z.z) < z.r)) continue;
 
       dummy.position.set(gx, gy - 0.02, gz);
       dummy.rotation.set(
@@ -3271,6 +3224,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (rd.dist < rd.halfWidth + 0.45) continue;
       if (villages.some((v) => v.overallTier >= 1 && Math.hypot(fx - v.x, fz - v.z) < v.radius - 0.25)) continue;
       if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.35)) continue;
+      if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.15)) continue;
 
       dummy.position.set(fx, fy - 0.02, fz);
       dummy.rotation.set(0, hash2(fx, fz) * Math.PI * 2, 0);
@@ -3405,6 +3359,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   const animScale = new Vector3();
   const animSpinQuat = new Quaternion();
   const zAxisVec = new Vector3(0, 0, 1);
+  const terrainDayTint = new Color(0xffffff);
+  const terrainNightTint = new Color(0x88a4cc);
 
   scene.add(root);
 
@@ -3490,6 +3446,30 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     isOnBridge(x, z) {
       return getBridgeDeckHeight(x, z) !== null;
     },
+    getSurfaceType(x, z) {
+      if (getBridgeDeckHeight(x, z) !== null) return "wood";
+      if (Math.abs(x) < 55) {
+        const bp = brookProfile(x);
+        if (Math.abs(z - bp.centerZ) < bp.halfWidth + 0.25 && getTerrainBaseHeight(x, z) < 0.06) {
+          return "water";
+        }
+      }
+      if (Math.hypot(x, z + 1.6) < 4.8) return "stone";
+      const rd = minRoadDistance(x, z);
+      if (rd.dist < rd.halfWidth + 0.35) return "stone";
+      for (const v of currentVillages) {
+        if (
+          (v.overallTier >= 2 || v.biome === "citadel" || v.biome === "sakura")
+          && Math.hypot(x - v.x, z - v.z) < v.radius
+        ) {
+          return "stone";
+        }
+      }
+      return "grass";
+    },
+    getCameraOccluders() {
+      return cameraOccluders;
+    },
     getLiveWorkshopEmitters() {
       return liveWorkshopEmitters;
     },
@@ -3498,6 +3478,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     resolveMovement,
     update(dt, elapsed, nightFactor, sunDir) {
       windTimeUniform.value = elapsed;
+      meadowNightUniform.value = nightFactor;
+      terrainMat.color.copy(terrainDayTint).lerp(terrainNightTint, nightFactor * 0.72);
+      contactShadowMat.opacity = 0.86 - nightFactor * 0.30;
       windmillBlades.rotation.z = -elapsed * 0.95;
       for (const pivot of customBladePivots) {
         pivot.rotation.z = -elapsed * 0.95;
@@ -3513,24 +3496,57 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         selectedHighlightMat.uniforms["uTime"]!.value = elapsed;
       }
 
-      // 모닥불 다층 불꽃 애니메이션 (InstancedMesh)
+      // 모닥불 이중 셰이더 화염 + 숨 쉬는 숯불 디스크 + 상승 불티(ember)
       if (animatedFlames.length > 0) {
+        matFlameOuter.uniforms["uTime"]!.value = elapsed;
+        matFlameOuter.uniforms["uNight"]!.value = nightFactor;
+        matFlameCore.uniforms["uTime"]!.value = elapsed;
+        matFlameCore.uniforms["uNight"]!.value = nightFactor;
+        matFlameCoal.uniforms["uTime"]!.value = elapsed;
+        matFlameCoal.uniforms["uNight"]!.value = nightFactor;
+
+        let emberIdx = 0;
         for (let i = 0; i < animatedFlames.length; i += 1) {
           const fl = animatedFlames[i]!;
-          const f1 = (0.88 + Math.sin(elapsed * 13.5 + fl.phase) * 0.16) * fl.scale;
-          const f2 = (0.92 + Math.cos(elapsed * 17.0 + fl.phase) * 0.14) * fl.scale;
-          animPos.set(fl.x, fl.y, fl.z);
+          const f1 = (0.94 + Math.sin(elapsed * 9.5 + fl.phase) * 0.10) * fl.scale;
+          const f2 = (0.96 + Math.cos(elapsed * 12.8 + fl.phase) * 0.10) * fl.scale;
+          animPos.set(fl.x, fl.y - 0.04, fl.z);
           animQuat.identity();
           animScale.set(fl.scale, f1, fl.scale);
           animMat.compose(animPos, animQuat, animScale);
           flameOuterInst.setMatrixAt(i, animMat);
 
+          animPos.set(fl.x, fl.y - 0.02, fl.z);
           animScale.set(fl.scale, f2, fl.scale);
           animMat.compose(animPos, animQuat, animScale);
           flameCoreInst.setMatrixAt(i, animMat);
+
+          animPos.set(fl.x, fl.y - 0.075, fl.z);
+          animScale.set(fl.scale, 1, fl.scale);
+          animMat.compose(animPos, animQuat, animScale);
+          flameCoalInst.setMatrixAt(i, animMat);
+
+          // 모닥불당 4개 상승 불티(ember) 나선형 부유
+          for (let e = 0; e < EMBERS_PER_FLAME; e += 1) {
+            const seed = fl.phase * 1.7 + e * 1.618;
+            const life = ((elapsed * (0.48 + (e % 2) * 0.14) + seed * 0.37) % 1 + 1) % 1;
+            const spiralAng = elapsed * 2.6 + seed * 3.0 + life * 4.2;
+            const rad = (0.10 + life * 0.28) * fl.scale;
+            const ex = fl.x + Math.cos(spiralAng) * rad;
+            const ez = fl.z + Math.sin(spiralAng) * rad;
+            const ey = fl.y + (0.14 + life * 1.75) * fl.scale;
+            const fade = Math.sin(life * Math.PI) * (0.75 + nightFactor * 0.45);
+            animPos.set(ex, ey, ez);
+            animScale.setScalar(Math.max(0.01, fade * fl.scale));
+            animMat.compose(animPos, animQuat, animScale);
+            flameEmberInst.setMatrixAt(emberIdx, animMat);
+            emberIdx += 1;
+          }
         }
         flameOuterInst.instanceMatrix.needsUpdate = true;
         flameCoreInst.instanceMatrix.needsUpdate = true;
+        flameCoalInst.instanceMatrix.needsUpdate = true;
+        flameEmberInst.instanceMatrix.needsUpdate = true;
       }
 
       // 깃발 바람 물결 (InstancedMesh)
@@ -3798,8 +3814,15 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       bannerInstGeo.dispose();
       flameOuterInst.dispose();
       flameCoreInst.dispose();
+      flameCoalInst.dispose();
+      flameEmberInst.dispose();
       flameOuterGeo.dispose();
       flameCoreGeo.dispose();
+      flameCoalGeo.dispose();
+      flameEmberGeo.dispose();
+      matFlameOuter.dispose();
+      matFlameCore.dispose();
+      matFlameCoal.dispose();
       crystalInst.dispose();
       crystalRingInst.dispose();
       routineRotorInst.dispose();

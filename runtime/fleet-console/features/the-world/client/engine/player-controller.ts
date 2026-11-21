@@ -30,6 +30,13 @@ export interface PlayerState {
   onGround: boolean;
 }
 
+export interface CameraOccluder {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly height: number;
+}
+
 export interface PlayerAndCameraController {
   readonly player: PlayerState;
   readonly cameraTarget: Vector3;
@@ -43,6 +50,7 @@ export interface PlayerAndCameraController {
     readonly camera: PerspectiveCamera;
     readonly getGroundHeight: (x: number, z: number) => number;
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
+    readonly getCameraOccluders?: (() => readonly CameraOccluder[]) | undefined;
     readonly onDustParticle: (x: number, y: number, z: number) => void;
     readonly onOverviewAutoExit?: (() => void) | undefined;
     readonly onJump?: (() => void) | undefined;
@@ -110,6 +118,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let camDist = 9.8;
   let targetCamDist = 9.8;
   let smoothedEffDist = 9.8;
+  let springArmDist = 9.8;
   let smoothedEffPitch = 0.28;
   let smoothedFov = 44;
   let cineProgress = 0;
@@ -581,10 +590,61 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         opts.camera.updateProjectionMatrix();
       }
 
-      const cxPos = cameraTarget.x + Math.sin(effYaw) * Math.cos(effPitch) * effDist;
-      const czPos = cameraTarget.z + Math.cos(effYaw) * Math.cos(effPitch) * effDist;
+      // 카메라 스프링-암(Spring-Arm) 가림 방지: 가로등·나무·건물 실린더 관통 시 부드럽게 안쪽으로 당김
+      let finalDist = effDist;
+      const useSpringArm =
+        opts.lifecycle === "open"
+        && !overviewMode
+        && opts.cameraMode === "follow"
+        && opts.getCameraOccluders !== undefined;
+      if (useSpringArm) {
+        const occluders = opts.getCameraOccluders!();
+        const dirX = Math.sin(effYaw) * Math.cos(effPitch);
+        const dirY = Math.sin(effPitch);
+        const dirZ = Math.cos(effYaw) * Math.cos(effPitch);
+        const segDx = dirX * effDist;
+        const segDz = dirZ * effDist;
+        const aQuad = segDx * segDx + segDz * segDz;
+        let minAllowedDist = effDist;
+
+        if (aQuad > 1e-4 && occluders.length > 0) {
+          for (let i = 0; i < occluders.length; i += 1) {
+            const occ = occluders[i]!;
+            const fx = cameraTarget.x - occ.x;
+            const fz = cameraTarget.z - occ.z;
+            const padR = occ.radius + 0.36;
+            const cQuad = fx * fx + fz * fz - padR * padR;
+            // 이미 타깃 자체가 실린더 안에 있는 특수 경우(예: 벤치 바로 옆)는 건너뜀
+            if (cQuad <= 0) continue;
+            const bQuad = 2 * (fx * segDx + fz * segDz);
+            const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+            if (disc < 0) continue;
+            const tHit = (-bQuad - Math.sqrt(disc)) / (2 * aQuad);
+            if (tHit <= 0.08 || tHit >= 1.0) continue;
+            const yHit = cameraTarget.y + dirY * (tHit * effDist);
+            const occBaseY = opts.getGroundHeight(occ.x, occ.z);
+            if (yHit <= occBaseY + occ.height + 0.35) {
+              const pulled = Math.max(2.35, tHit * effDist - 0.38);
+              if (pulled < minAllowedDist) {
+                minAllowedDist = pulled;
+              }
+            }
+          }
+        }
+
+        const armLerp = opts.reducedMotion
+          ? 1
+          : 1 - Math.exp(-opts.dt * (minAllowedDist < springArmDist ? 18.0 : 5.2));
+        springArmDist += (minAllowedDist - springArmDist) * armLerp;
+        finalDist = Math.min(effDist, springArmDist);
+      } else {
+        springArmDist = effDist;
+      }
+
+      const cxPos = cameraTarget.x + Math.sin(effYaw) * Math.cos(effPitch) * finalDist;
+      const czPos = cameraTarget.z + Math.cos(effYaw) * Math.cos(effPitch) * finalDist;
       const groundUnderCam = opts.getGroundHeight(cxPos, czPos);
-      const cyPos = Math.max(groundUnderCam + 0.85, cameraTarget.y + Math.sin(effPitch) * effDist);
+      const cyPos = Math.max(groundUnderCam + 0.85, cameraTarget.y + Math.sin(effPitch) * finalDist);
 
       opts.camera.position.set(cxPos, cyPos, czPos);
       opts.camera.lookAt(cameraTarget);
