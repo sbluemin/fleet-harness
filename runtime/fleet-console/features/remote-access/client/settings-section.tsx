@@ -1010,9 +1010,30 @@ function RemoteShareFlow({
 
             {isWarnableLocalPort(draft.listenPort) ? <p className="remote-card-alert">{t("settings.remote.listenPrivileged")}</p> : null}
 
-            {/* 대시보드에서 고급 항목만 바꾼 경우에도 바로 적용/되돌리기가 가능해야 한다. */}
+            {/* 대시보드에서 고급 항목만 바꾼 경우에도 바로 적용/되돌리기가 가능해야 한다.
+                공개 엔드포인트가 켜진 상태라면 로컬 수신 주소·포트 변경 시 포워딩 규칙과 확인 체크가 다시 필요하다. */}
             {showDashboard && dirty ? (
               <>
+                {draft.publicEndpointEnabled ? (
+                  <>
+                    {presentation.forward === null ? null : <RemoteForwardRuleCard rule={presentation.forward} t={t} />}
+                    <label className="remote-acknowledgment">
+                      <input
+                        type="checkbox"
+                        checked={draft.acknowledgment !== null}
+                        disabled={saving || presentation.origin === null}
+                        onChange={(event) => acknowledge(event.target.checked)}
+                      />
+                      <span>{t("settings.remote.acknowledgment")}</span>
+                    </label>
+                  </>
+                ) : null}
+                {stale ? (
+                  <div className="remote-stale" role="alert">
+                    <span>{t("settings.remote.draft.stale")}</span>
+                    <button type="button" className="remote-create is-quiet" onClick={discard}>{t("settings.remote.draft.reload")}</button>
+                  </div>
+                ) : null}
                 {shelf && shelf.kind !== "stop" ? (
                   <RemoteConsequenceShelf
                     kind={shelf.kind}
