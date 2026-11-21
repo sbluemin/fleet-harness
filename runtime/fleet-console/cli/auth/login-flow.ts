@@ -23,19 +23,19 @@ interface AuthCliDefinition {
 
 export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>> = {
   opencode: {
-    label: "OpenCode Go for AI Gateway",
+    label: "OpenCode Go for Model Gateway",
     shortName: "OpenCode Go",
     providerId: OPENCODE_AUTH_PROVIDER_ID,
     validate: validateOpencodeGoAuthKey,
   },
   gemini: {
-    label: "Gemini API key for AI Gateway",
+    label: "Gemini API key for Model Gateway",
     shortName: "Gemini",
     providerId: GEMINI_AUTH_PROVIDER_ID,
     validate: validateGeminiAuthKey,
   },
   anthropic: {
-    label: "Anthropic API key for AI Gateway",
+    label: "Anthropic API key for Model Gateway",
     shortName: "Anthropic",
     providerId: ANTHROPIC_AUTH_PROVIDER_ID,
     validate: validateAnthropicAuthKey,

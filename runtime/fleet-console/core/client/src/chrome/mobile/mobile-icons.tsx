@@ -33,6 +33,7 @@ const PATHS = {
   moon: <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" />,
   text: <path d="M4 18l5-12 5 12M6 14h6M15 18v-6a2.5 2.5 0 0 1 5 0v6M15 15h5" />,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" /></>,
+  remote: <><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none" /><path d="M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7M5.3 5.5a9.2 9.2 0 0 0 0 13M18.7 5.5a9.2 9.2 0 0 1 0 13" /></>,
   layout: <><rect x="3" y="4" width="18" height="12" rx="1.5" /><rect x="8" y="12" width="7" height="9" rx="1.5" /></>,
   harness: <path d="M8 3v4M16 3v4M6 7h12v5a6 6 0 0 1-12 0z M12 18v3" />,
   gate: <path d="M4 20V9l8-5 8 5v11M9 20v-6h6v6" />,

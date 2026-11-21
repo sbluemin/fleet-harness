@@ -259,6 +259,6 @@ export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: 
     if (roster.some((group) => group.id === modelRosterGroupId("claude") || group.id === modelRosterGroupId("anthropic"))) models.warmClaudeVersions?.();
     ctx.host.http.writeJson(res, 200, { target, roster });
     return true;
-  }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   return { notify: () => ctx.host.events.publish(MODEL_ROSTER_CHANGED_CHANNEL, {}) };
 }

@@ -21,7 +21,7 @@ export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}):
   const colorEnabled = resolveColorEnabled(options);
   const lines = [
     ...paintFleetHelpBanner(colorEnabled),
-    dim(`Fleet AI Gateway · ${release.version} · ${release.channel}`, colorEnabled),
+    dim(`Fleet Model Gateway · ${release.version} · ${release.channel}`, colorEnabled),
     "",
     dim("One Anthropic-compatible endpoint over your Codex, xAI, and", colorEnabled),
     dim("OpenCode Go subscriptions and your Gemini or Anthropic API key. Same configuration the Console screen edits.", colorEnabled),

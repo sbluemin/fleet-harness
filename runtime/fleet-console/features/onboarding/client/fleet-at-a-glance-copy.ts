@@ -148,7 +148,7 @@ const scenesKo: readonly FleetGlanceSceneCopy[] = [
     tech: "Harness Engineering",
     title: "하네스 엔지니어링 · 모델을 겹겹이 감싸요",
     body: "같은 모델도 어떤 규칙과 도구, 어떤 격리 안에서 일하느냐에 따라 결과가 달라져요. 플릿은 작전 구역마다 규칙과 절차를 두고, 모델 선택과 사용량까지 관리해요.",
-    tags: ["작전 구역별 CLAUDE.md", "skills", "MCP 도구", "worktree 격리", "AI Gateway 라우팅", "Quota"],
+    tags: ["작전 구역별 CLAUDE.md", "skills", "MCP 도구", "worktree 격리", "모델 게이트웨이 라우팅", "Quota"],
     rest: 4.5,
     canvas: {
       model: "모델",
@@ -157,7 +157,7 @@ const scenesKo: readonly FleetGlanceSceneCopy[] = [
       shell1: "도구와 격리",
       shell1Sub: "MCP 도구 · worktree 격리",
       shell2: "모델과 사용량",
-      shell2Sub: "AI Gateway 라우팅 · Quota",
+      shell2Sub: "모델 게이트웨이 라우팅 · Quota",
     },
   },
   {
@@ -222,7 +222,7 @@ const scenesKo: readonly FleetGlanceSceneCopy[] = [
     chapter: "AI 엔지니어링 기법과 플릿",
     tech: "Agent Engineering",
     title: "에이전트 엔지니어링 · 일을 나눠 알맞은 모델에게",
-    body: "사령관, 지휘관, 구성원이 각자 맡은 일만 해요. AI Gateway는 프리즘처럼 미션의 난이도를 보고 알맞은 모델로 나눠 보내요. 화면 조작과 브라우저 도구도 쓸 수 있어요.",
+    body: "사령관, 지휘관, 구성원이 각자 맡은 일만 해요. 모델 게이트웨이는 프리즘처럼 미션의 난이도를 보고 알맞은 모델로 나눠 보내요. 화면 조작과 브라우저 도구도 쓸 수 있어요.",
     tags: ["역할 분리", "난이도별 모델 라우팅", "태스크포스", "Computer Use", "Browser"],
     rest: 4.5,
     canvas: {
@@ -230,7 +230,7 @@ const scenesKo: readonly FleetGlanceSceneCopy[] = [
       light: "가벼운 모델",
       balanced: "균형 모델",
       strong: "강한 모델",
-      gateway: "AI Gateway",
+      gateway: "모델 게이트웨이",
       role0: "사령관",
       role0Sub: "방향과 판단",
       role1: "지휘관",
@@ -330,7 +330,7 @@ const scenesEn: readonly FleetGlanceSceneCopy[] = [
     tech: "Harness Engineering",
     title: "Harness engineering · layers wrapped around the model",
     body: "The same model performs differently depending on the rules, tools, and isolation it works inside. Fleet sets rules and routines per theater, and manages model selection and usage too.",
-    tags: ["Per-theater CLAUDE.md", "skills", "MCP tools", "Worktree isolation", "AI Gateway routing", "Quota"],
+    tags: ["Per-theater CLAUDE.md", "skills", "MCP tools", "Worktree isolation", "Model Gateway routing", "Quota"],
     rest: 4.5,
     canvas: {
       model: "Model",
@@ -339,7 +339,7 @@ const scenesEn: readonly FleetGlanceSceneCopy[] = [
       shell1: "Tools & isolation",
       shell1Sub: "MCP tools · worktree isolation",
       shell2: "Models & usage",
-      shell2Sub: "AI Gateway routing · Quota",
+      shell2Sub: "Model Gateway routing · Quota",
     },
   },
   {
@@ -404,7 +404,7 @@ const scenesEn: readonly FleetGlanceSceneCopy[] = [
     chapter: "AI engineering, in Fleet",
     tech: "Agent Engineering",
     title: "Agent engineering · split the work, match the model",
-    body: "Commodores, commanders, and members each do their own job. Like a prism, the AI Gateway looks at each mission's difficulty and routes it to a fitting model. Screen control and browser tools are available too.",
+    body: "Commodores, commanders, and members each do their own job. Like a prism, the Model Gateway looks at each mission's difficulty and routes it to a fitting model. Screen control and browser tools are available too.",
     tags: ["Separated roles", "Difficulty-based model routing", "TaskForce", "Computer Use", "Browser"],
     rest: 4.5,
     canvas: {
@@ -412,7 +412,7 @@ const scenesEn: readonly FleetGlanceSceneCopy[] = [
       light: "Light model",
       balanced: "Balanced model",
       strong: "Strong model",
-      gateway: "AI Gateway",
+      gateway: "Model Gateway",
       role0: "Commodore",
       role0Sub: "Directs & judges",
       role1: "Commander",
@@ -443,7 +443,7 @@ const summaryKo: readonly FleetGlanceSummaryRow[] = [
   { icon: "comet", title: "루프 엔지니어링", body: "증거로 완료 기준을 채울 때까지 돌아요", detail: "계획 → 미션 → 증거 → 인계" },
   { icon: "spiro", title: "이중 루프", body: "일하는 바퀴 위에서 배우는 바퀴가 돌아요", detail: "회고 → learning-harvest" },
   { icon: "stars", title: "그래프 엔지니어링", body: "선행 관계로 잇고, 기다릴 필요 없는 건 동시에", detail: "미션 그래프 · 후속 목표" },
-  { icon: "prism", title: "에이전트 엔지니어링", body: "역할을 나누고 일에 맞는 모델을 골라요", detail: "역할 · AI Gateway 라우팅" },
+  { icon: "prism", title: "에이전트 엔지니어링", body: "역할을 나누고 일에 맞는 모델을 골라요", detail: "역할 · 모델 게이트웨이 라우팅" },
 ];
 
 const summaryEn: readonly FleetGlanceSummaryRow[] = [
@@ -452,7 +452,7 @@ const summaryEn: readonly FleetGlanceSummaryRow[] = [
   { icon: "comet", title: "Loop engineering", body: "Circles until evidence fills the done criteria", detail: "Plan → mission → evidence → handoff" },
   { icon: "spiro", title: "Double loop", body: "A learning wheel turns above the working wheel", detail: "Retrospective → learning-harvest" },
   { icon: "stars", title: "Graph engineering", body: "Linked by prerequisites; independent ones run together", detail: "Mission graph · follow-ups" },
-  { icon: "prism", title: "Agent engineering", body: "Split roles, route each job to a fitting model", detail: "Roles · AI Gateway routing" },
+  { icon: "prism", title: "Agent engineering", body: "Split roles, route each job to a fitting model", detail: "Roles · Model Gateway routing" },
 ];
 
 export function fleetGlanceSummary(locale: ConsoleLocale): readonly FleetGlanceSummaryRow[] {

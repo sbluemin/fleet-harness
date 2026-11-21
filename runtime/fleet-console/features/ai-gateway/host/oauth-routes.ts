@@ -83,10 +83,10 @@ export function registerConsoleOAuthRoutes(
     }
     return true;
   }, [
-    { method: "POST", path: "/start", summary: `Start ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/status", summary: `Read ${label} sign-in progress.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/cancel", summary: `Cancel ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" },
-    ...(oauth.paste ? [{ method: "POST", path: "/paste", summary: `Pass the code a person copied from the ${label} sign-in page.`, category: "AI Gateway", gate: "origin-write", transport: "http" } as const] : []),
-    ...(oauth.logout ? [{ method: "POST", path: "/logout", summary: `Remove the local ${label} sign-in.`, category: "AI Gateway", gate: "origin-write", transport: "http" } as const] : []),
+    { method: "POST", path: "/start", summary: `Start ${label} sign-in.`, category: "Model Gateway", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/status", summary: `Read ${label} sign-in progress.`, category: "Model Gateway", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/cancel", summary: `Cancel ${label} sign-in.`, category: "Model Gateway", gate: "origin-write", transport: "http" },
+    ...(oauth.paste ? [{ method: "POST", path: "/paste", summary: `Pass the code a person copied from the ${label} sign-in page.`, category: "Model Gateway", gate: "origin-write", transport: "http" } as const] : []),
+    ...(oauth.logout ? [{ method: "POST", path: "/logout", summary: `Remove the local ${label} sign-in.`, category: "Model Gateway", gate: "origin-write", transport: "http" } as const] : []),
   ]);
 }

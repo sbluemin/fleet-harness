@@ -64,7 +64,7 @@ export async function runGatewayInteractive(
     return 1;
   }
 
-  intro("Fleet AI Gateway");
+  intro("Fleet Model Gateway");
   log.message(deps.store.path);
 
   for (;;) {
