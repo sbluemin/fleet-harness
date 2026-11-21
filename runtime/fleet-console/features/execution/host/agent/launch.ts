@@ -1,5 +1,6 @@
 import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS } from "@fleet-console/ai-gateway";
 import type { GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
+import type { ClaudeGatewayEffort } from "@fleet-console/agent-runtime/claude";
 import { OBJECTIVE_PEER_TOOLS, prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "@fleet-console/agent-runtime/fleet";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
@@ -25,6 +26,22 @@ export interface ChatSessionPreparationDeps {
   readonly claudeCodeDisabledAgents?: readonly string[];
   readonly disableAutoMemory?: boolean;
   readonly objectiveMessaging?: boolean;
+}
+
+const WIRE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+/**
+ * 새 세션 트랙의 launch 설정을 Chat Mode SDK 시드로 옮긴다.
+ */
+export type ChatLaunchEffortResolution = {
+  readonly effort: ClaudeGatewayEffort;
+};
+
+export function resolveChatLaunchEffort(value: string): ChatLaunchEffortResolution | undefined {
+  if (value.length === 0) return undefined;
+  return (WIRE_EFFORTS as readonly string[]).includes(value)
+    ? { effort: value as ClaudeGatewayEffort }
+    : undefined;
 }
 
 export function isGatewayLaunchEffortAllowed(
