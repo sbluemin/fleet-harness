@@ -43,6 +43,7 @@ export {
 export {
   type AgentCliMetadata,
   getAgentCliIds,
+  getAgentCliInjectionCapability,
   getAgentCliMetadata,
   getDefaultAgentCliId,
   parseAgentCliId,
@@ -55,9 +56,6 @@ export {
   NATIVE_CLAUDE_MODEL_ALIASES,
   resolveNativeClaudeModelAlias,
 } from "./agent-cli/claude/definitions.js";
-
-// Agent CLI 주입 능력 맵
-export { getAgentCliInjectionCapability } from "./agent-cli/capabilities.js";
 
 // Agent CLI 프로파일/인자 주입 조립
 export {

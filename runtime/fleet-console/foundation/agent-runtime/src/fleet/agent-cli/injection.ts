@@ -17,7 +17,7 @@ import {
   type LaunchPromptDirectoryAllocator,
 } from "./prompt.js";
 import { isHostSessionToolAllowed } from "../tools.js";
-import { getAgentCliInjectionCapability } from "./capabilities.js";
+import { getAgentCliInjectionCapability } from "./registry.js";
 import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
   AgentCliInjectionContext,

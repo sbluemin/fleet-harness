@@ -1,5 +1,5 @@
 import { claudeCli } from "./claude/definitions.js";
-import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
+import type { AgentCliDefinition, AgentCliId, AgentCliInjectionCapability, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
   readonly cliId?: string;
@@ -19,6 +19,19 @@ const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
   "claude": claudeCli,
 };
+
+const AGENT_CLI_INJECTION_CAPABILITIES: Record<AgentCliId, AgentCliInjectionCapability> = {
+  claude: {
+    builderId: "claude",
+    enabled: true,
+  },
+};
+
+export function getAgentCliInjectionCapability(
+  cliId: AgentCliId,
+): AgentCliInjectionCapability {
+  return AGENT_CLI_INJECTION_CAPABILITIES[cliId];
+}
 
 export async function resolveAgentCliProfile(
   env: NodeJS.ProcessEnv,
