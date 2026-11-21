@@ -572,8 +572,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           ))}
         </div>
       ) : null}
-      {/* 지금 할 일(넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
-      {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
+      {/* 지금 할 일(개시)은 목표 탭·단독 목표 화면에서만 보여, 구성원 탭 등 모든 탭 상단에 중복 노출되지 않게 한다. */}
+      {actions.commence && (!embedded || activeTab === "goal") ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
   );
   if (!embedded && activeTab === null) {

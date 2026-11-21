@@ -851,6 +851,10 @@ export function focusObjective(objectiveId: string): void {
 export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
   if (!objectiveId) return;
   const objective = findAnyObjective(objectiveId);
+  if (installed && !installed.conversation?.isActive()) {
+    openObjectiveOnPhone(objectiveId, theaterId ?? objective?.theaterId);
+    return;
+  }
   showObjectiveConversation(objectiveId, theaterId ?? objective?.theaterId ?? "");
 }
 
@@ -903,9 +907,9 @@ export function useLedgerObjective(rootObjectiveId: string): string | null {
 export function openObjectiveOnPhone(objectiveId: string, theaterId?: string): void {
   const host = installed;
   if (!host) return;
-  if (theaterId) host.consoleState.viewTheater?.(theaterId);
+  const objective = findAnyObjective(objectiveId);
+  // 이미 아는 목표는 사령관/홈 문맥을 덮어쓰지 않고 바로 목표 화면을 연다.
+  if (theaterId && objective === null) host.consoleState.viewTheater?.(theaterId);
   revealObjective({ objectiveId });
-  const hasCommander = host.consoleState.getObjectiveRecords({ nested: true }).some((objectiveRecord) => objectiveRecord.id === objectiveId);
-  if (hasCommander) host.rail.open("objectives", { objectiveId: objectiveId });
-  else host.rail.open("objectives");
+  host.rail.open("objectives", { objectiveId });
 }

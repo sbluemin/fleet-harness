@@ -6,7 +6,7 @@ import { openCommodoreMobile } from "../../../../../features/commodore/client/co
 import { openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import { MobileSheet } from "./mobile-sheet.js";
 import { useMobileCommanderActions } from "./mobile-commander-actions.js";
-import { pushMobileSheet, setMobileDestination, useMobileDestination } from "./mobile-store.js";
+import { pushMobileSheet, setMobileDestination, setMobileReturnDestination, useMobileDestination } from "./mobile-store.js";
 import { runAfterSheetRelease } from "./mobile-sheet-host.js";
 
 /** 폰은 레일 대신 머리 제목에서 같은 명단을 연다. 시트 history가 걷힌 뒤 목적지를 바꾼다. */
@@ -21,10 +21,11 @@ function MobileCommanderSheet({ commodoreId, onClose }: { readonly commodoreId: 
   const openActions = useMobileCommanderActions();
   const selectedId = destination.kind === "plugin" ? null : state.objectiveRecords.find((record) => record.id === state.activeObjectiveId && record.commodoreId === commodoreId)?.id ?? null;
   return <MobileSheet title={t("commanderTab.aria")} onClose={onClose} className="mobile-commander-sheet" focusInputOnTouch={false}>
-    <CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => runAfterSheetRelease(() => openCommodoreMobile("log", commodoreId))} />
+    <CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => runAfterSheetRelease(() => { setMobileReturnDestination(null); openCommodoreMobile("log", commodoreId); })} />
     <div className="commander-list-rule" role="separator" />
     <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onRowMenu={openActions}
       onSelect={(item) => runAfterSheetRelease(() => {
+        setMobileReturnDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId } });
         const root = item.layout.cluster.root;
         if (!root) { item.layout.cluster.open?.(); return; }
         openLedger(root, null);

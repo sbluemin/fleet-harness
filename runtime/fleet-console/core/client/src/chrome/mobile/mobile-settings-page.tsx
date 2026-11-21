@@ -329,7 +329,7 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, version, u
   // 선택형 행은 하위 화면 없이 목록 위 팝업으로 고친다 — 보조 줄이 지금 값을 말한다.
   const choose = (title: string, value: string, options: readonly HostChoiceOption[], onSelect: (next: string) => void) =>
     (anchor: { readonly top: number; readonly bottom: number }) => openMobileChoice({ title, value, options, onSelect, anchor });
-  const display: MobileSettingsRow[] = [
+  const deviceDisplay: MobileSettingsRow[] = [
     {
       id: "color-mode", title: t("mobile.settings.colorMode"), value: t(`mobile.settings.color.${appearance.colorMode}`), icon: <MobileIcon name="moon" />,
       act: choose(t("mobile.settings.colorMode"), appearance.colorMode, [
@@ -342,6 +342,8 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, version, u
       id: "font-scale", title: t("mobile.settings.fontScale"), value: t(`mobile.settings.font.${appearance.fontScale}`), icon: <MobileIcon name="text" />,
       act: choose(t("mobile.settings.fontScale"), appearance.fontScale, (["small", "default", "large"] as const).map((scale) => ({ value: scale, label: t(`mobile.settings.font.${scale}`), previewSize: scale === "small" ? 15 : scale === "large" ? 19.5 : 17 })), (next) => setMobileFontScale(next as MobileFontScale)),
     },
+  ];
+  const display: MobileSettingsRow[] = [
     {
       id: "language", title: t("mobile.settings.language"), value: state === null ? null : languageLabel(state, t, locale), icon: <MobileIcon name="globe" />,
       act: state === null ? () => undefined : choose(t("mobile.settings.language"), state.language, [
@@ -402,7 +404,7 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, version, u
     { id: "help", title: t("mobile.settings.helpRow"), value: null, icon: <MobileIcon name="help" /> },
     versionRow(),
   ];
-  return [{ key: "display", rows: display, note: t("mobile.settings.color.note") }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
+  return [{ key: "device-display", rows: deviceDisplay, note: t("mobile.settings.color.note") }, { key: "display", rows: display }, { key: "agent", rows: agent }, { key: "use", rows: use }, { key: "about", rows: about }];
 }
 
 function languageLabel(state: GlobalSettingsState, t: (key: CoreMessageKey) => string, locale: ConsoleLocale): string {

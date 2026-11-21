@@ -1,10 +1,11 @@
-import { getViewedCommodoreId, getViewedTheaterId } from "../../integration/viewed-theater.js";
+import { getViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { useMemo, useSyncExternalStore, type ReactNode } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { RailEntryAttentionItem, RailEntryDestinationTrailingValue } from "../../../../../features/workspace/shared/rail.js";
 
 import { useAllObjectiveUseRequests, type ObjectiveUseRequest } from "../../../../../features/computer-use/client/computer-screen-share.js";
+import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/settings-pane.js";
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
@@ -132,48 +133,63 @@ export function useMobileAttention(state: ConsoleState, commodoreId?: string): {
   const bindings = useRailEntries();
   const locale = useConsoleLocale();
   const t = useT();
+  const commodores = useCommodoreList();
   const useRequests = useAllObjectiveUseRequests();
   const approvalVersion = useSyncExternalStore(subscribeApprovals, approvalTick, approvalTick);
-  const theaterId = getViewedTheaterId();
-  const pluginCommodoreId = commodoreId ?? mobileHomeCommodoreId();
+  // commodoreId가 생략되면(홈·전체 확인 필요) 모든 사령관을 가로질러 모아, 사령관마다 들어가지 않아도 한눈에 본다.
+  const scopeCommodores = useMemo<readonly (string | null)[]>(() => {
+    if (commodoreId !== undefined) return [commodoreId];
+    if (commodores.length > 0) return commodores.map((item) => item.commodoreId);
+    const fallback = mobileHomeCommodoreId();
+    return fallback ? [fallback] : [];
+  }, [commodoreId, commodores]);
   // 엔트리마다 구독을 모아 하나의 틱으로 묶는다 — 갱신 신호가 오면 아래 스냅샷을 다시 읽는다.
   const tick = useSyncExternalStore(
     (listener) => {
       const disposers = bindings.flatMap((binding) => binding.entry.attention ? [binding.entry.attention.subscribe(listener)] : []);
       return () => { for (const dispose of disposers) dispose(); };
     },
-    () => attentionVersion(bindings, pluginCommodoreId, locale),
-    () => attentionVersion(bindings, pluginCommodoreId, locale),
+    () => scopeCommodores.map((id) => attentionVersion(bindings, id, locale)).join("||"),
+    () => scopeCommodores.map((id) => attentionVersion(bindings, id, locale)).join("||"),
   );
   return useMemo(() => {
     // 허용 요청이 걸린 Objective이 먼저(남은 시간이 짧은 순), 그다음 그 밖의 입력 대기.
-    const inTheater = state.objectiveRecords.filter((objectiveRecord) => commodoreId === undefined ? objectiveRecord.theaterId === theaterId : objectiveRecord.commodoreId === commodoreId);
-    const requested = inTheater
+    const inScope = commodoreId === undefined
+      ? state.objectiveRecords
+      : state.objectiveRecords.filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId);
+    const requested = inScope
       .map((objectiveRecord) => ({ objectiveRecord, request: useRequests.filter((item) => item.objectiveId === objectiveRecord.id).sort((a, b) => a.expiresAt - b.expiresAt)[0] }))
       .filter((item): item is { objectiveRecord: ObjectiveRecord; request: ObjectiveUseRequest } => item.request !== undefined)
       .sort((a, b) => a.request.expiresAt - b.request.expiresAt);
     const requestedIds = new Set(requested.map((item) => item.objectiveRecord.id));
-    const waiting = inTheater.filter((objectiveRecord) => !requestedIds.has(objectiveRecord.id) && resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) === "awaiting");
+    const waiting = inScope.filter((objectiveRecord) => !requestedIds.has(objectiveRecord.id) && resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime) === "awaiting");
     const rows: MobileAttentionRow[] = [
       ...requested.map(({ objectiveRecord, request }): MobileAttentionRow => ({ kind: "objectiveRecord", key: `op:${objectiveRecord.id}`, objectiveRecord, request })),
       ...waiting.map((objectiveRecord): MobileAttentionRow => ({ kind: "objectiveRecord", key: `op:${objectiveRecord.id}`, objectiveRecord })),
       ...approvalAttentionRows(t, state, commodoreId),
     ];
     const pluginCounts = new Map<string, number>();
+    const seenKeys = new Set<string>();
     for (const binding of bindings) {
       const attention = binding.entry.attention;
       if (!attention) continue;
-      const scopeCommodore = binding.entry.scope === "fleet" ? null : pluginCommodoreId;
-      const count = Math.max(0, Math.floor(attention.count(scopeCommodore)));
-      if (count > 0) pluginCounts.set(binding.entry.id, count);
-      for (const item of attention.items?.(scopeCommodore, locale) ?? []) {
-        const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? objectiveRecordClusterId(binding.pluginId, item.clusterId) : undefined;
-        rows.push({ kind: "plugin", key: `plugin:${binding.entry.id}:${item.id}`, entryId: binding.entry.id, item, clusterId });
+      const targets: readonly (string | null)[] = binding.entry.scope === "fleet" ? [null] : scopeCommodores;
+      let totalCount = 0;
+      for (const scopeCommodore of targets) {
+        totalCount += Math.max(0, Math.floor(attention.count(scopeCommodore)));
+        for (const item of attention.items?.(scopeCommodore, locale) ?? []) {
+          const key = `plugin:${binding.entry.id}:${item.id}`;
+          if (seenKeys.has(key)) continue;
+          seenKeys.add(key);
+          const clusterId = item.clusterId !== undefined && binding.pluginId !== undefined ? objectiveRecordClusterId(binding.pluginId, item.clusterId) : undefined;
+          rows.push({ kind: "plugin", key, entryId: binding.entry.id, item, clusterId });
+        }
       }
+      if (totalCount > 0) pluginCounts.set(binding.entry.id, totalCount);
     }
     return { rows, pluginCounts };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick는 플러그인 상태 변화를 알리는 신호다.
-  }, [approvalVersion, bindings, commodoreId, locale, pluginCommodoreId, state.objectiveRecordRuntime, state.objectiveRecords, t, theaterId, tick, useRequests]);
+  }, [approvalVersion, bindings, commodoreId, locale, scopeCommodores, state.objectiveRecordRuntime, state.objectiveRecords, t, tick, useRequests]);
 }
 
 function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.descTitle" | "approval.intelTitle" | "approval.until") => string, state: ConsoleState, commodoreId: string | undefined): MobileAttentionRow[] {

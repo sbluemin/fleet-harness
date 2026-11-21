@@ -253,22 +253,19 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   useEffect(() => {
     if (!bar) return;
     if (!panel) {
+      const inMap = mapMode === "map";
       bar.set({
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
-        depth: 0,
-        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
+        depth: inMap ? 1 : 0,
+        ...(inMap && commodoreId ? { onBack: () => setCommodoreMapMode(commodoreId, "chat") } : {}),
+        // 칩은 세부, 오른쪽은 지휘관 시트와 신경망 보기 직행 단추 — 상단 막대 컨텍스트 칩을 내려 확보한 공간에 핵심 전환을 올린다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
-        // 지휘관 시트와 지도 전환(데스크톱 머리 줄 꼬리 단추와 같은 동작)은 ⋮ 하나에 묶는다 — 375px 막대에서 단추 하나만큼 사령관 이름 자리를 둔다.
         ...(commodoreId ? {
-          menu: {
-            label: t("commodore.mobile.more"),
-            caption: title,
-            items: [
-              ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
-              { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
-            ],
-          },
+          actions: [
+            ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
+            { id: "map", label: t(inMap ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={20} />, pressed: inMap, run: () => setCommodoreMapMode(commodoreId, inMap ? "chat" : "map") },
+          ],
         } : {}),
       });
       return;
@@ -406,7 +403,10 @@ function CommodoreMobileProfile({ t, commodoreId, view, name, sessions, onOpen, 
   const useAttentionCount = sessions?.useAttentionCount ?? noAttentionCount;
   const attention = useAttentionCount(commodoreId);
   const running = objectives.filter(isRunningObjective).length;
-  const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" } : running > 0 ? { text: t("commodore.mobile.running", { n: running }) } : null;
+  const sessionsValue: ProfileValue = attention > 0 ? { text: t("commodore.mobile.attention", { n: attention }), tone: "awaiting" }
+    : running > 0 ? { text: t("commodore.mobile.running", { n: running }) }
+    : objectives.length > 0 ? { text: t("commodore.mobile.count", { n: objectives.length }) }
+    : null;
   const run = view?.run;
   const logValue: ProfileValue = !run ? null
     : run.phase === "turn" ? { text: t("commodore.meta.turn") }

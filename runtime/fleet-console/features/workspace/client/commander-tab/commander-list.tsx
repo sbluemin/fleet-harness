@@ -157,17 +157,22 @@ export function CommanderSidebarSections({ sections, folds, onToggle, renderItem
   readonly renderItems: (rows: readonly SideBarRowItem[], settled: boolean) => ReactNode;
 }) {
   const t = useT();
+  const mobile = useViewMode().effective === "mobile";
   const groupsId = useId();
   return <div className="commander-tab-groups">{sections.map((group) => {
     const foldId = group.settled === true ? group.fold : null;
     const collapsed = foldId !== null && folds[foldId];
     const listId = `${groupsId}-${group.id}`;
+    const settledParts: string[] = [];
+    if ((group.freshCount ?? 0) > 0) settledParts.push(t("commanderTab.settledFresh", { n: group.freshCount ?? 0 }));
+    if ((group.doneCount ?? 0) > 0) settledParts.push(t("commanderTab.settledDone", { n: group.doneCount ?? 0 }));
     return <section key={group.id}>
       {group.settled === true
         ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
             aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)} onClick={() => { if (foldId !== null) onToggle(foldId); }}>
+            {mobile && settledParts.length > 0 ? <span className="commander-tab-settled-mobile-label">{settledParts.join(" · ")}</span> : null}
             <span className="commander-tab-settled-rule" aria-hidden="true" />
-            {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
+            {!mobile && collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
             <ChevronGlyph direction={collapsed ? "right" : "down"} />
           </button>
         : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}

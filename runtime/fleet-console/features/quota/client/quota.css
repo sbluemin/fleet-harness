@@ -751,6 +751,35 @@
   height: 16px;
 }
 
+.quota-toolbar-summary--mobile-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--m-hairline-strong, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: var(--m-surface, var(--ink-deep));
+  color: var(--m-text-muted, var(--text-secondary));
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.quota-toolbar-summary--mobile-pill svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.quota-toolbar-summary--mobile-pill.quota-toolbar-summary--warning {
+  color: var(--warn);
+}
+
+.quota-toolbar-summary--mobile-pill.quota-toolbar-summary--critical {
+  color: var(--coral);
+}
+
 /* 캡슐 안(보내기 버튼 왼쪽) 배치 — 원형 단추와 같은 28px 알약이고, 캡슐이 420px 이하로 좁으면 막대 글리프로 접힌다. */
 .quota-toolbar-summary--capsule {
   height: var(--fc-composer-circle, 28px);
