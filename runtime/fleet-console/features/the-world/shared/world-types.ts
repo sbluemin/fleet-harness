@@ -40,7 +40,7 @@ export interface WorldAdmiralStyle {
 
 export type WorldCameraMode = "follow" | "orbit";
 
-export type WorldActorPanelMode = "goals" | "info" | "settings";
+export type WorldActorPanelMode = "chat" | "goals" | "info" | "settings";
 
 export type WorldInteractionMode = "closed" | "radial" | "dialogue" | WorldActorPanelMode;
 

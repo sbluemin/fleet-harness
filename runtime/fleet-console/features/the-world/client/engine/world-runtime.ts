@@ -56,6 +56,7 @@ import {
 } from "./mongle-actor-rig.js";
 import {
   createPlayerAndCameraController,
+  type CameraFocusFraming,
   type CameraOccluder,
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
@@ -184,6 +185,8 @@ export interface WorldRuntimeHandle {
   setWeather(mode: WorldWeatherMode): void;
   triggerRainbow(durationSec?: number): void;
   setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat): void;
+  setCustomizerMode(open: boolean): void;
+  triggerCustomizerPreviewBounce(): void;
   setCampfireSit(sitting: boolean): void;
   rallyAllToPlaza(): void;
   playPlayerEmote(emote: WorldPlayerEmote): void;
@@ -246,6 +249,8 @@ const MAX_ACTOR_LABEL_DIST = 58;
 const MAX_PLAYER_LABEL_DIST = 44;
 const VIEWPORT_MARGIN_X = 160;
 const VIEWPORT_MARGIN_Y = 120;
+const TOP_SIGN_SAFE_Y = 54;
+const TOP_ACTOR_LABEL_SAFE_Y = 44;
 const WORKSHOP_FX_INTERVAL_SEC = 0.34;
 const MAX_ACTOR_AO_BLOBS = 64;
 const EMPTY_OCCLUDERS: readonly CameraOccluder[] = [];
@@ -516,6 +521,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let sprintDustAccum = 0;
   let playerEmoteHop = 0;
   let playerEmoteKind: "wave" | "cheer" | "spin" | null = null;
+  let customizerOpen = false;
   let playerEmoteTimer = 0;
   let playerEmotePhase = 0;
   let playerLookYaw = 0;
@@ -566,6 +572,18 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const interacting = currentInteractionMode !== "closed";
     const focusedActorId = interacting ? selectedActorId : null;
     const focusedMotion = focusedActorId ? director.motions.get(focusedActorId) ?? null : null;
+    const interactionKey = currentInteractionMode as string;
+    const isConversing = interactionKey === "dialogue" || interactionKey === "chat";
+    const focusFraming: CameraFocusFraming =
+      focusedMotion !== null
+        ? interactionKey === "dialogue"
+          ? "dialogue"
+          : interactionKey === "chat" || interactionKey === "goals" || interactionKey === "info" || interactionKey === "settings"
+            ? "drawer"
+            : "none"
+        : customizerOpen
+          ? "customizer"
+          : "none";
 
     const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
       meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
@@ -575,8 +593,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
-      inputLocked: interacting,
+      inputLocked: interacting || customizerOpen,
       focusActorPos: focusedMotion ? { x: focusedMotion.x, z: focusedMotion.z } : null,
+      focusFraming,
       camera,
       getGroundHeight: meadow.getGroundHeight,
       resolveMovement: meadow.resolveMovement,
@@ -756,18 +775,31 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     } else if (p.walking) {
       playerAnim = "walk";
       playerExpr = "normal";
-    } else if (focusedMotion) {
+    } else if (focusedMotion && isConversing) {
       playerAnim = "talk";
       playerExpr = "happy";
       playerBlush = 0.3;
+    } else if (focusedMotion) {
+      playerAnim = "idle";
+      playerExpr = "focused";
+      playerBlush = 0.12;
+    } else if (customizerOpen) {
+      // 실시간 3D 제독 드레스업 중: 기분 좋은 미소·은은한 볼터치·호흡 유지
+      playerAnim = "idle";
+      playerExpr = "happy";
+      playerBlush = 0.28;
     }
 
-    // 플레이어 부드러운 시선 추적 (포커스 상대 → 근접 NPC → 벚꽃/눈/무지개 하늘)
+    // 플레이어 부드러운 시선 추적 (드레스업 카메라 응시 → 포커스 상대 → 근접 NPC → 벚꽃/눈/무지개 하늘)
     const skyAdmire = currentWeather === "sakura" || currentWeather === "snow" || rainbowLookTimer > 0;
     let targetPLookYaw = 0;
     let targetPLookPitch = 0;
     const glanceActor = focusedMotion ?? (nearId ? director.motions.get(nearId) ?? null : null);
-    if (glanceActor) {
+    if (customizerOpen) {
+      const rel = angleDelta(Math.atan2(camera.position.x - p.x, camera.position.z - p.z), p.yaw);
+      targetPLookYaw = clampSigned(rel / 1.35, 0.85);
+      targetPLookPitch = 0.08;
+    } else if (glanceActor) {
       const distG = Math.hypot(glanceActor.x - p.x, glanceActor.z - p.z);
       if (distG < 7.0 && distG > 0.2) {
         const rel = angleDelta(Math.atan2(glanceActor.x - p.x, glanceActor.z - p.z), p.yaw);
@@ -859,12 +891,21 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       sp.hatVel += ((npcHatTarget - sp.hatPos) * 135 - sp.hatVel * 14) * dt;
       sp.hatPos = clampSigned(sp.hatPos + sp.hatVel * dt, 0.18);
 
-      // NPC 부드러운 시선 추적 (수다 상대 → 7m 이내 지나가는 제독 → 벚꽃/눈/무지개 하늘)
+      const isSelected = selectedActorId === m.spec.id;
+      const isNearPlayer = nearId === m.spec.id;
+      // RPG 대화(`dialogue`) 또는 우측 사령관 수첩 `대화`(`chat`) 탭 열림 중 포커스 NPC는 대화(`talk`/`happy`/시선) 유지
+      const conversingFocus = isSelected && isConversing;
+
+      // NPC 부드러운 시선 추적 (대화 중 포커스 제독 → 수다 상대 → 7m 이내 지나가는 제독 → 벚꽃/눈/무지개 하늘)
       let targetLookYaw = 0;
       let targetLookPitch = 0;
       const distPlayer = Math.hypot(p.x - m.x, p.z - m.z);
-      if (m.worldAnim !== "sleep") {
-        if (m.gazeTargetX !== null && m.gazeTargetZ !== null) {
+      if (conversingFocus || m.worldAnim !== "sleep") {
+        if (conversingFocus && distPlayer > 0.25) {
+          const rel = angleDelta(Math.atan2(p.x - m.x, p.z - m.z), m.yaw);
+          targetLookYaw = clampSigned(rel / 1.15, 1);
+          targetLookPitch = clampSigned((p.playerJumpY) * 0.35, 0.55);
+        } else if (m.gazeTargetX !== null && m.gazeTargetZ !== null) {
           const rel = angleDelta(Math.atan2(m.gazeTargetX - m.x, m.gazeTargetZ - m.z), m.yaw);
           targetLookYaw = clampSigned(rel / 1.15, 1);
         } else if (distPlayer < 7.0 && distPlayer > 0.25) {
@@ -886,8 +927,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         skyLighting.avatarWorldTint.z + fireWarm * 0.05,
       );
 
-      const isSelected = selectedActorId === m.spec.id;
-      const isNearPlayer = nearId === m.spec.id;
+      const keepEmote = m.worldAnim === "wave" || m.worldAnim === "cheer" || m.worldAnim === "spin";
+      const effAnim: WorldAnimMode = conversingFocus && !keepEmote ? "talk" : m.worldAnim;
+      const effExpr: WorldExpression = conversingFocus && !keepEmote ? "happy" : m.expression;
+      const effBlush = conversingFocus ? Math.max(m.blush, 0.42) : m.blush;
 
       entry.rig.updatePose({
         x: m.x,
@@ -906,15 +949,15 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         sunDir: skyLighting.sunDir,
         worldTint: tempTint,
         viewProj,
-        worldAnim: m.worldAnim,
-        expression: m.expression,
+        worldAnim: effAnim,
+        expression: effExpr,
         animPhase: m.animPhase,
         moveSpeed: m.moveSpeed,
         jumpVel: m.hopBoost > 0.2 ? Math.cos(elapsed * 10) * m.hopBoost * 2.2 : 0,
         landSquash: 0,
         lookYaw: sp.lookYaw,
         lookPitch: sp.lookPitch,
-        blush: m.blush,
+        blush: effBlush,
         hatBounce: sp.hatPos,
       });
 
@@ -947,7 +990,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
 
       if (isOpen) {
-        structSig += `|${m.spec.id}:${m.spec.name}:${m.spec.tone}:${m.spec.quaker ?? ""}:${isNearPlayer ? 1 : 0}:${isSelected ? 1 : 0}:${m.spec.needsAttention ? 1 : 0}:${m.speech}`;
+        // RPG 대화(`dialogue`)·우측 수첩 채팅(`chat`) 중에는 포커스 대상의 3D 머리 위 말풍선 투영을 숨겨 이름표/얼굴 가림을 방지
+        const effectiveSpeech = conversingFocus ? "" : m.speech;
+        structSig += `|${m.spec.id}:${m.spec.name}:${m.spec.tone}:${m.spec.quaker ?? ""}:${isNearPlayer ? 1 : 0}:${isSelected ? 1 : 0}:${m.spec.needsAttention ? 1 : 0}:${effectiveSpeech}`;
 
         let slot = actorPosPool[actorCount];
         if (!slot) {
@@ -978,9 +1023,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           topOk
           && bodyOk
           && projTop.w < MAX_ACTOR_LABEL_DIST
+          && projTop.y >= TOP_ACTOR_LABEL_SAFE_Y
           && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
         ) {
-          const hasSpeech = m.speech.length > 0;
+          const hasSpeech = effectiveSpeech.length > 0;
           const isPriority = isSelected || isNearPlayer || m.spec.needsAttention || hasSpeech;
           slot.x = projTop.x;
           slot.y = projTop.y;
@@ -1061,6 +1107,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           for (let j = 0; j < i; j += 1) {
             const prevIdx = visibleActorIdx[j]!;
             const prev = actorPosPool[prevIdx]!;
+            if (!prev.visible) continue;
             const minSepY = Math.max(curH, actorHasSpeechFlags[prevIdx] ? 54 : 30);
             if (Math.abs(cur.x - prev.x) < LABEL_SEP_X && Math.abs(cur.y - prev.y) < minSepY) {
               cur.y = prev.y - minSepY;
@@ -1068,6 +1115,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
             }
           }
           if (!moved) break;
+        }
+        // 충돌 회피로 상단 HUD 영역(`y < 44`) 위로 밀려난 라벨은 잘림 방지를 위해 숨김 처리
+        if (cur.y < TOP_ACTOR_LABEL_SAFE_Y) {
+          cur.visible = false;
+          cur.opacity = 0;
         }
       }
     }
@@ -1079,13 +1131,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (isOpen) {
         for (const m of director.motions.values()) {
           if (!actorRigs.has(m.spec.id)) continue;
+          const hideSpeech = isConversing && selectedActorId === m.spec.id;
           nextMetas.push({
             actorId: m.spec.id,
             name: m.spec.name,
             role: m.spec.role,
             tone: m.spec.tone,
             quaker: m.spec.quaker,
-            speech: m.speech,
+            speech: hideSpeech ? "" : m.speech,
             isNearPlayer: nearId === m.spec.id,
             isSelected: selectedActorId === m.spec.id,
             needsAttention: m.spec.needsAttention,
@@ -1096,13 +1149,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       config.onLabelsStructureChanged(nextMetas);
     }
 
-    // 플레이어 라벨 투영 (하늘 조망 모드에서는 숨김)
+    // 플레이어 라벨 투영 (하늘 조망·제독 드레스업 클로즈업 중에는 숨김)
     const inOverview = playerCtrl.isOverviewMode();
-    if (isOpen && !inOverview && currentCameraMode === "follow" && currentInteractionMode === "closed") {
+    if (isOpen && !inOverview && !customizerOpen && currentCameraMode === "follow" && currentInteractionMode === "closed") {
       tempPos.set(p.x, p.y + pHop + 1.54, p.z);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
         && projTop.w < MAX_PLAYER_LABEL_DIST
+        && projTop.y >= TOP_ACTOR_LABEL_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
         framePositions.player.x = projTop.x;
@@ -1144,6 +1198,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         if (
           projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
           && projTop.w < signMaxDist
+          && projTop.y >= TOP_SIGN_SAFE_Y
           && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
         ) {
           slot.x = projTop.x;
@@ -1180,6 +1235,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
         && projTop.w < (inOverview ? 175 : 72)
+        && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
         framePositions.hoveredDistrict.x = projTop.x;
@@ -1201,6 +1257,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
         && projTop.w < (inOverview ? 165 : 48)
+        && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
         framePositions.noticeBoard.x = projTop.x;
@@ -1218,6 +1275,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
         && projTop.w < (inOverview ? 165 : 54)
+        && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
         framePositions.guildHall.x = projTop.x;
@@ -1237,6 +1295,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         if (
           projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
           && projTop.w < 26
+          && projTop.y >= TOP_SIGN_SAFE_Y
           && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
         ) {
           framePositions.campfireBench.x = projTop.x;
@@ -1336,6 +1395,18 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     setAdmiralStyle(tone, hat) {
       playerRig.setAdmiralStyle(tone, hat);
+    },
+    setCustomizerMode(open) {
+      customizerOpen = open;
+    },
+    triggerCustomizerPreviewBounce() {
+      // 색상·모자 변경 시 0.95초간 기분 좋은 cheer 바운스 + happy 표정 + 볼터치 + 모자 2차 스프링 튕김 연출
+      playerEmoteKind = "cheer";
+      playerEmoteTimer = 0.95;
+      playerEmotePhase = 0;
+      playerEmoteHop = 0.85;
+      playerHatVel -= 1.65;
+      director.spawnBurst(playerCtrl.player.x, playerCtrl.player.y + 1.05, playerCtrl.player.z, 0xfde047, 8);
     },
     setCampfireSit(sitting) {
       playerCtrl.setCampfireSit(sitting);

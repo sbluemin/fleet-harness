@@ -1,7 +1,6 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { memo, useEffect } from "react";
 
-import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import type { WorldAdmiralHat, WorldAdmiralStyle } from "../../shared/world-types.js";
 import { playDistrictHover, playDistrictSelect } from "../engine/world-audio.js";
@@ -12,6 +11,7 @@ export interface WorldAdmiralCustomizerProps {
   readonly style: WorldAdmiralStyle;
   readonly locale: ConsoleLocale | undefined;
   readonly onChangeStyle: (patch: Partial<WorldAdmiralStyle>) => void;
+  readonly onPreviewChange?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -39,14 +39,16 @@ const ADMIRAL_HATS: readonly {
 ];
 
 /**
- * 다크 크리스탈 「제독 몽글이 꾸미기」 모달.
+ * 우측 플로팅 글래스 「제독 몽글이 3D 드레스업」 시트.
  *
- * 8색 아이덴티티 톤 스와치와 모자 4종을 선택하면 실시간 프리뷰 및 3D 제독 리그에 즉시 반영된다.
+ * 암막 백드롭 없이 좌측 열린 3D 초원의 실시간 제독 클로즈업을 직접 보며
+ * 8색 아이덴티티 톤과 모자 4종을 즉시 바꿔보고 드래그로 360° 회전 감상한다.
  */
 export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
   style,
   locale,
   onChangeStyle,
+  onPreviewChange,
   onClose,
 }: WorldAdmiralCustomizerProps) {
   const t = getWorldT(locale);
@@ -65,125 +67,109 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
   }, [onClose]);
 
   return (
-    <div
-      className="the-world-panel-backdrop"
-      role="presentation"
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        if (e.target === e.currentTarget) onClose();
-      }}
+    <aside
+      className="the-world-customizer-sheet"
+      data-tone={style.tone}
+      role="dialog"
+      aria-label={t("theWorld.admiral.aria")}
+      onPointerDown={(e) => e.stopPropagation()}
+      onWheel={(e) => e.stopPropagation()}
     >
-      <section
-        className="the-world-panel the-world-admiral-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("theWorld.admiral.aria")}
-        onPointerDown={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
-      >
-        <div className="the-world-crest" aria-hidden="true" />
+      <div className="the-world-drawer-crest" aria-hidden="true" />
 
-        <header className="the-world-panel-head">
-          <div className="the-world-dialogue-speaker">
-            <span className="the-world-qb-emblem" aria-hidden="true">
-              <WorldIcon name="hat" size={18} tone="amber" />
-            </span>
-            <div>
-              <h2 className="the-world-dialogue-name">{t("theWorld.admiral.title")}</h2>
-              <p className="the-world-dialogue-role">{t("theWorld.admiral.subtitle")}</p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="the-world-chat-icon-btn"
-            aria-label={t("theWorld.admiral.closeAria")}
-            onClick={onClose}
-          >
-            <WorldIcon name="close" size={15} />
-          </button>
-        </header>
-
-        <div className="the-world-panel-body the-world-admiral-body">
-          {/* 실시간 MongleAvatar 프리뷰 */}
-          <div className="the-world-admiral-preview" data-tone={style.tone}>
-            <div className="the-world-admiral-avatar-stage">
-              <MongleAvatar
-                base={0}
-                tone={style.tone}
-                role="commodore"
-                state="idle"
-                size={68}
-                label={t("theWorld.admiral.title")}
-                decorative
-              />
-            </div>
-            <div className="the-world-admiral-preview-badge">
-              <WorldIcon name={activeHatMeta.icon} size={13} tone="amber" />
-              <span>{t(activeHatMeta.key)}</span>
-            </div>
-          </div>
-
-          {/* 8색 톤 스와치 */}
-          <div className="the-world-admiral-section">
-            <span className="the-world-district-section-label">{t("theWorld.admiral.toneLabel")}</span>
-            <div
-              className="the-world-admiral-swatches"
-              role="group"
-              aria-label={t("theWorld.admiral.toneGroupAria")}
-            >
-              {ADMIRAL_TONES.map((tone) => {
-                const active = style.tone === tone;
-                return (
-                  <button
-                    key={tone}
-                    type="button"
-                    className={`the-world-admiral-swatch${active ? " is-active" : ""}`}
-                    data-tone={tone}
-                    aria-label={t("theWorld.admiral.toneGroupAria")}
-                    aria-pressed={active}
-                    onClick={() => {
-                      playDistrictHover();
-                      onChangeStyle({ tone });
-                    }}
-                  >
-                    <span className="the-world-admiral-swatch-dot" data-tone={tone} />
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 모자 4종 선택 */}
-          <div className="the-world-admiral-section">
-            <span className="the-world-district-section-label">{t("theWorld.admiral.hatLabel")}</span>
-            <div
-              className="the-world-admiral-hats"
-              role="group"
-              aria-label={t("theWorld.admiral.hatGroupAria")}
-            >
-              {ADMIRAL_HATS.map((hat) => {
-                const active = style.hat === hat.id;
-                return (
-                  <button
-                    key={hat.id}
-                    type="button"
-                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}`}
-                    aria-pressed={active}
-                    onClick={() => {
-                      playDistrictSelect();
-                      onChangeStyle({ hat: hat.id });
-                    }}
-                  >
-                    <WorldIcon name={hat.icon} size={14} tone={active ? "amber" : hat.tone} />
-                    <span>{t(hat.key)}</span>
-                  </button>
-                );
-              })}
-            </div>
+      <header className="the-world-drawer-head">
+        <div className="the-world-dialogue-speaker">
+          <span className="the-world-qb-emblem" aria-hidden="true">
+            <WorldIcon name="hat" size={17} tone="amber" />
+          </span>
+          <div>
+            <h2 className="the-world-dialogue-name">{t("theWorld.admiral.title")}</h2>
+            <p className="the-world-dialogue-role">{t("theWorld.admiral.subtitle")}</p>
           </div>
         </div>
-      </section>
-    </div>
+
+        <button
+          type="button"
+          className="the-world-btn is-icon-only"
+          aria-label={t("theWorld.admiral.closeAria")}
+          onClick={onClose}
+        >
+          <WorldIcon name="close" size={14} />
+        </button>
+      </header>
+
+      <div className="the-world-customizer-body">
+        {/* 실시간 3D 제독 회전 안내 칩 */}
+        <div className="the-world-customizer-hint">
+          <WorldIcon name="cameraOrbit" size={13} tone="amber" />
+          <span className="the-world-customizer-hint-text">{t("theWorld.admiral.dragHint")}</span>
+          <span className="the-world-customizer-hat-chip">
+            <WorldIcon name={activeHatMeta.icon} size={11} tone="amber" />
+            <span>{t(activeHatMeta.key)}</span>
+          </span>
+        </div>
+
+        {/* 8색 톤 스와치 */}
+        <div className="the-world-admiral-section">
+          <span className="the-world-district-section-label">{t("theWorld.admiral.toneLabel")}</span>
+          <div
+            className="the-world-admiral-swatches"
+            role="group"
+            aria-label={t("theWorld.admiral.toneGroupAria")}
+          >
+            {ADMIRAL_TONES.map((tone) => {
+              const active = style.tone === tone;
+              return (
+                <button
+                  key={tone}
+                  type="button"
+                  className={`the-world-admiral-swatch${active ? " is-active" : ""}`}
+                  data-tone={tone}
+                  aria-label={t("theWorld.admiral.toneGroupAria")}
+                  aria-pressed={active}
+                  onClick={() => {
+                    playDistrictHover();
+                    onChangeStyle({ tone });
+                    onPreviewChange?.();
+                  }}
+                >
+                  <span className="the-world-admiral-swatch-dot" data-tone={tone} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 모자 4종 선택 */}
+        <div className="the-world-admiral-section">
+          <span className="the-world-district-section-label">{t("theWorld.admiral.hatLabel")}</span>
+          <div
+            className="the-world-admiral-hats"
+            role="group"
+            aria-label={t("theWorld.admiral.hatGroupAria")}
+          >
+            {ADMIRAL_HATS.map((hat) => {
+              const active = style.hat === hat.id;
+              return (
+                <button
+                  key={hat.id}
+                  type="button"
+                  className={`the-world-admiral-hat-pill${active ? " is-active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => {
+                    playDistrictSelect();
+                    onChangeStyle({ hat: hat.id });
+                    onPreviewChange?.();
+                  }}
+                >
+                  <WorldIcon name={hat.icon} size={14} tone={active ? "amber" : hat.tone} />
+                  <span>{t(hat.key)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </aside>
   );
 });

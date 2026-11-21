@@ -1,23 +1,17 @@
 import { renderMarkdown } from "@fleet-console/markdown/core";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldActorSpec, WorldChatFeedEntry } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
+import { playMongleChirp } from "../engine/world-audio.js";
 import { getWorldT } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorPanel,
-  openActorRadialMenu,
   pushActorSpeech,
 } from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
-
-const ROLE_LABEL: Record<WorldActorSpec["role"], string> = {
-  commodore: "사령관",
-  commander: "지휘관",
-  member: "구성원",
-};
 
 const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
   idle: "대기 중",
@@ -38,11 +32,6 @@ const QUICK_PROMPTS: Record<WorldActorSpec["role"], readonly string[]> = {
   member: ["현재 진행 상황 알려줘", "막힌 부분이 있으면 보고해줘"],
 };
 
-function formatClock(at: number): string {
-  const date = new Date(at);
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
 const MAX_MARKDOWN_CACHE = 256;
 const markdownHtmlCache = new Map<string, string>();
 
@@ -58,104 +47,27 @@ function renderCachedMarkdownHtml(text: string): string {
   return html;
 }
 
-const DialogueEntryRow = memo(function DialogueEntryRow({ entry }: { readonly entry: WorldChatFeedEntry }) {
-  const time = formatClock(entry.at);
-  if (entry.kind === "system-wake" || entry.kind === "system-info" || entry.kind === "system-error") {
-    const iconName = entry.kind === "system-wake"
-      ? "systemWake"
-      : entry.kind === "system-error"
-        ? "warning"
-        : "systemInfo";
-    const iconTone = entry.kind === "system-error" ? "warn" : "amber";
-    return (
-      <div
-        className={`the-world-msg-system${entry.kind === "system-wake" ? " is-wake" : ""}${entry.kind === "system-error" ? " is-error" : ""}`}
-      >
-        <span className="the-world-msg-sys-badge">
-          <WorldIcon name={iconName} size={13} tone={iconTone} />
-          <span>[시스템] {entry.badge ?? "알림"}</span>
-        </span>
-        <span className="the-world-msg-sys-text">{entry.text}</span>
-        <span className="the-world-msg-time">{time}</span>
-      </div>
-    );
-  }
+function isNpcSpeechEntry(entry: WorldChatFeedEntry): boolean {
+  return entry.kind === "speech" || entry.kind === "ask" || entry.kind === "peer";
+}
 
-  if (entry.kind === "action") {
-    return (
-      <div className={`the-world-msg-action${entry.failed ? " is-error" : ""}`}>
-        <span className="the-world-msg-act-badge">
-          <WorldIcon name="tool" size={12} tone={entry.failed ? "warn" : "cerulean"} />
-          <span>{entry.badge ?? "도구"}</span>
-        </span>
-        <span className="the-world-msg-act-text">{entry.text}{entry.streaming ? " ⋯" : ""}</span>
-        <span className="the-world-msg-time">{time}</span>
-      </div>
-    );
-  }
+function isDialogueTurnEntry(entry: WorldChatFeedEntry): boolean {
+  return isNpcSpeechEntry(entry) || entry.kind === "player";
+}
 
-  if (entry.kind === "player") {
-    return (
-      <div className="the-world-msg-row is-player">
-        <div className="the-world-msg-bubble is-player">
-          {entry.badge ? <div className="the-world-msg-kicker">{entry.badge}</div> : null}
-          <div className="the-world-msg-body">{entry.text}</div>
-          <div className="the-world-msg-foot">{time}</div>
-        </div>
-      </div>
-    );
+function actorVoiceSeed(actorId: string): number {
+  let hash = 0;
+  for (let i = 0; i < actorId.length; i += 1) {
+    hash = ((hash << 5) - hash + actorId.charCodeAt(i)) | 0;
   }
-
-  if (entry.kind === "peer") {
-    return (
-      <div className="the-world-msg-row is-npc">
-        <div className="the-world-msg-bubble is-peer">
-          <div className="the-world-msg-kicker">
-            <WorldIcon name="mail" size={12} tone="cerulean" />
-            <span>
-              {entry.actorName}{entry.targetName ? ` → ${entry.targetName}` : ""}
-              {entry.badge ? ` · ${entry.badge}` : ""}
-            </span>
-          </div>
-          <div className="the-world-msg-body">{entry.text}</div>
-          <div className="the-world-msg-foot">{time}</div>
-        </div>
-      </div>
-    );
-  }
-
-  const html = renderCachedMarkdownHtml(entry.text);
-  return (
-    <div className="the-world-msg-row is-npc">
-      <div className={`the-world-msg-bubble is-npc${entry.kind === "ask" ? " is-ask" : ""}${entry.streaming ? " is-streaming" : ""}`}>
-        <div className="the-world-msg-kicker">
-          {entry.kind === "ask" ? (
-            <>
-              <WorldIcon name="question" size={13} tone="amber" />
-              <span>확인 필요 · </span>
-            </>
-          ) : null}
-          <span>{entry.actorName}</span>
-        </div>
-        <div className="the-world-msg-body the-world-msg-markdown">
-          <div
-            // renderMarkdown은 @fleet-console/markdown/core의 정제된 HTML을 생성한다.
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-          {entry.streaming ? <span className="the-world-chat-cursor">▌</span> : null}
-        </div>
-        <div className="the-world-msg-foot">{time}</div>
-      </div>
-    </div>
-  );
-});
+  return Math.abs(hash) % 97;
+}
 
 /**
- * 더 월드 인게임 RPG 실시간 대화창.
+ * 더 월드 하단 중앙 시네마틱 RPG 2샷 대화 바.
  *
- * 2D 콘솔로 이동하지 않고 사령관·지휘관·구성원의 실제 대화 내역, 실시간 스트리밍 응답,
- * 감시자 깨우기(구상 요청 등) 시스템 줄, 도구 활동, 확인 필요(Ask) 응답 카드를
- * 게임 대화창 감각으로 한자리에서 확인하고 이어간다.
+ * 시스템 로그·도구 줄을 덜어내고 가장 최근 NPC 대사 1턴만 따뜻한 게임 대화창 감각으로 보여주며,
+ * 필요할 때 우측 사령관 작전 수첩 드로어의 실제 콘솔 채팅(`전체 채팅 ↗`)으로 즉시 확장한다.
  */
 export const WorldDialogueBox = memo(function WorldDialogueBox({
   actor,
@@ -171,26 +83,79 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
   const [actionBusy, setActionBusy] = useState(false);
   const [feedback, setFeedback] = useState<{ readonly tone: "ok" | "error"; readonly text: string } | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const stickToBottomRef = useRef(true);
+  const speechScrollRef = useRef<HTMLDivElement | null>(null);
+  const lastSpokenKeyRef = useRef<string | null>(null);
   const t = getWorldT(deps.commodore.language());
 
   const conversation = deps.useActorConversation(actor);
+  const voiceSeed = useMemo(() => actorVoiceSeed(actor.id), [actor.id]);
 
   useEffect(() => {
     setFeedback(null);
-    stickToBottomRef.current = true;
+    lastSpokenKeyRef.current = null;
     window.requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true });
     });
   }, [actor.id]);
 
+  const { latestNpc, recentPlayerQuote, historyCount, hasErrorEntry } = useMemo(() => {
+    let lastNpc: WorldChatFeedEntry | null = null;
+    let lastNpcIdx = -1;
+    let lastPlayer: WorldChatFeedEntry | null = null;
+    let lastPlayerIdx = -1;
+    let turnCount = 0;
+
+    for (let i = 0; i < conversation.entries.length; i += 1) {
+      const entry = conversation.entries[i]!;
+      if (isDialogueTurnEntry(entry)) turnCount += 1;
+      if (isNpcSpeechEntry(entry)) {
+        lastNpc = entry;
+        lastNpcIdx = i;
+      } else if (entry.kind === "player") {
+        lastPlayer = entry;
+        lastPlayerIdx = i;
+      }
+    }
+
+    // 방금 플레이어가 질문해 응답 대기 중이거나, 직전 플레이어 질문에 대한 답변일 때만 1줄 인용 노출
+    const showPlayerQuote = lastPlayer !== null && (
+      lastNpcIdx === -1
+      || lastPlayerIdx > lastNpcIdx
+      || lastNpcIdx - lastPlayerIdx <= 2
+    );
+
+    const lastEntry = conversation.entries.at(-1);
+    const hasErr = lastEntry?.kind === "system-error" || actor.state === "error";
+
+    return {
+      latestNpc: lastNpc,
+      recentPlayerQuote: showPlayerQuote ? lastPlayer : null,
+      historyCount: turnCount,
+      hasErrorEntry: hasErr,
+    };
+  }, [actor.state, conversation.entries]);
+
+  const latestNpcHtml = useMemo(
+    () => (latestNpc ? renderCachedMarkdownHtml(latestNpc.text) : null),
+    [latestNpc],
+  );
+
+  // 대화 바 오픈 또는 새 NPC 발화 도착 시 부드러운 몽글 보이스 치프 재생
+  const activeSpeechKey = latestNpc?.id ?? `greeting:${actor.id}`;
   useEffect(() => {
-    if (!stickToBottomRef.current) return;
-    const el = scrollRef.current;
+    if (conversation.loading && !latestNpc) return;
+    if (lastSpokenKeyRef.current === activeSpeechKey) return;
+    lastSpokenKeyRef.current = activeSpeechKey;
+    playMongleChirp(voiceSeed);
+  }, [activeSpeechKey, conversation.loading, latestNpc, voiceSeed]);
+
+  // 스트리밍 중 최신 대사 끝부분이 자연스럽게 보이도록 하단 유지
+  useEffect(() => {
+    if (!latestNpc?.streaming) return;
+    const el = speechScrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [conversation.entries, conversation.working, conversation.openAsksCount]);
+  }, [latestNpc?.text, latestNpc?.streaming]);
 
   const handleSend = async (explicitText?: string) => {
     const trimmed = (explicitText ?? draft).trim();
@@ -234,193 +199,235 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
       .finally(() => setActionBusy(false));
   };
 
-  const hasErrorEntry = conversation.entries.at(-1)?.kind === "system-error" || actor.state === "error";
+  const isAttention = actor.needsAttention || conversation.openAsksCount > 0;
+  const statusKind = hasErrorEntry
+    ? "error"
+    : isAttention
+      ? "attention"
+      : conversation.working
+        ? "working"
+        : "idle";
+  const statusText = conversation.working
+    ? (conversation.stepLabel ?? STATE_LABEL.running)
+    : STATE_LABEL[actor.state];
+  const objectiveTargetId = actor.rootObjectiveId ?? actor.objectiveId;
+  const showQuickChips = !conversation.working && draft.trim().length === 0;
+  const showHistoryLink = historyCount >= 2 || conversation.hasOlder;
 
   return (
     <section
-      className="the-world-dialogue"
+      className="the-world-rpg-dialogue"
+      data-tone={actor.tone}
       role="dialog"
       aria-label={t("theWorld.dialogue.aria", { name: actor.name })}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <div className="the-world-crest" aria-hidden="true" />
-      <div className="the-world-dialogue-head">
-        <div className="the-world-dialogue-speaker">
-          <div className="the-world-dialogue-portrait" data-tone={actor.tone}>
-            <MongleAvatar
-              base={actor.baseId}
-              tone={actor.tone}
-              role={actor.role}
-              state={conversation.working ? "running" : actor.state}
-              activity={actor.activity}
-              size={40}
-              label={actor.name}
-              decorative
-            />
-          </div>
-          <div className="the-world-dialogue-meta">
-            <div className="the-world-dialogue-name-row">
-              <span className="the-world-dialogue-name">{actor.name}</span>
-              <span className="the-world-dialogue-badge">{ROLE_LABEL[actor.role]}</span>
-              <span className={`the-world-dialogue-badge${actor.needsAttention || conversation.openAsksCount > 0 ? " is-attention" : conversation.working ? " is-working" : ""}`}>
-                {conversation.working ? (conversation.stepLabel ?? "작업 중") : STATE_LABEL[actor.state]}
-              </span>
-              {actor.modelLabel ? (
-                <span className="the-world-dialogue-badge is-code">{actor.modelLabel}</span>
-              ) : null}
-            </div>
-            {actor.subtitle !== ROLE_LABEL[actor.role] ? (
-              <div className="the-world-dialogue-sub">{actor.subtitle}</div>
-            ) : null}
-          </div>
+      {/* 좌상단 카드 경계에 살짝 걸쳐 떠 있는 RPG 화자 이름표 리본 */}
+      <div className="the-world-rpg-ribbon" data-tone={actor.tone}>
+        <div className="the-world-rpg-avatar">
+          <MongleAvatar
+            base={actor.baseId}
+            tone={actor.tone}
+            role={actor.role}
+            state={conversation.working ? "running" : actor.state}
+            activity={actor.activity}
+            size={36}
+            label={actor.name}
+            decorative
+          />
         </div>
+        <span className="the-world-rpg-speaker-name">{actor.name}</span>
+        <span className={`the-world-rpg-status is-${statusKind}`}>
+          <span className="the-world-rpg-status-dot" aria-hidden="true" />
+          <span>{statusText}</span>
+        </span>
+      </div>
 
-        <div className="the-world-dialogue-controls">
+      {/* 상단 우측 퀵 확장 & 수첩 이동 바 */}
+      <div className="the-world-rpg-topbar">
+        <div className="the-world-rpg-actions">
+          <button
+            type="button"
+            className="the-world-rpg-action-btn is-primary"
+            aria-label={t("theWorld.rpg.fullChatAria", { name: actor.name })}
+            onClick={() => openActorPanel(actor.id, "chat", actor.role === "commodore" ? null : objectiveTargetId)}
+          >
+            <WorldIcon name="chat" size={13} tone="amber" />
+            <span>{t("theWorld.rpg.fullChat")} ↗</span>
+          </button>
+
           {actor.role === "commodore" && actor.commodoreId ? (
             <>
               <button
                 type="button"
-                className="the-world-btn"
+                className="the-world-rpg-action-btn"
                 onClick={() => openActorPanel(actor.id, "goals")}
               >
-                <WorldIcon name="questMap" size={14} tone="moss" />
-                <span>목표</span>
+                <WorldIcon name="questMap" size={13} tone="moss" />
+                <span>{t("theWorld.rpg.goals")}</span>
               </button>
               <button
                 type="button"
-                className="the-world-btn"
+                className="the-world-rpg-action-btn"
                 onClick={() => openActorPanel(actor.id, "info")}
               >
-                <WorldIcon name="inspect" size={14} tone="cerulean" />
-                <span>정보</span>
+                <WorldIcon name="inspect" size={13} tone="cerulean" />
+                <span>{t("theWorld.rpg.profile")}</span>
               </button>
               <button
                 type="button"
-                className="the-world-btn"
+                className="the-world-rpg-action-btn"
                 onClick={() => openActorPanel(actor.id, "settings")}
               >
-                <WorldIcon name="settings" size={14} tone="indigo" />
-                <span>설정</span>
+                <WorldIcon name="settings" size={13} tone="indigo" />
+                <span>{t("theWorld.rpg.settings")}</span>
               </button>
             </>
-          ) : actor.commodoreId && (actor.rootObjectiveId ?? actor.objectiveId) ? (
-            <button
-              type="button"
-              className="the-world-btn"
-              onClick={() => openActorPanel(actor.id, "goals", actor.rootObjectiveId ?? actor.objectiveId)}
-            >
-              <WorldIcon name="questMap" size={14} tone="moss" />
-              <span>목표 보드</span>
-            </button>
+          ) : actor.commodoreId && objectiveTargetId ? (
+            <>
+              <button
+                type="button"
+                className="the-world-rpg-action-btn"
+                onClick={() => openActorPanel(actor.id, "goals", objectiveTargetId)}
+              >
+                <WorldIcon name="questMap" size={13} tone="moss" />
+                <span>{t("theWorld.rpg.goals")}</span>
+              </button>
+              <button
+                type="button"
+                className="the-world-rpg-action-btn"
+                onClick={() => openActorPanel(actor.id, "info", objectiveTargetId)}
+              >
+                <WorldIcon name="crew" size={13} tone="cerulean" />
+                <span>{t("theWorld.rpg.crew")}</span>
+              </button>
+            </>
           ) : null}
+
           <button
             type="button"
-            className="the-world-btn"
-            aria-label={t("theWorld.dialogue.backAria")}
-            onClick={() => openActorRadialMenu(actor.id)}
-          >
-            <WorldIcon name="wheelBack" size={14} />
-            <span>휠</span>
-          </button>
-          <button
-            type="button"
-            className="the-world-btn"
+            className="the-world-rpg-action-btn is-icon-only"
             aria-label={t("theWorld.dialogue.closeAria")}
             onClick={closeActorInteraction}
           >
-            <WorldIcon name="close" size={14} />
+            <WorldIcon name="close" size={13} />
           </button>
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="the-world-dialogue-transcript"
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
-        }}
-      >
-        {conversation.hasOlder ? (
-          <div className="the-world-dialogue-older">
-            <button
-              type="button"
-              className="the-world-dialogue-chip"
-              onClick={conversation.loadOlder}
-            >
-              이전 대화 불러오기
-            </button>
+      {/* 단일 턴 RPG 대사 무대 */}
+      <div className="the-world-rpg-stage">
+        {recentPlayerQuote ? (
+          <div className="the-world-rpg-player-quote">
+            <span className="the-world-rpg-player-label">{t("theWorld.rpg.youPrefix")}:</span>
+            <span className="the-world-rpg-player-text">“{recentPlayerQuote.text}”</span>
           </div>
         ) : null}
 
-        {conversation.loading && conversation.entries.length === 0 ? (
-          <div className="the-world-dialogue-empty">대화 기록을 불러오는 중입니다...</div>
-        ) : conversation.entries.length === 0 ? (
-          <div className="the-world-dialogue-empty">
-            “{actor.role === "commodore"
-              ? "대기 중입니다, 제독님. 무엇을 함께 진행해 볼까요?"
-              : "지시 대기 중입니다. 필요한 내용을 말씀해 주세요."}”
-          </div>
-        ) : (
-          conversation.entries.map((entry) => (
-            <DialogueEntryRow key={entry.id} entry={entry} />
-          ))
-        )}
+        <div ref={speechScrollRef} className="the-world-rpg-speech-wrap">
+          {conversation.loading && !latestNpc ? (
+            <p className="the-world-rpg-greeting">{t("theWorld.rpg.loading")}</p>
+          ) : latestNpc && latestNpcHtml !== null ? (
+            <div
+              key={latestNpc.id}
+              className={`the-world-rpg-speech the-world-rpg-line-reveal${latestNpc.kind === "ask" ? " is-ask" : ""}`}
+            >
+              {latestNpc.kind === "ask" ? (
+                <span className="the-world-rpg-ask-tag">
+                  <WorldIcon name="question" size={12} tone="amber" />
+                  <span>{t("theWorld.rpg.askBadge")}</span>
+                </span>
+              ) : null}
+              <div
+                className="the-world-rpg-markdown"
+                // renderMarkdown은 @fleet-console/markdown/core의 정제된 HTML을 생성한다.
+                dangerouslySetInnerHTML={{ __html: latestNpcHtml }}
+              />
+              {latestNpc.streaming ? <span className="the-world-chat-cursor">▌</span> : null}
+            </div>
+          ) : (
+            <p key={`greeting:${actor.id}`} className="the-world-rpg-greeting the-world-rpg-line-reveal">
+              “{actor.role === "commodore"
+                ? t("theWorld.rpg.greetingCommodore")
+                : t("theWorld.rpg.greetingOther")}”
+            </p>
+          )}
+        </div>
 
-        {conversation.working ? (
-          <div className="the-world-msg-working">
-            <span className="the-world-working-dot" aria-hidden="true" />
-            <span>{conversation.stepLabel ?? `${actor.name} 응답 작성 중...`}</span>
+        {(conversation.working || (!conversation.working && hasErrorEntry && conversation.retryTurn) || showHistoryLink) ? (
+          <div className="the-world-rpg-stage-meta">
+            <div className="the-world-rpg-stage-status">
+              {conversation.working ? (
+                <span className="the-world-rpg-working-pill">
+                  <span className="the-world-working-dot" aria-hidden="true" />
+                  <span>{conversation.stepLabel ?? t("theWorld.rpg.thinking")}</span>
+                </span>
+              ) : null}
+              {conversation.working && conversation.stopTurn ? (
+                <button
+                  type="button"
+                  className="the-world-dialogue-chip is-danger"
+                  disabled={actionBusy}
+                  onClick={() => runControl(conversation.stopTurn, `${actor.name} 턴 중지를 요청했습니다.`)}
+                >
+                  <WorldIcon name="stop" size={11} tone="warn" />
+                  <span>{t("theWorld.rpg.stop")}</span>
+                </button>
+              ) : null}
+              {!conversation.working && hasErrorEntry && conversation.retryTurn ? (
+                <button
+                  type="button"
+                  className="the-world-dialogue-chip is-warn"
+                  disabled={actionBusy}
+                  onClick={() => runControl(conversation.retryTurn, `${actor.name} 재시도를 요청했습니다.`)}
+                >
+                  <WorldIcon name="retry" size={11} tone="amber" />
+                  <span>{t("theWorld.rpg.retry")}</span>
+                </button>
+              ) : null}
+            </div>
+
+            {showHistoryLink ? (
+              <button
+                type="button"
+                className="the-world-rpg-history-link"
+                onClick={() => openActorPanel(actor.id, "chat", actor.role === "commodore" ? null : objectiveTargetId)}
+              >
+                <span>{t("theWorld.rpg.viewHistory", { count: historyCount })} ↗</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
 
+      {/* 사령관 대기 질문 (Ask) 인라인 도크 */}
       {actor.role === "commodore" && actor.commodoreId && conversation.openAsksCount > 0 ? (
         <div className="the-world-dialogue-asks">
           {deps.renderCommodoreAsks(actor.commodoreId)}
         </div>
       ) : null}
 
-      <div className="the-world-dialogue-footer">
-        <div className="the-world-dialogue-chips">
-          {QUICK_PROMPTS[actor.role].map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              className="the-world-dialogue-chip"
-              disabled={sending}
-              onClick={() => {
-                setDraft(prompt);
-                inputRef.current?.focus();
-              }}
-            >
-              {prompt}
-            </button>
-          ))}
-          {conversation.working && conversation.stopTurn ? (
-            <button
-              type="button"
-              className="the-world-dialogue-chip is-danger"
-              disabled={actionBusy}
-              onClick={() => runControl(conversation.stopTurn, `${actor.name} 턴 중지를 요청했습니다.`)}
-            >
-              <WorldIcon name="stop" size={12} tone="warn" />
-              <span>턴 중지</span>
-            </button>
-          ) : null}
-          {!conversation.working && hasErrorEntry && conversation.retryTurn ? (
-            <button
-              type="button"
-              className="the-world-dialogue-chip is-warn"
-              disabled={actionBusy}
-              onClick={() => runControl(conversation.retryTurn, `${actor.name} 재시도를 요청했습니다.`)}
-            >
-              <WorldIcon name="retry" size={12} tone="amber" />
-              <span>다시 시도</span>
-            </button>
-          ) : null}
-        </div>
+      {/* 하단 퀵 프롬프트 칩 + 한 줄 입력창 */}
+      <div className="the-world-rpg-foot">
+        {showQuickChips ? (
+          <div className="the-world-dialogue-chips">
+            {QUICK_PROMPTS[actor.role].map((prompt) => (
+              <button
+                key={prompt}
+                type="button"
+                className="the-world-dialogue-chip"
+                disabled={sending}
+                onClick={() => {
+                  setDraft(prompt);
+                  inputRef.current?.focus();
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
         {feedback ? (
           <div className={`the-world-dialogue-feedback${feedback.tone === "error" ? " is-error" : ""}`}>
@@ -449,7 +456,7 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
             disabled={sending || draft.trim().length === 0}
             onClick={() => void handleSend()}
           >
-            {sending ? "전송 중..." : "전송"}
+            {sending ? t("theWorld.rpg.sending") : t("theWorld.rpg.send")}
           </button>
         </div>
       </div>

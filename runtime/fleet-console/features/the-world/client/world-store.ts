@@ -22,7 +22,7 @@ import type {
  * 「더 월드」 전환 상태 머신 및 UI 선호·상호작용 스토어.
  *
  * 진입(`closed → diving → open`)과 탈출(`open → escaping → closed`) 타이밍을 단일 원천으로 관리하며,
- * 심즈/MMORPG 스타일 방사형 상호작용 메뉴(`radial`) · 하단 RPG 대화창(`dialogue`) · 월드 내부 게임 패널(`goals`·`info`·`settings`) 흐름을 소유한다.
+ * 심즈/MMORPG 스타일 방사형 상호작용 메뉴(`radial`) · 하단 시네마틱 RPG 대화창(`dialogue`) · 우측 작전 수첩 드로어(`chat`·`goals`·`info`·`settings`) 흐름을 소유한다.
  */
 
 const DIVE_DURATION_MS = 1_120;
@@ -402,6 +402,7 @@ export function openActorDialogue(actorId: string): void {
     inspectedObjectiveId: null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    chatActive: false,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
@@ -419,6 +420,7 @@ export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objec
     inspectedObjectiveId: objectiveId ?? null,
     selectedDistrictId: null,
     districtContextMenu: null,
+    chatActive: false,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,

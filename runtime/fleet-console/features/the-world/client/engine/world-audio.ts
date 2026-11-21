@@ -201,32 +201,61 @@ export function playOverviewToggle(entering: boolean): void {
   }
 }
 
-/** 몽글이 캐릭터 상호작용·인사 시 포근한 뾱뾱음. */
-export function playMongleChirp(pitchOffset = 0): void {
+const MONGLE_CHIRP_SEMITONES = [-3, -1, 0, 2, 4, 5] as const;
+
+/** 몽글이 캐릭터 대화·상호작용·인사 시 부드러운 2~3음절 동물의 숲풍 보이스 치프(~130ms). */
+export function playMongleChirp(seed = 0): void {
   const now = performance.now();
   if (now - lastChirpAt < CHIRP_COOLDOWN_MS) return;
   const eng = getAudioEngine();
   if (!eng) return;
   lastChirpAt = now;
 
-  const mult = Math.pow(2, pitchOffset / 12);
+  let semitone = 0;
+  let variant = 0;
+  if (Number.isFinite(seed)) {
+    if (Math.abs(seed) <= 12) {
+      semitone = seed;
+      variant = Math.abs(Math.round(seed)) % 3;
+    } else {
+      const h = Math.abs(Math.trunc(seed));
+      semitone = MONGLE_CHIRP_SEMITONES[h % MONGLE_CHIRP_SEMITONES.length] ?? 0;
+      variant = h % 3;
+    }
+  }
+
+  const mult = Math.pow(2, semitone / 12);
+  // 1음절: 포근하게 올라가는 사인 톤
   scheduleTone(eng.ctx, eng.out, {
     type: "sine",
-    freqStart: 420 * mult,
-    freqEnd: 740 * mult,
-    duration: 0.095,
-    peakGain: 0.42,
+    freqStart: 440 * mult,
+    freqEnd: (variant === 1 ? 610 : 650) * mult,
+    duration: 0.052,
+    peakGain: 0.28,
     attack: 0.008,
   });
+  // 2음절: 따뜻한 트라이앵글 억양
   scheduleTone(eng.ctx, eng.out, {
     type: "triangle",
-    freqStart: 640 * mult,
-    freqEnd: 920 * mult,
-    delay: 0.075,
-    duration: 0.11,
-    peakGain: 0.30,
+    freqStart: (variant === 1 ? 650 : 570) * mult,
+    freqEnd: (variant === 2 ? 700 : 790) * mult,
+    delay: 0.044,
+    duration: 0.058,
+    peakGain: 0.21,
     attack: 0.008,
   });
+  // 3음절: 짧은 여운 끝음 (총 ~134ms)
+  if (variant !== 0) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: (variant === 2 ? 690 : 620) * mult,
+      freqEnd: (variant === 1 ? 540 : 760) * mult,
+      delay: 0.082,
+      duration: 0.052,
+      peakGain: 0.14,
+      attack: 0.007,
+    });
+  }
 }
 
 /** `[감시자]` 깨우기·질문 도착 시 은은한 크리스탈 풍경 종소리. */

@@ -3,8 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { CommodoreAskCard } from "../../../../features/commodore/client/commodore-ask.js";
 import { actionWord, errorWord, failureWord, reasonWord } from "../../../../features/commodore/client/commodore-chat.js";
+import { commodoreConversationSurface, commodoreHomeTheater } from "../../../../features/commodore/client/commodore-conversation.js";
 import { requestCommodoreCreate } from "../../../../features/commodore/client/commodore-create-modal.js";
 import { CommodoreDescription, CommodoreIntel, CommodoreSettings } from "../../../../features/commodore/client/commodore-inbox-section.js";
+import { setCommodoreMapMode } from "../../../../features/commodore/client/commodore-map/map-mode.js";
 import { MEMORY_BRANCH_LABEL, useCommodoreMemoryTree } from "../../../../features/commodore/client/commodore-memory.js";
 import { CommodoreRoutines } from "../../../../features/commodore/client/commodore-routines.js";
 import {
@@ -25,11 +27,17 @@ import {
 } from "../../../../features/commodore/client/commodore-state.js";
 import { getT as getCommodoreT } from "../../../../features/commodore/client/i18n/index.js";
 import type { CommodoreLiveEvent, CommodoreRunStep, CommodoreTranscriptEntry } from "../../../../features/commodore/shared/contracts/types.js";
-import { demandGroupTimeline, useGroupTimeline, useGroupTimelines } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
+import { stopAgentChatTurn } from "../../../../features/execution/client/agent/api.js";
+import { DecisionCard } from "../../../../features/execution/client/agent/chat/group/group-cards.js";
+import { GroupComposer } from "../../../../features/execution/client/agent/chat/group/group-composer.js";
+import { GroupConversation } from "../../../../features/execution/client/agent/chat/group/group-conversation.js";
+import { useLocalizedSnapshot } from "../../../../features/execution/client/agent/chat/group/speaker-mark.js";
+import { demandGroupTimeline, useGroupClusters, useGroupTimeline, useGroupTimelines } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { approvalItems, approvalTick, openApprovalList, subscribeApprovals } from "../../../../features/execution/client/approval/store.js";
-import type { GroupTimelineEntry } from "../../../../features/execution/shared/conversation/types.js";
+import type { ConversationSpeaker, GroupTimelineEntry } from "../../../../features/execution/shared/conversation/types.js";
 import { CommanderRowPanel } from "../../../../features/objectives/client/objectives-panel.js";
 import type { ObjectiveClusterSource } from "../../../../features/objectives/shared/objective-clusters.js";
+import type { ConsoleTheme } from "../../../../features/settings/shared/theme.js";
 import {
   THE_WORLD_METRICS_PATH,
   type WorldMetricsResponse,
@@ -40,6 +48,7 @@ import type {
   WorldActorPanelMode,
   WorldActorSpec,
   WorldChatFeedEntry,
+  WorldDistrictSpec,
   WorldMissionItem,
   WorldQuestApprovalSummary,
   WorldQuestAskSummary,
@@ -48,6 +57,7 @@ import type {
 } from "../../../../features/the-world/shared/world-types.js";
 import { getWorldT } from "../../../../features/the-world/client/i18n/index.js";
 import { WorldIcon } from "../../../../features/the-world/client/surfaces/world-icons.js";
+import { useCommanderRows } from "../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { TasksCommanderList } from "../../../../features/workspace/client/commander-tab/commander-tasks-list.js";
 
 /**
@@ -75,6 +85,13 @@ function activeLocale(): ConsoleLocale {
   if (lang === "ko" || lang === "en") return lang;
   if (typeof document !== "undefined" && document.documentElement.lang.startsWith("en")) return "en";
   return "ko";
+}
+
+function activeTheme(): ConsoleTheme {
+  if (typeof document !== "undefined" && document.documentElement.dataset.theme === "dark") {
+    return "dark";
+  }
+  return "light";
 }
 
 function projectCommodoreEntries(
@@ -782,6 +799,150 @@ function WorldCommodoreAsksView({ commodoreId }: { readonly commodoreId: string 
   );
 }
 
+function WorldCommodoreConversationHost({
+  commodoreId,
+  onClose,
+}: {
+  readonly commodoreId: string;
+  readonly onClose: () => void;
+}) {
+  const locale = activeLocale();
+  const theme = activeTheme();
+
+  useEffect(() => {
+    ensureCommodoreTranscript(commodoreId);
+    setCommodoreMapMode(commodoreId, "chat");
+  }, [commodoreId]);
+
+  const theaterId = commodoreHomeTheater(commodoreId) ?? commodoreId;
+  return (
+    <div className="the-world-real-chat-host" data-role="commodore">
+      {commodoreConversationSurface.render({
+        params: {
+          commodoreId,
+          theaterId,
+          readOnly: false,
+        },
+        language: locale,
+        theme,
+        close: onClose,
+      })}
+    </div>
+  );
+}
+
+function stopObjectiveParticipant(speaker: ConversationSpeaker): Promise<void> {
+  return speaker.objectiveId ? stopAgentChatTurn(speaker.objectiveId) : Promise.resolve();
+}
+
+function WorldObjectiveConversationHost({
+  actor,
+  rootObjectiveId,
+  onOpenObjective,
+}: {
+  readonly actor: WorldActorSpec;
+  readonly rootObjectiveId: string;
+  readonly onOpenObjective: (objectiveId: string) => void;
+}) {
+  const locale = activeLocale();
+  const rawSnapshot = useGroupTimeline(rootObjectiveId);
+  const snapshot = useLocalizedSnapshot(rawSnapshot, locale);
+  const clusters = useGroupClusters();
+  const [answered, setAnswered] = useState<readonly string[]>([]);
+
+  useEffect(() => {
+    ensureObjectiveTimeline(rootObjectiveId);
+    setAnswered([]);
+  }, [rootObjectiveId]);
+
+  const conversation = useMemo(
+    () => clusters.find((cluster) => cluster.conversation?.objectiveId === rootObjectiveId)?.conversation ?? null,
+    [clusters, rootObjectiveId],
+  );
+  const actions = conversation?.actions ?? null;
+  const commander = useMemo(
+    () => snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null,
+    [snapshot.participants],
+  );
+  const decision = snapshot.decision && !answered.includes(snapshot.decision.id) ? snapshot.decision : null;
+
+  const sendOpenUI = useCallback((text: string, speaker: ConversationSpeaker) => {
+    void actions?.send({ kind: speaker.kind === "commodore" ? "commodore" : "commander" }, text).catch(() => undefined);
+  }, [actions]);
+
+  const handleOpenBoardAction = useCallback((request: { readonly objectiveId: string }) => {
+    if (request.objectiveId) onOpenObjective(request.objectiveId);
+  }, [onOpenObjective]);
+
+  const cards = decision ? (
+    <DecisionCard
+      decision={decision}
+      actions={actions}
+      asker={commander}
+      language={locale}
+      onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
+    />
+  ) : null;
+
+  return (
+    <div className="the-world-real-chat-host" data-role={actor.role}>
+      <GroupConversation
+        snapshot={snapshot}
+        language={locale}
+        fold
+        cards={cards}
+        onOpenCommodoreRecord={handleOpenBoardAction}
+        {...(actions ? { onOpenUISend: sendOpenUI } : {})}
+        composer={(
+          <GroupComposer
+            key={rootObjectiveId}
+            rootObjectiveId={rootObjectiveId}
+            snapshot={snapshot}
+            actions={actions}
+            language={locale}
+            cliFailure={snapshot.cliFailure ?? null}
+            onStopOne={stopObjectiveParticipant}
+          />
+        )}
+      />
+    </div>
+  );
+}
+
+export function renderActorConversation(props: {
+  readonly actor: WorldActorSpec;
+  readonly onOpenObjective: (objectiveId: string) => void;
+  readonly onClose: () => void;
+}): ReactNode {
+  if (props.actor.role === "commodore" && props.actor.commodoreId) {
+    return (
+      <WorldCommodoreConversationHost
+        key={props.actor.commodoreId}
+        commodoreId={props.actor.commodoreId}
+        onClose={props.onClose}
+      />
+    );
+  }
+  const rootObjectiveId = props.actor.rootObjectiveId ?? props.actor.objectiveId ?? null;
+  if (rootObjectiveId) {
+    return (
+      <WorldObjectiveConversationHost
+        key={rootObjectiveId}
+        actor={props.actor}
+        rootObjectiveId={rootObjectiveId}
+        onOpenObjective={props.onOpenObjective}
+      />
+    );
+  }
+  return (
+    <div className="the-world-panel-empty">
+      {props.actor.summaryLines.map((line, i) => (
+        <p key={i}>• {line}</p>
+      ))}
+    </div>
+  );
+}
+
 function WorldCommodoreMemorySection({ commodoreId }: { readonly commodoreId: string }) {
   const locale = activeLocale();
   const t = getCommodoreT(locale);
@@ -794,22 +955,29 @@ function WorldCommodoreMemorySection({ commodoreId }: { readonly commodoreId: st
   }, [commodoreId]);
 
   return (
-    <section className="the-world-panel-card">
+    <section
+      className="the-world-panel-card"
+      data-empty={branches.length === 0 ? "true" : "false"}
+    >
       <div className="the-world-panel-card-head">
         <h4 className="the-world-panel-title-row">
           <WorldIcon name="memory" size={15} tone="plum" />
-          <span>사령관 기억 ({memory.entries.length})</span>
+          <span>{locale === "en" ? `Commodore Memory (${memory.entries.length})` : `사령관 기억 (${memory.entries.length})`}</span>
         </h4>
-        <input
-          type="search"
-          className="the-world-input the-world-panel-search"
-          value={query}
-          placeholder={wt("theWorld.panel.memorySearchPlaceholder")}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        {memory.entries.length > 0 ? (
+          <input
+            type="search"
+            className="the-world-input the-world-panel-search"
+            value={query}
+            placeholder={wt("theWorld.panel.memorySearchPlaceholder")}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        ) : null}
       </div>
       {branches.length === 0 ? (
-        <p className="the-world-panel-empty">기록된 기억이 아직 없습니다.</p>
+        <p className="the-world-panel-empty">
+          {locale === "en" ? "No recorded memory yet." : "기록된 기억이 아직 없습니다."}
+        </p>
       ) : (
         <div className="the-world-memory-list">
           {branches.map((group) => (
@@ -835,14 +1003,77 @@ function WorldCommodoreMemorySection({ commodoreId }: { readonly commodoreId: st
   );
 }
 
+function WorldCommodoreGoalsCard({
+  commodoreId,
+  heading,
+  locale,
+  onOpenObjective,
+  onAssignInChat,
+}: {
+  readonly commodoreId: string;
+  readonly heading: string;
+  readonly locale: ConsoleLocale;
+  readonly onOpenObjective: (objectiveId: string) => void;
+  readonly onAssignInChat?: (() => void) | undefined;
+}) {
+  const { sorted } = useCommanderRows(commodoreId, null);
+
+  if (sorted.length === 0) {
+    return (
+      <section className="the-world-panel-card" data-empty="true">
+        <div className="the-world-panel-card-head">
+          <h4 className="the-world-panel-subtitle the-world-panel-title-row">
+            <WorldIcon name="questMap" size={14} tone="moss" />
+            <span>{heading}</span>
+          </h4>
+          {onAssignInChat ? (
+            <button
+              type="button"
+              className="the-world-btn"
+              onClick={onAssignInChat}
+            >
+              <WorldIcon name="chat" size={12} tone="amber" />
+              <span>{locale === "en" ? "Assign in Chat" : "대화에서 맡기기"}</span>
+            </button>
+          ) : null}
+        </div>
+        <p className="the-world-panel-empty">
+          {locale === "en"
+            ? "No active goals · Ask in chat to assign new work."
+            : "진행 중인 목표가 없습니다 · 대화에서 새 작업을 맡겨보세요."}
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="the-world-panel-card" data-empty="false">
+      <TasksCommanderList
+        commodoreId={commodoreId}
+        selectedId={null}
+        heading={heading}
+        onSelect={({ objectiveId }) => {
+          if (objectiveId) onOpenObjective(objectiveId);
+        }}
+      />
+    </section>
+  );
+}
+
 function WorldCommodorePanelBody({
   commodoreId,
   tab,
   onOpenObjective,
+  onRequestRoutine,
+  onJumpToDistrict,
+  districts,
 }: {
   readonly commodoreId: string;
   readonly tab: WorldActorPanelMode;
   readonly onOpenObjective: (objectiveId: string) => void;
+  readonly onRequestRoutine?: (() => void) | undefined;
+  readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
+  readonly districts?: readonly WorldDistrictSpec[] | undefined;
 }) {
   const locale = activeLocale();
   const t = getCommodoreT(locale);
@@ -866,10 +1097,15 @@ function WorldCommodorePanelBody({
   const onClear = useCallback(() => setFailure(null), []);
 
   if (!view) {
-    return <div className="the-world-panel-empty">사령관 정보를 불러오는 중입니다...</div>;
+    return (
+      <div className="the-world-panel-empty">
+        {locale === "en" ? "Loading Commodore details..." : "사령관 정보를 불러오는 중입니다..."}
+      </div>
+    );
   }
 
   const run = view.run;
+  const routines = view.state.routines ?? [];
   const ctxPct = run.context && run.context.window > 0
     ? Math.min(100, Math.round((run.context.inputTokens / run.context.window) * 100))
     : null;
@@ -884,21 +1120,33 @@ function WorldCommodorePanelBody({
 
       {tab === "goals" ? (
         <div className="the-world-panel-stack">
-          <section className="the-world-panel-card">
-            <TasksCommanderList
-              commodoreId={commodoreId}
-              selectedId={null}
-              heading={t("commodore.tasks.goals")}
-              onSelect={({ objectiveId }) => {
-                if (objectiveId) onOpenObjective(objectiveId);
-              }}
-            />
-          </section>
-          <section className="the-world-panel-card">
-            <h4 className="the-world-panel-subtitle the-world-panel-title-row">
-              <WorldIcon name="routine" size={14} tone="amber" />
-              <span>{t("commodore.tasks.routines")}</span>
-            </h4>
+          <WorldCommodoreGoalsCard
+            commodoreId={commodoreId}
+            heading={t("commodore.tasks.goals")}
+            locale={locale}
+            onOpenObjective={onOpenObjective}
+            onAssignInChat={onRequestRoutine}
+          />
+          <section
+            className="the-world-panel-card"
+            data-empty={routines.length === 0 ? "true" : "false"}
+          >
+            <div className="the-world-panel-card-head">
+              <h4 className="the-world-panel-subtitle the-world-panel-title-row">
+                <WorldIcon name="routine" size={14} tone="amber" />
+                <span>{t("commodore.tasks.routines")}</span>
+              </h4>
+              {routines.length === 0 && onRequestRoutine ? (
+                <button
+                  type="button"
+                  className="the-world-btn"
+                  onClick={onRequestRoutine}
+                >
+                  <WorldIcon name="chat" size={12} tone="amber" />
+                  <span>{locale === "en" ? "Set up in Chat" : "대화에서 루틴 설정"}</span>
+                </button>
+              ) : null}
+            </div>
             <CommodoreRoutines commodoreId={commodoreId} language={locale} />
           </section>
         </div>
@@ -906,28 +1154,39 @@ function WorldCommodorePanelBody({
 
       {tab === "info" ? (
         <div className="the-world-panel-stack">
-          <section className="the-world-panel-stats">
-            <div className="the-world-stat-pill">
-              <span className="the-world-stat-label">실행 상태</span>
-              <strong>{run.phase === "turn" ? "턴 실행 중" : run.phase === "error" ? "오류" : run.phase === "retrying" ? "재시도 대기" : "대기 중"}</strong>
-            </div>
-            <div className="the-world-stat-pill">
-              <span className="the-world-stat-label">세션 · 행위</span>
-              <strong>{run.totals.session}회 · {run.totals.actions}건</strong>
-            </div>
-            <div className="the-world-stat-pill">
-              <span className="the-world-stat-label">누적 비용</span>
-              <strong>${run.totals.costUsd.toFixed(3)}</strong>
-            </div>
+          <section className="the-world-drawer-stats">
+            <span className="the-world-drawer-stat">
+              <span className="the-world-drawer-stat-label">{locale === "en" ? "Status" : "상태"}</span>
+              <strong className="the-world-drawer-stat-value">
+                {run.phase === "turn"
+                  ? (locale === "en" ? "Running" : "턴 실행")
+                  : run.phase === "error"
+                    ? (locale === "en" ? "Error" : "오류")
+                    : run.phase === "retrying"
+                      ? (locale === "en" ? "Retrying" : "재시도")
+                      : (locale === "en" ? "Idle" : "대기")}
+              </strong>
+            </span>
+            <span className="the-world-drawer-stat">
+              <span className="the-world-drawer-stat-label">{locale === "en" ? "Sessions" : "세션·행위"}</span>
+              <strong className="the-world-drawer-stat-value">{run.totals.session} · {run.totals.actions}</strong>
+            </span>
+            <span className="the-world-drawer-stat">
+              <span className="the-world-drawer-stat-label">{locale === "en" ? "Cost" : "비용"}</span>
+              <strong className="the-world-drawer-stat-value">${run.totals.costUsd.toFixed(3)}</strong>
+            </span>
             {ctxPct !== null ? (
-              <div className="the-world-stat-pill">
-                <span className="the-world-stat-label">문맥 사용률</span>
-                <strong>{ctxPct}%</strong>
-              </div>
+              <span className="the-world-drawer-stat">
+                <span className="the-world-drawer-stat-label">{locale === "en" ? "Context" : "문맥"}</span>
+                <strong className="the-world-drawer-stat-value">{ctxPct}%</strong>
+              </span>
             ) : null}
           </section>
 
-          <section className="the-world-panel-card">
+          <section
+            className="the-world-panel-card"
+            data-empty={view.state.description.text.trim().length === 0 ? "true" : "false"}
+          >
             <CommodoreDescription
               key={commodoreId}
               t={t}
@@ -938,7 +1197,10 @@ function WorldCommodorePanelBody({
             />
           </section>
 
-          <section className="the-world-panel-card">
+          <section
+            className="the-world-panel-card"
+            data-empty={view.state.intel.length === 0 ? "true" : "false"}
+          >
             <CommodoreIntel
               t={t}
               theaterId={commodoreId}
@@ -958,7 +1220,7 @@ function WorldCommodorePanelBody({
           <section className="the-world-panel-card">
             <div className="the-world-alias-row">
               <label className="the-world-stat-label" htmlFor={`world-alias-${commodoreId}`}>
-                사령관 이름 (별칭)
+                {locale === "en" ? "Commodore Name (Alias)" : "사령관 이름 (별칭)"}
               </label>
               <div className="the-world-dialogue-composer">
                 <input
@@ -981,11 +1243,46 @@ function WorldCommodorePanelBody({
                       .finally(() => setAliasBusy(false));
                   }}
                 >
-                  저장
+                  {locale === "en" ? "Save" : "저장"}
                 </button>
               </div>
             </div>
           </section>
+
+          {districts && districts.length > 0 ? (
+            <section className="the-world-panel-card">
+              <div className="the-world-panel-card-head">
+                <h4 className="the-world-panel-subtitle the-world-panel-title-row">
+                  <WorldIcon name="mapOverview" size={14} tone="teal" />
+                  <span>
+                    {locale === "en"
+                      ? `Theater Districts (${districts.length})`
+                      : `관할 Theater 구역 (${districts.length})`}
+                  </span>
+                </h4>
+                <span className="the-world-stat-label">
+                  {locale === "en" ? "Click to warp" : "클릭해 3D 이동"}
+                </span>
+              </div>
+              <div className="the-world-drawer-districts">
+                {districts.map((district) => (
+                  <button
+                    key={district.id}
+                    type="button"
+                    className="the-world-drawer-district-chip"
+                    data-tone={district.tone}
+                    aria-label={wt("theWorld.district.teleportAria", { name: district.label })}
+                    onClick={() => onJumpToDistrict?.(district.theaterId)}
+                  >
+                    <span className="the-world-drawer-district-name">{district.label}</span>
+                    <span className="the-world-drawer-district-tier">
+                      {wt("theWorld.tier.badge", { tier: district.tier })}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="the-world-panel-card">
             <CommodoreSettings
@@ -1007,6 +1304,9 @@ export function renderCommodorePanel(props: {
   readonly commodoreId: string;
   readonly tab: WorldActorPanelMode;
   readonly onOpenObjective: (objectiveId: string) => void;
+  readonly onRequestRoutine?: (() => void) | undefined;
+  readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
+  readonly districts?: readonly WorldDistrictSpec[] | undefined;
 }): ReactNode {
   return <WorldCommodorePanelBody {...props} />;
 }

@@ -1,23 +1,20 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
-import type { WorldActorPanelMode, WorldActorSpec } from "../../shared/world-types.js";
+import type {
+  WorldActorPanelMode,
+  WorldActorSpec,
+  WorldDistrictSpec,
+} from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
-import { getWorldT } from "../i18n/index.js";
+import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorDialogue,
   openActorPanel,
-  openActorRadialMenu,
   setInspectedObjectiveId,
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
-
-const ROLE_LABEL: Record<WorldActorSpec["role"], string> = {
-  commodore: "사령관",
-  commander: "지휘관",
-  member: "구성원",
-};
 
 const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
   idle: "대기 중",
@@ -32,205 +29,220 @@ const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
   error: "오류",
 };
 
-const COMMODORE_TABS: readonly {
+interface DrawerTabSpec {
   readonly id: WorldActorPanelMode;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
-  readonly label: string;
-}[] = [
-  { id: "goals", icon: "questMap", tone: "moss", label: "목표·루틴" },
-  { id: "info", icon: "inspect", tone: "cerulean", label: "상태·정보" },
-  { id: "settings", icon: "settings", tone: "indigo", label: "설정" },
+  readonly labelKey: TheWorldMessageKey;
+}
+
+const COMMODORE_TABS: readonly DrawerTabSpec[] = [
+  { id: "chat", icon: "chat", tone: "amber", labelKey: "theWorld.drawer.tabChat" },
+  { id: "goals", icon: "questMap", tone: "moss", labelKey: "theWorld.drawer.tabGoals" },
+  { id: "info", icon: "inspect", tone: "cerulean", labelKey: "theWorld.drawer.tabProfile" },
+  { id: "settings", icon: "settings", tone: "indigo", labelKey: "theWorld.drawer.tabSettings" },
 ];
 
-/**
- * 더 월드 내부 게임 작전 창(목표 보드 · 상태/설명/정보/기억 · 사령관 설정 · 목표 상세).
- *
- * 2D 콘솔로 이탈하지 않고 3D 초원 위에서 사령관/지휘관/구성원의 모든 콘솔 기능을 그대로 다룬다.
- */
-export function WorldPanelModal({
-  actor,
-  mode,
-  inspectedObjectiveId,
-  deps,
-}: {
+const OBJECTIVE_ACTOR_TABS: readonly DrawerTabSpec[] = [
+  { id: "chat", icon: "chat", tone: "amber", labelKey: "theWorld.drawer.tabChat" },
+  { id: "goals", icon: "questMap", tone: "moss", labelKey: "theWorld.drawer.tabGoals" },
+  { id: "info", icon: "crew", tone: "cerulean", labelKey: "theWorld.drawer.tabCrew" },
+];
+
+export interface WorldPanelModalProps {
   readonly actor: WorldActorSpec;
   readonly mode: WorldActorPanelMode;
   readonly inspectedObjectiveId: string | null;
   readonly deps: TheWorldClientDeps;
-}) {
-  const t = getWorldT(deps.commodore.language());
-  const [objectiveTab, setObjectiveTab] = useState<"goal" | "crew">(mode === "info" ? "crew" : "goal");
+  readonly districts?: readonly WorldDistrictSpec[] | undefined;
+  readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
+}
 
+/**
+ * 더 월드 우측 플로팅 글래스 「사령관 작전 수첩」 드로어.
+ *
+ * 좌측 55%+ 초원 시야를 열어 둔 채 우측 슬라이드 시트로 통합해,
+ * 실제 콘솔 채팅(`대화`)과 목표·프로필·설정(또는 구성원) 탭을 한 수첩에서 오간다.
+ */
+export const WorldPanelModal = memo(function WorldPanelModal({
+  actor,
+  mode,
+  inspectedObjectiveId,
+  deps,
+  districts,
+  onJumpToDistrict,
+}: WorldPanelModalProps) {
+  const t = getWorldT(deps.commodore.language());
+  const [subObjectiveTab, setSubObjectiveTab] = useState<"goal" | "crew">("goal");
+
+  const isCommodore = actor.role === "commodore" && Boolean(actor.commodoreId);
   const activeObjectiveId = inspectedObjectiveId
-    ?? (actor.role !== "commodore" ? (actor.rootObjectiveId ?? actor.objectiveId ?? null) : null);
+    ?? (!isCommodore ? (actor.rootObjectiveId ?? actor.objectiveId ?? null) : null);
+
+  const isChatMode = mode === "chat" && (!isCommodore || !inspectedObjectiveId);
+  const statusKind = actor.state === "error"
+    ? "error"
+    : actor.needsAttention
+      ? "attention"
+      : actor.state === "running"
+        ? "working"
+        : "idle";
+
+  const tabs = isCommodore ? COMMODORE_TABS : OBJECTIVE_ACTOR_TABS;
+  const effectiveObjectiveTab: "goal" | "crew" = mode === "info" ? "crew" : "goal";
+
+  const handleOpenObjectiveFromChat = (objectiveId: string) => {
+    setSubObjectiveTab("goal");
+    openActorPanel(actor.id, "goals", objectiveId);
+  };
 
   return (
-    <div
-      className="the-world-panel-backdrop"
-      onPointerDown={(e) => {
-        if (e.target === e.currentTarget) closeActorInteraction();
-      }}
+    <aside
+      className={`the-world-drawer${isChatMode ? " is-chat-mode" : ""}`}
+      data-tone={actor.tone}
+      role="dialog"
+      aria-label={t("theWorld.drawer.aria", { name: actor.name })}
+      onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
-      <section
-        className="the-world-panel"
-        role="dialog"
-        aria-label={t("theWorld.panel.aria", { name: actor.name })}
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="the-world-crest" aria-hidden="true" />
-        <header className="the-world-panel-head">
-          <div className="the-world-dialogue-speaker">
-            <div className="the-world-dialogue-portrait" data-tone={actor.tone}>
-              <MongleAvatar
-                base={actor.baseId}
-                tone={actor.tone}
-                role={actor.role}
-                state={actor.state}
-                activity={actor.activity}
-                size={38}
-                label={actor.name}
-                decorative
-              />
-            </div>
-            <div className="the-world-dialogue-meta">
-              <div className="the-world-dialogue-name-row">
-                <span className="the-world-dialogue-name">{actor.name}</span>
-                <span className="the-world-dialogue-badge">{ROLE_LABEL[actor.role]}</span>
-                <span className={`the-world-dialogue-badge${actor.needsAttention ? " is-attention" : ""}`}>
-                  {STATE_LABEL[actor.state]}
-                </span>
-                {actor.modelLabel ? (
-                  <span className="the-world-dialogue-badge is-code">{actor.modelLabel}</span>
-                ) : null}
-              </div>
-              {actor.subtitle !== ROLE_LABEL[actor.role] ? (
-                <div className="the-world-dialogue-sub">{actor.subtitle}</div>
-              ) : null}
-            </div>
-          </div>
+      <div className="the-world-drawer-crest" aria-hidden="true" />
 
-          <div className="the-world-dialogue-controls">
-            <button
-              type="button"
-              className="the-world-btn"
-              onClick={() => openActorDialogue(actor.id)}
-            >
-              <WorldIcon name="chat" size={14} tone="amber" />
-              <span>대화</span>
-            </button>
-            <button
-              type="button"
-              className="the-world-btn"
-              aria-label={t("theWorld.panel.backAria")}
-              onClick={() => openActorRadialMenu(actor.id)}
-            >
-              <WorldIcon name="wheelBack" size={14} />
-              <span>휠</span>
-            </button>
-            <button
-              type="button"
-              className="the-world-btn"
-              aria-label={t("theWorld.panel.closeAria")}
-              onClick={closeActorInteraction}
-            >
-              <WorldIcon name="close" size={14} />
-            </button>
+      {/* 슬림 1행 헤더 */}
+      <header className="the-world-drawer-head">
+        <div className="the-world-drawer-identity">
+          <div className="the-world-drawer-portrait" data-tone={actor.tone}>
+            <MongleAvatar
+              base={actor.baseId}
+              tone={actor.tone}
+              role={actor.role}
+              state={actor.state}
+              activity={actor.activity}
+              size={34}
+              label={actor.name}
+              decorative
+            />
           </div>
-        </header>
-
-        {actor.role === "commodore" && actor.commodoreId ? (
-          <div className="the-world-panel-tabs" role="tablist" aria-label={t("theWorld.panel.tabsAria")}>
-            {COMMODORE_TABS.map((tab) => {
-              const active = !inspectedObjectiveId && mode === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`the-world-panel-tab${active ? " is-active" : ""}`}
-                  onClick={() => openActorPanel(actor.id, tab.id, null)}
-                >
-                  <WorldIcon name={tab.icon} size={14} tone={active ? "inherit" : tab.tone} />
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
-            {inspectedObjectiveId ? (
-              <button
-                type="button"
-                className="the-world-panel-tab is-active"
-                onClick={() => setInspectedObjectiveId(null)}
-              >
-                <WorldIcon name="wheelBack" size={13} />
-                <span>목표 목록으로</span>
-              </button>
+          <div className="the-world-drawer-identity-meta">
+            <div className="the-world-drawer-title-row">
+              <span className="the-world-drawer-name">{actor.name}</span>
+              <span className={`the-world-rpg-status is-${statusKind}`}>
+                <span className="the-world-rpg-status-dot" aria-hidden="true" />
+                <span>{STATE_LABEL[actor.state]}</span>
+              </span>
+            </div>
+            {actor.modelLabel ? (
+              <span className="the-world-drawer-model">{actor.modelLabel}</span>
             ) : null}
           </div>
-        ) : (
-          <div className="the-world-panel-tabs" role="tablist" aria-label={t("theWorld.panel.tabsAria")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={objectiveTab === "goal"}
-              className={`the-world-panel-tab${objectiveTab === "goal" ? " is-active" : ""}`}
-              onClick={() => setObjectiveTab("goal")}
-            >
-              <WorldIcon name="questMap" size={14} tone={objectiveTab === "goal" ? "inherit" : "moss"} />
-              <span>목표·결정</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={objectiveTab === "crew"}
-              className={`the-world-panel-tab${objectiveTab === "crew" ? " is-active" : ""}`}
-              onClick={() => setObjectiveTab("crew")}
-            >
-              <WorldIcon name="crew" size={14} tone={objectiveTab === "crew" ? "inherit" : "cerulean"} />
-              <span>구성원·임무</span>
-            </button>
-          </div>
-        )}
+        </div>
 
-        <div className="the-world-panel-body">
-          {actor.role === "commodore" && actor.commodoreId ? (
-            inspectedObjectiveId ? (
-              deps.renderObjectivePanel({
-                commodoreId: actor.commodoreId,
-                objectiveId: inspectedObjectiveId,
-                tab: objectiveTab,
-                onSwitchTab: setObjectiveTab,
-                onOpenObjective: (nextId) => setInspectedObjectiveId(nextId),
-              })
-            ) : (
-              deps.renderCommodorePanel({
-                commodoreId: actor.commodoreId,
-                tab: mode,
-                onOpenObjective: (objectiveId) => {
-                  setObjectiveTab("goal");
-                  setInspectedObjectiveId(objectiveId);
-                },
-              })
-            )
-          ) : actor.commodoreId && activeObjectiveId ? (
+        <div className="the-world-drawer-controls">
+          <button
+            type="button"
+            className="the-world-btn"
+            aria-label={t("theWorld.drawer.rpgModeAria", { name: actor.name })}
+            onClick={() => openActorDialogue(actor.id)}
+          >
+            <WorldIcon name="greet" size={13} tone="amber" />
+            <span>{t("theWorld.drawer.rpgMode")}</span>
+          </button>
+          <button
+            type="button"
+            className="the-world-btn is-icon-only"
+            aria-label={t("theWorld.panel.closeAria")}
+            onClick={closeActorInteraction}
+          >
+            <WorldIcon name="close" size={14} />
+          </button>
+        </div>
+      </header>
+
+      {/* 통합 세그먼트 탭 바 */}
+      <div className="the-world-drawer-tabs" role="tablist" aria-label={t("theWorld.panel.tabsAria")}>
+        {tabs.map((tab) => {
+          const active = isCommodore
+            ? (!inspectedObjectiveId && mode === tab.id)
+            : mode === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              className={`the-world-drawer-tab${active ? " is-active" : ""}`}
+              onClick={() => openActorPanel(actor.id, tab.id, isCommodore ? null : activeObjectiveId)}
+            >
+              <WorldIcon name={tab.icon} size={13} tone={active ? "inherit" : tab.tone} />
+              <span>{t(tab.labelKey)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 사령관 드로어 내 목표 상세 드릴다운 복귀 바 */}
+      {isCommodore && inspectedObjectiveId ? (
+        <div className="the-world-drawer-subbar">
+          <button
+            type="button"
+            className="the-world-drawer-back-btn"
+            onClick={() => setInspectedObjectiveId(null)}
+          >
+            <WorldIcon name="wheelBack" size={12} />
+            <span>{t("theWorld.drawer.backToGoals")}</span>
+          </button>
+        </div>
+      ) : null}
+
+      {/* 드로어 본문: 대화 탭은 100% 실제 콘솔 채팅 임베드 */}
+      <div className={`the-world-drawer-body${isChatMode ? " is-chat" : ""}`}>
+        {isChatMode ? (
+          deps.renderActorConversation({
+            actor,
+            onOpenObjective: handleOpenObjectiveFromChat,
+            onClose: closeActorInteraction,
+          })
+        ) : isCommodore && actor.commodoreId ? (
+          inspectedObjectiveId ? (
             deps.renderObjectivePanel({
               commodoreId: actor.commodoreId,
-              objectiveId: activeObjectiveId,
-              tab: objectiveTab,
-              onSwitchTab: setObjectiveTab,
+              objectiveId: inspectedObjectiveId,
+              tab: subObjectiveTab,
+              onSwitchTab: setSubObjectiveTab,
               onOpenObjective: (nextId) => setInspectedObjectiveId(nextId),
             })
           ) : (
-            <div className="the-world-panel-empty">
-              {actor.summaryLines.map((line, i) => (
-                <p key={i}>• {line}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-    </div>
+            deps.renderCommodorePanel({
+              commodoreId: actor.commodoreId,
+              tab: mode,
+              onOpenObjective: (objectiveId) => {
+                setSubObjectiveTab("goal");
+                setInspectedObjectiveId(objectiveId);
+              },
+              onRequestRoutine: () => openActorPanel(actor.id, "chat", null),
+              ...(onJumpToDistrict ? { onJumpToDistrict } : {}),
+              ...(districts ? { districts } : {}),
+            })
+          )
+        ) : actor.commodoreId && activeObjectiveId ? (
+          deps.renderObjectivePanel({
+            commodoreId: actor.commodoreId,
+            objectiveId: activeObjectiveId,
+            tab: effectiveObjectiveTab,
+            onSwitchTab: (nextTab) => openActorPanel(
+              actor.id,
+              nextTab === "crew" ? "info" : "goals",
+              activeObjectiveId,
+            ),
+            onOpenObjective: (nextId) => setInspectedObjectiveId(nextId),
+          })
+        ) : (
+          <div className="the-world-panel-empty">
+            {actor.summaryLines.map((line, i) => (
+              <p key={i}>• {line}</p>
+            ))}
+          </div>
+        )}
+      </div>
+    </aside>
   );
-}
+});

@@ -37,6 +37,8 @@ export interface CameraOccluder {
   readonly height: number;
 }
 
+export type CameraFocusFraming = "none" | "dialogue" | "drawer" | "customizer";
+
 export interface PlayerAndCameraController {
   readonly player: PlayerState;
   readonly cameraTarget: Vector3;
@@ -47,6 +49,7 @@ export interface PlayerAndCameraController {
     readonly reducedMotion: boolean;
     readonly inputLocked: boolean;
     readonly focusActorPos: { readonly x: number; readonly z: number } | null;
+    readonly focusFraming?: CameraFocusFraming | undefined;
     readonly camera: PerspectiveCamera;
     readonly getGroundHeight: (x: number, z: number) => number;
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
@@ -123,6 +126,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let smoothedFov = 44;
   let cineProgress = 0;
   let prevLifecycle: WorldLifecycleState = "closed";
+  let prevFocusFraming: CameraFocusFraming = "none";
+  let autoDialogueYaw: number | null = null;
   let sittingAtCampfire = false;
   let jumpedFromGround = false;
 
@@ -299,6 +304,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       return sittingAtCampfire;
     },
     onPointerRotate(dx, dy) {
+      autoDialogueYaw = null;
       camYaw -= dx * 0.0062;
       if (overviewMode) {
         overviewPitch = Math.max(0.70, Math.min(1.36, overviewPitch + dy * 0.0042));
@@ -491,18 +497,55 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.landSquash = Math.max(0, player.landSquash - opts.dt * 4.6);
       }
 
-      // 카메라 주시점 보간 (RTS 하늘 조망 > 구역 포커스 > 모닥불 불멍 > 대화/상호작용 > 일반 추적/조망)
+      // 카메라 주시점 보간 (제독 드레스업 클로즈업 > RTS 하늘 조망 > 구역 포커스 > RPG 2샷 대화 / 우측 드로어 좌측 삼분할 > 모닥불 불멍 > 방사형 근접 > 일반 추적/조망)
       let desiredTargetX = opts.cameraMode === "orbit" ? orbitAnchor.x : player.x;
       let desiredTargetY = opts.cameraMode === "orbit" ? orbitAnchor.y : player.y + 1.12;
       let desiredTargetZ = opts.cameraMode === "orbit" ? orbitAnchor.z : player.z;
+      const focusFraming = opts.focusFraming ?? "none";
+      const customizerFraming = focusFraming === "customizer";
+      const hasFocusActor = !customizerFraming && !overviewMode && !districtFocus && !sittingAtCampfire && opts.focusActorPos !== null;
+      const focusDistToPlayer = hasFocusActor && opts.focusActorPos
+        ? Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z)
+        : Infinity;
+      const dialogueFraming = hasFocusActor && focusFraming === "dialogue";
+      const drawerFraming = hasFocusActor && focusFraming === "drawer";
+
+      // 1단계 RPG 대화 진입 시 NPC 정면 3/4 구도, 드레스업 진입 시 제독 정면 클로즈업 각도로 자동 정렬 (드래그 시 즉시 해제)
+      if (focusFraming !== prevFocusFraming) {
+        if (dialogueFraming && opts.focusActorPos && focusDistToPlayer > 0.25 && focusDistToPlayer < 12.0) {
+          const npcToPlayerYaw = Math.atan2(player.x - opts.focusActorPos.x, player.z - opts.focusActorPos.z);
+          autoDialogueYaw = npcToPlayerYaw + 0.56;
+        } else if (customizerFraming) {
+          autoDialogueYaw = player.yaw + 0.16;
+        } else {
+          autoDialogueYaw = null;
+        }
+        prevFocusFraming = focusFraming;
+      }
+      if (autoDialogueYaw !== null && (dialogueFraming || customizerFraming)) {
+        let yawDiff = autoDialogueYaw - camYaw;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        if (Math.abs(yawDiff) < 0.015 || opts.reducedMotion) {
+          camYaw = autoDialogueYaw;
+          autoDialogueYaw = null;
+        } else {
+          camYaw += yawDiff * (1 - Math.exp(-opts.dt * 6.5));
+        }
+      }
       const interactingClose =
-        !overviewMode
-        && !districtFocus
-        && !sittingAtCampfire
+        hasFocusActor
+        && focusFraming === "none"
         && opts.cameraMode === "follow"
-        && opts.focusActorPos !== null
-        && Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z) < 9.0;
-      if (overviewMode && !opts.inputLocked) {
+        && focusDistToPlayer < 9.0;
+
+      if (customizerFraming) {
+        // 실시간 3D 제독 드레스업: 타깃을 카메라 우측 벡터(+cos(camYaw)*0.95, -sin(camYaw)*0.95)로 밀어
+        // 우측 플로팅 드레스업 시트를 피해 좌측 65% 열린 화면 정중앙에 제독 얼굴·모자를 클로즈업
+        desiredTargetX = player.x + Math.cos(camYaw) * 0.95;
+        desiredTargetY = player.y + 0.72;
+        desiredTargetZ = player.z - Math.sin(camYaw) * 0.95;
+      } else if (overviewMode && !opts.inputLocked) {
         desiredTargetX = overviewAnchor.x;
         desiredTargetY = overviewAnchor.y;
         desiredTargetZ = overviewAnchor.z;
@@ -510,6 +553,25 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = districtFocus.x;
         desiredTargetY = districtFocus.y;
         desiredTargetZ = districtFocus.z;
+      } else if (dialogueFraming && opts.focusActorPos) {
+        // 1단계 RPG 대화: 제독·사령관 중간점을 겨냥하고 높이를 살짝 낮춰 하단 중앙 RPG 바 위쪽 65% 중앙에 2샷 프레이밍
+        const blendT = focusDistToPlayer < 12.0 ? 0.48 : 1.0;
+        const midX = player.x + (opts.focusActorPos.x - player.x) * blendT;
+        const midZ = player.z + (opts.focusActorPos.z - player.z) * blendT;
+        const midGy = Math.max(-0.05, opts.getGroundHeight(midX, midZ));
+        desiredTargetX = midX;
+        desiredTargetY = midGy + 0.78;
+        desiredTargetZ = midZ;
+      } else if (drawerFraming && opts.focusActorPos) {
+        // 2단계 우측 사령관 수첩 드로어: 타깃을 카메라 우측 벡터(+cos(camYaw)*1.45, -sin(camYaw)*1.45)로 밀어
+        // 3D 사령관·제독이 열린 좌측 57% 초원 정중앙에 가려짐 없이 선명하게 배치되도록 프레이밍
+        const blendT = focusDistToPlayer < 12.0 ? 0.56 : 1.0;
+        const baseX = player.x + (opts.focusActorPos.x - player.x) * blendT;
+        const baseZ = player.z + (opts.focusActorPos.z - player.z) * blendT;
+        const baseGy = Math.max(-0.05, opts.getGroundHeight(baseX, baseZ));
+        desiredTargetX = baseX + Math.cos(camYaw) * 1.45;
+        desiredTargetY = baseGy + 0.94;
+        desiredTargetZ = baseZ - Math.sin(camYaw) * 1.45;
       } else if (sittingAtCampfire && !opts.inputLocked) {
         desiredTargetX = (CAMPFIRE_BENCH_X + CAMPFIRE_FIRE_X) * 0.5;
         desiredTargetY = gy + 0.92;
@@ -518,37 +580,50 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = player.x + (opts.focusActorPos.x - player.x) * 0.42;
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
       }
-      const targetLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : 8.5));
+      const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming;
+      const targetLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
       cameraTarget.x += (desiredTargetX - cameraTarget.x) * targetLerp;
       cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
-      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
+      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔RPG/드로어/드레스업↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
       const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
 
       const focusDist = interactingClose ? Math.min(camDist, 7.6) : camDist;
       const desiredEffDist =
-        overviewMode && !opts.inputLocked
-          ? overviewDist
-          : districtFocus && !opts.inputLocked
-            ? districtFocus.dist
-            : sittingAtCampfire && !opts.inputLocked
-              ? 4.45
-              : opts.cameraMode === "orbit"
-                ? Math.max(28, camDist * 2.65)
-                : focusDist;
+        customizerFraming
+          ? 4.35
+          : overviewMode && !opts.inputLocked
+            ? overviewDist
+            : districtFocus && !opts.inputLocked
+              ? districtFocus.dist
+              : dialogueFraming
+                ? 6.1
+                : drawerFraming
+                  ? 7.2
+                  : sittingAtCampfire && !opts.inputLocked
+                    ? 4.45
+                    : opts.cameraMode === "orbit"
+                      ? Math.max(28, camDist * 2.65)
+                      : focusDist;
       const desiredEffPitch =
-        overviewMode && !opts.inputLocked
-          ? overviewPitch
-          : districtFocus && !opts.inputLocked
-            ? districtFocus.pitch
-            : sittingAtCampfire && !opts.inputLocked
-              ? 0.26
-              : opts.cameraMode === "orbit"
-                ? Math.max(0.54, camPitch)
-                : camPitch;
-      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : 9.0));
+        customizerFraming
+          ? 0.18
+          : overviewMode && !opts.inputLocked
+            ? overviewPitch
+            : districtFocus && !opts.inputLocked
+              ? districtFocus.pitch
+              : dialogueFraming
+                ? 0.21
+                : drawerFraming
+                  ? 0.25
+                  : sittingAtCampfire && !opts.inputLocked
+                    ? 0.26
+                    : opts.cameraMode === "orbit"
+                      ? Math.max(0.54, camPitch)
+                      : camPitch;
+      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
 

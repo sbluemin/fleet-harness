@@ -1156,6 +1156,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         }
 
         const isFocused = m.spec.id === focusedActorId;
+        if (isFocused && m.speechTimer > 0 && m.speechTimer < 900) {
+          // 대화/상호작용 포커스 대상은 기존 길거리 잡담 말풍선을 즉시 정리해 3D 얼굴·이름표 가림을 방지한다
+          m.speech = "";
+          m.speechTimer = 0;
+        }
         const patrolPlan = m.spec.role === "commodore" && m.spec.commodoreId
           ? villagePatrolPlans.get(m.spec.commodoreId)
           : undefined;
@@ -1169,13 +1174,19 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           const isWorking = m.spec.state === "running" || m.spec.activity !== null || patrolPlan.villageWorkStep !== null;
 
           if (isFocused) {
-            // 대화/상호작용 중인 사령관은 제자리에 멈춰 제독을 응대한다
+            // 대화/상호작용 중인 사령관은 제자리에 멈춰 제독을 응대하고 길거리 잡담을 중단한다
             m.tx = m.x;
             m.tz = m.z;
             ps.route.length = 0;
             ps.chatPauseTimer = 0;
             ps.rallying = false;
             ps.workingCommute = false;
+            const focusedAnim = animStates.get(m.spec.id);
+            if (focusedAnim) {
+              focusedAnim.banterTimer = 0;
+              focusedAnim.banterPartnerX = null;
+              focusedAnim.banterPartnerZ = null;
+            }
           } else if (ps.rallying) {
             // 함대 상황실 긴급 소집: 목교·정문을 거쳐 중앙 길드 광장 앞 반원 대형으로 4.2 m/s 신속 집결
             const distToTarget = Math.hypot(m.tx - m.x, m.tz - m.z);

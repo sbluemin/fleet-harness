@@ -9,6 +9,7 @@ import type {
   WorldActorPanelMode,
   WorldActorSpec,
   WorldChatFeedEntry,
+  WorldDistrictSpec,
   WorldMissionItem,
   WorldQuestBoardData,
   WorldTheaterMetrics,
@@ -58,10 +59,18 @@ export interface TheWorldClientDeps {
   readonly useActorConversation: (actor: WorldActorSpec) => WorldActorConversationState;
   readonly openCreateCommodore: () => void;
   readonly openApprovals: () => void;
+  readonly renderActorConversation: (props: {
+    readonly actor: WorldActorSpec;
+    readonly onOpenObjective: (objectiveId: string) => void;
+    readonly onClose: () => void;
+  }) => ReactNode;
   readonly renderCommodorePanel: (props: {
     readonly commodoreId: string;
     readonly tab: WorldActorPanelMode;
     readonly onOpenObjective: (objectiveId: string) => void;
+    readonly onRequestRoutine?: (() => void) | undefined;
+    readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
+    readonly districts?: readonly WorldDistrictSpec[] | undefined;
   }) => ReactNode;
   readonly renderCommodoreAsks: (commodoreId: string) => ReactNode;
   readonly renderObjectivePanel: (props: {

@@ -107,7 +107,7 @@ const TIER_NAME_KEYS: Readonly<Record<WorldDevelopmentTier, TheWorldMessageKey>>
 };
 
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
-  return mode === "goals" || mode === "info" || mode === "settings";
+  return mode === "chat" || mode === "goals" || mode === "info" || mode === "settings";
 }
 
 function findDistrictInVillages(
@@ -311,6 +311,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   useEffect(() => {
     runtimeRef.current?.setCampfireSit(store.sittingAtCampfire);
   }, [store.sittingAtCampfire]);
+
+  useEffect(() => {
+    runtimeRef.current?.setCustomizerMode?.(store.admiralCustomizerOpen);
+  }, [store.admiralCustomizerOpen]);
 
   // 함대 상황실 「전 사령관 긴급 소집」 트리거 동기화
   const lastRallyNonceRef = useRef(0);
@@ -602,6 +606,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       deactivateChat();
     }
 
+    if (snap.admiralCustomizerOpen) {
+      return;
+    }
+
     // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. (하늘 조망 중) 사령관 마을 → 7. 빈 땅 해제/이동
     const hitActorId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
     if (hitActorId) {
@@ -786,6 +794,23 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     () => (store.selectedActorId ? snapshot.actors.find((a) => a.id === store.selectedActorId) ?? null : null),
     [snapshot.actors, store.selectedActorId],
   );
+  const selectedActorDistricts = useMemo<readonly WorldDistrictSpec[] | undefined>(() => {
+    if (!selectedActor || selectedActor.role !== "commodore" || !selectedActor.commodoreId) return undefined;
+    const village = snapshot.villages.find((v) => v.commodoreId === selectedActor.commodoreId);
+    return village?.districts;
+  }, [selectedActor, snapshot.villages]);
+
+  const handleJumpToPanelDistrict = useCallback((theaterId: string) => {
+    for (const village of villagesRef.current) {
+      const match = village.districts.find((d) => d.theaterId === theaterId);
+      if (match) {
+        closeActorInteraction();
+        requestWorldTeleport(match.x, match.z);
+        pushToast(`${match.label} 구역으로 이동했습니다.`);
+        return;
+      }
+    }
+  }, [pushToast]);
   const selectedAnchorLabel = store.interactionMode === "radial" && selectedActor
     ? (runtimeRef.current?.getActorScreenAnchor(selectedActor.id) ?? null)
     : null;
@@ -969,6 +994,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleChangeAdmiralStyle = useCallback((patch: Partial<WorldAdmiralStyle>) => {
     setAdmiralStyle(patch);
+  }, []);
+
+  const handlePreviewAdmiralChange = useCallback(() => {
+    runtimeRef.current?.triggerCustomizerPreviewBounce?.();
   }, []);
 
   const handleTestRainbow = useCallback(() => {
@@ -1203,7 +1232,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             onToggleControlsGuide={handleToggleControlsGuide}
             debugPanelVisible={debugPanelVisible}
           />
-          {!dialogueOpen && panelMode === null && !anyModalOpen ? (
+          {!dialogueOpen && panelMode === null && !anyModalOpen && !store.admiralCustomizerOpen ? (
             <WorldMinimap
               ref={minimapRef}
               villages={snapshot.villages}
@@ -1259,6 +1288,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               style={store.admiralStyle}
               locale={locale}
               onChangeStyle={handleChangeAdmiralStyle}
+              onPreviewChange={handlePreviewAdmiralChange}
               onClose={handleCloseAdmiralCustomizer}
             />
           ) : null}
@@ -1336,6 +1366,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               mode={panelMode}
               inspectedObjectiveId={store.inspectedObjectiveId}
               deps={deps}
+              districts={selectedActorDistricts}
+              onJumpToDistrict={handleJumpToPanelDistrict}
             />
           ) : null}
         </>

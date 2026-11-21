@@ -529,11 +529,11 @@
   width: min(332px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-md);
-  background: oklch(14% 0.014 255 / 92%);
-  backdrop-filter: blur(16px);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  box-shadow: var(--shadow-floating);
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 86%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid oklch(100% 0 0 / 15%);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
   color: oklch(94% 0.006 255);
   overflow: hidden;
   pointer-events: auto;
@@ -933,35 +933,7 @@
   }
 }
 
-/* ─── 하단 중앙 플로팅 MMORPG 대화 · 상태 살피기 박스 ───────────────────────── */
-
-.the-world-dialogue {
-  position: absolute;
-  right: var(--space-4);
-  bottom: var(--space-4);
-  z-index: 6;
-  width: min(620px, calc(100vw - 486px));
-  max-height: min(520px, calc(100vh - 96px));
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--radius-lg);
-  background: oklch(14% 0.014 255 / 92%);
-  backdrop-filter: blur(16px);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  box-shadow: var(--shadow-floating);
-  overflow: hidden;
-  pointer-events: auto;
-  animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
-}
-
-@media (max-width: 1080px) {
-  .the-world-dialogue {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    width: min(640px, calc(100vw - 32px));
-  }
-}
+/* ─── 하단 중앙 시네마틱 RPG 2샷 대화 바 & 공통 모달 화자 요소 ────────────────── */
 
 @keyframes the-world-dialogue-rise {
   from {
@@ -974,13 +946,401 @@
   }
 }
 
-.the-world-dialogue-head {
+@keyframes the-world-rpg-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 14px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.the-world-rpg-dialogue {
+  --rpg-tone: var(--mongle-cerulean);
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 7;
+  width: min(700px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 86%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--rpg-tone) 42%, oklch(100% 0 0 / 16%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  overflow: visible;
+  pointer-events: auto;
+  animation: the-world-rpg-rise var(--duration-base) var(--ease-spring) both;
+}
+
+@keyframes the-world-rpg-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.the-world-rpg-line-reveal {
+  animation: the-world-rpg-line-in 220ms var(--ease-soft) both;
+}
+
+.the-world-rpg-dialogue[data-tone="crimson"],
+.the-world-rpg-ribbon[data-tone="crimson"] { --rpg-tone: var(--mongle-crimson); }
+.the-world-rpg-dialogue[data-tone="amber"],
+.the-world-rpg-ribbon[data-tone="amber"] { --rpg-tone: var(--mongle-amber); }
+.the-world-rpg-dialogue[data-tone="moss"],
+.the-world-rpg-ribbon[data-tone="moss"] { --rpg-tone: var(--mongle-moss); }
+.the-world-rpg-dialogue[data-tone="teal"],
+.the-world-rpg-ribbon[data-tone="teal"] { --rpg-tone: var(--mongle-teal); }
+.the-world-rpg-dialogue[data-tone="cerulean"],
+.the-world-rpg-ribbon[data-tone="cerulean"] { --rpg-tone: var(--mongle-cerulean); }
+.the-world-rpg-dialogue[data-tone="indigo"],
+.the-world-rpg-ribbon[data-tone="indigo"] { --rpg-tone: var(--mongle-indigo); }
+.the-world-rpg-dialogue[data-tone="plum"],
+.the-world-rpg-ribbon[data-tone="plum"] { --rpg-tone: var(--mongle-plum); }
+.the-world-rpg-dialogue[data-tone="rose"],
+.the-world-rpg-ribbon[data-tone="rose"] { --rpg-tone: var(--mongle-rose); }
+
+.the-world-rpg-ribbon {
+  position: absolute;
+  top: -21px;
+  left: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 4px;
+  border-radius: var(--radius-pill);
+  background: oklch(13% 0.014 255 / 96%);
+  border: 1.5px solid color-mix(in oklch, var(--rpg-tone) 70%, oklch(100% 0 0 / 22%));
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 44%), 0 0 14px color-mix(in oklch, var(--rpg-tone) 24%, transparent);
+}
+
+.the-world-rpg-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: oklch(18% 0.014 255 / 92%);
+  flex-shrink: 0;
+}
+
+.the-world-rpg-speaker-name {
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+  white-space: nowrap;
+}
+
+.the-world-rpg-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(18% 0.014 255 / 86%);
+  border: 1px solid oklch(100% 0 0 / 10%);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: oklch(80% 0.008 255);
+  white-space: nowrap;
+}
+
+.the-world-rpg-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: oklch(68% 0.01 255);
+  flex-shrink: 0;
+}
+
+.the-world-rpg-status.is-working {
+  color: var(--mongle-teal);
+  border-color: color-mix(in oklch, var(--mongle-teal) 38%, transparent);
+}
+
+.the-world-rpg-status.is-working .the-world-rpg-status-dot {
+  background: var(--mongle-teal);
+  animation: the-world-pulse 1.2s ease-in-out infinite;
+}
+
+.the-world-rpg-status.is-attention {
+  color: var(--mongle-amber);
+  border-color: color-mix(in oklch, var(--mongle-amber) 42%, transparent);
+}
+
+.the-world-rpg-status.is-attention .the-world-rpg-status-dot {
+  background: var(--mongle-amber);
+}
+
+.the-world-rpg-status.is-error {
+  color: var(--warn);
+  border-color: color-mix(in oklch, var(--warn) 46%, transparent);
+}
+
+.the-world-rpg-status.is-error .the-world-rpg-status-dot {
+  background: var(--warn);
+}
+
+.the-world-rpg-topbar {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  min-height: 38px;
+  padding: 7px var(--space-3) 4px 220px;
+}
+
+.the-world-rpg-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.the-world-rpg-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid oklch(100% 0 0 / 12%);
+  border-radius: var(--radius-xs);
+  background: oklch(18% 0.014 255 / 70%);
+  color: oklch(86% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-rpg-action-btn:hover {
+  background: oklch(24% 0.014 255 / 92%);
+  border-color: oklch(100% 0 0 / 24%);
+  color: oklch(99% 0 0);
+}
+
+.the-world-rpg-action-btn.is-primary {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(99% 0.004 255);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-rpg-action-btn.is-primary:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 28%, oklch(18% 0.014 255 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 76%, transparent);
+}
+
+.the-world-rpg-action-btn.is-icon-only {
+  padding: 0 7px;
+  gap: 0;
+}
+
+.the-world-rpg-action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-rpg-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px var(--space-4) var(--space-3);
+  user-select: text;
+}
+
+.the-world-rpg-player-quote {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-xs);
+  background: oklch(16% 0.014 255 / 60%);
+  border-left: 2px solid color-mix(in oklch, var(--mongle-teal) 70%, transparent);
+  font-size: var(--t-xs);
+  color: oklch(78% 0.01 255);
+  min-width: 0;
+}
+
+.the-world-rpg-player-label {
+  flex-shrink: 0;
+  color: var(--mongle-teal);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-rpg-player-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-rpg-speech-wrap {
+  max-height: 152px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.the-world-rpg-speech {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: oklch(96% 0.005 255);
+  font-size: var(--t-md);
+  line-height: 1.6;
+}
+
+.the-world-rpg-ask-tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 90%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 54%, transparent);
+  color: var(--mongle-amber);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-rpg-greeting {
+  margin: 0;
+  padding: var(--space-1) 0;
+  color: oklch(92% 0.006 255);
+  font-size: var(--t-md);
+  line-height: 1.6;
+}
+
+.the-world-rpg-markdown {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.the-world-rpg-markdown p {
+  margin: 0 0 var(--space-1);
+}
+
+.the-world-rpg-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.the-world-rpg-markdown ul,
+.the-world-rpg-markdown ol {
+  margin: var(--space-1) 0;
+  padding-left: var(--space-4);
+}
+
+.the-world-rpg-markdown li {
+  margin: 2px 0;
+}
+
+.the-world-rpg-markdown code {
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: oklch(18% 0.014 255 / 88%);
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+}
+
+.the-world-rpg-markdown pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-xs);
+  background: oklch(10% 0.012 255 / 86%);
+  overflow-x: auto;
+}
+
+.the-world-rpg-markdown strong {
+  color: oklch(99% 0.004 255);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-rpg-stage-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--popover-rim);
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.the-world-rpg-stage-status {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.the-world-rpg-working-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-teal) 14%, oklch(15% 0.014 255 / 88%));
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 40%, transparent);
+  color: var(--mongle-teal);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.the-world-rpg-history-link {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: oklch(78% 0.01 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-rpg-history-link:hover {
+  background: oklch(100% 0 0 / 8%);
+  color: var(--mongle-amber);
+}
+
+.the-world-rpg-history-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-rpg-foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(10% 0.012 255 / 44%);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+}
+
+@media (max-width: 640px) {
+  .the-world-rpg-topbar {
+    padding-top: 26px;
+    padding-left: var(--space-3);
+  }
 }
 
 .the-world-dialogue-speaker {
@@ -1026,9 +1386,19 @@
 }
 
 .the-world-dialogue-name {
-  color: var(--text-primary);
+  margin: 0;
+  color: oklch(98% 0.004 255);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
+  line-height: 1.25;
+}
+
+.the-world-dialogue-role {
+  margin: 2px 0 0;
+  color: oklch(74% 0.01 255);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  line-height: 1.35;
 }
 
 .the-world-dialogue-badge {
@@ -1165,246 +1535,7 @@
   border-color: var(--surface-rim-strong);
 }
 
-/* ── 실시간 인월드 대화 내역 & 푸터 ───────────────────────────────── */
-
-.the-world-dialogue-transcript {
-  flex: 1 1 auto;
-  min-height: 150px;
-  max-height: 310px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background: oklch(10% 0.012 255 / 55%);
-  user-select: text;
-}
-
-.the-world-dialogue-older {
-  display: flex;
-  justify-content: center;
-}
-
-.the-world-dialogue-empty {
-  margin: auto 0;
-  padding: var(--space-4) var(--space-2);
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: var(--t-sm);
-  line-height: 1.55;
-}
-
-.the-world-msg-row {
-  display: flex;
-  width: 100%;
-}
-
-.the-world-msg-row.is-player {
-  justify-content: flex-end;
-}
-
-.the-world-msg-row.is-npc {
-  justify-content: flex-start;
-}
-
-.the-world-msg-bubble {
-  max-width: 86%;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--t-sm);
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.the-world-msg-bubble.is-player {
-  background: var(--brass);
-  color: var(--text-on-brass);
-  border-bottom-right-radius: var(--radius-xs);
-}
-
-.the-world-msg-bubble.is-npc {
-  background: var(--surface-panel-raised);
-  color: var(--text-primary);
-  border: 1px solid var(--surface-rim);
-  border-bottom-left-radius: var(--radius-xs);
-}
-
-.the-world-msg-bubble.is-peer {
-  background: var(--surface-panel-raised);
-  color: var(--text-secondary);
-  border: 1px dashed var(--surface-rim-strong);
-}
-
-.the-world-msg-bubble.is-ask {
-  border-color: var(--warn);
-}
-
-.the-world-msg-kicker {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
-}
-
-.the-world-msg-bubble.is-player .the-world-msg-kicker,
-.the-world-msg-bubble.is-player .the-world-msg-foot {
-  color: var(--text-on-brass);
-  opacity: 0.78;
-}
-
-.the-world-msg-body {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.the-world-msg-markdown {
-  white-space: normal;
-}
-
-.the-world-msg-markdown p {
-  margin: 0 0 var(--space-1);
-}
-
-.the-world-msg-markdown p:last-child {
-  margin-bottom: 0;
-}
-
-.the-world-msg-markdown ul,
-.the-world-msg-markdown ol {
-  margin: var(--space-1) 0;
-  padding-left: var(--space-4);
-}
-
-.the-world-msg-markdown li {
-  margin: 2px 0;
-}
-
-.the-world-msg-markdown code {
-  padding: 1px 4px;
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel);
-  font-family: var(--font-code);
-  font-size: var(--t-xs);
-}
-
-.the-world-msg-markdown pre {
-  margin: var(--space-2) 0;
-  padding: var(--space-2);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel);
-  overflow-x: auto;
-}
-
-.the-world-msg-markdown strong {
-  color: var(--text-primary);
-  font-weight: var(--weight-bold);
-}
-
-.the-world-msg-foot {
-  font-family: var(--font-code);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  text-align: right;
-}
-
-.the-world-msg-system {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 4px var(--space-2);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  border-left: 2px solid var(--mongle-amber);
-  font-size: var(--t-xs);
-  line-height: 1.45;
-  color: var(--text-secondary);
-}
-
-.the-world-msg-system.is-wake {
-  border-left-color: var(--mongle-amber);
-  color: var(--mongle-amber);
-}
-
-.the-world-msg-system.is-error {
-  border-left-color: var(--warn);
-  color: var(--warn);
-}
-
-.the-world-msg-sys-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: var(--weight-bold);
-  flex-shrink: 0;
-}
-
-.the-world-msg-sys-text {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-primary);
-}
-
-.the-world-msg-system.is-wake .the-world-msg-sys-text {
-  color: var(--mongle-amber);
-}
-
-.the-world-msg-system.is-error .the-world-msg-sys-text {
-  color: var(--warn);
-}
-
-.the-world-msg-action {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: 3px var(--space-2);
-  border-radius: var(--radius-xs);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-}
-
-.the-world-msg-action.is-error {
-  color: var(--warn);
-}
-
-.the-world-msg-act-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-code);
-  font-weight: var(--weight-medium);
-  flex-shrink: 0;
-}
-
-.the-world-msg-act-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.the-world-msg-time {
-  font-family: var(--font-code);
-  font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.the-world-msg-working {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 4px var(--space-2);
-  color: var(--mongle-teal);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-}
+/* ── 대화 진행 점 & 대기 질문(Ask) 도크 ───────────────────────────────────── */
 
 .the-world-working-dot {
   width: 7px;
@@ -1423,22 +1554,14 @@
   max-height: 220px;
   overflow-y: auto;
   padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--popover-rim);
-  background: var(--surface-panel-raised);
+  border-top: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(14% 0.014 255 / 72%);
 }
 
 .the-world-asks-stack {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.the-world-dialogue-footer {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-top: 1px solid var(--popover-rim);
 }
 
 .the-world-dialogue-chip.is-danger {
@@ -2388,21 +2511,21 @@
   align-items: center;
   justify-content: center;
   padding: 58px var(--space-4) var(--space-4);
-  background: oklch(0% 0 0 / 32%);
-  backdrop-filter: blur(4px);
+  background: oklch(4% 0.01 255 / 26%);
+  backdrop-filter: blur(5px);
   pointer-events: auto;
 }
 
 .the-world-panel {
   width: min(820px, calc(100vw - 32px));
-  max-height: min(680px, calc(100vh - 84px));
+  max-height: min(720px, calc(100vh - 80px));
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: oklch(14% 0.014 255 / 94%);
-  backdrop-filter: blur(18px);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  box-shadow: var(--shadow-floating);
+  background: oklch(13% 0.014 255 / 86%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid oklch(100% 0 0 / 15%);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
   overflow: hidden;
   animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
 }
@@ -2411,9 +2534,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+  padding: 10px var(--space-4);
   border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  flex-shrink: 0;
 }
 
 .the-world-panel-tabs {
@@ -2421,9 +2545,10 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
+  padding: 6px var(--space-4);
   border-bottom: 1px solid oklch(100% 0 0 / 10%);
-  background: oklch(10% 0.012 255 / 55%);
+  background: oklch(10% 0.012 255 / 50%);
+  flex-shrink: 0;
 }
 
 .the-world-panel-tab {
@@ -2457,9 +2582,10 @@
 
 .the-world-panel-body {
   flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4);
-  background: oklch(11% 0.012 255 / 62%);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  background: oklch(11% 0.012 255 / 44%);
   user-select: text;
 }
 
@@ -2505,8 +2631,424 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
-  background: var(--surface-panel-raised);
-  border: 1px solid var(--surface-rim);
+  background: oklch(16% 0.014 255 / 72%);
+  border: 1px solid oklch(100% 0 0 / 10%);
+}
+
+.the-world-panel-card[data-empty="true"] {
+  padding: 10px var(--space-3);
+  gap: 4px;
+  background: oklch(14% 0.014 255 / 52%);
+}
+
+.the-world-panel-card[data-empty="true"] .the-world-panel-empty,
+.the-world-panel-card[data-empty="true"] .commodore-routines-empty {
+  padding: 2px 0;
+  margin: 0;
+  text-align: left;
+  font-size: var(--t-xs);
+}
+
+.the-world-panel-card[data-empty="true"] .objectives-commodore-panel-section,
+.the-world-panel-card[data-empty="true"] .objectives-commodore-section {
+  padding: 0;
+  margin: 0;
+  gap: 4px;
+  min-height: 0;
+  border: 0;
+}
+
+.the-world-panel-card[data-empty="true"] .objectives-commodore-panel-head,
+.the-world-panel-card[data-empty="true"] .objectives-commodore-panel-title {
+  margin: 0;
+}
+
+.the-world-panel-card[data-empty="true"] .objectives-commodore-hint {
+  margin: 0;
+  font-size: var(--t-xs);
+  line-height: 1.4;
+}
+
+.the-world-panel-card[data-empty="true"] .commodore-theaters-add,
+.the-world-panel-card[data-empty="true"] .objectives-commodore-intel-add {
+  margin-top: 2px;
+  min-height: 28px;
+  padding-block: 4px;
+}
+
+/* ── Sprint 9: 우측 플로팅 글래스 「사령관 작전 수첩」 드로어 & 실제 콘솔 채팅 호스트 ── */
+
+@keyframes the-world-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.the-world-drawer {
+  --drawer-tone: var(--mongle-cerulean);
+  position: absolute;
+  top: 56px;
+  right: 16px;
+  bottom: auto;
+  height: auto;
+  max-height: calc(100vh - 76px);
+  z-index: 8;
+  width: clamp(430px, 43vw, 560px);
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 84%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--drawer-tone) 34%, oklch(100% 0 0 / 15%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: the-world-drawer-in var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-drawer.is-chat-mode {
+  bottom: 16px;
+  height: auto;
+  max-height: none;
+  background: oklch(13% 0.014 255 / 88%);
+}
+
+.the-world-drawer[data-tone="crimson"],
+.the-world-drawer-portrait[data-tone="crimson"] { --drawer-tone: var(--mongle-crimson); }
+.the-world-drawer[data-tone="amber"],
+.the-world-drawer-portrait[data-tone="amber"] { --drawer-tone: var(--mongle-amber); }
+.the-world-drawer[data-tone="moss"],
+.the-world-drawer-portrait[data-tone="moss"] { --drawer-tone: var(--mongle-moss); }
+.the-world-drawer[data-tone="teal"],
+.the-world-drawer-portrait[data-tone="teal"] { --drawer-tone: var(--mongle-teal); }
+.the-world-drawer[data-tone="cerulean"],
+.the-world-drawer-portrait[data-tone="cerulean"] { --drawer-tone: var(--mongle-cerulean); }
+.the-world-drawer[data-tone="indigo"],
+.the-world-drawer-portrait[data-tone="indigo"] { --drawer-tone: var(--mongle-indigo); }
+.the-world-drawer[data-tone="plum"],
+.the-world-drawer-portrait[data-tone="plum"] { --drawer-tone: var(--mongle-plum); }
+.the-world-drawer[data-tone="rose"],
+.the-world-drawer-portrait[data-tone="rose"] { --drawer-tone: var(--mongle-rose); }
+
+.the-world-drawer-crest {
+  height: 3px;
+  width: 100%;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--drawer-tone) 0%, color-mix(in oklch, var(--drawer-tone) 24%, transparent) 100%);
+}
+
+.the-world-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  flex-shrink: 0;
+}
+
+.the-world-drawer-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.the-world-drawer-portrait {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in oklch, var(--drawer-tone) 80%, oklch(100% 0 0 / 20%));
+  background: oklch(17% 0.014 255 / 92%);
+  flex-shrink: 0;
+}
+
+.the-world-drawer-identity-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.the-world-drawer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.the-world-drawer-name {
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-drawer-model {
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  color: oklch(72% 0.01 255);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-drawer-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.the-world-drawer-tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(10% 0.012 255 / 54%);
+  flex-shrink: 0;
+}
+
+.the-world-drawer-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: oklch(76% 0.01 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-drawer-tab:hover {
+  background: oklch(100% 0 0 / 8%);
+  color: oklch(98% 0 0);
+}
+
+.the-world-drawer-tab.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(99% 0.004 255);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-drawer-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-drawer-subbar {
+  display: flex;
+  align-items: center;
+  padding: 6px var(--space-3);
+  border-bottom: 1px solid oklch(100% 0 0 / 8%);
+  background: oklch(11% 0.012 255 / 58%);
+  flex-shrink: 0;
+}
+
+.the-world-drawer-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid oklch(100% 0 0 / 14%);
+  border-radius: var(--radius-xs);
+  background: oklch(18% 0.014 255 / 76%);
+  color: oklch(92% 0.006 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.the-world-drawer-back-btn:hover {
+  background: oklch(24% 0.014 255 / 92%);
+  color: oklch(99% 0 0);
+}
+
+.the-world-drawer-back-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  background: oklch(11% 0.012 255 / 38%);
+  user-select: text;
+}
+
+.the-world-drawer:not(.is-chat-mode) .the-world-drawer-body {
+  flex: 0 1 auto;
+}
+
+.the-world-drawer-body.is-chat {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+/* 실제 Fleet Console 사령관/지휘관 채팅 컴포넌트 임베드 호스트 */
+.the-world-real-chat-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  --conversation-overlay-top: 12px;
+}
+
+.the-world-real-chat-host > .objectives-commodore-conversation,
+.the-world-real-chat-host > .group-chat,
+.the-world-real-chat-host > .agent-chat {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+}
+
+.the-world-real-chat-host .objectives-commodore-conversation-log,
+.the-world-real-chat-host .group-chat,
+.the-world-real-chat-host .agent-chat {
+  background: transparent;
+}
+
+.the-world-real-chat-host .objectives-commodore-conversation .group-chat-log,
+.the-world-real-chat-host .group-chat-log,
+.the-world-real-chat-host .agent-chat-log {
+  padding-inline: var(--space-3);
+  padding-top: 14px;
+}
+
+.the-world-real-chat-host .group-chat-column {
+  padding-top: 4px;
+}
+
+.the-world-real-chat-host .objectives-commodore-conversation .objectives-commodore-foot {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.the-world-real-chat-composer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(11% 0.012 255 / 72%);
+  flex-shrink: 0;
+}
+
+/* 컴팩트 1줄 메트릭 스트립 (사령관 프로필 탭) */
+.the-world-drawer-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(16% 0.014 255 / 76%);
+  border: 1px solid oklch(100% 0 0 / 10%);
+}
+
+.the-world-drawer-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  background: oklch(12% 0.012 255 / 74%);
+  border: 1px solid oklch(100% 0 0 / 8%);
+  font-size: var(--t-xs);
+  color: oklch(95% 0.005 255);
+}
+
+.the-world-drawer-stat-label {
+  font-size: var(--t-2xs);
+  color: oklch(72% 0.01 255);
+  font-weight: var(--weight-medium);
+}
+
+.the-world-drawer-stat-value {
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.004 255);
+}
+
+/* 사령관 설정 내 작전 구역 3D 바로 이동 칩 */
+.the-world-drawer-districts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.the-world-drawer-district-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid oklch(100% 0 0 / 14%);
+  border-radius: var(--radius-pill);
+  background: oklch(18% 0.014 255 / 78%);
+  color: oklch(92% 0.006 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-drawer-district-chip:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(18% 0.014 255 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(99% 0 0);
+}
+
+.the-world-drawer-district-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-drawer-district-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-drawer-district-tier {
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(74% 0.01 255);
 }
 
 .the-world-panel-card-head {
@@ -2672,11 +3214,11 @@
   max-height: min(512px, calc(100vh - 266px));
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-md);
-  background: oklch(13% 0.014 255 / 93%);
-  backdrop-filter: blur(16px);
-  border: 1px solid color-mix(in oklch, var(--district-tone) 34%, oklch(100% 0 0 / 14%));
-  box-shadow: var(--shadow-floating);
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 86%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--district-tone) 34%, oklch(100% 0 0 / 15%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
   color: oklch(94% 0.006 255);
   overflow: hidden;
   pointer-events: auto;
@@ -3888,11 +4430,11 @@
   width: 244px;
   display: flex;
   flex-direction: column;
-  border-radius: var(--radius-md);
-  background: oklch(13% 0.014 255 / 94%);
-  backdrop-filter: blur(16px);
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 88%);
+  backdrop-filter: blur(22px) saturate(135%);
   border: 1px solid color-mix(in oklch, var(--quick-tone) 38%, oklch(100% 0 0 / 15%));
-  box-shadow: var(--shadow-floating);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
   color: oklch(95% 0.005 255);
   overflow: hidden;
   pointer-events: auto;
@@ -3977,10 +4519,13 @@
   box-shadow: var(--focus-face);
 }
 
-/* 포토 모드(P): 모든 HUD·채팅·미니맵·푯말 부드럽게 숨김 + 우하단 은은한 복원 필 */
+/* 포토 모드(P): 모든 HUD·채팅·미니맵·푯말·대화 바·드로어 부드럽게 숨김 + 우하단 은은한 복원 필 */
 .the-world-root.is-photo-mode .the-world-hud-top,
 .the-world-root.is-photo-mode .the-world-quick-bar,
 .the-world-root.is-photo-mode .the-world-chat-shell,
+.the-world-root.is-photo-mode .the-world-rpg-dialogue,
+.the-world-root.is-photo-mode .the-world-drawer,
+.the-world-root.is-photo-mode .the-world-customizer-sheet,
 .the-world-root.is-photo-mode .the-world-minimap,
 .the-world-root.is-photo-mode .the-world-minimap-collapsed,
 .the-world-root.is-photo-mode .the-world-labels,
@@ -4218,58 +4763,77 @@
   box-shadow: var(--focus-face);
 }
 
-/* 제독 몽글이 꾸미기 모달 */
-.the-world-admiral-modal,
-.the-world-admiral-customizer {
-  width: min(440px, calc(100vw - 32px));
+/* 우측 플로팅 글래스 제독 몽글이 3D 드레스업 시트 */
+.the-world-customizer-sheet {
+  --drawer-tone: var(--mongle-cerulean);
+  position: fixed;
+  top: 64px;
+  right: 16px;
+  z-index: 8;
+  width: min(344px, calc(100vw - 24px));
+  max-height: calc(100vh - 88px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 84%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--drawer-tone) 38%, oklch(100% 0 0 / 16%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: the-world-drawer-in var(--duration-base) var(--ease-spring) both;
 }
 
-.the-world-admiral-body {
+.the-world-customizer-sheet[data-tone="crimson"] { --drawer-tone: var(--mongle-crimson); }
+.the-world-customizer-sheet[data-tone="amber"] { --drawer-tone: var(--mongle-amber); }
+.the-world-customizer-sheet[data-tone="moss"] { --drawer-tone: var(--mongle-moss); }
+.the-world-customizer-sheet[data-tone="teal"] { --drawer-tone: var(--mongle-teal); }
+.the-world-customizer-sheet[data-tone="cerulean"] { --drawer-tone: var(--mongle-cerulean); }
+.the-world-customizer-sheet[data-tone="indigo"] { --drawer-tone: var(--mongle-indigo); }
+.the-world-customizer-sheet[data-tone="plum"] { --drawer-tone: var(--mongle-plum); }
+.the-world-customizer-sheet[data-tone="rose"] { --drawer-tone: var(--mongle-rose); }
+
+.the-world-customizer-body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  padding: var(--space-3);
+  overflow-y: auto;
 }
 
-.the-world-admiral-preview {
-  --admiral-tone: var(--mongle-cerulean);
+.the-world-customizer-hint {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-3);
+  gap: 7px;
+  padding: 7px 10px;
   border-radius: var(--radius-md);
-  background:
-    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--admiral-tone) 24%, transparent) 0%, transparent 72%),
-    oklch(15% 0.014 255 / 86%);
-  border: 1px solid color-mix(in oklch, var(--admiral-tone) 42%, oklch(100% 0 0 / 12%));
+  background: oklch(16% 0.014 255 / 72%);
+  border: 1px solid oklch(100% 0 0 / 11%);
+  color: oklch(88% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
 }
 
-.the-world-admiral-preview[data-tone="crimson"] { --admiral-tone: var(--mongle-crimson); }
-.the-world-admiral-preview[data-tone="amber"] { --admiral-tone: var(--mongle-amber); }
-.the-world-admiral-preview[data-tone="moss"] { --admiral-tone: var(--mongle-moss); }
-.the-world-admiral-preview[data-tone="teal"] { --admiral-tone: var(--mongle-teal); }
-.the-world-admiral-preview[data-tone="cerulean"] { --admiral-tone: var(--mongle-cerulean); }
-.the-world-admiral-preview[data-tone="indigo"] { --admiral-tone: var(--mongle-indigo); }
-.the-world-admiral-preview[data-tone="plum"] { --admiral-tone: var(--mongle-plum); }
-.the-world-admiral-preview[data-tone="rose"] { --admiral-tone: var(--mongle-rose); }
-
-.the-world-admiral-avatar-stage {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.the-world-customizer-hint-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
 }
 
-.the-world-admiral-preview-badge {
+.the-world-customizer-hat-chip {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 10px;
+  gap: 4px;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
-  background: oklch(11% 0.014 255 / 86%);
-  border: 1px solid oklch(100% 0 0 / 14%);
-  color: oklch(94% 0.005 255);
-  font-size: var(--t-xs);
+  background: color-mix(in oklch, var(--mongle-amber) 16%, oklch(13% 0.014 255 / 90%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 48%, transparent);
+  color: oklch(97% 0.004 255);
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
+  white-space: nowrap;
 }
 
 .the-world-admiral-section {
@@ -4280,7 +4844,7 @@
 
 .the-world-admiral-swatches {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -4541,39 +5105,45 @@
   box-shadow: var(--shadow-floating);
 }
 
-/* ── Sprint 8: 조작 가이드 모달 (? / H) ───────────────────────────────────────── */
+/* ── Sprint 8/10: 조작 가이드 모달 (? / H — 2열 컴팩트 그리드) ────────────────── */
 
 .the-world-guide-modal {
-  width: min(540px, calc(100vw - 32px));
+  width: min(740px, calc(100vw - 32px));
 }
 
 .the-world-guide-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  max-height: min(68vh, 520px);
+  gap: 12px;
+  max-height: min(78vh, 680px);
   overflow-y: auto;
 }
 
 .the-world-guide-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .the-world-guide-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+@media (max-width: 680px) {
+  .the-world-guide-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .the-world-guide-row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 7px var(--space-3);
+  padding: 6px 10px;
   border-radius: var(--radius-md);
-  background: oklch(16% 0.014 255 / 82%);
+  background: oklch(16% 0.014 255 / 78%);
   border: 1px solid oklch(100% 0 0 / 10%);
 }
 
@@ -4595,7 +5165,7 @@
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   color: oklch(93% 0.006 255);
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .the-world-guide-kbd {
@@ -4625,7 +5195,11 @@
   .the-world-interact-prompt,
   .the-world-radial-aperture,
   .the-world-radial-petal,
-  .the-world-dialogue,
+  .the-world-rpg-dialogue,
+  .the-world-rpg-line-reveal,
+  .the-world-rpg-status.is-working .the-world-rpg-status-dot,
+  .the-world-drawer,
+  .the-world-customizer-sheet,
   .the-world-panel,
   .the-world-district-card,
   .the-world-quick-menu,
@@ -4651,6 +5225,11 @@
   .the-world-interact-prompt:focus-visible,
   .the-world-radial-aperture:focus-visible,
   .the-world-radial-petal:focus-visible,
+  .the-world-rpg-action-btn:focus-visible,
+  .the-world-rpg-history-link:focus-visible,
+  .the-world-drawer-tab:focus-visible,
+  .the-world-drawer-back-btn:focus-visible,
+  .the-world-drawer-district-chip:focus-visible,
   .the-world-dialogue-chip:focus-visible,
   .the-world-primary-action:focus-visible,
   .the-world-input:focus-visible,

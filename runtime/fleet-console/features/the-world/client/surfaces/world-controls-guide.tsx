@@ -28,6 +28,7 @@ const GUIDE_GROUPS: readonly {
     titleKey: "theWorld.guide.groupMove",
     items: [
       { keysKey: "theWorld.guide.moveKeys", descKey: "theWorld.guide.moveDesc", icon: "compass", tone: "cerulean" },
+      { keysKey: "theWorld.guide.cameraOrbitKeys", descKey: "theWorld.guide.cameraOrbitDesc", icon: "stage", tone: "moss" },
       { keys: "Shift", descKey: "theWorld.guide.sprintDesc", icon: "approach", tone: "teal" },
       { keys: "Space", descKey: "theWorld.guide.jumpDesc", icon: "sparkle", tone: "amber" },
     ],
