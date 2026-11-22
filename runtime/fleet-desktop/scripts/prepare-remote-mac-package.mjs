@@ -152,7 +152,13 @@ async function findPackagedApp(releaseDirectory) {
 
 async function buildPackagedApp(repoRoot, releaseDirectory) {
   await ensureElectronBinary();
-  await execFileAsync("pnpm", ["--filter", "@dotobokuri/fleet-desktop", "package:dir"], { cwd: repoRoot, maxBuffer: 32 * 1024 * 1024 });
+  // 원격 E2E 번들은 개인 인증서 대신 ad-hoc 서명으로만 만든다.
+  const { CSC_LINK, CSC_NAME, CSC_KEY_PASSWORD, ...env } = process.env;
+  await execFileAsync("pnpm", ["--filter", "@dotobokuri/fleet-desktop", "package:dir"], {
+    cwd: repoRoot,
+    env: { ...env, FLEET_DEV_CODESIGN_IDENTITY: "-", CSC_IDENTITY_AUTO_DISCOVERY: "false" },
+    maxBuffer: 32 * 1024 * 1024,
+  });
   const appPath = await findPackagedApp(releaseDirectory);
   if (!appPath) throw new Error("package:dir did not produce a Fleet Console.app in the worktree release directory");
   return appPath;

@@ -49,7 +49,7 @@ test('a selected remote target cannot enter the local Desktop launch gate', () =
   assert.doesNotMatch(result.stderr, /mock-remote/);
 });
 
-describe('mock-SSH remote flow (no real target; loopback only)', () => {
+describe('mock-SSH remote flow (no real target; loopback only)', { skip: process.platform !== 'darwin' && 'requires macOS plutil' }, () => {
   const MOCK_TARGET = 'mock-remote';
   const REVISION = 'b'.repeat(40);
 
@@ -57,7 +57,7 @@ describe('mock-SSH remote flow (no real target; loopback only)', () => {
     // NOTE: these files are named `ssh`/`scp` (no extension), so Node loads
     // them as CommonJS: require() below, no top-level await.
     ssh: `#!/usr/bin/env node
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const { mkdirSync, writeFileSync } = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
@@ -139,12 +139,14 @@ function materialize(cmd) {
   writeFileSync(path.join(dir, 'pkg', 'console', 'fleet-package-identity.json'), identity + '\\n');
   writeFileSync(path.join(dir, 'pkg', 'console', 'package.json'), JSON.stringify({ name: 'fleet-console-staged', version: '9.9.9-test', engines: { node: '>=22' } }));
   writeFileSync(path.join(consoleDir, 'cli.mjs'), '// staged cli\\n');
-  writeFileSync(path.join(dir, 'pkg', 'Fleet Console.app', 'Contents', 'Info.plist'),
+  const plist = path.join(dir, 'pkg', 'Fleet Console.app', 'Contents', 'Info.plist');
+  writeFileSync(plist,
     '<?xml version="1.0" encoding="UTF-8"?>\\n<plist version="1.0"><dict>\\n' +
     '<key>CFBundleIdentifier</key><string>com.dotobokuri.fleet-console</string>\\n' +
     '<key>CFBundleShortVersionString</key><string>0.0.0-test</string>\\n' +
     '<key>CFBundleExecutable</key><string>Fleet Console</string>\\n' +
     '<key>FleetSourceRevision</key><string>' + rev + '</string>\\n</dict></plist>\\n');
+  execFileSync('/usr/bin/plutil', ['-convert', 'binary1', plist]);
 }
 function fullExe() {
   return '#!' + process.execPath + '\\n' +

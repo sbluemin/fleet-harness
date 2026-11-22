@@ -883,7 +883,7 @@ async function main() {
     var bundleExecutable = null;
     {
       const { stdout: plist } = await ssh(
-        `cat ${shQuote(`${appPath}/Contents/Info.plist`)}`,
+        `/usr/bin/plutil -convert xml1 -o - ${shQuote(`${appPath}/Contents/Info.plist`)}`,
         'app-identity-unreadable',
         { timeout: 30_000 },
       );
