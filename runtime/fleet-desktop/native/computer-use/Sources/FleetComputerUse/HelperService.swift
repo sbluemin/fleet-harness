@@ -688,7 +688,10 @@ private struct Expectation {
         editable = focused
       }
       if stroke.selectAll, let editable { verification = .selectsAll(editable) }
-      if focus, [.chromium, .electron].contains(win.engine), let editable { primer = keyWindowPrimer(for: editable) }
+      // 앱이 활성이고 대상 창이 그 앱의 포커스 창이면 이미 AppKit key 창이라 클릭이 필요 없다. 비활성 앱에서는
+      // AXFocusedWindow가 대상 창이어도 단축키가 버려졌으므로(b3c7139e m3 E2a, Chrome) key 여부를 믿지 않는다.
+      let alreadyKey = NSRunningApplication(processIdentifier: pid)?.isActive == true && AXReader.focusedWindow(win, root: before.root)
+      if focus, !alreadyKey, [.chromium, .electron].contains(win.engine), let editable { primer = keyWindowPrimer(for: editable) }
     case .setValue:
       guard let node, AXReader.settable(node.el, kAXValueAttribute) else { throw HelperError("not_settable") }
       let text = request.text!
@@ -770,6 +773,9 @@ private struct Expectation {
         hideCursor(animated: false)
         // 클릭은 이미 페이지에 갔으므로 "보내지 않음"으로 바꾸지 않는다.
         if clicked, (error as? HelperError)?.code != "timeout" { throw HelperError("timeout", "key_window_click_sent") }
+        // 프라이머 전송 중의 HelperError(재검증 실패)는 실제 클릭 이벤트 전에만 난다(EventSequence.send).
+        // 그 밖의 오류(취소 등)는 클릭이 반쯤 나간 뒤일 수 있으므로 전송 불명으로 올린다.
+        if primer != nil, !(error is HelperError) { throw HelperError("timeout", "key_window_click_unknown") }
         throw error
       }
       record.confirmed(via: via, notes: notes)
