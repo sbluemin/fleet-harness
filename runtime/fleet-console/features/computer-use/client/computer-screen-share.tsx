@@ -5,8 +5,17 @@ import { subscribeConsoleChannel } from "../../../core/client/src/integration/ob
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
-/** 화면의 주인(objectiveId — 공유 컨텍스트면 루트)과 지금 조작하는 참가자(actor). */
-type CaptureTarget = { id: string; objectiveId: string; actor: string | null; title: string };
+/**
+ * 화면의 주인과 지금 조작하는 참가자(actor). 주인은 목표(objectiveId — 공유 컨텍스트면 루트)이거나 사령관(commodoreId)이다.
+ * `ownerKind` 가 없는 프레임은 목표 소유로 읽는다.
+ */
+type CaptureTarget = { id: string; ownerKind?: "objective" | "commodore"; objectiveId: string | null; commodoreId?: string | null; actor: string | null; title: string };
+/** 이 화면의 주인이 그 목표/사령관인가. 사령관을 묻는 쪽은 목표 id 로 겹쳐 읽히지 않는다. */
+function targetOwnedBy(target: CaptureTarget, owner: { readonly objectiveId?: string; readonly commodoreId?: string }): boolean {
+  return owner.commodoreId !== undefined
+    ? target.ownerKind === "commodore" && target.commodoreId === owner.commodoreId
+    : target.ownerKind !== "commodore" && target.objectiveId === owner.objectiveId;
+}
 /** 공유 불가의 사람이 고칠 수 있는 원인(서버의 비민감 사유 코드). 없으면 일반 식별 실패다. */
 type CaptureFailure = "accessibility_permission_required" | "screen_recording_permission_required";
 type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void; failure?: CaptureFailure };
@@ -196,16 +205,20 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     };
     const apply = (value: unknown) => {
       if (disposed || !value || typeof value !== "object") return;
-      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableObjectiveId?: string | null; unavailableReason?: unknown };
+      const raw = value as { target: (Omit<CaptureTarget, "actor"> & { actor?: unknown }) | null; unavailableObjectiveId?: string | null; unavailableCommodoreId?: string | null; unavailableReason?: unknown };
       const target: CaptureTarget | null = raw.target ? { ...raw.target, actor: typeof raw.target.actor === "string" ? raw.target.actor : null } : null;
       const unavailableObjectiveId = raw.unavailableObjectiveId;
+      const unavailableCommodoreId = raw.unavailableCommodoreId;
       desiredTarget = target;
-      if (!target && unavailableObjectiveId) {
+      if (!target && (unavailableObjectiveId || unavailableCommodoreId)) {
         stop();
         currentId = null;
         attemptedId = null;
         const failure: CaptureFailure | undefined = raw.unavailableReason === "accessibility_permission_required" ? raw.unavailableReason : undefined;
-        setCapture({ target: { id: `unavailable:${unavailableObjectiveId}`, objectiveId: unavailableObjectiveId, actor: null, title: "" }, stream: null, failed: true, ...(failure ? { failure } : {}) });
+        const unavailable: CaptureTarget = unavailableObjectiveId
+          ? { id: `unavailable:${unavailableObjectiveId}`, objectiveId: unavailableObjectiveId, actor: null, title: "" }
+          : { id: `unavailable:${unavailableCommodoreId}`, ownerKind: "commodore", objectiveId: null, commodoreId: unavailableCommodoreId ?? null, actor: null, title: "" };
+        setCapture({ target: unavailable, stream: null, failed: true, ...(failure ? { failure } : {}) });
         return;
       }
       if (!target) setCapture(null);
@@ -250,7 +263,8 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
 
 /** 이 Objective(공유 컨텍스트면 루트)의 화면을 지금 공유하는 중인가 — 영상 수명은 Desktop 셸만 가진다. */
 export function useComputerShareActive(objectiveId: string): boolean {
-  return useContext(CaptureContext)?.target.objectiveId === objectiveId;
+  const target = useContext(CaptureContext)?.target;
+  return target !== undefined && targetOwnedBy(target, { objectiveId });
 }
 
 /**
@@ -265,12 +279,12 @@ function chromeTopInset(element: Element): number {
  * 떠 있는 화면공유 미리보기. `actor` 를 주면 미리보기 왼쪽 위에 조작자 칩을 그린다(공유 컨텍스트의 그룹채팅 — 누가 조작하는지는
  * 그 화면이 안다). `className` 은 놓이는 자리의 배치 손잡이다.
  */
-export function ComputerScreenShare({ objectiveId, actor, className }: { objectiveId: string; actor?: (participantId: string) => ReactNode; className?: string }) {
+export function ComputerScreenShare({ objectiveId, commodoreId, actor, className }: { objectiveId?: string; commodoreId?: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
-  const actorId = useComputerActor(objectiveId) ?? capture?.target.actor ?? null;
   const video = useRef<HTMLVideoElement | null>(null);
-  const own = capture?.target.objectiveId === objectiveId ? capture : null;
+  const own = capture && targetOwnedBy(capture.target, { ...(objectiveId !== undefined ? { objectiveId } : {}), ...(commodoreId !== undefined ? { commodoreId } : {}) }) ? capture : null;
+  const actorId = useComputerActor(objectiveId ?? "") ?? own?.target.actor ?? null;
   const card = useRef<HTMLElement | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [size, setSize] = useState({ width: 256, height: 144 });
