@@ -209,6 +209,13 @@ enum AXReader {
     return candidates.count == 1 && window(win, candidates: candidates) != nil
   }
 
+  /// 앱이 이 창을 AXFocusedWindow로 명시할 때만 참이다. `focusedWindow`와 달리 창이 하나뿐이어도 추정하지 않는다.
+  /// 한 번도 key가 아니었던 Electron 창은 AXFocusedWindow가 비어 있고, 그동안 입력 문자를 버린다(e7e293ee m3).
+  static func reportsFocusedWindow(_ win: WindowInfo, root: AXUIElement? = nil) -> Bool {
+    guard let el = asAX(attribute(application(win.key.pid), kAXFocusedWindowAttribute)) else { return false }
+    return belongs(el, win, root: root)
+  }
+
   static func insideWebArea(_ el: AXUIElement) -> Bool {
     var current: AXUIElement? = el
     for _ in 0..<32 {

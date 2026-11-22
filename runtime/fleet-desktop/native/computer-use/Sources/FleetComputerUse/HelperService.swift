@@ -194,6 +194,22 @@ private struct KeyWindowPrimer {
   let click: EventSequence
 }
 
+/// type 앞에서 대상 창이 key여야 하는지 정한다. Electron은 대상 창이 앱의 AXFocusedWindow가 아니면(한 번도 key가 아니었던 창)
+/// AXFocused가 확인돼도 입력 문자를 버린다(e7e293ee m3: 재시도만 넣으면 'sent; changes:'). 다른 엔진은 실측하지 않아 그대로 둔다.
+enum TypeKeyWindow: Equatable {
+  /// 그대로 입력한다.
+  case ready
+  /// 비활성 앱의 key가 아닌 창: 대상 클릭 없는 창 프라이머(`EventFactory.windowPrimer`)로 창을 key로 만들고, 확인한 뒤 입력한다.
+  case prime
+  /// 사람이 쓰는 활성 앱의 key가 아닌 창: 프라이머가 그 앱의 key 창(사람의 키 입력 도착지)을 바꾸므로 보내기 전에 거절한다.
+  case refuse
+
+  static func decide(engine: Engine, reportsFocusedWindow: Bool, appActive: Bool) -> Self {
+    guard engine == .electron, !reportsFocusedWindow else { return .ready }
+    return appActive ? .refuse : .prime
+  }
+}
+
 private struct Expectation {
   let raw: Object
   let ref: String?
@@ -520,7 +536,7 @@ private struct Expectation {
     return node.el
   }
 
-  /// 단축키로 끝나는 호출(paste 앞의 focus, 대상 지정 key)에서 쓴다. Chromium·Electron은 AXFocused 설정이 렌더러를 거쳐
+  /// 단축키로 끝나는 호출(paste 앞의 focus, 대상 지정 key)과 Chromium·Electron의 type에서 쓴다. Chromium·Electron은 AXFocused 설정이 렌더러를 거쳐
   /// 수십 ms 뒤에야 대상 AXFocused·앱 AXFocusedUIElement에 보여서(451f7d30 m2 실측 11~27ms), 설정 직후 한 번만 보면
   /// 포커스 없는 입력칸을 늘 거절했다. 확인 조건은 그대로 두고 같은 확인을 짧게 다시 한다.
   private func settleTargetFocus(_ node: AXNode, in win: WindowInfo, root: AXUIElement?) async throws -> AXUIElement {
@@ -535,6 +551,16 @@ private struct Expectation {
       } while clockNow() < deadline
       throw error
     }
+  }
+
+  /// 창 프라이머 뒤 앱이 대상 창을 AXFocusedWindow로 보고하는지 짧게 다시 확인한다.
+  private func settleReportedKeyWindow(_ win: WindowInfo, root: AXUIElement?) async throws -> Bool {
+    let deadline = clockNow() + 0.3
+    while !AXReader.reportsFocusedWindow(win, root: root) {
+      guard clockNow() < deadline else { return false }
+      try await pause(20)
+    }
+    return true
   }
 
   private func settleEditableFocus(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?) async throws -> AXUIElement {
@@ -602,6 +628,7 @@ private struct Expectation {
     var requiresKeyWindow = false
     var needsTargetFocus = false
     var primer: KeyWindowPrimer?
+    var windowPrimer: EventSequence?
 
     func revalidate() throws {
       try Task.checkCancellation()
@@ -698,15 +725,23 @@ private struct Expectation {
     case .type:
       let text = request.text!
       try revalidate()
-      // 다시 확인하지 않는다. 한 번도 key가 아니었던 Electron 창은 포커스가 확인돼도 입력 문자를 버려서(451f7d30 m4),
-      // 재시도하면 거절 대신 효과 없는 전송이 된다.
-      let target = try focusEditable(node, in: win, root: before.root, mayFocus: true)
+      // Chromium·Electron은 AXFocused 설정이 늦게 보이므로(451f7d30 m2) 단축키처럼 같은 확인을 짧게 다시 한다.
+      // 다른 엔진은 type에서 실측하지 않아 즉시 확인을 유지한다.
+      let target = [.chromium, .electron].contains(win.engine)
+        ? try await settleEditableFocus(node, in: win, root: before.root)
+        : try focusEditable(node, in: win, root: before.root, mayFocus: true)
       let detected = engine(for: node ?? before.nodes.first { CFEqual($0.el, target) }, at: nil, tree: before, win: win)
       let web = detected == .webkit || (detected == .appkit && AXReader.insideWebArea(target))
       sequence = try factory.typing(text, focus: web || detected == .electron)
       typingElement = target
       verification = .contains(target, text)
       point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, target) }, explicit: nil, in: win)
+      switch TypeKeyWindow.decide(engine: detected, reportsFocusedWindow: AXReader.reportsFocusedWindow(win, root: before.root),
+                                  appActive: NSRunningApplication(processIdentifier: pid)?.isActive == true) {
+      case .ready: break
+      case .prime: windowPrimer = try factory.windowPrimer(win)
+      case .refuse: throw HelperError("no_editable_focus", "target_not_key_window")
+      }
     case .key:
       let stroke = request.stroke!
       let focus = stroke.flags.contains(.maskCommand) && win.engine != .catalyst
@@ -801,6 +836,11 @@ private struct Expectation {
       } }
       var clicked = false
       do {
+        if let windowPrimer {
+          try await windowPrimer.send(to: win, using: symbols, revalidate: revalidate)
+          // 프라이머는 페이지에 닿지 않으므로, 창이 key가 된 것을 확인하지 못하면 입력 전에 거절해도 보낸 입력이 없다.
+          guard try await settleReportedKeyWindow(win, root: before.root) else { throw HelperError("no_editable_focus", "key_window_unconfirmed") }
+        }
         if let primer {
           try await primer.click.send(to: win, using: symbols, revalidate: revalidate)
           clicked = true
