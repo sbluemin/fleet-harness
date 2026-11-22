@@ -69,8 +69,17 @@ struct WindowInfo {
   let onCurrentSpace: Bool
   var engine: Engine
   var startedAtSource = "launchDate"
+  /// WindowServer가 지금 화면에 그리는 창인가. 최소화·숨김 창과 다른 스페이스 창은 거짓이다.
+  var onscreen = true
+  /// 창의 스페이스가 활성 스페이스 중 하나인가. 화면에 없는 최소화·숨김 창도 참이다. onCurrentSpace(화면에 있는 창만 참)와 달리
+  /// 목록 표시에는 쓰지 않고, 앞으로 올리지 않고 다룰 창을 가르는 데만 쓴다.
+  var inActiveSpace = true
 
-  var usable: Bool { onCurrentSpace && !hidden && !minimized && frame.width > 0 && frame.height > 0 }
+  /// 사람 화면에 보이는 창. 화면 좌표가 그대로 맞고 새 창 감지(전후 비교)의 기준이 된다.
+  var visible: Bool { onscreen && onCurrentSpace && !hidden && !minimized && frame.width > 0 && frame.height > 0 }
+  /// 읽기와 조작 대상이 되는 창: 현재 스페이스의 보이는 창과, 앞으로 올리지 않은 최소화·숨김 창(dbdbe742 실측).
+  /// 다른 스페이스의 창은 앱의 AX 창 목록에 없어 읽거나 조작할 수 없다.
+  var usable: Bool { (visible || (inActiveSpace && (minimized || hidden))) && frame.width > 0 && frame.height > 0 }
   var localFrame: CGRect { CGRect(origin: .zero, size: frame.size) }
   func screen(_ point: CGPoint) -> CGPoint { CGPoint(x: frame.minX + point.x, y: frame.minY + point.y) }
   func snapshotJSON() -> Object {
@@ -153,12 +162,14 @@ struct WindowInfo {
     let key = WindowKey(pid: pid, id: id, launched: process.started)
     let engine = process.engine
     let onscreen = info[kCGWindowIsOnscreen as String] as? Bool == true
-    let inSpace = !onscreen ? false : symbols.windowSpaces(id).map { activeSpaces.isEmpty || !$0.isDisjoint(with: activeSpaces) } ?? true
+    let spaces = symbols.windowSpaces(id).map { activeSpaces.isEmpty || !$0.isDisjoint(with: activeSpaces) }
+    let inSpace = !onscreen ? false : spaces ?? true
     let window = WindowInfo(key: key, app: app.localizedName ?? info[kCGWindowOwnerName as String] as? String ?? "",
                       bundleId: app.bundleIdentifier ?? "", bundlePath: app.bundleURL?.path ?? "",
                       title: info[kCGWindowName as String] as? String ?? "", frame: frame, front: front == pid,
                       hidden: app.isHidden, minimized: false, onCurrentSpace: inSpace,
-                      engine: engine == .appkit && webWindows.contains(key) ? .webkit : engine, startedAtSource: process.source)
+                      engine: engine == .appkit && webWindows.contains(key) ? .webkit : engine, startedAtSource: process.source,
+                      onscreen: onscreen, inActiveSpace: spaces ?? onscreen)
     knownWindows[id] = window
     return window
   }
@@ -173,7 +184,7 @@ struct WindowInfo {
       if let pid, item[kCGWindowOwnerPID as String] as? pid_t != pid { return nil }
       guard var window = decode(item, front: front, activeSpaces: spaces) else { return nil }
       if visibleOnly {
-        guard window.usable, (item[kCGWindowAlpha as String] as? NSNumber)?.doubleValue != 0 else { return nil }
+        guard window.visible, (item[kCGWindowAlpha as String] as? NSNumber)?.doubleValue != 0 else { return nil }
         return window
       }
       var hasAXWindow = false
@@ -194,20 +205,27 @@ struct WindowInfo {
     }
   }
 
-  func available(_ pid: pid_t, _ id: CGWindowID) throws -> WindowInfo {
-    let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], id) as? [Object])?.first {
+  /// 읽기·조작할 창을 다시 찾는다. 다른 스페이스의 창은 `allowOtherSpace`(화면 캡처만 하는 관찰)일 때만 돌려준다.
+  func available(_ pid: pid_t, _ id: CGWindowID, allowOtherSpace: Bool = false) throws -> WindowInfo {
+    let matches: (Object) -> Bool = {
       $0[kCGWindowNumber as String] as? CGWindowID == id && $0[kCGWindowOwnerPID as String] as? pid_t == pid
     }
+    // 최소화·숨김 창은 optionIncludingWindow 조회에 나오지 않는다(dbdbe742 실측). 그때만 전체 목록에서 다시 찾는다.
+    let info = (CGWindowListCopyWindowInfo([.optionIncludingWindow], id) as? [Object])?.first(where: matches)
+      ?? (CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [Object])?.first(where: matches)
     guard let info else {
       guard let previous = knownWindows[id], previous.key.pid == pid, let process = process(pid), process.started == previous.key.launched else {
         throw HelperError.unavailable("closed")
       }
       throw HelperError.unavailable(unavailableReason(previous, app: process.app, missingFromCG: true))
     }
-    guard let window = decode(info, front: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+    guard var window = decode(info, front: NSWorkspace.shared.frontmostApplication?.processIdentifier,
                               activeSpaces: symbols.activeSpaces()), let process = process(pid) else { throw HelperError.unavailable() }
-    if !window.usable { throw HelperError.unavailable(unavailableReason(window, app: process.app, missingFromCG: false)) }
-    return window
+    if !window.onscreen && AXIsProcessTrusted() {
+      window.minimized = AXReader.window(window).flatMap { AXReader.attribute($0, kAXMinimizedAttribute) as? Bool } ?? false
+    }
+    if window.usable || (allowOtherSpace && !window.inActiveSpace && !window.frame.isEmpty) { return window }
+    throw HelperError.unavailable(unavailableReason(window, app: process.app, missingFromCG: false))
   }
 
   static func installed(query: String) -> [Object] {
@@ -284,7 +302,8 @@ private func hasUIKitPlatform(_ url: URL) -> Bool {
 @MainActor func captureWindow(_ window: WindowInfo) async throws -> Object {
   guard CGPreflightScreenCaptureAccess() else { throw HelperPermissions().error }
   do {
-    let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+    // 최소화·숨김·다른 스페이스 창은 화면 밖이라 onScreenWindowsOnly 목록에 없다. 그때만 전체를 열거한다(dbdbe742 실측: 실시간 내용이 잡힘).
+    let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: window.onscreen)
     guard let match = content.windows.first(where: { $0.windowID == window.key.id && $0.owningApplication?.processID == window.key.pid }),
           match.frame == window.frame else { throw HelperError.unavailable() }
     let filter = SCContentFilter(desktopIndependentWindow: match)
