@@ -140,6 +140,20 @@ enum AXReader {
 
   static func windows(_ pid: pid_t) -> [AXUIElement] { attribute(application(pid), kAXWindowsAttribute) as? [AXUIElement] ?? [] }
 
+  static func minimized(pid: pid_t, windowId: CGWindowID) -> Bool? {
+    guard let windowNumber else { return nil }
+    let deadline = DispatchTime.now() + .milliseconds(350)
+    for window in windows(pid) {
+      guard DispatchTime.now() < deadline else { return nil }
+      AXUIElementSetMessagingTimeout(window, 0.18)
+      var id: CGWindowID = 0
+      if windowNumber(window, &id) == .success, id == windowId {
+        return attribute(window, kAXMinimizedAttribute) as? Bool
+      }
+    }
+    return nil
+  }
+
   static func window(_ win: WindowInfo, candidates: [AXUIElement]? = nil) -> AXUIElement? {
     let windows = candidates ?? self.windows(win.key.pid)
     var fallback: [AXUIElement] = []

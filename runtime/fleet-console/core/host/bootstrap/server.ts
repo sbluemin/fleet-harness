@@ -2537,27 +2537,35 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const candidate = computerCaptureTarget;
     if (!candidate) return;
     // 감시와 GET은 진행 중인 검증을 공유한다. 같은 대상의 명시적 불일치만 해제 근거다.
-    const verification = computerCaptureVerification ??= computerUse.captureWindowState(candidate)
-      .then(({ identity, onscreen }) => {
+    computerCaptureVerification ??= (async () => {
+      // 시간 초과나 조회 불가는 창 소멸의 증거가 아니다. 이때는 기존 영상 경로를 사용한다.
+      const unknown = { identity: "unknown", onscreen: false } as const;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const { identity, onscreen } = await Promise.race([
+          computerUse.captureWindowState(candidate).catch(() => unknown),
+          // 응답을 기다리는 Desktop의 3초 HTTP 한도 안에 대체 상태를 돌려준다.
+          new Promise<typeof unknown>((resolve) => { timeout = setTimeout(() => resolve(unknown), 2500); timeout.unref(); }),
+        ]);
         if (computerCaptureTarget?.id !== candidate.id) return;
         if (identity === "mismatch") {
           logComputerCapture({ captureReason: "verify_failed" });
           computerCaptureTarget = null;
           broadcastComputerCapture();
           watchComputerCapture();
-        } else if (identity === "matches" && computerCaptureTarget.offscreen !== !onscreen) {
-          computerCaptureTarget = { ...computerCaptureTarget, offscreen: !onscreen };
-          broadcastComputerCapture();
+        } else {
+          const offscreen = identity === "matches" && !onscreen;
+          if (computerCaptureTarget.offscreen !== offscreen) {
+            computerCaptureTarget = { ...computerCaptureTarget, offscreen };
+            broadcastComputerCapture();
+          }
         }
-      })
-      .catch(() => undefined)
-      .finally(() => { computerCaptureVerification = null; });
-    // 3초는 응답 대기 한도일 뿐 창 소멸의 증거가 아니다. 시간 초과에는 대상과 감시를 유지한다.
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      verification,
-      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 3000); timeout.unref(); }),
-    ]).finally(() => { if (timeout) clearTimeout(timeout); });
+      } finally {
+        clearTimeout(timeout);
+        computerCaptureVerification = null;
+      }
+    })();
+    await computerCaptureVerification;
   }
 
   /** 네이티브 창 소멸은 도구 호출 없이도 일어난다. 기존 700ms 검증은 활성 대상에만 남기고 유휴에는 멈춘다. */

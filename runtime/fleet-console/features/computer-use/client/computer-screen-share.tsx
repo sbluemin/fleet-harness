@@ -388,11 +388,11 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
           method: "POST", cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]),
         });
         if (controller.signal.aborted) return;
-        if (response.status !== 200) { hide(); return; }
+        if (response.status !== 200) return;
         const jpeg = await response.blob();
         if (controller.signal.aborted) return;
-        hide();
         if (stillDemand.current.visibleStill) {
+          if (url) URL.revokeObjectURL(url);
           url = URL.createObjectURL(jpeg);
           setLocalStill({ id: stillId, url });
         }

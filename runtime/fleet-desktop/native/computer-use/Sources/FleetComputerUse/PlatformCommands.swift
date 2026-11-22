@@ -13,6 +13,7 @@ import Dispatch
   private struct AppTarget: Decodable { let target: String }
   private struct OpenApp: Decodable { let app: String; let activate: Bool }
   private struct Settings: Decodable { let permissions: [String] }
+  private static let windowSymbols = WindowSymbols()
 
   static func run() -> Int32 {
     signal(SIGPIPE, SIG_IGN)
@@ -81,12 +82,22 @@ import Dispatch
     guard let app = NSRunningApplication(processIdentifier: target.pid), includingHidden || !app.isHidden,
           app.launchDate?.timeIntervalSince1970 == target.processStartedAt else { return ("mismatch", false, nil) }
     guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [Object] else { return ("unknown", false, nil) }
-    // Do not apply catalog availability filters for Space, minimization, or title.
+    // Desktop verification uses only the exact process and window identity.
     guard let window = windows.first(where: {
       $0[kCGWindowOwnerPID as String] as? pid_t == target.pid &&
       $0[kCGWindowNumber as String] as? CGWindowID == target.windowId
     }) else { return ("mismatch", false, nil) }
     let onscreen = !app.isHidden && window[kCGWindowIsOnscreen as String] as? Bool == true
+    if includingHidden, !onscreen, !app.isHidden, AXIsProcessTrusted() {
+      let active = windowSymbols.activeSpaces()
+      // A closed AppKit window can remain in the CG list. Only reject it when the
+      // window still belongs to an active Space and its exact AX window says it is not minimized.
+      // Hidden apps, other Spaces, and inconclusive AX/Space data must remain eligible.
+      if !active.isEmpty, let spaces = windowSymbols.windowSpaces(target.windowId), !spaces.isDisjoint(with: active),
+         AXReader.minimized(pid: target.pid, windowId: target.windowId) == false {
+        return ("mismatch", false, nil)
+      }
+    }
     let frame = (window[kCGWindowBounds as String] as? Object).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
     return ("matches", onscreen, frame)
   }

@@ -197,8 +197,10 @@ it("uses a still instead of a stream only while the host card is visible or a re
     disconnect() {}
   });
   const original = fetchMock.getMockImplementation()!;
+  let frameAvailable = true;
   fetchMock.mockImplementation(async (path: string, init?: RequestInit) => path.startsWith(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH)
-    ? frame()(init?.signal ?? new AbortController().signal) : original(path, init));
+    ? frameAvailable ? frame()(init?.signal ?? new AbortController().signal) : new Response(null, { status: 204 })
+    : original(path, init));
   const requests = (prefix: string) => fetchMock.mock.calls.filter(([path]) => String(path).startsWith(prefix));
   const stills = () => requests(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH);
   const uploads = () => requests(DESKTOP_REMOTE_PREVIEW_FRAME_PATH);
@@ -215,6 +217,12 @@ it("uses a still instead of a stream only while the host card is visible or a re
   expect(stills()[0]).toEqual([`${DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH}?target=target-1`, expect.objectContaining({ method: "POST" })]);
   expect(uploads()).toHaveLength(0);
   expect(getDisplayMedia).not.toHaveBeenCalled();
+
+  frameAvailable = false;
+  await flush(1000);
+  expect(stills()).toHaveLength(2);
+  expect(node.querySelector(".computer-screen-share img")?.getAttribute("src")).toBe("blob:frame-1");
+  frameAvailable = true;
 
   await act(async () => { setInView(false); });
   const stopped = stills().length;

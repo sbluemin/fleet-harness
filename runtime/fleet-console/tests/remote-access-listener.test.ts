@@ -22,6 +22,8 @@ import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from 
 import type { ConsoleRemoteAccessSettings } from "../features/settings/host/settings-domain.js";
 import * as computerUseMcp from "../features/computer-use/host/mcp.js";
 import * as fleetHelper from "../features/computer-use/runtime/fleet-helper.js";
+import type { ComputerUseWindowState } from "../features/computer-use/runtime/platform.js";
+import { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_SEQ_HEADER, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_VIEWERS_EVENT } from "../features/computer-use/shared/remote-preview.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -87,6 +89,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const mcpFactory = vi.spyOn(computerUseMcp, "createComputerUseMcpHost");
     // Hold one native response on demand; exercise the real service, Objective MCP, approval, and TLS listeners.
     let hold: { entered: () => void; release: Promise<void> } | undefined;
+    let listed = false;
+    const selected = { pid: 5, windowId: 10, processStartedAt: 100, app: "Fixture", bundleId: "example.fixture", bundlePath: "/fixture.app", title: "Fixture window", frame: { x: 0, y: 0, w: 100, h: 100 }, front: false, hidden: false, minimized: false, onCurrentSpace: true, engine: "appkit" } satisfies fleetHelper.HelperWindow;
+    let windowState: ComputerUseWindowState = { identity: "unknown", onscreen: false };
     const spawnHelper = vi.fn(() => {
       const child = new ChildProcess();
       const stdout = new PassThrough();
@@ -98,7 +103,8 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
           await waiting.release;
         }
         const result = method === "hello" ? { protocol: 1, permissions: { accessibility: true, screenRecording: true }, selfCheck: { ok: true } }
-          : method === "windows" ? { windows: [] } : {};
+          : method === "windows" ? { windows: listed ? [selected] : [] }
+          : method === "snapshot" ? { window: selected, elements: [], omitted: 0, complete: true } : {};
         stdout.write(`${JSON.stringify({ id, ok: true, result })}\n`);
         if (method === "shutdown") child.emit("close", 0, null);
       };
@@ -113,7 +119,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       inspectInstallation: async () => true,
       createClient: () => new fleetHelper.FleetHelperClient({ childEnv: () => ({}), spawnProcess: spawnHelper }, process.execPath),
       readPermissions: async () => ({ accessibility: true, screenRecording: true }),
-      windowState: async () => ({ identity: "unknown", onscreen: false }), captureStill: async () => null, resolveApp: async () => ({ error: "exact_target_required" }),
+      windowState: async () => windowState, captureStill: async () => null, resolveApp: async () => ({ error: "exact_target_required" }),
       openApp: async () => ({ requestDispatched: false, windowReady: false }), openPrivacySettings: async () => false,
       preparePaste: async () => { throw new Error("unexpected clipboard request"); },
     });
@@ -135,9 +141,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const connection = mcpFactory.mock.results[0]!.value.connect();
     const { servers: endpoints } = await connection.getEndpoint();
     const [{ token }] = connection.issueSessionToken({ label: objectiveRecord.id, cwd: fixture.dir });
-    const call = () => fetch(endpoints[0]!.url, {
+    const call = (name = "computer_apps", args: Record<string, unknown> = {}) => fetch(endpoints[0]!.url, {
       method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_apps", arguments: {} } }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }),
     }).then(async (res) => (await res.json()).result);
     const monitor = await joinAs(fixture, "monitoring", "Read-only device");
     const initial = call();
@@ -168,6 +174,43 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       } finally { release.resolve(); }
       await expect(inFlight).resolves.toMatchObject(success);
       await expect(call()).resolves.toMatchObject(success);
+    }
+    // Exercise the real host snapshot/SSE and hub through the Desktop and full-remote listeners.
+    const viewer = await joinAs(fixture, "full", "Preview viewer");
+    const desktopEvents = await openLoopbackEvents(fixture, undefined, true);
+    const viewerEvents = await openRemoteEvents(fixture, viewer);
+    try {
+      listed = true;
+      await expect(call()).resolves.toMatchObject({ content: [{ type: "text", text: expect.stringContaining('w1 "Fixture window"') }] });
+      await expect(call("computer_state", { window: "w1" })).resolves.not.toMatchObject({ isError: true });
+      const initialCapture = await desktopEvents.waitFor("computer-capture:state", (data) => data.target?.offscreen === false);
+      const id = initialCapture.target.id;
+      const initialRemote = await viewerEvents.waitFor(REMOTE_PREVIEW_STATE_EVENT, (data) => data.target?.id === id);
+      expect(initialRemote).toMatchObject({ sending: true, target: { id } });
+
+      const readFrame = () => remoteRequest(fixture, "GET", REMOTE_PREVIEW_FRAME_PATH, undefined, viewer, headers);
+      const firstFrame = readFrame();
+      await desktopEvents.waitFor(REMOTE_PREVIEW_VIEWERS_EVENT, (data) => data.count === 1);
+      expect((await fetch(`${origin}${DESKTOP_REMOTE_PREVIEW_FRAME_PATH}?target=${id}`, {
+        method: "POST", headers: { Origin: origin, "User-Agent": "Electron/42", "Content-Type": "image/jpeg" },
+        body: new Uint8Array([0xff, 0xd8, 0xff, 0xd9]),
+      })).status).toBe(204);
+      const first = await firstFrame;
+      expect(first.status).toBe(200);
+      expect(first.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBeDefined();
+      const previewEvents = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
+      for (const onscreen of [false, true]) {
+        windowState = { identity: "matches", onscreen };
+        const reading = await (await fetch(`${origin}/api/v1/desktop/computer-capture`)).json();
+        expect(reading.target).toMatchObject({ id, offscreen: !onscreen });
+        const kept = await readFrame();
+        expect(kept.status).toBe(200);
+        expect(kept.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBe(first.headers[REMOTE_PREVIEW_SEQ_HEADER]);
+        expect(viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT)).toBe(previewEvents);
+      }
+    } finally {
+      desktopEvents.close();
+      viewerEvents.close();
     }
     expect(spawnHelper).toHaveBeenCalledTimes(1);
   });
