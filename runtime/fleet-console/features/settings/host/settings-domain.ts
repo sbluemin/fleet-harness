@@ -792,10 +792,14 @@ async function mutateGlobalSettings(
   const nextExperiments = body.experiments === undefined ? previousExperiments : resolveExperimentSettings({
     ...body.experiments,
     computerUse: body.experiments.computerUse ?? previousExperiments.computerUse,
+    // 옛 클라이언트는 이 키를 모른다 — 빠진 요청이 저장된 꺼짐을 기본 켜짐으로 되돌리지 않게 이전 값을 잇는다.
+    computerUseRemotePreview: body.experiments.computerUseRemotePreview ?? previousExperiments.computerUseRemotePreview,
   });
   const computerUseChanged = nextExperiments.computerUse !== previousExperiments.computerUse;
+  // 원격 미리보기 보내기도 호스트 화면을 원격에 내보낼지의 판단이라 같은 로컬 전용 규칙을 따른다.
+  const remotePreviewChanged = nextExperiments.computerUseRemotePreview !== previousExperiments.computerUseRemotePreview;
 
-  if (computerUseChanged && deps.isRemoteAccessOwner?.(req) === false) {
+  if ((computerUseChanged || remotePreviewChanged) && deps.isRemoteAccessOwner?.(req) === false) {
     deps.writeJson(res, 403, { error: "computer_use_local_only" });
     return;
   }
@@ -950,7 +954,7 @@ export function readExperimentSettings(store: Pick<DurableJsonStore<ConsoleSetti
  */
 function isExperimentSettingsInput(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false;
-  for (const key of ["computerUse", "commodore", "taskforce"]) {
+  for (const key of ["computerUse", "computerUseRemotePreview", "commodore", "taskforce"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }
   for (const key of ["commodoreModel"]) {

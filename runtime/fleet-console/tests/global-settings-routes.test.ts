@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { createGlobalSettingsRouter, createSettingsDocumentRouter, sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
 import type { ConsoleSettingsData, ConsoleGeneralSettings } from "../features/settings/host/settings-domain.js";
+import { DEFAULT_EXPERIMENT_SETTINGS } from "../features/settings/shared/experiments.js";
 
 const DEFAULT_REMOTE_ACCESS = {
   enabled: false,
@@ -174,6 +175,31 @@ describe("global settings routes", () => {
     await missing.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(missing.writes[0]).toMatchObject({ status: 409, body: { error: "computer_use_install_required" } });
     expect(missing.updateCalls).toBe(0);
+  });
+
+  it("keeps remote window previews on by default, lets only the host turn them off, and never resets an omitted value", async () => {
+    // 결정 8cd1a62d: 원격 기기와 창 미리보기 공유는 기본 켜짐이고 호스트에서만 바꾼다.
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { experiments: { computerUse: true } } }).general?.experiments?.computerUseRemotePreview).toBe(true);
+    const remote = createRouterHarness({ local: false, general: { experiments: { ...DEFAULT_EXPERIMENT_SETTINGS, computerUse: true } }, body: { experiments: { computerUseRemotePreview: false } } });
+    await remote.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(remote.writes[0]).toEqual({ status: 403, body: { error: "computer_use_local_only" } });
+    expect(remote.updateCalls).toBe(0);
+    const local = createRouterHarness({ installation: "missing", general: { experiments: { ...DEFAULT_EXPERIMENT_SETTINGS, computerUse: true } }, body: { experiments: { computerUseRemotePreview: false } } });
+    await local.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    // 원격 보내기만 바꾸는 요청은 헬퍼 설치 확인을 거치지 않는다.
+    expect(local.writes[0]?.status).toBe(200);
+    expect(local.currentGeneral()?.experiments?.computerUseRemotePreview).toBe(false);
+    // 이 키를 모르는 옛 클라이언트의 저장이 꺼둔 값을 켜짐으로 되돌리지 않는다.
+    local.setBody({ experiments: { taskforce: true } });
+    await local.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(local.currentGeneral()?.experiments?.computerUseRemotePreview).toBe(false);
+    // 같은 값을 다시 보내는 원격 저장(바꾸지 않음)은 막지 않는다.
+    const unchanged = createRouterHarness({ local: false, general: { experiments: { ...DEFAULT_EXPERIMENT_SETTINGS } }, body: { experiments: { computerUseRemotePreview: true } } });
+    await unchanged.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(unchanged.writes[0]?.status).toBe(200);
+    const invalid = createRouterHarness({ body: { experiments: { computerUseRemotePreview: "no" } } });
+    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(invalid.writes[0]?.status).toBe(400);
   });
 
   it("migrates retired theme ids to dark/light on stored reads and PUT bodies", async () => {

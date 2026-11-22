@@ -33,6 +33,8 @@ import path from "node:path";
 import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
+import { RemotePreviewHub, createRemotePreviewRouter, receivesRemotePreviewState, receivesRemotePreviewViewers, toRemotePreviewTarget } from "../../../features/computer-use/host/remote-preview.js";
+import { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_VIEWERS_EVENT } from "../../../features/computer-use/shared/remote-preview.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -179,6 +181,8 @@ interface ObjectiveSseSubscriber {
   readonly audience: AccessAudience;
   /** 원격 구독자의 세션 공개 이름. 루프백 구독자는 null이다. */
   readonly sessionHandle: string | null;
+  /** 원격 구독자의 세션 등급. 루프백 구독자는 null이다 — 원격 미리보기 상태는 full에게만 간다. */
+  readonly access: AccessClass | null;
   /** 네이티브 Objective 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
   readonly client: "desktop" | "browser" | "objective-browser";
   /**
@@ -433,6 +437,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/permission-request", summary: "Request missing Computer Use permissions from macOS, or open Privacy & Security when they were requested recently.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
+  { method: "POST", path: DESKTOP_REMOTE_PREVIEW_FRAME_PATH, summary: "Replace the single in-memory still of the Computer Use window while a full remote device is watching. Only the local Desktop window may upload.", category: "Desktop", gate: "loopback", transport: "http" },
+  { method: "GET", path: REMOTE_PREVIEW_FRAME_PATH, summary: "Long-poll the latest Computer Use still for a full remote session. Loopback is 404 and monitoring sessions are refused.", category: "Desktop", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the managing Desktop's Fleet Browser is connected, plus this viewer's surface mode and execution host.", category: "Settings", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/state", summary: "Read an Objective's browser tab state; later changes arrive on the Objective event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -620,6 +626,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       for (const { handle, notice } of ended) {
         try { endSessionStreams(handle, notice); } catch (error) { recordFailure("session_stream_end_failed", error); }
         try { forgetShellOwner(handle); } catch (error) { recordFailure("session_shell_forget_failed", error); }
+        try { remotePreview.forgetSession(handle); } catch (error) { recordFailure("remote_preview_forget_failed", error); }
         remoteSessionBindings.closeSession(handle);
       }
       // 원격 세션이 끝나면 그 세션이 선언한 시청 맞춤도 그 자리에서 걷는다 — 리스 만료까지 실행 측 크기를 붙들지 않는다.
@@ -652,6 +659,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const experimentListeners = new Set<(settings: ConsoleExperimentSettings) => void>();
   const objectiveRecordSseSubscribers = new Set<ObjectiveSseSubscriber>();
+  /**
+   * 원격 미리보기(결정 8cd1a62d) — 호스트 Desktop이 올린 정지 화면 최신 1장을 메모리에만 들고 원격 full 화면에 나눠 준다.
+   * 받아 가는 세션 수가 바뀌면 로컬 Desktop에만 알려, 아무도 보지 않을 때는 뽑지도 올리지도 않게 한다.
+   */
+  const remotePreview = new RemotePreviewHub({
+    onViewersChanged: (count) => {
+      const data = encodeSseData(REMOTE_PREVIEW_VIEWERS_EVENT, { count });
+      for (const subscriber of objectiveRecordSseSubscribers) if (receivesRemotePreviewViewers(subscriber)) writeObjectiveSse(subscriber, data);
+    },
+  });
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
   const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
   /**
@@ -1370,6 +1387,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 「대화 중심 화면」은 Desktop 의 신호등·캡션 띠 자리를 바꾼다 — 테마 이벤트로 셸에 알린다.
       broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "dark");
       if (!next.computerUse) await computerUse.stop();
+      // 호스트가 원격 보내기를 끄면 원격에 나간 장과 기다리던 요청을 바로 거둔다.
+      syncRemotePreview();
       for (const listener of experimentListeners) listener(next);
       // computerUse 실험 토글은 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
       // 브로커 순찰이 거둔다. 런치 주입은 다음 자식 런치부터 이 값을 따른다(computer-use/host/mcp.ts).
@@ -1564,7 +1583,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const objectiveRecordView = typeof viewId === "string" && Boolean(desktopEngine.viewOwner(viewId));
       const client = objectiveRecordView ? "objective-browser" : clientKindOf(req);
       const remoteDesktop = remoteSession?.access === "full" && client === "desktop" && (isExactConsoleOrigin(req) || isSameOriginConsoleRead(req));
-      const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, client, remoteDesktop };
+      const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, access: remoteSession?.access ?? null, client, remoteDesktop };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -1596,6 +1615,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 그 사이 에이전트가 연 탭이나 바뀐 주소가 화면에 영영 낡은 채로 남지 않는다.
       if (subscriber.client === "desktop" && subscriber.audience === "local") {
         writeObjectiveSse(subscriber, encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, computerCaptureSnapshot()));
+      }
+      if (receivesRemotePreviewViewers(subscriber)) writeObjectiveSse(subscriber, encodeSseData(REMOTE_PREVIEW_VIEWERS_EVENT, { count: remotePreview.viewers() }));
+      if (receivesRemotePreviewState(subscriber)) {
+        syncRemotePreview();
+        writeObjectiveSse(subscriber, encodeSseData(REMOTE_PREVIEW_STATE_EVENT, remotePreview.state()));
       }
       if (subscriber.client !== "objective-browser") {
         for (const browsing of browserService.status().objectiveRecords) writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, { ...browserService.state(browsing), surfaceMode: surfaceModeOf(subscriber) }));
@@ -1641,6 +1665,23 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (await systemFontsRouter(ctx)) return true;
     return globalSettingsRouter(ctx);
   });
+  const remotePreviewRouter = createRemotePreviewRouter({
+    hub: remotePreview,
+    isLoopbackListener,
+    isExactConsoleOrigin,
+    isSameOriginConsoleRead,
+    isDesktopClient: (req) => clientKindOf(req) === "desktop",
+    remoteSession: (req) => {
+      const listener = listenerForRequest(req);
+      if (listener === null || listener.audience === "local") return null;
+      const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      return session === null ? null : { handle: session.handle, access: session.access };
+    },
+    writeJson,
+    withSecurityHeaders,
+  });
+  routeRegistry.register("/api/v1/desktop/computer-preview", remotePreviewRouter);
+  routeRegistry.register("/api/v1/computer-preview", remotePreviewRouter);
   routeRegistry.register("/api/v1/desktop/computer-capture", async ({ req, res, pathname }) => {
     if (!isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
@@ -2450,7 +2491,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     };
   }
 
+  /**
+   * 원격 미리보기 상태를 지금 캡처 대상·실험 설정에 맞춘다. 원격에 보일 상태가 바뀌었으면 원격 full 구독자에게만 알린다.
+   * 대상은 컴퓨터 사용이 켜져 있고 화면공유 대상이 있을 때만이며, 보내기는 호스트 설정을 따른다(기본 켜짐).
+   */
+  function syncRemotePreview(): void {
+    const enabled = computerUse.status().enabled;
+    const target = enabled ? toRemotePreviewTarget(computerCaptureTarget) : null;
+    const sending = readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUseRemotePreview;
+    if (!remotePreview.update(target, sending)) return;
+    const data = encodeSseData(REMOTE_PREVIEW_STATE_EVENT, remotePreview.state());
+    for (const subscriber of objectiveRecordSseSubscribers) if (receivesRemotePreviewState(subscriber)) writeObjectiveSse(subscriber, data);
+  }
+
   function broadcastComputerCapture(): void {
+    // 원격 미리보기는 같은 대상을 따른다 — 대상이 바뀌거나 사라지면 원격에 나간 장을 그 자리에서 버린다.
+    syncRemotePreview();
     const snapshot = computerCaptureSnapshot();
     const encoded = JSON.stringify(snapshot);
     if (encoded === lastComputerCaptureSnapshot) return;

@@ -65,7 +65,7 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
         {t("settings.experiments.aiCard")}
         <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
       </h3>
-      <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} />
+      <ComputerUseRow enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => save({ ...experiments, computerUse })} remotePreview={experiments.computerUseRemotePreview} onRemotePreviewChange={(computerUseRemotePreview) => save({ ...experiments, computerUseRemotePreview })} />
       {/* 컴퓨터 사용 행과 같은 틀 — 제목 옆 「?」에 설명을 두고 오른쪽에 토글을 둔다. */}
       <div className={`global-settings-row experiments-row${taskforceTarget ? " is-taskforce-target" : ""}`}>
         <div className="global-settings-row-text">
@@ -103,7 +103,7 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
   return (
     <>
     <SettingsCard title={<>{t("settings.experiments.aiCard")}<ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge></>}>
-      <ComputerUseRow mobile enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => saveExperiments({ ...experiments, computerUse })} />
+      <ComputerUseRow mobile enabled={experiments.computerUse} saving={saving} onChange={(computerUse) => saveExperiments({ ...experiments, computerUse })} remotePreview={experiments.computerUseRemotePreview} onRemotePreviewChange={(computerUseRemotePreview) => saveExperiments({ ...experiments, computerUseRemotePreview })} />
       <SettingsRow label={t("settings.taskforce.title")} hint={t("settings.taskforce.help")} icon={<MobileIcon name="layout" />} disabled={!experiments.commodore}>
         <SettingsToggle
           checked={experiments.taskforce}

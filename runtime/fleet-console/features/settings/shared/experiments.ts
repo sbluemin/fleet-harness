@@ -34,6 +34,11 @@ export interface ExperimentAideSelection {
 export interface ConsoleExperimentSettings {
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
+  /**
+   * 컴퓨터 사용 중 full 원격 기기에 에이전트가 고른 창을 1초마다 정지 화면으로 보낸다(결정 8cd1a62d). 기본 켜짐이고
+   * 호스트에서만 바꾼다. 저장값이 없으면 켜짐이다 — 꺼짐은 사람이 명시한 false 뿐이다.
+   */
+  readonly computerUseRemotePreview: boolean;
   /** 옛 클라이언트·플러그인 응답 호환 필드. 기능은 퇴역했으며 저장값·요청값과 무관하게 기본 좌표다. */
   readonly analystModel: string;
   readonly analystEffort: ExperimentEffort;
@@ -56,6 +61,7 @@ const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ mod
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   computerUse: false,
+  computerUseRemotePreview: true,
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   commodore: true,
@@ -99,6 +105,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
   const record = value as Record<string, unknown>;
   return {
     computerUse: record.computerUse === true,
+    computerUseRemotePreview: record.computerUseRemotePreview !== false,
     analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
     analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
     commodore: true,

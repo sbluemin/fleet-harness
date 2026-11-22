@@ -3,6 +3,21 @@ import { useT } from "../../../core/client/src/i18n/index.js";
 import { getState, setObjectiveUseRequestIds, subscribe as subscribeStore } from "../../../core/client/src/integration/store.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
+import {
+  DESKTOP_REMOTE_PREVIEW_FRAME_PATH,
+  REMOTE_PREVIEW_AFTER_PARAM,
+  REMOTE_PREVIEW_AGE_HEADER,
+  REMOTE_PREVIEW_FRAME_PATH,
+  REMOTE_PREVIEW_INTERVAL_MS,
+  REMOTE_PREVIEW_JPEG_QUALITY,
+  REMOTE_PREVIEW_MAX_WIDTH,
+  REMOTE_PREVIEW_SEQ_HEADER,
+  REMOTE_PREVIEW_STALE_MS,
+  REMOTE_PREVIEW_STATE_EVENT,
+  REMOTE_PREVIEW_TARGET_PARAM,
+  REMOTE_PREVIEW_VIEWERS_EVENT,
+  readRemotePreviewState,
+} from "../shared/remote-preview.js";
 import "../../execution/client/agent/computer-screen-share.css";
 
 /**
@@ -18,7 +33,13 @@ function targetOwnedBy(target: CaptureTarget, owner: { readonly objectiveId?: st
 }
 /** 공유 불가의 사람이 고칠 수 있는 원인(서버의 비민감 사유 코드). 없으면 일반 식별 실패다. */
 type CaptureFailure = "accessibility_permission_required" | "screen_recording_permission_required";
-type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void; failure?: CaptureFailure };
+/**
+ * 원격 full 화면이 받는 정지 화면(결정 8cd1a62d). `url`은 마지막으로 받아 아직 가리지 않은 이미지다.
+ * 지연은 마지막 이미지를 두고 경과 시간만 알리고, 거부(403 등)는 이전 이미지를 바로 가린다. `off`는 호스트 설정이 꺼졌음을
+ * 서버 상태로 확인했을 때만 참이다 — 거부만으로 꺼졌다고 단정하지 않는다.
+ */
+type RemoteFrame = { readonly url: string | null; readonly lastFrameAt: number | null; readonly waitingSince: number; readonly off: boolean };
+type Capture = { target: CaptureTarget; stream: MediaStream | null; failed: boolean; retry?: () => void; failure?: CaptureFailure; remote?: RemoteFrame };
 /** 창을 든 Desktop에게 손쉬운 사용 권한을 묻거나 화면 기록 설정을 열게 한다. 서버는 실제로 그 사유로 막혀 있을 때만 로컬 셸에 넘긴다. */
 const DESKTOP_WINDOW_COMMAND_PATH = "/api/v1/desktop/window/command";
 /** Desktop이 읽어 둔 화면 기록 사유. 프로토콜의 DESKTOP_SCREEN_PERMISSION_PATH 와 같다. 브라우저 번들은 node 프로토콜을 가져오지 않는다. */
@@ -37,6 +58,32 @@ async function readScreenRecordingFailure(): Promise<typeof SCREEN_RECORDING_PER
     return undefined;
   }
 }
+/** 지금 이 창 캡처를 원격 기기가 받아 가는가(서버가 센 시청 세션 수). 호스트 카드의 공유 칩이 읽는다. */
+const RemoteViewersContext = createContext(0);
+
+type FrameGrabber = { grabFrame(): Promise<ImageBitmap> };
+/**
+ * 이미 받은 창 캡처 트랙에서 한 장을 뽑아 가로 480px 이하 JPEG로 만든다. 새 캡처를 열지 않는다 — 원격에 나가는 것은
+ * 호스트 카드가 보여 주는 바로 그 창(에이전트가 고른 창 1개)뿐이다.
+ */
+async function grabRemotePreviewJpeg(track: MediaStreamTrack): Promise<Blob | null> {
+  const ImageCaptureCtor = (globalThis as { ImageCapture?: new (track: MediaStreamTrack) => FrameGrabber }).ImageCapture;
+  if (!ImageCaptureCtor || typeof OffscreenCanvas === "undefined") return null;
+  const bitmap = await new ImageCaptureCtor(track).grabFrame();
+  try {
+    const scale = Math.min(1, REMOTE_PREVIEW_MAX_WIDTH / Math.max(1, bitmap.width));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(bitmap, 0, 0, width, height);
+    return await canvas.convertToBlob({ type: "image/jpeg", quality: REMOTE_PREVIEW_JPEG_QUALITY });
+  } finally {
+    bitmap.close();
+  }
+}
+
 const CaptureContext = createContext<Capture | null>(null);
 /** 패널 안 허용 요청 — 서버가 붙잡아 둔 호출 하나(합쳐진 도구 이름·시한). 인자·내용은 없다. */
 export interface ObjectiveUseRequest {
@@ -133,6 +180,8 @@ function readActivity(value: unknown): ObjectiveUseActivity {
 /** 영상 수명은 Console가, 표시 위치는 해당 Objective이 소유한다. */
 export function ComputerScreenShareProvider({ children }: { children: ReactNode }) {
   const [capture, setCapture] = useState<Capture | null>(null);
+  const [remoteCapture, setRemoteCapture] = useState<Capture | null>(null);
+  const [remoteViewers, setRemoteViewers] = useState(0);
   const [activity, setActivity] = useState<ObjectiveUseActivity>(EMPTY_ACTIVITY);
   useEffect(() => {
     let disposed = false;
@@ -170,7 +219,30 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     let streamed = false;
     let captureGeneration = 0;
     const controller = new AbortController();
-    const stop = () => { stream?.getTracks().forEach((track) => track.stop()); stream = null; };
+    // 원격 미리보기 송신 — 서버가 센 원격 시청 세션이 있고 이 창 캡처가 살아 있을 때만 1초마다 한 장을 올린다.
+    let viewers = 0;
+    let sender: ReturnType<typeof setInterval> | null = null;
+    let sendingFrame = false;
+    const sendFrame = async () => {
+      const owner = stream;
+      const targetId = currentId;
+      const track = owner?.getVideoTracks()[0];
+      if (sendingFrame || !owner || !targetId || !track || track.readyState !== "live") return;
+      sendingFrame = true;
+      try {
+        const jpeg = await grabRemotePreviewJpeg(track);
+        if (!jpeg || disposed || stream !== owner || currentId !== targetId || viewers === 0) return;
+        const url = `${DESKTOP_REMOTE_PREVIEW_FRAME_PATH}?${REMOTE_PREVIEW_TARGET_PARAM}=${encodeURIComponent(targetId)}`;
+        await fetch(url, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: jpeg, signal: AbortSignal.timeout(3000) });
+      } catch { /* 한 장을 놓쳐도 다음 장이 따라온다. 원격은 갱신 멈춤으로 안다. */ }
+      finally { sendingFrame = false; }
+    };
+    const syncSender = () => {
+      const wanted = !disposed && viewers > 0 && stream !== null && currentId !== null;
+      if (wanted && sender === null) { sender = setInterval(() => void sendFrame(), REMOTE_PREVIEW_INTERVAL_MS); void sendFrame(); }
+      if (!wanted && sender !== null) { clearInterval(sender); sender = null; }
+    };
+    const stop = () => { stream?.getTracks().forEach((track) => track.stop()); stream = null; syncSender(); };
     const startCapture = () => {
       const target = desiredTarget;
       if (disposed || !target || stream || acquiring || attemptedId === target.id) return;
@@ -187,6 +259,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         const next = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
         if (disposed || generation !== captureGeneration || currentId !== target.id) { next.getTracks().forEach((track) => track.stop()); return; }
         stream = next;
+        syncSender();
         next.getVideoTracks()[0]?.addEventListener("ended", () => {
           if (stream !== next) return;
           stop();
@@ -234,6 +307,14 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
     const unsubscribe = subscribeConsoleChannel("computer-capture:state", (payload) => {
       streamed = true;
       apply(payload);
+      syncSender();
+    });
+    // 서버는 이 이벤트를 이 Console을 띄운 로컬 Desktop에만 보낸다.
+    const unsubscribeViewers = subscribeConsoleChannel(REMOTE_PREVIEW_VIEWERS_EVENT, (payload) => {
+      const count = payload && typeof payload === "object" ? (payload as { count?: unknown }).count : 0;
+      viewers = typeof count === "number" && Number.isFinite(count) && count > 0 ? count : 0;
+      setRemoteViewers(viewers);
+      syncSender();
     });
     const releaseOfflineCapture = () => {
       if (getState().connection !== "offline") return;
@@ -256,9 +337,88 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
         if (!streamed) apply(body);
       })
       .catch(() => undefined);
-    return () => { disposed = true; controller.abort(); unsubscribe(); unsubscribeConnection(); stop(); };
+    return () => { disposed = true; controller.abort(); unsubscribe(); unsubscribeViewers(); unsubscribeConnection(); stop(); setRemoteViewers(0); };
   }, []);
-  return <ObjectiveUseContext.Provider value={activity}><CaptureContext.Provider value={capture}>{children}</CaptureContext.Provider></ObjectiveUseContext.Provider>;
+  useEffect(() => {
+    // 원격 full 화면 — 서버는 미리보기 상태를 원격 full 구독자에게만 보낸다. 로컬 화면에는 이 이벤트가 오지 않는다.
+    let disposed = false;
+    let target: CaptureTarget | null = null;
+    let sending = false;
+    let loop: AbortController | null = null;
+    let url: string | null = null;
+    let afterSeq = 0;
+    let lastFrameAt: number | null = null;
+    let waitingSince = Date.now();
+    const hide = () => { if (url) URL.revokeObjectURL(url); url = null; };
+    const publish = () => {
+      if (disposed) return;
+      setRemoteCapture(target ? { target, stream: null, failed: false, remote: { url, lastFrameAt, waitingSince, off: !sending } } : null);
+    };
+    const reset = () => { loop?.abort(); loop = null; hide(); afterSeq = 0; lastFrameAt = null; waitingSince = Date.now(); };
+    const pause = (signal: AbortSignal) => new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, REMOTE_PREVIEW_INTERVAL_MS);
+      signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
+    });
+    const run = async (signal: AbortSignal) => {
+      while (!signal.aborted) {
+        let response: Response;
+        try {
+          response = await fetch(`${REMOTE_PREVIEW_FRAME_PATH}?${REMOTE_PREVIEW_AFTER_PARAM}=${afterSeq}`, { cache: "no-store", signal });
+        } catch {
+          // 네트워크 지연·끊김 — 마지막 이미지는 그대로 두고 경과 시간으로 알린다.
+          if (signal.aborted) return;
+          await pause(signal);
+          continue;
+        }
+        if (signal.aborted) return;
+        if (response.status === 200) {
+          const seq = Number(response.headers.get(REMOTE_PREVIEW_SEQ_HEADER));
+          const age = Number(response.headers.get(REMOTE_PREVIEW_AGE_HEADER));
+          let blob: Blob;
+          try { blob = await response.blob(); } catch { continue; }
+          if (signal.aborted) return;
+          hide();
+          url = URL.createObjectURL(blob);
+          if (Number.isFinite(seq) && seq > afterSeq) afterSeq = seq;
+          lastFrameAt = Date.now() - (Number.isFinite(age) && age > 0 ? age : 0);
+          publish();
+          continue;
+        }
+        if (response.status === 204) continue;
+        // 거부(401·403·409 등)는 이전 이미지를 바로 가린다. 꺼졌다는 판단은 서버 상태(`sending: false`)로만 한다.
+        hide();
+        publish();
+        await pause(signal);
+      }
+    };
+    const apply = (payload: unknown) => {
+      if (disposed) return;
+      const next = readRemotePreviewState(payload);
+      const nextTarget: CaptureTarget | null = next.target
+        ? { id: next.target.id, ownerKind: next.target.ownerKind, objectiveId: next.target.objectiveId, commodoreId: next.target.commodoreId, actor: next.target.actor, title: "" }
+        : null;
+      const changed = (nextTarget?.id ?? null) !== (target?.id ?? null);
+      if (changed || !next.sending) reset();
+      target = nextTarget;
+      sending = next.sending;
+      if (target && sending && loop === null) {
+        loop = new AbortController();
+        void run(loop.signal);
+      }
+      publish();
+    };
+    const unsubscribe = subscribeConsoleChannel(REMOTE_PREVIEW_STATE_EVENT, apply);
+    const releaseOffline = () => {
+      if (getState().connection !== "offline" || target === null) return;
+      // 끊기면 다시 붙을 때 서버가 지금 상태를 다시 보낸다. 그 사이 낡은 이미지를 남기지 않는다.
+      reset();
+      target = null;
+      publish();
+    };
+    const unsubscribeConnection = subscribeStore(releaseOffline);
+    return () => { disposed = true; reset(); unsubscribe(); unsubscribeConnection(); setRemoteCapture(null); };
+  }, []);
+  return <ObjectiveUseContext.Provider value={activity}><RemoteViewersContext.Provider value={remoteViewers}><CaptureContext.Provider value={capture ?? remoteCapture}>{children}</CaptureContext.Provider></RemoteViewersContext.Provider></ObjectiveUseContext.Provider>;
 }
 
 /** 이 Objective(공유 컨텍스트면 루트)의 화면을 지금 공유하는 중인가 — 영상 수명은 Desktop 셸만 가진다. */
@@ -282,6 +442,7 @@ function chromeTopInset(element: Element): number {
 export function ComputerScreenShare({ objectiveId, commodoreId, actor, className }: { objectiveId?: string; commodoreId?: string; actor?: (participantId: string) => ReactNode; className?: string }) {
   const t = useT();
   const capture = useContext(CaptureContext);
+  const remoteViewers = useContext(RemoteViewersContext);
   const video = useRef<HTMLVideoElement | null>(null);
   const own = capture && targetOwnedBy(capture.target, { ...(objectiveId !== undefined ? { objectiveId } : {}), ...(commodoreId !== undefined ? { commodoreId } : {}) }) ? capture : null;
   const actorId = useComputerActor(objectiveId ?? "") ?? own?.target.actor ?? null;
@@ -295,6 +456,30 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   /** 이 실패에 대해 화면 기록 설정을 열었는가. 다른 대상이 오면 버튼을 되살린다. */
   const [screenSettingsOpened, setScreenSettingsOpened] = useState<string | null>(null);
   const preferredSize = useRef<{ width: number; height: number } | null>(null);
+  /** 원격 정지 화면의 가로세로비 — 이미지가 처음 읽힐 때 정한다. 영상은 트랙 설정에서 읽는다. */
+  const [remoteRatio, setRemoteRatio] = useState<number | null>(null);
+  const remote = own?.remote;
+  const remoteLive = remote !== undefined && !remote.off;
+  /** 미리보기 자리(영상 또는 원격 정지 화면)가 있는가 — 크기·최대화·끌기 규칙은 둘이 같다. */
+  const media = Boolean(own?.stream) || remoteLive;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!remoteLive) return;
+    // 5초를 넘긴 직후 보이도록 반 초마다 본다. 초수는 화면에만 바뀌고 스크린리더에는 한 번만 알린다.
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, [remoteLive]);
+  // 첫 장 전이면 기다리기 시작한 때부터, 이후엔 마지막 새 이미지부터 센다.
+  const remoteSince = remote ? remote.lastFrameAt ?? remote.waitingSince : null;
+  const staleSeconds = remoteLive && remoteSince !== null && now - remoteSince > REMOTE_PREVIEW_STALE_MS ? Math.floor((now - remoteSince) / 1000) : null;
+  const stale = staleSeconds !== null;
+  /** 스크린리더에는 지연이 시작될 때 한 번만 알린다. 초수는 매초 읽히지 않는다. */
+  const [announcement, setAnnouncement] = useState("");
+  const staleSecondsRef = useRef<number | null>(null);
+  staleSecondsRef.current = staleSeconds;
+  useEffect(() => {
+    setAnnouncement(stale ? t("settings.computerUse.remotePreviewStale", { seconds: String(staleSecondsRef.current ?? 0) }) : "");
+  }, [stale, t]);
   const drag = useRef<{ id: number; x: number; y: number; left: number; top: number; scaleX: number; scaleY: number; resizing: boolean; width: number; height: number } | null>(null);
   useEffect(() => {
     const element = card.current;
@@ -302,7 +487,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     if (!element || !parent) return;
     const resize = () => {
       const settings = own?.stream?.getVideoTracks()[0]?.getSettings();
-      const ratio = (settings?.width || 16) / (settings?.height || 9);
+      const ratio = own?.stream ? (settings?.width || 16) / (settings?.height || 9) : remoteRatio ?? 16 / 10;
       const preferred = preferredSize.current;
       const inset = chromeTopInset(element);
       const width = Math.max(1, Math.min(preferred?.width ?? Math.min(256, 256 * ratio), parent.clientWidth - 24));
@@ -317,7 +502,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     const observer = new ResizeObserver(resize);
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [own?.stream, own?.target.id]);
+  }, [own?.stream, own?.target.id, remoteRatio]);
   useEffect(() => {
     const element = video.current;
     if (!element || !own?.stream) return;
@@ -328,12 +513,12 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   if (!own) return null;
   // 칩은 영상 위에는 겹쳐도 되지만 문구(실패·권한 안내) 위에는 겹치면 안 된다 — 영상이 없을 때는 CSS 가 칩을 본문 위 한 줄로 내린다.
   const chip = actor && actorId ? actor(actorId) : null;
-  return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${chip ? " has-actor" : ""}${own.stream ? " is-streaming" : ""}${dragging ? " is-dragging" : ""}${maximized && own.stream ? " is-maximized" : ""}`} aria-label={t("settings.computerUse.sharePreview")}
+  return <aside ref={card} className={`computer-screen-share${className ? ` ${className}` : ""}${chip ? " has-actor" : ""}${media ? " is-streaming" : ""}${remote ? " is-remote" : ""}${dragging ? " is-dragging" : ""}${maximized && media ? " is-maximized" : ""}`} aria-label={t(remote ? "settings.computerUse.remotePreviewLabel" : "settings.computerUse.sharePreview")}
     // 최대화는 폰 배치의 떠 있는 상단 막대 아래에서 멈춘다(데스크톱은 막대 몫이 없어 틀 전체).
-    style={maximized && own.stream ? { inset: "var(--m-chrome-top, 0px) 0 0 0", width: "100%", height: "calc(100% - var(--m-chrome-top, 0px))", maxWidth: "100%", maxHeight: "calc(100% - var(--m-chrome-top, 0px))" } : { width: own.stream ? size.width : 256, height: own.stream ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
+    style={maximized && media ? { inset: "var(--m-chrome-top, 0px) 0 0 0", width: "100%", height: "calc(100% - var(--m-chrome-top, 0px))", maxWidth: "100%", maxHeight: "calc(100% - var(--m-chrome-top, 0px))" } : { width: media ? size.width : 256, height: media ? size.height : undefined, ...(position ? { left: position.x, top: position.y, right: "auto", bottom: "auto" } : {}) }}
     onPointerDown={(event) => {
       const resizing = event.target instanceof Element && Boolean(event.target.closest(".computer-screen-share-resize"));
-      if (event.button !== 0 || (maximized && own.stream) || (!resizing && event.target instanceof Element && event.target.closest("button"))) return;
+      if (event.button !== 0 || (maximized && media) || (!resizing && event.target instanceof Element && event.target.closest("button"))) return;
       const element = event.currentTarget;
       const parent = element.parentElement;
       if (!parent) return;
@@ -378,7 +563,15 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     onLostPointerCapture={() => { drag.current = null; setDragging(false); }}
     onClick={(event) => event.stopPropagation()}>
     {chip ? <span className="computer-screen-share-actor">{chip}</span> : null}
-    {own.stream ? <><video ref={video} muted playsInline aria-label={t("settings.computerUse.sharePreview")} />
+    {own.stream && remoteViewers > 0 ? <span className="computer-screen-share-remote" data-remote-viewers={remoteViewers}>{t("settings.computerUse.shareRemote")}</span> : null}
+    {remote ? <>
+      {remoteLive ? (remote.url
+        ? <img className="computer-screen-share-still" src={remote.url} alt="" draggable={false} onLoad={(event) => { const image = event.currentTarget; if (image.naturalWidth > 0 && image.naturalHeight > 0) setRemoteRatio(image.naturalWidth / image.naturalHeight); }} />
+        : <span className="computer-screen-share-still is-empty" />) : <p>{t("settings.computerUse.remotePreviewOff")}</p>}
+      {staleSeconds !== null ? <p className="computer-screen-share-stale" aria-hidden="true">{t("settings.computerUse.remotePreviewStale", { seconds: String(staleSeconds) })}</p> : null}
+      <span className="computer-screen-share-announce" role="status">{announcement}</span>
+    </> : null}
+    {media ? <>{own.stream ? <video ref={video} muted playsInline aria-label={t("settings.computerUse.sharePreview")} /> : null}
       <button type="button" className="computer-screen-share-maximize" aria-label={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} title={t(maximized ? "settings.computerUse.shareRestore" : "settings.computerUse.shareMaximize")} onClick={() => setMaximized((value) => !value)}>
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">{maximized ? <><path d="M5 5V2h9v9h-3" /><rect x="2" y="5" width="9" height="9" rx="1" /></> : <path d="M6 2H2v4m8-4h4v4M2 10v4h4m8-4v4h-4" />}</svg>
       </button>
@@ -390,7 +583,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
         const next = { width: Math.min(parent.clientWidth - (position?.x ?? 12), Math.max(96, size.width + direction[0]!)), height: Math.min(parent.clientHeight - (position?.y ?? 12), Math.max(72, size.height + direction[1]!)) };
         preferredSize.current = next; setSize(next);
       }}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="m5 13 8-8m-3 8 3-3" /></svg></button> : null}
-    </> : <><p role="status">{t("settings.computerUse.shareError")}</p>{own.failure === "screen_recording_permission_required" ? <>
+    </> : remote ? null : <><p role="status">{t("settings.computerUse.shareError")}</p>{own.failure === "screen_recording_permission_required" ? <>
         <p>{t("settings.computerUse.shareScreenRecording")}</p>
         <p>{t("settings.computerUse.shareScreenRecordingRestart")}</p>
         {screenSettingsOpened === own.target.id ? <p>{t("settings.computerUse.shareScreenRecordingOpened")}</p>
