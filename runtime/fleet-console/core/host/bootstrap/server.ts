@@ -55,7 +55,7 @@ import { createModelRosterHost } from "../../../features/ai-gateway/host/model-r
 import { createConsoleControl } from "../../../features/execution/host/console-control.js";
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
-import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
+import { createFleetComputerUsePlatform } from "../../../features/computer-use/runtime/fleet-helper.js";
 import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
@@ -69,10 +69,10 @@ import { createBrowserScreenshotStore } from "../../../features/browser/host/scr
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
+import { createFeedbackStore } from "../../../features/feedback/store.js";
 import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/computer-use/host/use-requests.js";
 import { bindComputerUseApprovals } from "../../../features/computer-use/host/approval.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
-import { resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import type { ObjectiveRecord } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { createObjectiveRecordsStore, createObjectiveRecordsRouter, createSanitizedOpDto } from "../../../features/objectives/host/records/objective-records-domain.js";
 import { stripConsoleInternalEnv } from "../../../features/execution/host/terminal/launch-env.js";
@@ -430,7 +430,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
-  { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/computer-use/privacy-settings", summary: "Open macOS Privacy & Security for missing Computer Use permissions.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
@@ -856,17 +856,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
-  const computerUseDirectory = path.join(fleetDataDir, "computer-use");
-  const computerUseInstaller = new CuaDriverInstaller(computerUseDirectory);
-  const computerUseRuntime = {
-    resolveCodex: () => resolveAgentCliBinary({ cliCommand: "codex", env: process.env, userPaths: {} }).resolved ?? null,
+  const computerUsePlatform = createFleetComputerUsePlatform({
     childEnv: () => stripConsoleInternalEnv(process.env),
-    spawnProcess: (request: Parameters<typeof ownedProcesses.spawn>[0]) => ownedProcesses.spawn(request),
-  };
-  const computerUsePlatforms = {
-    "sky-computer-use": createMacOSComputerUsePlatform(computerUseRuntime),
-    "cua-driver": createCuaComputerUsePlatform(computerUseDirectory, computerUseRuntime),
-  };
+    spawnProcess: (request) => ownedProcesses.spawn(request),
+  }, process.env.FLEET_COMPUTER_USE_HELPER);
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const objectiveId = target ? computerUseMcp.objectiveIdForOwner(target.owner) : null;
@@ -884,8 +877,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       broadcastComputerCapture();
       watchComputerCapture();
     },
-    platform: computerUsePlatforms[readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUseBackend],
-    directory: computerUseDirectory,
+    platform: computerUsePlatform,
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
@@ -924,6 +916,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transport: mcpHttp.transport,
     onFailure: recordFailure,
     service: computerUse,
+    feedback: { store: createFeedbackStore({ root: durablePaths.dir, toolset: "computer-use", prefix: "CU" }), fleetVersion: version },
     requests: useRequests,
     objectiveRecords: () => objectiveRecords.list(),
     resolveObjective: objectiveRecords.get,
@@ -1348,11 +1341,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   };
   let consoleResourcesDisposed = false;
   const globalSettingsRouter = createGlobalSettingsRouter({
-    computerUseAvailability: async (backend) => {
-      const platform = computerUsePlatforms[backend];
-      if (!platform.supported()) return "unsupported";
-      return await platform.inspectInstallation() ? "available" : "missing";
-    },
+    computerUseAvailability: () => computerUse.inspectInstallation(),
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
     isRemoteAccessOwner: isLoopbackListener,
@@ -1362,10 +1351,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onExperimentsChanged: async (next) => {
       // 「대화 중심 화면」은 Desktop 의 신호등·캡션 띠 자리를 바꾼다 — 테마 이벤트로 셸에 알린다.
       broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "dark");
-      await computerUse.setPlatform(computerUsePlatforms[next.computerUseBackend]);
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
-      // computerUse 실험 토글·백엔드는 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
+      // computerUse 실험 토글은 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
       // 브로커 순찰이 거둔다. 런치 주입은 다음 자식 런치부터 이 값을 따른다(computer-use/host/mcp.ts).
       scheduleObjectiveUseBroadcast();
     },
@@ -1690,7 +1678,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders,
   }));
-  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, computerUseInstaller, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, hasRemoteSession: () => access.hasSession("remote", "full") || access.hasSession("remote", "monitoring"), isLoopbackListener, isExactConsoleOrigin, writeJson }));
+  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellUpdateRouter(context)) return true;

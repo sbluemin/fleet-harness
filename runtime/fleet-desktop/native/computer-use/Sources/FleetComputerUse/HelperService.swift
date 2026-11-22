@@ -1,0 +1,764 @@
+import AppKit
+import ApplicationServices
+
+private enum ActionName: String {
+  case click, doubleClick = "double_click", rightClick = "right_click", type, setValue = "set_value", key, scroll, drag, select, axAction = "ax_action"
+}
+
+private struct ActionRequest {
+  let name: ActionName
+  let ref: String?
+  let point: CGPoint?
+  let end: Object?
+  let text: String?
+  let stroke: KeyStroke?
+  let direction: AICursorPulse.Direction?
+  let pages: Double
+  let axName: String?
+  let requireEditableFocus: Bool
+
+  init(_ p: Object) throws {
+    guard let raw = p["action"] as? String, let action = ActionName(rawValue: raw) else { throw HelperError("invalid_params", "action") }
+    let positioned: Set<ActionName> = [.click, .doubleClick, .rightClick, .scroll, .drag]
+    var allowed: Set<String> = ["pid", "windowId", "processStartedAt", "expectedFrame", "action"]
+    switch action {
+    case .click, .doubleClick, .rightClick: allowed.formUnion(["ref", "x", "y"])
+    case .scroll: allowed.formUnion(["ref", "x", "y", "direction", "pages"])
+    case .drag: allowed.formUnion(["ref", "x", "y", "to"])
+    case .type, .setValue, .select: allowed.formUnion(["ref", "text"])
+    case .key: allowed.formUnion(["key", "ref", "requireEditableFocus"])
+    case .axAction: allowed.formUnion(["ref", "name"])
+    }
+    try validateKeys(p, allowed: allowed)
+    let ref = try optionalRef(p["ref"])
+    var point: CGPoint?
+    if p["x"] != nil || p["y"] != nil {
+      guard ref == nil, let x = jsonNumber(p["x"]), let y = jsonNumber(p["y"]) else { throw HelperError("invalid_params", "ref OR x and y") }
+      point = CGPoint(x: x, y: y)
+    }
+    if positioned.contains(action) && ref == nil && point == nil { throw HelperError("invalid_params", "ref OR x and y required") }
+    if [.setValue, .select, .axAction].contains(action) && ref == nil { throw HelperError("invalid_params", "ref required") }
+    let text = try optionalString(p["text"], name: "text", max: 20_000)
+    if [.type, .setValue, .select].contains(action) && text == nil { throw HelperError("invalid_params", "text required") }
+    if [.type, .select].contains(action) && text?.isEmpty == true { throw HelperError("invalid_params", "text must not be empty") }
+    let end = p["to"] as? Object
+    if action == .drag && end == nil { throw HelperError("invalid_params", "to must be a ref or point object") }
+    let axName = try optionalString(p["name"], name: "name", max: 80)
+    if action == .axAction && axName?.isEmpty != false { throw HelperError("invalid_name") }
+    var stroke: KeyStroke?
+    if action == .key {
+      guard let key = try optionalString(p["key"], name: "key", max: 60) else { throw HelperError("invalid_params", "key required") }
+      stroke = try KeyStroke(key)
+    }
+    let requireEditableFocus = jsonBool(p["requireEditableFocus"]) ?? false
+    if (p["requireEditableFocus"] != nil && jsonBool(p["requireEditableFocus"]) == nil) ||
+       (action == .key && requireEditableFocus && stroke?.paste != true) {
+      throw HelperError("invalid_params", "requireEditableFocus applies to cmd+v only")
+    }
+    var direction: AICursorPulse.Direction?
+    if action == .scroll {
+      switch p["direction"] as? String {
+      case "up": direction = .up
+      case "down": direction = .down
+      case "left": direction = .left
+      case "right": direction = .right
+      default: throw HelperError("invalid_params", "direction must be up, down, left or right")
+      }
+    }
+    var pages = 1.0
+    if let raw = p["pages"] {
+      guard let n = jsonNumber(raw), (0.1...10).contains(n) else { throw HelperError("invalid_params", "pages must be between 0.1 and 10") }
+      pages = n
+    }
+    self.name = action; self.ref = ref; self.point = point; self.end = end; self.text = text; self.stroke = stroke
+    self.direction = direction; self.pages = pages; self.axName = axName; self.requireEditableFocus = requireEditableFocus
+  }
+}
+
+func validateKeys(_ p: Object, allowed: Set<String>) throws {
+  if let key = p.keys.sorted().first(where: { !allowed.contains($0) }) { throw HelperError("invalid_params", "unexpected \(key)") }
+}
+
+func optionalString(_ raw: Any?, name: String, max: Int) throws -> String? {
+  guard let raw else { return nil }
+  guard let value = raw as? String, value.count <= max else { throw HelperError("invalid_params", name) }
+  return value
+}
+
+private func refIsValid(_ ref: String) -> Bool {
+  ref.first == "e" && !ref.dropFirst().isEmpty && ref.dropFirst().utf8.allSatisfy { (48...57).contains($0) }
+}
+
+func optionalRef(_ raw: Any?) throws -> String? {
+  guard let ref = try optionalString(raw, name: "ref", max: 24) else { return nil }
+  guard refIsValid(ref) else { throw HelperError("invalid_params", "ref") }
+  return ref
+}
+
+func boundedInt(_ raw: Any?, name: String, default fallback: Int, range: ClosedRange<Int>) throws -> Int {
+  guard let raw else { return fallback }
+  guard let n = jsonNumber(raw), n.rounded(.towardZero) == n, n >= Double(range.lowerBound), n <= Double(range.upperBound) else {
+    throw HelperError("invalid_params", name)
+  }
+  return Int(n)
+}
+
+private func expectedFrame(_ p: Object) throws -> CGRect? {
+  guard let raw = p["expectedFrame"] else { return nil }
+  guard let f = raw as? Object, let x = jsonNumber(f["x"]), let y = jsonNumber(f["y"]), let w = jsonNumber(f["w"]),
+        let h = jsonNumber(f["h"]), w > 0, h > 0 else { throw HelperError("invalid_params", "expectedFrame") }
+  return CGRect(x: x, y: y, width: w, height: h)
+}
+
+// JSONSerialization과 호스트가 epoch 초를 Double로 왕복할 때의 반올림만 허용한다.
+private func matchesStart(_ actual: Date?, _ requested: Double) -> Bool {
+  actual.map { abs($0.timeIntervalSince1970 - requested) < 0.000_001 } ?? false
+}
+
+private func windowAddress(_ p: Object) throws -> (pid_t, CGWindowID, Double?) {
+  guard p["pid"] != nil, p["windowId"] != nil else { throw HelperError("invalid_params", "pid and windowId required") }
+  let pid = try boundedInt(p["pid"], name: "pid", default: 0, range: 1...Int(Int32.max))
+  let id = try boundedInt(p["windowId"], name: "windowId", default: 0, range: 1...Int(UInt32.max))
+  let started = jsonNumber(p["processStartedAt"])
+  if p["processStartedAt"] != nil && started == nil { throw HelperError("invalid_params", "processStartedAt") }
+  return (pid_t(pid), CGWindowID(id), started)
+}
+
+private enum Verification {
+  case contains(AXUIElement, String)
+  case value(AXUIElement, Any)
+  case selection(AXUIElement, String, CFRange)
+
+  func check(in win: WindowInfo, root: AXUIElement?) -> String? {
+    switch self {
+    case .contains(let el, let text):
+      guard AXReader.belongs(el, win, root: root), (AXReader.attribute(el, kAXValueAttribute) as? String)?.contains(text) == true else { return nil }
+      return "value_contains_text"
+    case .value(let el, let expected):
+      guard AXReader.belongs(el, win, root: root), jsonEqual(axJSONValue(AXReader.attribute(el, kAXValueAttribute)), expected) else { return nil }
+      return "value_equals"
+    case .selection(let el, let expected, let wantedRange):
+      guard AXReader.belongs(el, win, root: root), let raw = AXReader.attribute(el, kAXSelectedTextRangeAttribute),
+            CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+      var range = CFRange()
+      guard AXValueGetValue(raw as! AXValue, .cfRange, &range), range.location == wantedRange.location, range.length == wantedRange.length,
+            (AXReader.attribute(el, kAXSelectedTextAttribute) as? String) == expected else { return nil }
+      return "selection_matches"
+    }
+  }
+}
+
+private struct Expectation {
+  let raw: Object
+  let ref: String?
+  let role: String?
+  let label: String?
+  let exists: Bool
+
+  init(_ raw: Object) throws {
+    try validateKeys(raw, allowed: ["ref", "role", "label", "exists", "value", "valueContains", "enabled", "selected", "focused"])
+    let ref = try optionalRef(raw["ref"])
+    let role = try optionalString(raw["role"], name: "role", max: 40)
+    let label = try optionalString(raw["label"], name: "label", max: 200)
+    guard ref != nil || role?.isEmpty == false || label?.isEmpty == false else { throw HelperError("invalid_params", "verify needs ref or role/label") }
+    for key in ["exists", "enabled", "selected", "focused"] where raw[key] != nil && jsonBool(raw[key]) == nil {
+      throw HelperError("invalid_params", key)
+    }
+    _ = try optionalString(raw["value"], name: "value", max: 2_000)
+    _ = try optionalString(raw["valueContains"], name: "valueContains", max: 2_000)
+    self.raw = raw; self.ref = ref; self.role = role; self.label = label; self.exists = jsonBool(raw["exists"]) ?? true
+  }
+
+  // actual.reason은 관측할 수 없는 상태이고 actual.field는 관측된 불일치다.
+  func mismatch(tree: AXTree, resolve: (String) throws -> AXNode) -> Object? {
+    let node: AXNode
+    if tree.root == nil { return ["reason": "incomplete"] }
+    if let ref {
+      guard let found = try? resolve(ref) else { return ["reason": "stale_element"] }
+      node = found
+    } else {
+      let matches = tree.nodes.filter { (role == nil || $0.role.caseInsensitiveCompare(role!) == .orderedSame) && (label == nil || $0.label == label) }
+      if matches.count > 1 { return ["reason": "ambiguous"] }
+      if !tree.complete { return ["reason": "incomplete"] }
+      guard let found = matches.first else { return exists ? ["field": "exists", "value": false] : nil }
+      node = found
+    }
+    if !exists { return ["field": "exists", "value": true] }
+    if let value = raw["value"] as? String, valueText(node.value) != value { return ["field": "value", "value": valueText(node.value) as Any? ?? NSNull()] }
+    if let contains = raw["valueContains"] as? String, valueText(node.value)?.contains(contains) != true {
+      return ["field": "valueContains", "value": valueText(node.value) as Any? ?? NSNull()]
+    }
+    if let focused = jsonBool(raw["focused"]), focused != node.focused { return ["field": "focused", "value": node.focused as Any? ?? NSNull()] }
+    if let enabled = jsonBool(raw["enabled"]), enabled != node.enabled { return ["field": "enabled", "value": node.enabled as Any? ?? NSNull()] }
+    if let selected = jsonBool(raw["selected"]), selected != node.selected { return ["field": "selected", "value": node.selected as Any? ?? NSNull()] }
+    return nil
+  }
+}
+
+@MainActor final class HelperService {
+  private enum Fault: String { case selfCheck = "self_check", symbols }
+
+  let symbols: WindowSymbols
+  private let catalog: WindowCatalog
+  private let fault: Fault?
+  private let ax = AXSession()
+  private var cursor: AICursorControlling?
+  private var cursorKey: WindowKey?
+  private var hoverTask: Task<Void, Never>?
+  private var check: Object = ["ok": false, "reason": "not_ready", "ms": 0]
+
+  init() {
+    let fault = ProcessInfo.processInfo.environment["FLEET_COMPUTER_USE_FAULT"].flatMap(Fault.init(rawValue:))
+    let symbols = WindowSymbols(omitWindowLocation: fault == .symbols)
+    self.fault = fault
+    self.symbols = symbols
+    self.catalog = WindowCatalog(symbols: symbols)
+  }
+
+  func initialize() async -> Object {
+    if fault == .selfCheck {
+      check = ["ok": false, "reason": "fault_injected_self_check", "ms": 0]
+    } else {
+      check = await selfCheck(symbols: symbols, permissions: HelperPermissions())
+    }
+    return check
+  }
+
+  func handle(method: String, params p: Object, record: DispatchRecord) async throws -> Object {
+    switch method {
+    case "hello":
+      try validateKeys(p, allowed: [])
+      let os = ProcessInfo.processInfo.operatingSystemVersion
+      let version = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion == 0 ? "" : ".\(os.patchVersion)")
+      return ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check]
+    case "windows":
+      try validateKeys(p, allowed: ["query"])
+      let query = try optionalString(p["query"], name: "query", max: 300)
+      let windows = catalog.all(describeWithAX: AXIsProcessTrusted())
+      prune(windows)
+      let filtered = windows.filter { w in
+        guard let q = query, !q.isEmpty else { return true }
+        return [w.title, w.app, w.bundleId, w.bundlePath].contains { $0.localizedCaseInsensitiveContains(q) }
+      }
+      var result: Object = ["windows": filtered.map { $0.json() }]
+      if let query, !query.isEmpty { result["installed"] = catalog.installed(query: query) }
+      return result
+    case "snapshot": return try await snapshot(p)
+    case "act":
+      // 장애를 주입한 경우 대상 조회나 입력 준비에도 들어가지 않는다.
+      if fault != nil { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
+      return try await act(p, record: record)
+    case "focus": return try focus(p)
+    case "verify": return try await verify(p)
+    case "cursor":
+      try validateKeys(p, allowed: ["op"])
+      guard p["op"] as? String == "hide" else { throw HelperError("invalid_params", "op must be hide") }
+      hideCursor(animated: true)
+      return [:]
+    case "shutdown":
+      try validateKeys(p, allowed: [])
+      hideCursor(animated: false)
+      return [:]
+    default: throw HelperError("invalid_params", "unknown method")
+    }
+  }
+
+  func hideCursor(animated: Bool) {
+    hoverTask?.cancel(); hoverTask = nil
+    cursorKey = nil
+    cursor?.hide(animated: animated)
+  }
+
+  private func prune(_ windows: [WindowInfo]) {
+    let keys = Set(windows.map(\.key))
+    ax.prune(to: catalog.prune(to: keys))
+  }
+
+  private func startCursor(_ point: CGPoint?, in win: WindowInfo) async {
+    hoverTask?.cancel(); hoverTask = nil
+    if let key = cursorKey, key != win.key {
+      cursor?.hide(animated: false)
+      cursorKey = nil
+    }
+    guard let point else { return }
+    if cursor == nil { cursor = makeAICursor() }
+    if cursor?.isVisible == true { await cursor?.move(to: win.screen(point), above: win.key.id) }
+    else { cursor?.show(at: win.screen(point), above: win.key.id) }
+    cursorKey = win.key
+  }
+
+  private func idleCursor() {
+    guard let key = cursorKey else { return }
+    hoverTask?.cancel()
+    hoverTask = Task { @MainActor [weak self] in
+      let start = clockNow()
+      while !Task.isCancelled, millis(since: start) < 4_000 {
+        try? await pause(160)
+        guard !Task.isCancelled, let self else { return }
+        guard (try? self.catalog.available(key.pid, key.id))?.key == key else {
+          self.hideCursor(animated: false); return
+        }
+        self.cursor?.reorder(above: key.id)
+      }
+      if !Task.isCancelled { self?.hideCursor(animated: true) }
+    }
+  }
+
+  private func window(_ pid: pid_t, _ id: CGWindowID, started: Double? = nil) throws -> WindowInfo {
+    do {
+      if let started, !matchesStart(catalog.launchDate(pid), started) {
+        throw HelperError.unavailable("closed")
+      }
+      let found = try catalog.available(pid, id)
+      if let started, !matchesStart(found.key.launched, started) { throw HelperError.unavailable("closed") }
+      return found
+    }
+    catch {
+      hideCursor(animated: false)
+      prune(catalog.all())
+      throw error
+    }
+  }
+
+  private func read(_ win: inout WindowInfo, budgetMs: Int = 250) -> AXTree {
+    let tree = ax.read(win, budgetMs: budgetMs)
+    if let title = tree.windowTitle, win.title.isEmpty { win.title = title }
+    if tree.web && win.engine == .appkit { win.engine = .webkit; catalog.sawWebArea(win.key) }
+    return tree
+  }
+
+  private func readPrepared(_ win: inout WindowInfo) async throws -> AXTree {
+    let start = clockNow()
+    var tree = read(&win)
+    let webEngine = [.chromium, .electron, .webkit].contains(win.engine)
+    let firstEnablement = !tree.hasWebContents && ax.attemptWebAccessibility(win)
+    if firstEnablement {
+      try await pause(500)
+      tree = read(&win)
+    }
+    // Chromium/Electron의 보조 기술 전환은 엔진 내부에서 약 2초 디바운스된다.
+    // WebKit의 첫 자식 조회도 원격 AX 트리가 준비되기 전에는 내용 그룹만 반환할 수 있다.
+    let deadline = firstEnablement ? 2_500 : 1_000
+    let shouldRetry = webEngine || (tree.hasEmptyContentGroup(in: win.localFrame) && ax.canProbeWeb(win.key))
+    if shouldRetry && !tree.hasWebContents && AXIsProcessTrusted() {
+      while !tree.hasWebContents && millis(since: start) < deadline - 50 {
+        try await pause(65)
+        let remaining = deadline - millis(since: start)
+        if remaining <= 0 { break }
+        tree = read(&win, budgetMs: min(250, remaining))
+      }
+    }
+    if (webEngine || tree.hasEmptyContentGroup(in: win.localFrame)) && !tree.hasWebContents {
+      return AXTree(root: tree.root, nodes: tree.nodes, complete: false, windowTitle: tree.windowTitle)
+    }
+    return tree
+  }
+
+  private func snapshot(_ p: Object) async throws -> Object {
+    try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "find", "expand", "limit", "valueLimit", "image"])
+    let (pid, id, started) = try windowAddress(p)
+    let find = try optionalString(p["find"], name: "find", max: 500).flatMap { $0.isEmpty ? nil : $0 }
+    let expand = try optionalRef(p["expand"])
+    let limit = try boundedInt(p["limit"], name: "limit", default: 200, range: 1...4_000)
+    let valueLimit = try boundedInt(p["valueLimit"], name: "valueLimit", default: 80, range: 0...20_000)
+    if p["image"] != nil && jsonBool(p["image"]) == nil { throw HelperError("invalid_params", "image") }
+    var win = try window(pid, id, started: started)
+    let tree = try await readPrepared(&win)
+    let expanded = try expand.map { try ax.resolve($0, tree: tree, window: win) }
+    let output = tree.snapshot(find: find, expand: expanded, limit: limit, valueLimit: valueLimit)
+    var result: Object = ["window": win.snapshotJSON(), "elements": output.elements, "omitted": output.omitted,
+                          "complete": tree.complete && find == nil && output.omitted == 0 && !output.hasOutside]
+    if output.rootOutside > 0 { result["omittedOutside"] = output.rootOutside }
+    if jsonBool(p["image"]) == true {
+      do { result["image"] = try await captureWindow(win) }
+      catch { hideCursor(animated: false); throw error }
+    }
+    try Task.checkCancellation()
+    let fresh = try window(pid, id, started: started)
+    guard fresh.key == win.key, fresh.frame == win.frame else { throw HelperError.unavailable() }
+    ax.publish(output.shown.values, for: win.key)
+    return result
+  }
+
+  private func verify(_ p: Object) async throws -> Object {
+    try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "expect", "timeoutMs"])
+    let (pid, id, started) = try windowAddress(p)
+    guard let raw = p["expect"] as? [Object], (1...8).contains(raw.count) else { throw HelperError("invalid_params", "expect must contain 1 to 8 conditions") }
+    let expect = try raw.map(Expectation.init)
+    let timeout = try boundedInt(p["timeoutMs"], name: "timeoutMs", default: 0, range: 0...10_000)
+    let start = clockNow()
+    func result(index: Int, actual: Object) -> Object {
+      var result: Object = ["index": index, "expected": expect[index].raw, "waitedMs": millis(since: start)]
+      if let reason = actual["reason"] { result["status"] = "unknown"; result["reason"] = reason }
+      else { result["status"] = "unsatisfied"; result["actual"] = actual }
+      return result
+    }
+    while true {
+      try Task.checkCancellation()
+      var win: WindowInfo
+      do { win = try window(pid, id, started: started) }
+      catch let error as HelperError {
+        if let started, !matchesStart(catalog.launchDate(pid), started) { throw error }
+        return result(index: 0, actual: ["reason": "window_unavailable"])
+      }
+      let tree = try await readPrepared(&win)
+      var mismatch: (Int, Object)?
+      for (i, condition) in expect.enumerated() {
+        if let actual = condition.mismatch(tree: tree, resolve: { try self.ax.resolve($0, tree: tree, window: win) }) {
+          mismatch = (i, actual); break
+        }
+      }
+      guard let (index, actual) = mismatch else { return ["status": "satisfied", "waitedMs": millis(since: start)] }
+      if actual["reason"] as? String == "stale_element" || millis(since: start) >= timeout { return result(index: index, actual: actual) }
+      try await pause(min(80, max(1, timeout - millis(since: start))))
+    }
+  }
+
+  private func localPoint(node: AXNode?, explicit: CGPoint?, in win: WindowInfo) throws -> CGPoint {
+    let point: CGPoint
+    if let explicit { point = explicit }
+    else if let frame = node?.frame {
+      let visible = frame.intersection(win.localFrame)
+      guard !visible.isNull, !visible.isEmpty else { throw HelperError.unavailable(message: "element_outside_window") }
+      point = CGPoint(x: visible.midX, y: visible.midY)
+    } else { throw HelperError("invalid_params", "target has no position") }
+    guard win.localFrame.contains(point) else { throw HelperError("invalid_params", "position outside window") }
+    return point
+  }
+
+  private func engine(for node: AXNode?, at point: CGPoint?, tree: AXTree, win: WindowInfo) -> Engine {
+    guard win.engine == .webkit || win.engine == .appkit else { return win.engine }
+    if let node { return node.web ? .webkit : .appkit }
+    guard let point else { return win.engine }
+    if tree.nodes.contains(where: { $0.role == "AXWebArea" && $0.frame?.contains(point) != false }) { return .webkit }
+    return .appkit
+  }
+
+  private func focusTarget(_ node: AXNode, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
+    func confirmed() -> Bool {
+      if let focused = AXReader.focused(win, root: root) {
+        if CFEqual(focused, node.el) { return true }
+        let containerRoles = [kAXApplicationRole, kAXWindowRole, kAXGroupRole, kAXScrollAreaRole, "AXWebArea"]
+        guard let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+              containerRoles.contains(role), !AXReader.editable(focused, role: role) else { return false }
+      }
+      // 원격 웹 콘텐츠와 UIKit은 앱 루트에 포커스 자식을 반환하지 않기도 한다.
+      // 정확한 자식의 AXFocused와 같은 대상 창이 모두 확인될 때만 이를 보완한다.
+      let remoteWeb = node.web && [.electron, .webkit].contains(win.engine)
+      return (remoteWeb || win.engine == .catalyst) && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
+        AXReader.focusedWindow(win, root: root)
+    }
+    guard AXReader.belongs(node.el, win, root: root), AXReader.attribute(node.el, kAXEnabledAttribute) as? Bool != false else {
+      throw HelperError("no_editable_focus", "target_focus_unconfirmed")
+    }
+    if confirmed() { return node.el }
+    if mayFocus, AXReader.settable(node.el, kAXFocusedAttribute) { _ = AXReader.set(node.el, kAXFocusedAttribute, kCFBooleanTrue) }
+    // setter의 반환값이 아니라 대상이 실제로 포커스됐는지 확인한다.
+    guard confirmed() else { throw HelperError("no_editable_focus", "target_focus_unconfirmed") }
+    return node.el
+  }
+
+  private func focusEditable(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
+    let candidate: AXUIElement?
+    if let node {
+      guard AXReader.editable(node.el, role: node.role) else { throw HelperError("no_editable_focus") }
+      candidate = try focusTarget(node, in: win, root: root, mayFocus: mayFocus)
+    } else { candidate = AXReader.focused(win, root: root) }
+    guard let focused = candidate, let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+          AXReader.editable(focused, role: role), AXReader.attribute(focused, kAXEnabledAttribute) as? Bool != false else {
+      throw HelperError("no_editable_focus")
+    }
+    return focused
+  }
+
+  private func focus(_ p: Object) throws -> Object {
+    try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "ref"])
+    let (pid, id, started) = try windowAddress(p)
+    var win = try window(pid, id, started: started)
+    let permissions = HelperPermissions()
+    guard permissions.allowed else { throw permissions.error }
+    let tree = read(&win)
+    let node = try optionalRef(p["ref"]).map { try ax.resolve($0, tree: tree, window: win) }
+    try Task.checkCancellation()
+    let current = try window(pid, id, started: started)
+    guard current.key == win.key else { throw HelperError.unavailable("closed") }
+    guard let focused = try? focusEditable(node, in: win, root: tree.root, mayFocus: true) else { return ["editable": false] }
+    var result: Object = ["editable": true]
+    if let node { result["focusedRef"] = node.ref }
+    else if let ref = tree.nodes.first(where: { CFEqual($0.el, focused) })?.ref,
+            (try? ax.resolve(ref, tree: tree, window: win)) != nil { result["focusedRef"] = ref }
+    if let role = AXReader.attribute(focused, kAXRoleAttribute) as? String { result["role"] = role }
+    return result
+  }
+
+  private func act(_ p: Object, record: DispatchRecord) async throws -> Object {
+    let actionStart = clockNow()
+    let request = try ActionRequest(p)
+    let requiredFrame = try expectedFrame(p)
+    let (pid, id, started) = try windowAddress(p)
+    var win = try window(pid, id, started: started)
+    let permissions = HelperPermissions()
+    guard permissions.allowed else { throw permissions.error }
+    guard check["ok"] as? Bool == true else { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
+    guard win.key.launched != nil else { throw HelperError.unavailable() }
+    let before = try await readPrepared(&win)
+    let node = try request.ref.map { try ax.resolve($0, tree: before, window: win) }
+    let beforeWindows = catalog.all(pid: pid, visibleOnly: true)
+    let factory = EventFactory(symbols: symbols)
+    var point: CGPoint?
+    var end: CGPoint?
+    var endNode: AXNode?
+    var pulse: AICursorPulse?
+    var verification: Verification?
+    var axAction: String?
+    var axSet: (AXUIElement, String, CFTypeRef)?
+    var sequence: EventSequence?
+    var notes: [String] = []
+    var typingElement: AXUIElement?
+    var requiresKeyWindow = false
+    var needsTargetFocus = false
+
+    func revalidate() throws {
+      try Task.checkCancellation()
+      let current = try window(pid, id, started: started)
+      guard current.key == win.key else { throw HelperError.unavailable("closed") }
+      if let requiredFrame {
+        let a = current.frame, b = requiredFrame
+        guard [a.minX - b.minX, a.minY - b.minY, a.width - b.width, a.height - b.height].allSatisfy({ abs($0) < 1 }) else {
+          throw HelperError("coordinates_need_image")
+        }
+      }
+      if requiredFrame == nil && current.frame != win.frame { throw HelperError.unavailable() }
+      if let root = before.root, AXReader.attribute(root, kAXMinimizedAttribute) as? Bool == true { throw HelperError.unavailable("minimized") }
+      for node in [node, endNode].compactMap({ $0 }) {
+        guard AXReader.matchesLive(node.identity, in: win, root: before.root) else {
+          throw HelperError("stale_element")
+        }
+      }
+      if let typingElement {
+        let currentFocus = try focusEditable(node, in: win, root: before.root, mayFocus: false)
+        guard CFEqual(currentFocus, typingElement) else { throw HelperError("no_editable_focus") }
+      }
+      if needsTargetFocus, let node { _ = try focusTarget(node, in: win, root: before.root, mayFocus: false) }
+      if requiresKeyWindow, !AXReader.focusedWindow(win, root: before.root) { throw HelperError.unavailable(message: "target_not_key_window") }
+    }
+
+    func clickSequence(_ action: PointerAction, at point: CGPoint) throws -> EventSequence {
+      let detected = engine(for: node, at: point, tree: before, win: win)
+      let hit = node?.el ?? (detected == .appkit ? AXReader.hit(win, point) : nil)
+      let hitRole = hit.flatMap { AXReader.attribute($0, kAXRoleAttribute) as? String }
+      let hitActions = node?.actions ?? hit.map(AXReader.actions) ?? []
+      let custom = !hitActions.contains(kAXPressAction) && (hitRole == nil || ["AXGroup", "AXUnknown", "AXLayoutArea", "AXWindow"].contains(hitRole!))
+      return try factory.pointer(action, win: win, point: point, focus: detected == .webkit || detected == .electron || (detected == .appkit && custom))
+    }
+
+    switch request.name {
+    case .click, .doubleClick, .rightClick:
+      switch request.name {
+      case .click:
+        if node?.actions.contains(kAXPressAction) == true { axAction = kAXPressAction }
+        pulse = .click
+      case .rightClick:
+        if node?.actions.contains(kAXShowMenuAction) == true { axAction = kAXShowMenuAction }
+        pulse = .rightClick
+      default: pulse = .doubleClick
+      }
+      if axAction == nil {
+        let p = try localPoint(node: node, explicit: request.point, in: win)
+        point = p
+        let action: PointerAction = request.name == .click ? .click : request.name == .rightClick ? .rightClick : .doubleClick
+        sequence = try clickSequence(action, at: p)
+      } else { point = try? localPoint(node: node, explicit: nil, in: win) }
+    case .scroll:
+      let p = try localPoint(node: node, explicit: request.point, in: win)
+      let direction = request.direction!
+      point = p; pulse = .scroll(direction)
+      sequence = try factory.pointer(.scroll(direction, request.pages), win: win, point: p, focus: false)
+    case .drag:
+      if [.chromium, .electron, .catalyst].contains(win.engine) {
+        let slider = (node?.role == kAXSliderRole && node?.settable == true) || request.point.map { p in
+          guard let hit = AXReader.hit(win, p) else { return false }
+          return AXReader.attribute(hit, kAXRoleAttribute) as? String == kAXSliderRole && AXReader.settable(hit, kAXValueAttribute)
+        } == true
+        throw HelperError("drag_unsupported", details: ["settableSlider": slider])
+      }
+      let p = try localPoint(node: node, explicit: request.point, in: win)
+      let target = request.end!
+      let destination: CGPoint
+      if let ref = try optionalRef(target["ref"]) {
+        try validateKeys(target, allowed: ["ref"])
+        let to = try ax.resolve(ref, tree: before, window: win)
+        endNode = to
+        destination = try localPoint(node: to, explicit: nil, in: win)
+      } else {
+        try validateKeys(target, allowed: ["x", "y"])
+        guard let x = jsonNumber(target["x"]), let y = jsonNumber(target["y"]) else { throw HelperError("invalid_params", "to must be ref or x,y") }
+        destination = try localPoint(node: nil, explicit: CGPoint(x: x, y: y), in: win)
+      }
+      point = p; end = destination
+      sequence = try factory.pointer(.drag(destination), win: win, point: p, focus: engine(for: node, at: p, tree: before, win: win) == .webkit)
+    case .type:
+      let text = request.text!
+      try revalidate()
+      let target = try focusEditable(node, in: win, root: before.root, mayFocus: true)
+      let detected = engine(for: node ?? before.nodes.first { CFEqual($0.el, target) }, at: nil, tree: before, win: win)
+      let web = detected == .webkit || (detected == .appkit && AXReader.insideWebArea(target))
+      sequence = try factory.typing(text, focus: web || detected == .electron)
+      typingElement = target
+      verification = .contains(target, text)
+      point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, target) }, explicit: nil, in: win)
+    case .key:
+      let stroke = request.stroke!
+      let focus = stroke.flags.contains(.maskCommand) && win.engine != .catalyst
+      sequence = try factory.key(stroke, focus: focus)
+      requiresKeyWindow = !focus
+      if request.requireEditableFocus {
+        typingElement = try focusEditable(node, in: win, root: before.root, mayFocus: false)
+        point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, typingElement!) }, explicit: nil, in: win)
+      } else if let node {
+        try revalidate()
+        _ = try focusTarget(node, in: win, root: before.root, mayFocus: true)
+        needsTargetFocus = true
+        point = try? localPoint(node: node, explicit: nil, in: win)
+      }
+    case .setValue:
+      guard let node, AXReader.settable(node.el, kAXValueAttribute) else { throw HelperError("not_settable") }
+      let text = request.text!
+      if let current = node.value as? NSNumber, CFGetTypeID(current) != CFBooleanGetTypeID() {
+        guard let number = Double(text), number.isFinite else { throw HelperError("invalid_params", "numeric value required") }
+        let converted = NSNumber(value: number)
+        axSet = (node.el, kAXValueAttribute, converted)
+        verification = .value(node.el, converted)
+      } else {
+        axSet = (node.el, kAXValueAttribute, text as CFString)
+        verification = .value(node.el, text)
+      }
+      notes.append("ax_value_set")
+      point = try? localPoint(node: node, explicit: nil, in: win)
+    case .select:
+      guard let node, AXReader.settable(node.el, kAXSelectedTextRangeAttribute) else { throw HelperError("not_settable") }
+      guard let value = AXReader.attribute(node.el, kAXValueAttribute) as? String else { throw HelperError("text_not_found") }
+      let text = request.text!
+      let range = (value as NSString).range(of: text)
+      guard range.location != NSNotFound else { throw HelperError("text_not_found") }
+      var cfRange = CFRange(location: range.location, length: range.length)
+      guard let axRange = AXValueCreate(.cfRange, &cfRange) else { throw HelperError("internal") }
+      axSet = (node.el, kAXSelectedTextRangeAttribute, axRange)
+      verification = .selection(node.el, text, cfRange)
+      point = try? localPoint(node: node, explicit: nil, in: win)
+    case .axAction:
+      guard let node, let name = request.axName, ax.offered(name, for: node.ref, in: win.key), node.actions.contains(name) else {
+        throw HelperError("invalid_name")
+      }
+      axAction = name
+      point = try? localPoint(node: node, explicit: nil, in: win)
+    }
+
+    if sequence?.needsFocus == true && !symbols.hasFocusRecord { throw HelperError("self_check_failed", "focus_record_unavailable") }
+    try revalidate()
+    defer { idleCursor() }
+    await startCursor(point, in: win)
+    try revalidate()
+    var via = "ax"
+    if let name = axAction, let node {
+      let rc = AXUIElementPerformAction(node.el, name as CFString)
+      if rc != .success {
+        if (rc == .actionUnsupported || rc == .attributeUnsupported), [.click, .rightClick].contains(request.name), let point {
+          sequence = try clickSequence(request.name == .rightClick ? .rightClick : .click, at: point)
+        } else { throw failedAX(rc, defaultCode: "invalid_name") }
+      }
+    }
+    if let (element, attribute, value) = axSet {
+      let rc = AXReader.set(element, attribute, value)
+      guard rc == .success else { throw failedAX(rc, defaultCode: "not_settable") }
+    }
+    if let sequence {
+      if sequence.needsFocus { via = "event+focus"; notes.append("focus_record_used") }
+      else { via = "event" }
+      if request.name == .type || typingElement != nil { await cursor?.pulse(.typing(true)) }
+      if end != nil { await cursor?.pulse(.dragBegin) }
+      let destination = end
+      let dragging = destination.map { target in Task { @MainActor in
+        await self.cursor?.move(to: win.screen(target), above: win.key.id)
+      } }
+      do { try await sequence.send(to: win, using: symbols, revalidate: revalidate) }
+      catch {
+        dragging?.cancel()
+        hideCursor(animated: false)
+        throw error
+      }
+      record.confirmed(via: via, notes: notes)
+      if request.name == .type || typingElement != nil { await cursor?.pulse(.typing(false)) }
+      if let dragging { await dragging.value; await cursor?.pulse(.dragEnd) }
+    }
+    record.confirmed(via: via, notes: notes)
+    // 피드백 모션은 관측 주기와 병행한다. 전송은 이미 끝났고 이후에는 관측만 한다.
+    let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
+    defer { feedback?.cancel() }
+    return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+  }
+
+  private func failedAX(_ code: AXError, defaultCode: String) -> HelperError {
+    // CannotComplete는 IPC 타임아웃일 수도 있으므로 입력이 안 나갔다고 단정하거나 재전송하지 않는다.
+    if code == .cannotComplete || code == .failure { return HelperError("timeout", "ax_delivery_unknown") }
+    if code == .invalidUIElement { return HelperError("stale_element") }
+    if code == .apiDisabled { return HelperError("permission_required", details: ["missing": ["accessibility"]]) }
+    return HelperError(defaultCode)
+  }
+
+  private func observe(_ win: WindowInfo, before: AXTree, windows: [WindowInfo], via: String, notes: [String], verification: Verification?, actionStart: Double) async throws -> Object {
+    let start = clockNow()
+    let maxObservation = min(1_500, max(1, 1_950 - millis(since: actionStart)))
+    let old = Dictionary(uniqueKeysWithValues: before.nodes.filter(\.visible).map { ($0.ref, $0) })
+    let oldWindows = Dictionary(uniqueKeysWithValues: windows.map { ($0.key, $0) })
+    var result: Object = ["sent": true, "via": via, "observation": "unobservable", "changes": [], "notes": notes]
+    var reportedNodes: [AXNode] = []
+    defer { ax.publish(reportedNodes, for: win.key) }
+    while true {
+      try await pause(min(80, max(1, maxObservation - millis(since: start))))
+      let currentWindows = catalog.all(pid: win.key.pid, visibleOnly: true)
+      let currentKeys = Set(currentWindows.map(\.key))
+      var windowsChanged = currentWindows.filter { oldWindows[$0.key] == nil }.map { ["op": "+", "window": $0.json()] as Object }
+      windowsChanged += windows.filter { window in
+        guard !currentKeys.contains(window.key) else { return false }
+        do { return try catalog.available(window.key.pid, window.key.id).key != window.key }
+        catch let error as HelperError { return error.details?["reason"] as? String == "closed" }
+        catch { return false }
+      }.map { ["op": "-", "window": $0.json()] as Object }
+      if !windowsChanged.isEmpty { result["windowsChanged"] = windowsChanged; result["observation"] = "changes" }
+      guard var fresh = try? window(win.key.pid, win.key.id), fresh.key == win.key else { return result }
+      let tree = read(&fresh, budgetMs: max(20, min(180, maxObservation - millis(since: start))))
+      let current = Dictionary(uniqueKeysWithValues: tree.nodes.filter(\.visible).map { ($0.ref, $0) })
+      var changes: [Object] = []
+      for node in tree.nodes where node.visible {
+        if let prior = old[node.ref] {
+          if node.changed(from: prior) || node.frame != prior.frame { changes.append(["op": "~", "element": node.json(valueLimit: 80)]) }
+        } else if before.complete { changes.append(["op": "+", "element": node.json(valueLimit: 80)]) }
+      }
+      if tree.complete {
+        for node in before.nodes where node.visible && current[node.ref] == nil {
+          changes.append(["op": "-", "element": node.json(valueLimit: 80)])
+        }
+      }
+      if !changes.isEmpty {
+        let shown = Array(changes.prefix(30))
+        result["changes"] = shown
+        reportedNodes = shown.compactMap { change in
+          guard change["op"] as? String != "-", let element = change["element"] as? Object, let ref = element["ref"] as? String else { return nil }
+          return current[ref]
+        }
+        result["changesMore"] = changes.count > 30 ? changes.count - 30 : nil
+      }
+      if !changes.isEmpty || !windowsChanged.isEmpty { result["observation"] = "changes" }
+      else if result["observation"] as? String != "changes", tree.observable, before.observable, tree.complete, before.complete {
+        result["observation"] = "none"
+      }
+      if let fact = verification?.check(in: fresh, root: tree.root) { result["verified"] = fact; return result }
+      if verification == nil && (!changes.isEmpty || !windowsChanged.isEmpty || !tree.observable) { return result }
+      if millis(since: start) >= maxObservation {
+        if maxObservation < 1_500, result["observation"] as? String == "none" { result["observation"] = "timeout" }
+        return result
+      }
+    }
+  }
+}

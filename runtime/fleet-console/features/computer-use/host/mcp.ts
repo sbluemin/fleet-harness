@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { release as systemRelease } from "node:os";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
@@ -6,12 +7,16 @@ import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { ComputerUseService } from "./computer-use.js";
+import { gateResult, renderSessionEnd, textResult } from "./computer-use-render.js";
+import { computerUseFeedbackTool } from "./computer-use-tools.js";
+import type { createFeedbackStore, FeedbackFields } from "../../feedback/store.js";
 
 export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";
 
 export interface ComputerUseMcpDeps {
   readonly transport?: McpHttpTransport;
   readonly service: ComputerUseService;
+  readonly feedback?: { readonly store: ReturnType<typeof createFeedbackStore>; readonly fleetVersion: string };
   readonly onFailure?: (kind: string, error: unknown) => void;
   /**
    * 호출자 Objective 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
@@ -47,7 +52,7 @@ function scopeOf(deps: ComputerUseMcpDeps, objectiveId: string): ComputerUseScop
 }
 
 /** Objective 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
-const OBJECTIVE_REQUEST_NOTE = "Permission requests appear in the Objective panel; this call waits up to four minutes for an answer. Keep allowing authorizes Computer Use for this Objective.";
+const OBJECTIVE_REQUEST_NOTE = " Desktop calls may wait up to 4 min for device access in the Objective panel.";
 
 /** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
 export interface ComputerUseRequestPort {
@@ -215,6 +220,27 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   // 연결마다 공유 묶음을 가진다 — 턴 종료·허용 회수가 모든 연결의 묶음에 닿도록 호스트가 이 고리를 돈다.
   const groupHooks = new Set<{ leave(contextId: string, participantId: string): boolean; revoke(contextId: string): void }>();
   let disposed = false;
+  const feedbackEnabled = () => deps.feedback !== undefined && deps.service.status().enabled && (deps.experimentEnabled?.() ?? true);
+  const feedbackSchema = z.fromJSONSchema(computerUseFeedbackTool.inputSchema);
+  const fileFeedback = async (input: unknown, actor: string, sessionKey: string, objectiveId?: string) => {
+    if (!deps.feedback || !feedbackEnabled()) return refuse("experiment_disabled", objectiveId ?? null, deps.language?.() ?? "en");
+    const parsed = feedbackSchema.safeParse(input);
+    if (!parsed.success || !(parsed.data as FeedbackFields).summary.trim()) return textResult("error invalid_params: Check the documented feedback fields.", true);
+    const helper = deps.service.helperInfo();
+    try {
+      const { id, occurrences } = await deps.feedback.store.submit(parsed.data as FeedbackFields, {
+        actor, sessionKey, objectiveId, fleetVersion: deps.feedback.fleetVersion,
+        helperVersion: helper?.helperVersion, os: helper?.os ? `macOS ${helper.os}` : `${process.platform} ${systemRelease()}`,
+        recentCalls: deps.service.recentCalls(sessionKey),
+      });
+      return textResult(occurrences === 1 ? `filed ${id}` : `updated ${id} (occurrences ${occurrences})`);
+    } catch (error) {
+      if (error instanceof Error && error.message === "invalid_feedback_fields") return textResult("error invalid_params: Check the documented feedback fields.", true);
+      // 파일 경로나 사용자 텍스트는 모델과 진단 로그에 싣지 않는다.
+      deps.onFailure?.("computer_use_feedback_write_failed", new Error("feedback_write_failed"));
+      return textResult("error feedback_write_failed: The feedback could not be saved.", true);
+    }
+  };
   return {
     objectiveIdForOwner: (owner: string) => objectiveRecordOwners.get(owner) ?? null,
     /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Objective 자신이다. */
@@ -224,9 +250,15 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const prefix = randomUUID();
       const owner = (label: string) => `${prefix}:${label}`;
       const owners = new Set<string>();
+      const actors = new Set<string>();
       const controller = new AbortController();
       const registry = createMcpToolRegistry();
-      const snapshotStore = createMcpToolSnapshotStore();
+      const sessions = createMcpToolSnapshotStore();
+      const snapshotStore = {
+        ...sessions,
+        getToolsForSession: (token: string) => sessions.getToolsForSession(token).filter(({ name }) => name !== computerUseFeedbackTool.name || feedbackEnabled()),
+        getToolNamesForSession: (token: string) => new Set([...sessions.getToolNamesForSession(token)].filter((name) => name !== computerUseFeedbackTool.name || feedbackEnabled())),
+      };
       /**
        * 공유 묶음 — 자식 세션이 있는 컨텍스트의 참가자들이 기기 하나를 나눠 쓴다. 소유자 라벨은 루트 하나(`${prefix}:${contextId}`)라
        * 서비스의 단일 점유 규칙은 묶음 밖과의 경계로만 남는다. 묶음 안에서는:
@@ -234,7 +266,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
        * - 한 참가자의 취소(턴 종료·중단)는 그 참가자에게만 곧바로 「취소됨」을 돌려준다. 서비스에 넘기는 신호는 묶음의 수명뿐이라
        *   기기를 놓지 않는다 — 네이티브 호출은 취소 신호를 받지 못하므로(브로커를 멈추는 것만이 취소다) 이미 보낸 조작은 끝까지
        *   돌고 그 결과는 버려지며, 다음 호출은 그것이 끝난 뒤에야 시작한다. 동시에 두 조작이 기기에 닿는 일은 없다.
-       * - 기기는 마지막 참가자가 빠질 때(턴 종료·computer_end) 놓는다.
+       * - 기기는 마지막 참가자가 빠질 때(턴 종료·computer_session end) 놓는다.
        */
       interface SharedGroup { readonly label: string; readonly lifetime: AbortController; readonly participants: Set<string>; readonly calls: Map<AbortController, string>; tail: Promise<unknown> }
       const groups = new Map<string, SharedGroup>();
@@ -257,6 +289,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         if (!group) return false;
         for (const [call, participant] of group.calls) if (participant === participantId) { call.abort(); group.calls.delete(call); }
         group.participants.delete(participantId);
+        deps.service.forgetViews(owner(participantId));
         if (group.participants.size === 0) releaseGroup(contextId);
         return true;
       };
@@ -272,11 +305,15 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const shared = group;
         owners.add(shared.label);
         objectiveRecordOwners.set(shared.label, scope.contextId);
-        if (spec.id === "computer_end") {
+        const actor = owner(scope.participantId);
+        actors.add(actor);
+        if (spec.id === "computer_session" && sessionEndSchema.safeParse(args).success) {
           // 부른 참가자의 참여만 끝낸다 — 기기는 마지막 참가자가 빠질 때 놓는다.
           leaveGroup(scope.contextId, scope.participantId);
           const deviceReleased = !groups.has(scope.contextId);
-          return { content: [{ type: "text", text: JSON.stringify({ ended: true, scope: "participant", deviceReleased, reconnect: "on_next_use", hint: deviceReleased ? "You were the last participant, so the device was released." : "Only your participation ended. Other participants of this conversation keep the shared Computer Use session." }) }], isError: false };
+          if (deviceReleased) await deps.service.waitForRelease();
+          deps.service.rememberSessionEnd(actor);
+          return renderSessionEnd(deviceReleased);
         }
         shared.participants.add(scope.participantId);
         deps.onActorChange?.();
@@ -286,7 +323,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const run = shared.tail.then(() => {
           if (mine.aborted || shared.lifetime.signal.aborted) return cancelled();
           if (ownerActors.get(shared.label) !== scope.participantId) { ownerActors.set(shared.label, scope.participantId); deps.onActorChange?.(); }
-          return spec.execute(args, { ...context, sessionLabel: shared.label, signal: AbortSignal.any([shared.lifetime.signal, controller.signal]) });
+          return deps.service.execute(spec.id, args, shared.label, AbortSignal.any([shared.lifetime.signal, controller.signal]), { actor, canDeliver: () => !mine.aborted });
         });
         shared.tail = run.then(() => undefined, () => undefined);
         try {
@@ -298,20 +335,21 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           });
         } finally { shared.calls.delete(call); }
       };
+      const sessionEndSchema = z.strictObject({ op: z.literal("end") });
       for (const spec of deps.service.specs()) {
-        const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
-        registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: `${spec.description} ${OBJECTIVE_REQUEST_NOTE}` } : {}), execute: async (args, context) => {
-          const parsed = schema.safeParse(args);
-          if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
+        registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: spec.description + OBJECTIVE_REQUEST_NOTE } : {}), execute: async (args, context) => {
+          if (!context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
+          if (!deps.service.status().supported) return gateResult("computer_use_platform_unsupported");
           // 허용은 도구 호출마다 다시 읽는다 — Objective 토글과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           // Objective의 허용을 받지 않았으면 패널에서 사람의 답을 기다린다.
           const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
           if (denied) return denied;
           if (controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
           const scope = scopeOf(deps, objectiveIdFromSessionLabel(context.sessionLabel));
-          if (scope.shared) return runShared(spec, parsed.data, context, scope);
+          if (scope.shared) return runShared(spec, args, context, scope);
           const sessionLabel = owner(context.sessionLabel);
           owners.add(sessionLabel);
+          actors.add(sessionLabel);
           const objectiveId = objectiveIdFromSessionLabel(context.sessionLabel);
           objectiveRecordOwners.set(sessionLabel, objectiveId);
           const call = new AbortController();
@@ -319,9 +357,21 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           calls.add(call);
           inFlight.set(objectiveId, calls);
           const signals = [call.signal, controller.signal, ...(context.signal ? [context.signal] : [])];
-          return spec.execute(parsed.data, { ...context, sessionLabel, signal: AbortSignal.any(signals) })
+          return spec.execute(args, { ...context, sessionLabel, signal: AbortSignal.any(signals) })
             .finally(() => { calls.delete(call); if (calls.size === 0) inFlight.delete(objectiveId); });
         } });
+      }
+      if (deps.feedback) {
+        const { name, description, inputSchema } = computerUseFeedbackTool;
+        registry.registerAgentTool({
+          id: name, tag: name, title: name, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters: inputSchema,
+          execute: async (args, context) => {
+            if (!context.sessionLabel || controller.signal.aborted || context.signal?.aborted) return refuse("caller_unresolved", null, deps.language?.() ?? "en");
+            const objectiveId = objectiveIdFromSessionLabel(context.sessionLabel);
+            const scope = scopeOf(deps, objectiveId);
+            return fileFeedback(args, scope.participantId, owner(scope.shared ? scope.participantId : context.sessionLabel), scope.contextId);
+          },
+        });
       }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_COMPUTER_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
@@ -338,6 +388,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const cleanup = () => {
         for (const contextId of [...groups.keys()]) releaseGroup(contextId);
         for (const id of owners) { deps.service.release(id); objectiveRecordOwners.delete(id); ownerActors.delete(id); }
+        for (const actor of actors) deps.service.forgetRecent(actor);
+        actors.clear();
         owners.clear(); manager.cleanup();
       };
       const connection: ComputerUseMcpConnection = {
@@ -384,9 +436,10 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       let closed = false;
       const language = () => options.language?.() ?? deps.language?.() ?? "en";
       const tools = deps.service.specs().map((spec) => {
-        const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]) as z.ZodObject;
-        return defineTool(spec.id, spec.description, schema.shape, async (args) => {
+        const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
+        return defineTool(spec.id, spec.description, schema as unknown as Record<string, unknown>, async (args) => {
           if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
+          if (!deps.service.status().supported) return gateResult("computer_use_platform_unsupported");
           // 허용은 도구 호출마다 다시 읽는다 — 플러그인 소유자의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
           if (!options.enabled()) return refuse("plugin_not_authorized", null, language());
@@ -404,6 +457,14 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           }
         });
       });
+      const includeFeedback = feedbackEnabled();
+      if (includeFeedback) {
+        const { name, description } = computerUseFeedbackTool;
+        tools.push(defineTool(name, description, feedbackSchema as unknown as Record<string, unknown>, async (args) => {
+          if (closed || controller.signal.aborted) return refuse("caller_unresolved", null, language());
+          return fileFeedback(args, owner, owner);
+        }));
+      }
       const embeddedServer = createEmbeddedMcpServer({ name: FLEET_COMPUTER_USE_MCP_SERVER, tools });
       const revoke = () => {
         for (const call of calls) call.abort();
@@ -412,13 +473,14 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       };
       const connection: ComputerUsePluginConnection = {
         embeddedServer,
-        toolNames: deps.service.specs().map((spec) => spec.id),
+        toolNames: [...deps.service.specs().map((spec) => spec.id), ...(includeFeedback ? [computerUseFeedbackTool.name] : [])],
         revoke,
         dispose: async () => {
           if (closed) return;
           closed = true;
           controller.abort();
           revoke();
+          deps.service.forgetRecent(owner);
           pluginConnections.delete(connection);
         },
       };

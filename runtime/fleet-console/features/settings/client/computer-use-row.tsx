@@ -1,54 +1,14 @@
-import { useEffect, useLayoutEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { MenuCheckGlyph, useSelect, ChevronGlyph } from "@fleet-console/ui/react";
-import type { ComputerUseBackendId } from "../shared/experiments.js";
-import { isComputerUseBackendId } from "../shared/experiments.js";
-import { SettingsToggle, widenModelPickerPopup } from "./preferences-context.js";
+import { useEffect, useState } from "react";
+import type { ComputerUseSettingsStatus } from "../../computer-use/shared/status.js";
+import { SettingsRow, SettingsToggle } from "./preferences-context.js";
+import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
-import { launchProviderGlyph } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 
-type State = "off" | "idle" | "starting" | "ready" | "running" | "stopping";
-interface Status {
-  readonly backend?: ComputerUseBackendId;
-  readonly supported: boolean;
-  readonly installation: "unchecked" | "available" | "missing" | "unsupported";
-  readonly warning: string | null;
-  readonly state: State;
-  readonly activeTool: string | null;
-  readonly stage: string | null;
-  readonly elapsedMs: number;
-  readonly apps: readonly string[];
-  readonly error: string | null;
-  readonly installer?: { phase: string; error: string | null; supported: boolean; version: string };
-}
+type ReadStatus = ComputerUseSettingsStatus | "pending" | "remote" | "failed";
 
-export const BACKENDS = [{ value: "sky-computer-use", label: "SkyComputerUse" }, { value: "cua-driver", label: "Cua Driver" }];
-
-// Cua 공식 심볼: https://github.com/trycua/cua/blob/39a206e637273385f39a41b3b8544e6d3ab5c099/docs/public/img/cua-logo-accent.svg
-// SkyComputerUse는 OpenAI Codex 런타임이므로 공용 Codex 마크를 사용한다.
-function ComputerUseGlyph({ backend }: { readonly backend: ComputerUseBackendId }) {
-  if (backend === "sky-computer-use") return launchProviderGlyph("codex");
-  return <svg viewBox="0 0 1117.09 1117.09" aria-hidden="true" fill="currentColor">
-    <path d="M615.45,884.56c-19.83,6.49-41.54,7.23-62.2,6.71c-32.28-0.81-70.99-6.35-89.89-36.09c-10.85-17.08-6.21-42.43-2.2-60.95 c5.58-25.77,13.62-51.02,23.98-75.27c8.85-20.73,20.01-42.15,38.89-55.46c19.7-13.89,44.92-15.47,65.19-1.66 c24.79,16.89,36.18,48.86,47.62,75.37c8.2,19.01,15.26,38.59,19.94,58.79c4.48,19.35,8.07,39.26-1.52,57.73 c-7.37,14.19-21.31,24.12-36.32,29.62C617.78,883.77,616.62,884.17,615.45,884.56z" />
-    <path d="M601.53,1028.22c-19.42,1.2-38.9,1.58-58.35,1.13c-115.28-2.64-253.01-26.14-326.27-125.85 c-14.2-19.33-25.22-40.85-33-63.51c-2.81-8.19-4.94-17.26-12.46-22.28c-16.07-10.73-32.64-20.22-43.86-36.46 c-10.38-15.01-15.75-33.56-14.37-51.81c0.71-9.44,2.3-15.28-6.43-20.98c-17.74-11.58-33.7-22.79-40.14-44.18 c-7.31-24.28,0.84-47.29,14.48-67.45c2-2.95,3.91-6.08,4.58-9.58c1.38-7.26-2.73-13.89-5.66-20.2c-3-6.46-6.01-12.86-9.15-19.27 c-6.66-13.6-12.78-27.91-13.65-43.23c-1.14-20.17,0.76-40.73,9.99-59.01c9.06-17.95,21.94-33.98,37.58-46.62 c45.67-36.92,109.66-23.27,160.19-5.44c26.71,9.43,52.68,21.59,77.38,35.45c4.19,2.35,6.39,2.69,10.51,0.03 c61.83-39.97,133.45-67.99,207.82-68.46c27.5-0.17,54.97,3.43,81.65,10.01c39.72,9.80,78.62,25.85,113.96,46.46 c6.28,3.66,16.86,12.90,24.45,11.44c3-0.58,6.70-3.66,9.35-5.11c23.86-13.04,47.30-25.88,73.10-34.82 c38.21-13.24,82.43-24.74,121.38-8.67c50.83,20.96,86.78,78.31,73.93,133.46c-4.08,17.50-15.64,32-19.59,49.41 c-1.04,4.58-1.43,9.46,0.09,13.91c3.09,9.06,11.64,15.83,15.67,24.74c4.23,9.33,6.63,19.51,6.71,29.76 c0.12,15.44-5.15,30.99-15.21,42.70c-7.35,8.57-17.14,15.49-26.90,21.03c-2.36,1.34-4.94,2.78-5.99,5.28 c-0.73,1.74-0.58,3.70-0.43,5.58c0.74,8.90,1.95,17.53,0.67,26.39c-0.61,4.24-1.60,8.42-2.91,12.50c-1.03,3.21-4.90,8.70-4.90,11.86 c-7.92,15.52-20.54,28.36-35.03,38.04c-3.79,2.53-9.12,5.06-11.87,8.80c-1.96,2.68-2.36,6.29-3.24,9.55 c-1.52,5.61-3.04,11.21-4.56,16.82c-4.83,17.82-12,34.64-22.29,49.99c-36.82,54.93-85.32,90.26-147.30,112.25 C723.56,1012.39,662.80,1024.43,601.53,1028.22z M620.68,979.97c54.47-3.71,107.81-13.91,158.39-35.25 c41.56-17.57,77.49-40.48,104.98-76.91c60.63-80.36,32.83-197.56-13.01-277.92c-18.04-31.63-42.05-60.47-68.70-85.20 c-81.98-76.07-201.17-117.71-311.44-89.56c-38.78,9.90-75.46,27.21-108.58,49.58c-66.16,44.68-114.14,109.14-142.77,183.23 c-15.03,38.90-23.65,83.54-23.83,125.25c-0.21,50.48,24.76,98.43,61.47,132.15c41.57,38.18,99.14,53.33,153.20,64.45 c59.35,12.21,121.18,14.06,181.55,10.72C614.86,980.34,617.77,980.16,620.68,979.97z M966.58,738.76 c2.53-2.76,4.49-6.03,5.68-9.97c1.95-6.42,1.95-13.24,1.87-19.95c-0.32-26.29,10.68-46.13,33.32-59.92 c7.96-4.84,17.51-11.15,17.12-21.86c-0.36-9.80-9.42-16.01-14.42-23.52c-6.50-9.78-8.36-23.01-7.85-34.51 c0.60-13.43,4.13-27.85,9.57-40.16c5.21-11.80,11.56-23,13.39-36.07c4.45-31.91-20.82-59.57-47.48-72.98 c-21.25-10.69-46.92-8.38-69.35-3.28c-25.45,5.79-50.18,14.74-73.42,26.60c-5.57,2.84-22.12,9.74-15.15,18.30 c10.26,12.59,23.18,22.74,34.30,34.56c11.53,12.26,22.22,25.30,31.99,38.99c21.34,29.90,38.25,62.94,50.26,97.65 c12.06,34.86,16.69,69.54,20.45,105.95c0.23,2.27,0.77,4.56,1.25,6.79C961.31,743.52,964.20,741.36,966.58,738.76z M174.43,764.70 c3.21-6,2.08-18.53,2.81-25.22c1.31-11.94,2.49-23.88,4.34-35.75c5.12-32.87,13.68-65.02,26.19-95.85 c20.74-51.10,53.51-94.70,90.29-135.23c2.35-2.59,13.75-11.59,10.47-15.71c-0.71-0.89-2.40-1.98-4.03-2.74 c-54.25-25.39-134.25-62.06-185.32-12.84c-11.15,10.75-20.20,24.10-23.85,39.16c-7.74,31.96,19.48,58.95,26.62,88.49 c2.79,11.54,3.32,23.85-0.22,35.18c-5.31,16.99-31.91,34.85-13.22,51.65c4.78,4.29,10.84,6.35,16.06,9.83 c4.62,3.07,9.39,6.63,13.29,10.60c7.59,7.73,13.91,16.98,16.20,27.70c2.34,10.93-1.72,21.45-0.42,32.29 C154.85,746.24,164.43,761.50,174.43,764.70z" />
-    <path d="M556.48,280.01L556.48,280.01c-16.36,0-29.62-13.26-29.62-29.62V116.01c0-16.36,13.26-29.62,29.62-29.62h0 c16.36,0,29.62,13.26,29.62,29.62v134.38C586.10,266.75,572.84,280.01,556.48,280.01z" />
-    <path d="M475.52,305.74L475.52,305.74c-11.57,11.57-30.32,11.57-41.89,0l-72.36-72.36c-11.57-11.57-11.57-30.32,0-41.89l0,0 c11.57-11.57,30.32-11.57,41.89,0l72.36,72.36C487.08,275.42,487.08,294.17,475.52,305.74z" />
-    <path d="M637.94,305.73L637.94,305.73c11.57,11.57,30.32,11.57,41.89,0l72.36-72.36c11.57-11.57,11.57-30.32,0-41.89l0,0 c-11.57-11.57-30.32-11.57-41.89,0l-72.36,72.36C626.37,275.41,626.37,294.16,637.94,305.73z" />
-    <path d="M358.94,765.85h-38.70c-11.05,0-20-8.95-20-20V644.88c0-11.05,8.95-20,20-20h38.70c11.05,0,20,8.95,20,20v100.97 C378.94,756.90,369.99,765.85,358.94,765.85z" />
-    <path d="M796.70,765.49h-38.70c-11.05,0-20-8.95-20-20V644.52c0-11.05,8.95-20,20-20h38.70c11.05,0,20,8.95,20,20v100.97 C816.70,756.54,807.74,765.49,796.70,765.49z" />
-  </svg>;
-}
-
-/**
- * Computer Use status for one backend: polls the runtime, and owns install, stop and retry. The
- * desktop row and the mobile row read the same state through this, so neither drifts.
- */
-export function useComputerUseStatus(enabled: boolean, backend: ComputerUseBackendId) {
-  const [status, setStatus] = useState<Status | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function useComputerUseStatus(enabled: boolean) {
+  const [status, setStatus] = useState<ReadStatus>("pending");
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -56,106 +16,62 @@ export function useComputerUseStatus(enabled: boolean, backend: ComputerUseBacke
     const refresh = async () => {
       try {
         const response = await fetch("/api/v1/computer-use", { signal: controller.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const value = await response.json() as Status;
-        if (!controller.signal.aborted) { setStatus(value); setUnavailable(false); }
-      } catch { if (!controller.signal.aborted) setUnavailable(true); }
+        const next: ReadStatus = response.ok ? await response.json() as ComputerUseSettingsStatus : response.status === 404 ? "remote" : "failed";
+        if (!controller.signal.aborted) setStatus(next);
+      } catch { if (!controller.signal.aborted) setStatus("failed"); }
       finally { if (!controller.signal.aborted) timer = setTimeout(() => void refresh(), enabled ? 1000 : 5000); }
     };
     void refresh();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [enabled, backend, refreshKey]);
-
-  const stop = async () => {
-    setWorking(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/v1/computer-use/stop", { method: "POST" });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      setStatus({ ...await response.json() as Status, backend });
-      setUnavailable(false);
-      setRefreshKey((key) => key + 1);
-    } catch (error) { setError(error instanceof Error ? error.message : "request_failed"); }
-    finally { setWorking(false); }
-  };
-  const installing = working || ["downloading", "verifying", "installing"].includes(status?.installer?.phase ?? "");
-  const install = async () => {
-    setWorking(true); setError(null);
-    try {
-      const response = await fetch("/api/v1/computer-use/install", { method: "POST" });
-      if (!response.ok) throw new Error("computer_use_install_failed");
-      setRefreshKey(key => key + 1);
-    } catch { setError("computer_use_install_failed"); }
-    finally { setWorking(false); }
-  };
-  const code = error ?? (backend === "cua-driver" ? status?.installer?.error : null) ?? (enabled ? status?.error : null);
-  const errorKey: "permission" | "incompatible" | "noActionWindow" | "timeout" | "target" | "failed" = code === "computer_use_automation_permission_denied" ? "permission"
-    : code === "computer_use_runtime_incompatible" ? "incompatible"
-      : code === "computer_use_no_action_window" ? "noActionWindow"
-      : code?.includes("timeout") ? "timeout"
-        : code && /app_not_found|ambiguous_app|element_not_found|secondary_action_unavailable|coordinate_target_unavailable/.test(code) ? "target" : "failed";
-  const active = Boolean(enabled && status && status.state !== "idle" && status.state !== "off");
-  const retry = () => setRefreshKey((key) => key + 1);
-  return { status, unavailable, working, installing, active, code, errorKey, stop, install, retry };
+  }, [enabled, refreshKey]);
+  return { status, retry: () => setRefreshKey((key) => key + 1) };
 }
 
-export function ComputerUseRow({ enabled, backend, saving, onChange, onBackendChange }: { readonly enabled: boolean; readonly backend: ComputerUseBackendId; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly onBackendChange: (backend: ComputerUseBackendId) => void }) {
+function noticeFor(status: ReadStatus) {
+  if (status === "pending") return "checking";
+  if (status === "remote") return "remote";
+  if (status === "failed") return "connectionFailed";
+  if (!status.supported) return "unsupported";
+  if (!status.helperAvailable) return "missing";
+  const missing = status.missingPermissions ?? [];
+  if (missing.includes("accessibility")) return missing.includes("screenRecording") ? "permissionsBoth" : "permissionAccessibility";
+  if (missing.includes("screenRecording")) return "permissionScreenRecording";
+  return status.selfCheckFailed ? "selfCheckFailed" : null;
+}
+
+export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { readonly enabled: boolean; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly mobile?: boolean }) {
   const t = useT();
-  const { status, unavailable, working, installing, active, code, errorKey, stop, install, retry } = useComputerUseStatus(enabled, backend);
-  const [popupWidth, setPopupWidth] = useState(190);
-  const select = useSelect({ value: backend, options: BACKENDS, disabled: saving || working, onChange: value => { if (isComputerUseBackendId(value) && value !== backend) { onBackendChange(value); } } });
-  useLayoutEffect(() => {
-    const trigger = select.triggerRef.current;
-    if (!trigger) return;
-    const measure = () => {
-      const style = getComputedStyle(trigger);
-      const context = document.createElement("canvas").getContext("2d");
-      if (!context) return;
-      context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-      const labelWidth = Math.max(...BACKENDS.map(option => context.measureText(option.label).width));
-      // 팝업 패딩·글리프·체크·간격을 포함하되 모델 메뉴의 메타데이터 여백은 빌리지 않는다.
-      setPopupWidth(Math.ceil(labelWidth + 76));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(trigger);
-    return () => observer.disconnect();
-  }, [select.triggerRef]);
+  const { status, retry } = useComputerUseStatus(enabled);
+  const [opening, setOpening] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+  const key = noticeFor(status);
+  const locked = typeof status === "string" || !status.supported || !status.helperAvailable;
+  const permissionMissing = key === "permissionsBoth" || key === "permissionAccessibility" || key === "permissionScreenRecording";
+  const openPrivacy = async () => {
+    setOpening(true);
+    setOpenFailed(false);
+    try {
+      const response = await fetch("/api/v1/computer-use/privacy-settings", { method: "POST" });
+      setOpenFailed(!response.ok);
+    } catch { setOpenFailed(true); }
+    finally { setOpening(false); }
+  };
+  const title = t("settings.computerUse.title");
+  const switchControl = <SettingsToggle checked={key !== "unsupported" && enabled} busy={saving} disabled={locked} ariaLabel={title} onChange={onChange} />;
+  const actionClass = mobile ? "settings-mobile-textlink" : "fc-settings-reset";
+  const notice = key ? <>
+    {t(`settings.computerUse.${key}`)}
+    {permissionMissing && <> <button type="button" className={actionClass} disabled={opening} onClick={(event) => { event.stopPropagation(); void openPrivacy(); }}>{t("settings.computerUse.openPrivacy")}</button>{openFailed && <> {t("settings.computerUse.openPrivacyFailed")}</>}</>}
+    {status === "failed" && <> <button type="button" className={actionClass} onClick={(event) => { event.stopPropagation(); retry(); }}>{t("settings.computerUse.retry")}</button></>}
+  </> : null;
+  if (mobile) return <SettingsRow label={title} hint={t("settings.computerUse.help")} helpTip={notice && <span className="fc-settings-row__hint" role="status">{notice}</span>} icon={<MobileIcon name="layout" />} disabled={locked}>{switchControl}</SettingsRow>;
   return <>
     <div className="global-settings-row experiments-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">
-          {t("settings.computerUse.title")}
-          <SettingsHelp title={t("settings.computerUse.title")}>
-            <p>{t("settings.computerUse.help")}</p>
-            <p>{t("settings.computerUse.notice")}</p>
-            {status?.warning && <p>{t("settings.computerUse.cleanupWarning")}</p>}
-            {status?.installation === "missing" && <p>{t(backend === "cua-driver" ? "settings.computerUse.missing" : "settings.computerUse.skyMissing")}</p>}
-          </SettingsHelp>
-        </p>
+        <p className="global-settings-resp-title">{title}<SettingsHelp title={title}><p>{t("settings.computerUse.help")}</p><p>{t("settings.computerUse.notice")}</p></SettingsHelp></p>
       </div>
-      <div className="experiments-row-controls computer-use-controls">
-        <div className="fc-model-picker computer-use-backend-picker">
-        <div {...select.rootProps} className={`${select.rootProps.className} fc-model-picker__select`}>
-          <button {...select.triggerProps} className="fc-select__trigger fc-model-picker__trigger" aria-label={t("settings.computerUse.backend")}>
-            <span className="fc-model-picker__glyph fc-model-picker__glyph--mark" aria-hidden="true"><ComputerUseGlyph backend={backend} /></span>
-            <span className="fc-select__value fc-model-picker__name">{BACKENDS.find(option => option.value === backend)?.label}</span>
-            <ChevronGlyph direction="down" className="fc-select__caret" />
-          </button>
-          {select.isOpen && createPortal(<ul {...select.listboxProps} className={`${select.listboxProps.className} fc-model-picker__popup`} style={widenModelPickerPopup(select.listboxProps.style, popupWidth)} aria-label={t("settings.computerUse.backend")}>
-            {BACKENDS.map((option, index) => <li key={option.value} {...select.getOptionProps(index)} className="fc-select__option fc-model-picker__option"><span className="fc-model-picker__glyph fc-model-picker__glyph--mark" aria-hidden="true"><ComputerUseGlyph backend={option.value as ComputerUseBackendId} /></span><span className="fc-model-picker__name">{option.label}</span><MenuCheckGlyph className="fc-select__check" size={14} /></li>)}
-          </ul>, document.body)}
-        </div>
-        </div>
-        {backend === "cua-driver" && status?.installation === "missing" && status.installer?.supported && <button type="button" className="fc-settings-reset" disabled={installing || saving} onClick={() => void install()}>{t(installing ? "settings.computerUse.installing" : "settings.computerUse.install")}</button>}
-        {unavailable && <button type="button" className="fc-settings-reset" onClick={retry}>{t("settings.computerUse.retry")}</button>}
-        {active && <button type="button" className="fc-settings-reset" disabled={working || status?.state === "stopping"} onClick={() => void stop()}>{t("settings.computerUse.stop")}</button>}
-        <SettingsToggle checked={enabled} busy={saving || working} disabled={!enabled && (status?.backend !== backend || !status?.supported || unavailable || status.installation !== "available")} ariaLabel={t("settings.computerUse.title")} onChange={onChange} />
-      </div>
+      <div className="experiments-row-controls computer-use-controls">{switchControl}</div>
     </div>
-    {code && <p role="alert" className="global-settings-help">
-      {t(`settings.computerUse.${errorKey}`)}
-      <SettingsHelp title={t("settings.computerUse.details")}><code>{code}</code>{status?.activeTool && <p>{status.activeTool} · {status.stage}</p>}</SettingsHelp>
-    </p>}
+    {notice && <p className="global-settings-help" role="status">{notice}</p>}
   </>;
 }

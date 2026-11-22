@@ -1,38 +1,25 @@
-import { computerUseToolDescriptions } from "./computer-use-descriptions.js";
-import crypto from "node:crypto";
-import { z } from "zod";
+import { realpath, stat } from "node:fs/promises";
+import { isAbsolute } from "node:path";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
-import { COMPUTER_USE_ACTIONS as ACTIONS, ComputerUseInputError, isRecord, type ComputerUseCaptureFailure, type ComputerUseWindowIdentity, type ComputerUseAppTarget, type ComputerUseBackend, type ComputerUsePlatform, type ComputerUseResult } from "@fleet-console/computer-use";
-
-const STATE_OPTIONS = {
-  maxDepth: z.number().int().min(1).max(50).optional(),
-  maxElements: z.number().int().min(1).max(2000).optional(),
-  query: z.string().min(1).max(500).optional(),
-  includeScreenshot: z.boolean().optional(),
-  includeMenus: z.boolean().optional(),
-};
-const VERIFY_OPTIONS = z.object({
-  expect: z.array(z.object({
-    element: z.object({ selector: z.object({ role: z.string().min(1).max(100).optional(), label_contains: z.string().min(1).max(500).optional() }).strict(), exists: z.literal(true).optional(), value_equals: z.string().max(2000).optional(), enabled: z.boolean().optional(), selected: z.boolean().optional() }).strict().optional(),
-    window: z.object({ exists: z.boolean() }).strict().optional(),
-  }).strict().refine(value => Boolean(value.element) !== Boolean(value.window))).min(1).max(8),
-  includeScreenshot: z.boolean().optional(), timeoutMs: z.number().int().min(0).max(10000).optional(), stableSamples: z.number().int().min(1).max(5).optional(),
-});
-const STATE_OPTION_SCHEMA = z.toJSONSchema(z.object(STATE_OPTIONS)).properties;
+import { FleetHelperError, type createFleetComputerUsePlatform, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
+import { openMacApp, readMacPermissions, verifyMacWindowIdentity } from "../runtime/macos-window.js";
+import { prepareMacPaste, type ClipboardRestoration } from "../runtime/macos-paste.js";
+import type { ComputerUseCaptureFailure, ComputerUseResult, ComputerUseWindowIdentity } from "../runtime/platform.js";
+import { COMPUTER_USE_PERMISSIONS, type ComputerUseSettingsStatus } from "../shared/status.js";
+import { computerUseTools } from "./computer-use-tools.js";
+import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
+import { gateResult, nativeRole, offeredAction, renderAction, renderApps, renderError, renderOpen, renderSessionEnd, renderSessionStatus, renderState, renderVerify, windowLine } from "./computer-use-render.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
-type ObservationMode = "text" | "text_and_image";
-const OBSERVATION_SCHEMA = { type: "string", enum: ["text", "text_and_image"], default: "text", description: "Result images only; native capture is unchanged. Use text_and_image before coordinate actions or for visual checks." };
-const ACTIVATION_SCHEMA = { type: "boolean", default: false, description: "Permit this call to launch/activate/restore the target app. Default false needs an already focused, non-minimized window. True only when the task authorizes foreground use, never to bypass an error." };
+const ACTION_NAMES = new Set<string>(computerUseTools[3].inputSchema.properties.action.enum);
+interface Caller { actor?: string; canDeliver?: () => boolean }
+type IssuedElement = Pick<HelperElement, "role" | "actions" | "settable">;
+interface KnownWindow { id: string; identity: string; issued: Map<string, IssuedElement>; closed: boolean }
+interface View { id: string; frame: Frame; width: number; height: number }
+interface DeviceOutput { result: ComputerUseResult; code: string }
+export interface ComputerUseRecentCall { tool: DeviceTool; action?: Action; code: string }
 
-function contentMetrics(content: ComputerUseResult["content"]) {
-  return {
-    textChars: content.reduce((sum, block) => sum + (block.type === "text" && typeof block.text === "string" ? block.text.length : 0), 0),
-    imageCount: content.filter((block) => block.type === "image").length,
-    imageBytes: content.reduce((sum, block) => sum + (block.type === "image" && typeof block.data === "string" ? Buffer.byteLength(block.data, "base64") : 0), 0),
-  };
-}
-
+type DeliveryFailure = "timeout" | null;
 export interface ComputerUseStatus {
   readonly enabled: boolean;
   readonly supported: boolean;
@@ -44,509 +31,505 @@ export interface ComputerUseStatus {
   readonly stage: string | null;
   readonly apps: readonly string[];
   readonly cleanupStatus: "not_requested" | "not_needed" | "notified" | "failed";
-  readonly threadReleaseStatus: ComputerUseBackend["threadReleaseStatus"];
-  readonly cleanupFailure: ComputerUseBackend["cleanupFailure"];
+  readonly threadReleaseStatus: "not_requested" | "not_needed";
+  readonly cleanupFailure: DeliveryFailure;
   readonly captureStopped: "unverified";
   readonly error: string | null;
   readonly lastCall: { readonly tool: string; readonly outcome: string; readonly elapsedMs: number; readonly error: string | null } | null;
 }
 
-function result(value: unknown, isError = false): ComputerUseResult {
-  return { content: [{ type: "text", text: JSON.stringify(value) }], isError };
+export interface ComputerUseDiagnostic {
+  tool: string;
+  scope: "model_output";
+  phase: "end";
+  elapsedMs: number;
+  outcome: "error" | "returned" | "unknown";
+  error?: string;
+  textChars: number;
+  imageCount: number;
+  imageBytes: number;
 }
 
-/** 데스크톱 하나를 여러 thread가 동시에 조작하지 않도록 소유자와 호출을 묶는다. */
+const identityOf = (w: SnapshotWindow) => `${w.pid}:${w.windowId}:${w.processStartedAt}`;
+const sameFrame = (a: Frame, b: Frame) => Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1;
+const address = (w: SnapshotWindow) => ({ pid: w.pid, windowId: w.windowId, processStartedAt: w.processStartedAt });
+const availableReason = (w: HelperWindow) => w.hidden ? "hidden" : w.minimized ? "minimized" : !w.onCurrentSpace ? "other_space" : undefined;
+const unavailable = (reason?: string) => new FleetHelperError("window_unavailable", false, { reason });
+const withOk = (result: ComputerUseResult): DeviceOutput => ({ result, code: "ok" });
+const pointInView = (point: Point, view: View) => point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height;
+
 export class ComputerUseService {
-  private broker: ComputerUseBackend | null = null;
+  private client: FleetHelperClient | null = null;
   private owner: string | null = null;
-  private captureApp: string | null = null;
-  private captureUnavailable = false;
-  /** captureUnavailable일 때 사람이 고칠 수 있는 원인. 없으면 일반 식별 실패다. */
+  private lifetime: AbortController | null = null;
+  private captureIsUnavailable = false;
   private captureFailure: ComputerUseCaptureFailure | null = null;
-  private controller: AbortController | null = null;
   private busy = false;
   private state: ComputerUseStatus["state"] = "idle";
-  private readonly apps = new Set<string>();
-  private readonly snapshots = new Map<string, { id: string; at: number; imageAvailable: boolean; imageDelivered: boolean }>();
-  private readonly lastAgentActions = new Map<string, { action: string; outcome: "unknown" | "returned" | "error"; at: string }>();
-  private readonly deliveredSchemas = new Set<string>();
-  private appTargets: ComputerUseAppTarget[] = [];
   private installation: ComputerUseStatus["installation"] = "unchecked";
-  private warning: string | null = null;
   private cleanupStatus: ComputerUseStatus["cleanupStatus"] = "not_requested";
-  private threadReleaseStatus: ComputerUseBackend["threadReleaseStatus"] = "not_requested";
-  private cleanupFailure: ComputerUseBackend["cleanupFailure"] = null;
-  private error: string | null = null;
+  private cleanupFailure: DeliveryFailure = null;
   private lastCall: ComputerUseStatus["lastCall"] = null;
   private activeTool: string | null = null;
   private startedAt: number | null = null;
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
-  private platformRevision = 0;
-  private switchingPlatform = false;
+  private windowSequence = 0;
+  private viewSequence = 0;
+  private readonly windows = new Map<string, KnownWindow>();
+  private readonly liveWindows = new Map<string, KnownWindow>();
+  private readonly apps = new Set<string>();
+  private readonly views = new Map<string, Map<string, View>>();
+  private selfCheckFailed = false;
+  private permissionsRead: { at: number; result: ReturnType<typeof readMacPermissions> } | null = null;
+  private readonly recent = new Map<string, ComputerUseRecentCall[]>();
 
   constructor(private readonly deps: {
-    readonly directory: string;
     readonly enabled: () => boolean;
     readonly localControl: () => boolean;
-    platform: ComputerUsePlatform;
+    readonly platform: ReturnType<typeof createFleetComputerUsePlatform>;
+    readonly openApp?: typeof openMacApp;
+    readonly preparePaste?: typeof prepareMacPaste;
+    readonly verifyWindow?: typeof verifyMacWindowIdentity;
+    readonly readPermissions?: typeof readMacPermissions;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
-    /** activeOwner() 결과가 바뀔 때마다 불린다 — 호스트가 objective-use 스냅샷을 밀어낸다. */
     readonly onActiveOwnerChange?: (owner: string | null) => void;
   }) {}
 
-  private notifyOwnerChanged(): void {
-    this.deps.onActiveOwnerChange?.(this.activeOwner());
-  }
-
-  async setPlatform(platform: ComputerUsePlatform): Promise<void> {
-    const revision = ++this.platformRevision;
-    if (this.deps.platform === platform && !this.switchingPlatform) return;
-    this.switchingPlatform = true;
-    try {
-      await this.stop();
-      if (revision !== this.platformRevision) return;
-      this.deps.platform = platform;
-      this.installation = "unchecked";
-      this.error = null;
-      this.lastCall = null;
-    } finally { if (revision === this.platformRevision) this.switchingPlatform = false; }
-  }
-
   status(): ComputerUseStatus {
-    const enabled = this.deps.enabled();
+    const supported = this.deps.platform.supported();
+    const enabled = supported && this.deps.enabled();
+    const failed = this.cleanupStatus === "failed";
     return {
-      enabled, supported: this.deps.platform.supported(),
-      installation: this.installation, warning: this.warning,
-      state: !enabled ? "off" : this.state,
-      activeTool: this.activeTool, elapsedMs: this.startedAt === null ? 0 : Math.max(0, Date.now() - this.startedAt), stage: this.stage,
-      apps: [...this.apps], cleanupStatus: this.cleanupStatus, threadReleaseStatus: this.threadReleaseStatus, cleanupFailure: this.cleanupFailure, captureStopped: "unverified", error: this.error, lastCall: this.lastCall,
+      enabled, supported, installation: this.installation,
+      warning: failed ? "computer_use_cleanup_unconfirmed" : null,
+      state: enabled ? this.state : "off", activeTool: this.activeTool,
+      elapsedMs: this.startedAt === null ? 0 : Math.max(0, Date.now() - this.startedAt), stage: this.stage,
+      apps: [...this.apps], cleanupStatus: this.cleanupStatus, threadReleaseStatus: "not_needed", cleanupFailure: this.cleanupFailure,
+      captureStopped: "unverified", error: failed ? "computer_use_cleanup_failed" : this.lastCall?.error ?? null, lastCall: this.lastCall,
     };
   }
 
   async inspectInstallation(): Promise<ComputerUseStatus["installation"]> {
-    if (!this.status().supported) return this.installation = "unsupported";
-    try { return this.installation = await this.deps.platform.inspectInstallation() ? "available" : "missing"; }
-    catch { return this.installation = "missing"; }
+    if (!this.deps.platform.supported()) return this.installation = "unsupported";
+    return this.installation = await this.deps.platform.inspectInstallation() ? "available" : "missing";
   }
-
-  async readStatus(): Promise<ComputerUseStatus> {
-    await this.inspectInstallation();
-    return this.status();
+  async readStatus(): Promise<ComputerUseSettingsStatus> {
+    const helperAvailable = await this.inspectInstallation() === "available";
+    const { enabled, supported } = this.status();
+    const hello = this.helperInfo();
+    let permissions: Awaited<ReturnType<typeof readMacPermissions>> = null;
+    if (helperAvailable) {
+      const now = Date.now();
+      if (!this.permissionsRead || now - this.permissionsRead.at >= 5000) {
+        this.permissionsRead = { at: now, result: (this.deps.readPermissions ?? readMacPermissions)() };
+      }
+      permissions = (await this.permissionsRead.result) ?? hello?.permissions ?? null;
+    }
+    const missingPermissions = permissions ? COMPUTER_USE_PERMISSIONS.filter((permission) => !permissions[permission]) : null;
+    return { enabled, supported, helperAvailable, missingPermissions, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
   }
-
   async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
-    return this.deps.enabled() && this.deps.localControl() && await (this.deps.platform.verifyCaptureTarget?.(target) ?? false);
+    return this.deps.enabled() && this.deps.localControl() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
   }
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
-  captureUnavailableOwner(): string | null { return this.captureUnavailable ? this.activeOwner() : null; }
-  /** 공유 불가의 비민감 사유 — 미리보기가 권한 안내로 갈라지는 근거. 공유 불가가 아니면 null. */
+  captureUnavailableOwner(): string | null { return this.captureIsUnavailable ? this.activeOwner() : null; }
   captureUnavailableReason(): ComputerUseCaptureFailure | null { return this.captureUnavailableOwner() === null ? null : this.captureFailure; }
-
   release(owner: string): void { if (this.owner === owner) this.stopDetached(); }
-  /** 소유자 라벨이 조건에 맞으면 놓는다 — 연결별 접두를 모르는 호출자(허용 회수 라우트)용. */
   releaseWhere(predicate: (owner: string) => boolean): void { if (this.owner !== null && predicate(this.owner)) this.stopDetached(); }
+  stopDetached(): void { void this.stop().catch((error) => this.reportFailure("computer_use_stop_failed", error)); }
+  recentCalls(actor: string): readonly ComputerUseRecentCall[] { return [...(this.recent.get(actor) ?? [])]; }
+  waitForRelease(): Promise<void> { return this.stopping ?? Promise.resolve(); }
+  rememberSessionEnd(actor: string): void { this.remember(actor, { tool: "computer_session", code: "ok" }); }
+  private remember(actor: string, call: ComputerUseRecentCall): void {
+    this.recent.set(actor, [...this.recentCalls(actor).slice(-4), call]);
+  }
+  helperInfo() { return this.client?.hello ?? null; }
+  forgetViews(actor: string): void { this.views.delete(actor); }
+  forgetRecent(actor: string): void { this.recent.delete(actor); }
 
   private reportFailure(kind: string, error: unknown): void {
-    try { this.deps.onFailure?.(kind, error); } catch { /* A diagnostic must not reject teardown. */ }
+    try { this.deps.onFailure?.(kind, error); } catch { /* 진단 실패가 정리를 막지 않는다. */ }
+  }
+  private publishCapture(window?: SnapshotWindow, failure?: ComputerUseCaptureFailure): void {
+    this.captureIsUnavailable = !window && failure !== undefined;
+    this.captureFailure = failure ?? null;
+    try {
+      this.deps.onCaptureTarget?.(window && this.owner ? { ...address(window), title: window.title, owner: this.owner } : null);
+    } catch (error) { this.reportFailure("computer_use_capture_publish_failed", error); }
   }
 
-  stopDetached(): void {
-    void this.stop().catch((error) => this.reportFailure("computer_use_stop_failed", error));
-  }
-
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
     if (this.stopping) return this.stopping;
     this.state = "stopping";
-    // activeOwner() 가 null 로 꺾인다 — 소유자 표시가 여기서부터 즉시 사라진다.
-    this.notifyOwnerChanged();
-    this.captureApp = null;
-    this.captureUnavailable = false;
-    this.captureFailure = null;
-    try { this.deps.onCaptureTarget?.(null); }
-    catch (error) { this.reportFailure("computer_use_capture_release_failed", error); }
-    this.controller?.abort();
+    this.lifetime?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
+    this.publishCapture();
     this.apps.clear();
-    this.lastAgentActions.clear();
-    this.deliveredSchemas.clear();
-    this.appTargets = [];
-    this.snapshots.clear();
-    const broker = this.broker;
-    this.broker = null;
+    this.resetReferences();
+    const client = this.client;
+    this.client = null;
     this.stopping = Promise.resolve().then(async () => {
       try {
-        let stopFailed = false;
-        try { await broker?.stop(); }
-        catch (error) {
-          stopFailed = true;
-          this.reportFailure("computer_use_stop_failed", error);
-          this.error = "computer_use_cleanup_failed";
-          this.warning = "computer_use_cleanup_unconfirmed";
-        }
-        if (broker) {
-          this.cleanupStatus = stopFailed ? "failed" : broker.cleanupStatus;
-          this.threadReleaseStatus = broker.threadReleaseStatus;
-          this.cleanupFailure = broker.cleanupFailure;
-          this.warning = this.cleanupStatus === "failed" ? "computer_use_cleanup_unconfirmed" : null;
-        }
+        const clean = !client || await client.stop();
+        this.cleanupStatus = !client ? "not_needed" : clean ? "notified" : "failed";
+        this.cleanupFailure = clean ? null : "timeout";
+        if (!clean) this.reportFailure("computer_use_stop_failed", new Error("timeout"));
+      } catch (error) {
+        this.cleanupStatus = "failed";
+        this.cleanupFailure = "timeout";
+        this.reportFailure("computer_use_stop_failed", error);
       } finally {
         this.owner = null;
-        this.controller = null;
+        this.lifetime = null;
         this.state = "idle";
         this.stopping = null;
       }
     });
+    this.deps.onActiveOwnerChange?.(null);
     return this.stopping;
   }
 
-  specs(): AgentToolSpec[] {
-    const spec = (id: string, description: string, parameters: Record<string, unknown>): AgentToolSpec => ({
-      id, tag: id, title: id, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters,
-      execute: (args, context) => this.execute(id, args, context.sessionLabel, context.signal),
-    });
-    return [
-      { ...spec("computer_end", computerUseToolDescriptions.computer_end, { type: "object", properties: {}, additionalProperties: false }), execute: async (_args, context) => {
-        if (!context.sessionLabel) return result({ error: "computer_use_session_unavailable" }, true);
-        if (this.owner && this.owner !== context.sessionLabel) return result({ error: "computer_use_foreign_session" }, true);
-        await this.stop();
-        return result({ ended: true, cleanupStatus: this.cleanupStatus, threadReleaseStatus: this.threadReleaseStatus, cleanupFailure: this.cleanupFailure, captureStopped: "unverified", reconnect: "on_next_use", warning: this.warning, hint: this.deps.platform.endHint });
-      } },
-      { ...spec("computer_status", computerUseToolDescriptions.computer_status, { type: "object", properties: {}, additionalProperties: false }), execute: async () => { const { apps: _apps, ...status } = await this.readStatus(); return result(status); } },
-      spec("computer_apps", computerUseToolDescriptions.computer_apps, { type: "object", properties: { query: { type: "string", maxLength: 4096, description: "App name, bundle ID or path to match." }, includeWindowState: { type: "boolean", description: "Read window state without capture or activation. Needs query; at most 20 matches." } }, additionalProperties: false }),
-      spec("computer_open", computerUseToolDescriptions.computer_open, { type: "object", properties: { app: { type: "string", minLength: 1, maxLength: 4096, description: "Exact absolute .app path from computer_apps or the user. No bundle IDs or names." }, reason: { type: "string", minLength: 1, maxLength: 600 }, activate: { type: "boolean", default: false, description: "Default false: background open (app may still take focus). True only when foreground is authorized." } }, required: ["app", "reason"], additionalProperties: false }),
-      spec("computer_state", computerUseToolDescriptions.computer_state, { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA }, ...STATE_OPTION_SCHEMA, fullTree: { type: "boolean", description: "Require a full AX tree (e.g. after context loss). One native read; errors without a snapshot if only a diff comes back. Requests no extra images or action schemas." }, includeActionSchemas: { type: "boolean", description: "Resend action schemas (e.g. after context compaction); otherwise sent once per version per broker session." } }, required: ["app"], additionalProperties: false }),
-      spec("computer_verify", "Check bounded conditions on one exact window without returning its AX tree. Cua Driver only. satisfied is verified for the stated predicates; unknown is not success. A screenshot is visual evidence only. Invalidates prior handles; call computer_state before further actions.", { type: "object", properties: { app: { ...this.deps.platform.appTargetSchema }, ...z.toJSONSchema(VERIFY_OPTIONS).properties }, required: ["app", "expect"], additionalProperties: false }),
-      spec("computer_paste", computerUseToolDescriptions.computer_paste, {
-        type: "object", properties: {
-          app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" },
-          text: { type: "string", minLength: 1, maxLength: 100_000 }, format: { type: "string", enum: ["text", "md", "html"] },
-          reason: { type: "string", minLength: 1, maxLength: 600 }, observation: { ...OBSERVATION_SCHEMA }, allowActivation: { ...ACTIVATION_SCHEMA },
-        }, required: ["app", "snapshotId", "text", "format", "reason"], additionalProperties: false,
-      }),
-      spec("computer_action", computerUseToolDescriptions.computer_action, {
-        type: "object", properties: {
-          app: { ...this.deps.platform.appTargetSchema }, snapshotId: { type: "string" }, action: { type: "string", enum: [...ACTIONS] },
-          arguments: { type: "object", description: "Action arguments without app; schema in computer_state actionSchemas." },
-          reason: { type: "string", minLength: 1, maxLength: 600 },
-          observation: { ...OBSERVATION_SCHEMA },
-          allowActivation: { ...ACTIVATION_SCHEMA },
-        }, required: ["app", "snapshotId", "action", "arguments", "reason"], additionalProperties: false,
-      }),
-    ];
+  specs(): (AgentToolSpec & { id: DeviceTool })[] {
+    return computerUseTools.map(({ name, description, inputSchema }) => ({
+      id: name, tag: name, title: name, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters: inputSchema,
+      execute: (args, context) => this.execute(name, args, context.sessionLabel, context.signal),
+    }));
   }
 
-  private async execute(tool: string, input: unknown, owner: string | undefined, signal?: AbortSignal): Promise<ComputerUseResult> {
-    const startedAt = Date.now();
-    const value = await this.executeInternal(tool, tool === "computer_paste" && isRecord(input) ? { ...input, action: "paste", arguments: { text: input.text, format: input.format } } : input, owner, signal);
-    // Project at the final boundary, including native errors and recovery reads.
-    const textOnly = (tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && (!isRecord(input) || input.observation !== "text_and_image");
-    const output = textOnly ? { ...value, content: value.content.filter((block) => block.type !== "image") } : value;
+  async execute(tool: DeviceTool, input: unknown, owner?: string, signal?: AbortSignal, caller?: Caller): Promise<ComputerUseResult> {
+    const start = Date.now();
+    const actor = caller?.actor ?? owner;
+    let action: Action | undefined;
+    if (typeof input === "object" && input !== null && "action" in input && typeof input.action === "string" && ACTION_NAMES.has(input.action)) action = input.action as Action;
+    const { result, code } = await this.run(tool, input, owner, signal, caller);
+    if (actor && caller?.canDeliver?.() !== false && !signal?.aborted) {
+      this.remember(actor, { tool, ...(action ? { action } : {}), code });
+    }
     try {
-      this.deps.diagnostic?.({ tool, scope: "model_output", phase: "end", elapsedMs: Date.now() - startedAt, outcome: output.isError ? "error" : "returned", ...contentMetrics(output.content) });
-    } catch { /* Output accounting must never retry an action. */ }
-    return output;
+      const elapsedMs = Date.now() - start;
+      const textChars = result.content.reduce((n, block) => n + (block.type === "text" && typeof block.text === "string" ? block.text.length : 0), 0);
+      const imageCount = result.content.filter((block) => block.type === "image").length;
+      const imageBytes = result.content.reduce((n, block) => n + (block.type === "image" && typeof block.data === "string" ? Buffer.byteLength(block.data, "base64") : 0), 0);
+      this.deps.diagnostic?.({ tool, scope: "model_output", phase: "end", elapsedMs, outcome: code === "dispatch_unknown" || code === "effect_unknown" ? "unknown" : result.isError ? "error" : "returned", ...(result.isError ? { error: code } : {}), textChars, imageCount, imageBytes });
+    } catch { /* 모델 반환 실패나 입력 재전송으로 이어지지 않는다. */ }
+    return result;
   }
 
-  private async executeInternal(tool: string, input: unknown, owner: string | undefined, signal?: AbortSignal): Promise<ComputerUseResult> {
-    const platformRevision = this.platformRevision;
-    if (this.switchingPlatform) return result({ error: "computer_use_busy" }, true);
-    if (!this.deps.enabled()) return result({ error: "computer_use_disabled" }, true);
-    if (!this.status().supported) return result({ error: this.deps.platform.unavailableError }, true);
-    if (!this.deps.localControl()) return result({ error: "computer_use_local_only" }, true);
-    if (!owner || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
-    if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy", hint: "Another session owns Computer Use. Stop it in Settings before switching." }, true);
-    if (!isRecord(input)) return result({ error: "invalid_arguments" }, true);
-    if (tool === "computer_apps" && ((input.query !== undefined && (typeof input.query !== "string" || input.query.length > 4096)) || (input.includeWindowState !== undefined && typeof input.includeWindowState !== "boolean") || (input.includeWindowState === true && (typeof input.query !== "string" || !input.query.trim())))) return result({ error: "computer_use_invalid_window_query", hint: "Window inspection requires a nonempty query. Use an exact installation path to limit the read." }, true);
-    if (tool === "computer_open" && ((input.activate !== undefined && typeof input.activate !== "boolean") || typeof input.app !== "string" || !input.app.startsWith("/") || !input.app.endsWith(".app") || typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 600)) return result({ error: "computer_use_invalid_open", actionOutcome: "not_started", hint: "Use the exact absolute .app path and a reason authorizing foreground launch/reopen." }, true);
-    if ((tool === "computer_state" || tool === "computer_action" || tool === "computer_paste") && input.observation !== undefined && input.observation !== "text" && input.observation !== "text_and_image") return result({ error: "computer_use_invalid_observation", actionOutcome: "not_started" }, true);
-    if (tool === "computer_state" && input.fullTree !== undefined && typeof input.fullTree !== "boolean") return result({ error: "computer_use_invalid_full_tree", actionOutcome: "not_started" }, true);
-    if (input.allowActivation !== undefined && typeof input.allowActivation !== "boolean") return result({ error: "computer_use_invalid_activation", actionOutcome: "not_started" }, true);
-    if (tool === "computer_state") {
-      const options = Object.fromEntries(Object.keys(STATE_OPTIONS).filter(key => key in input).map(key => [key, input[key]]));
-      if (!z.object(STATE_OPTIONS).safeParse(options).success) return result({ error: "computer_use_invalid_observation_options" }, true);
-      if (Object.keys(options).length && !this.deps.platform.boundedObservations) return result({ error: "computer_use_observation_options_unsupported", hint: "This backend cannot bound native observations. No read was dispatched." }, true);
+  private async run(tool: DeviceTool, input: unknown, owner?: string, signal?: AbortSignal, caller?: Caller): Promise<DeviceOutput> {
+    const reject = (code: string, hint?: string) => ({ result: gateResult(code, hint), code });
+    if (!this.deps.platform.supported()) return reject("computer_use_platform_unsupported");
+    if (!this.deps.enabled()) return reject("computer_use_disabled");
+    if (!this.deps.localControl()) return reject("computer_use_local_only");
+    if (!owner || signal?.aborted) return reject("computer_use_session_unavailable");
+    let args;
+    try { args = parseDeviceInput(tool, input); }
+    catch (cause) {
+      const error = cause instanceof FleetHelperError ? cause : new FleetHelperError("invalid_params");
+      let action: ActionArgs | undefined;
+      if (tool === "computer_action" && input && typeof input === "object" && "action" in input && typeof input.action === "string" && ACTION_NAMES.has(input.action)) {
+        action = { action: input.action as Action, window: "window", reason: "" };
+        if ("window" in input && typeof input.window === "string" && /^w[0-9]+$/u.test(input.window)) action.window = input.window;
+        if ("target" in input && typeof input.target === "string" && isElementId(input.target)) action.target = input.target;
+      }
+      return { result: renderError(error, action), code: `not_sent:${error.code}` };
     }
-    if (tool === "computer_verify") {
-      if (!this.deps.platform.verification) return result({ error: "computer_use_verification_unsupported" }, true);
-      if (!VERIFY_OPTIONS.safeParse(input).success) return result({ error: "computer_use_invalid_verification" }, true);
+    if (tool === "computer_session") {
+      if ((args as { op: string }).op === "status") return withOk(renderSessionStatus(true, this.client?.live ? this.client.hello : null, this.activeTool ?? "idle"));
+      if (this.owner && this.owner !== owner) return reject("computer_use_foreign_session");
+      await this.stop();
+      return withOk(renderSessionEnd(true));
     }
-    const observationMode: ObservationMode = input.observation === "text_and_image" ? "text_and_image" : "text";
-    let app = tool === "computer_apps" ? null : input.app;
-    if (app !== null) {
-      if (typeof app !== "string" || !app.trim() || app !== app.trim() || app.length > 4096 || /[\x00-\x1f\x7f]/u.test(app)) return result({ error: "computer_use_invalid_app_target" }, true);
-      try { app = await this.deps.platform.resolveTarget(app); }
-      catch (error) { if (error instanceof ComputerUseInputError) return result({ error: error.message }, true); throw error; }
-    }
-    if (this.switchingPlatform || platformRevision !== this.platformRevision || this.busy || this.stopping || (this.owner && this.owner !== owner)) return result({ error: "computer_use_busy" }, true);
-    if (!this.deps.enabled() || !this.deps.localControl() || signal?.aborted) return result({ error: "computer_use_session_unavailable" }, true);
+    if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return reject("computer_use_busy", "Another session owns Computer Use. Stop it in Settings before switching.");
     this.busy = true;
     this.activeTool = tool;
     this.startedAt = Date.now();
     this.stage = "installation";
     this.cleanupStatus = "not_requested";
-    this.threadReleaseStatus = "not_requested";
     this.cleanupFailure = null;
-    this.warning = null;
-    this.owner = owner;
-    // activeOwner() 가 null → owner 로 꺾인다 — 소유자 표시가 여기서부터 즉시 나타난다.
-    this.notifyOwnerChanged();
-    this.controller ??= new AbortController();
-    const lifetime = this.controller;
-    const onAbort = () => { this.stopDetached(); };
+    this.lifetime ??= new AbortController();
+    const lifetime = this.lifetime;
+    const onAbort = () => this.stopDetached();
     signal?.addEventListener("abort", onAbort, { once: true });
     if (this.idleTimer) clearTimeout(this.idleTimer);
-    let actionText: readonly Record<string, unknown>[] = [];
-    let actionOutcome: "not_started" | "unknown" | "completed" | "error" = "not_started";
+    if (!this.owner) {
+      this.owner = owner;
+      this.deps.onActiveOwnerChange?.(owner);
+    }
+    let output: DeviceOutput | undefined;
+    let clipboard: ClipboardRestoration | undefined;
+    let sent = false;
     try {
-      if (tool === "computer_open") {
-        this.assertActive(lifetime);
-        this.snapshots.clear();
-        this.captureApp = null;
-        this.captureUnavailable = false;
-        this.captureFailure = null;
-        this.deps.onCaptureTarget?.(null);
-        this.state = "running";
-        this.stage = "open_app";
-        actionOutcome = "unknown";
-        const opened = await this.deps.platform.openApp(app as string, lifetime.signal, input.activate === true);
-        actionOutcome = opened.requestDispatched ? "completed" : "not_started";
-        this.assertActive(lifetime);
-        return result({ ...opened, activateRequested: input.activate === true, focusGuaranteed: false, actionOutcome, snapshotId: null, retryPerformed: false, hint: opened.windowReady ? "A non-minimized window exists, not a captured observation or focus guarantee. computer_state may activate the app when allowActivation:true; do not capture when the task requires keeping focus elsewhere." : "No window matching the requested readiness was verified. Do not retry automatically, switch installations, force-quit, or replay input. The app may need the user to open a window or finish a dialog." }, Boolean(opened.error) || !opened.windowReady);
-      }
-      if (!this.broker) {
-        this.state = "starting";
-        this.assertActive(lifetime);
-        const created = await this.deps.platform.createBroker({
-          directory: this.deps.directory,
-          onStage: (stage) => { if (!lifetime.signal.aborted) this.stage = stage; },
-          onFailure: (kind, error) => {
-            this.reportFailure(kind, error);
-            if (kind === "computer_use_directory_cleanup_failed") {
-              this.cleanupStatus = "failed";
-              this.cleanupFailure = "directory_cleanup";
-              this.warning = "computer_use_cleanup_unconfirmed";
-            }
-          },
-          approve: async () => !lifetime.signal.aborted && this.deps.enabled() && this.deps.localControl(),
-        });
-        if (lifetime.signal.aborted) { await created?.stop(); throw new Error("computer_use_stopped"); }
-        this.assertActive(lifetime);
-        this.broker = created;
-        this.installation = created ? "available" : "missing";
-        if (!created) throw new Error("computer_use_install_required");
-        await created.start();
-      }
       this.assertActive(lifetime);
-      const broker = this.broker!;
-      if (tool === "computer_apps") {
-        this.assertActive(lifetime);
-        this.state = "running";
-        this.stage = "list_apps";
-        const apps = await this.call(broker, "list_apps", {});
-        this.assertActive(lifetime);
-        this.appTargets = this.deps.platform.appTargets(apps);
-        const query = typeof input.query === "string" ? input.query.normalize("NFC").trim().toLowerCase() : "";
-        const targets = query ? this.appTargets.filter((target) => [target.name, target.app, target.bundleId ?? ""].some((value) => value.normalize("NFC").toLowerCase().includes(query))) : this.appTargets;
-        const windowStates = input.includeWindowState === true && !apps.isError ? await this.deps.platform.inspectWindows(targets.slice(0, 20).map((target) => target.app)) : undefined;
-        this.assertActive(lifetime);
-        const content = query && !apps.isError ? apps.content.filter((block) => block.type === "text").map((block) => ({ ...block, text: String(block.text).split("\n").filter((line) => line.normalize("NFC").toLowerCase().includes(query)).join("\n") })) : apps.content;
-        return { ...apps, content: [...result({ source: "native app inventory", targets, ...(windowStates ? { windowStates, windowStateTruncated: targets.length > windowStates.length } : {}), query: query || null, total: this.appTargets.length, matched: targets.length, targetHint: "Copy targets[].app unchanged into computer_state and computer_action. It is an exact installation path, avoiding duplicate bundle IDs and localized names. If targets is empty, use the original inventory below; no identifier was inferred.", runningStatus: "advisory", hint: "A missing running marker does not establish that an app is closed. Do not launch or close apps based solely on this list." }).content, ...content] };
-      }
-      const target = app as string;
-      if (tool === "computer_state") return await this.observe(broker, target, lifetime, input.includeActionSchemas === true, observationMode, input.allowActivation === true, input.fullTree === true, Object.fromEntries(Object.keys(STATE_OPTIONS).filter(key => key in input).map(key => [key, input[key]])));
-      if (tool === "computer_verify") {
-        this.snapshots.clear();
-        this.state = "running";
-        this.stage = "verify_state";
-        const verified = await this.call(broker, "verify_state", { ...VERIFY_OPTIONS.parse(input), app: target });
-        this.assertActive(lifetime);
-        return verified;
-      }
-      if (!((tool === "computer_action" && typeof input.action === "string" && (ACTIONS as readonly string[]).includes(input.action)) || (tool === "computer_paste" && input.action === "paste")) || typeof input.action !== "string" || !isRecord(input.arguments)
-        || typeof input.reason !== "string" || !input.reason.trim() || input.reason.length > 600) throw new ComputerUseInputError("computer_use_invalid_action", "Use app only at the top level. Supply action, arguments (without app), reason and the latest snapshotId from computer_state or computer_action.");
-      const snapshot = this.snapshots.get(target);
-      if (!snapshot || input.snapshotId !== snapshot.id || Date.now() - snapshot.at > 120_000) throw new ComputerUseInputError("computer_use_fresh_state_required", "Fleet has one valid snapshot across apps. Another app observation or a dispatched action invalidates it. Call computer_state for the intended app and use its new snapshotId. Do not repeat an earlier action just to refresh state.");
-      const coordinateAction = input.action === "drag" || "x" in input.arguments || "y" in input.arguments;
-      if (coordinateAction && !snapshot.imageAvailable) throw new ComputerUseInputError("computer_use_screenshot_required", "This snapshot has no screenshot. Native menus can replace the window tree and suppress images. No action was sent. Use menu element_index and an advertised secondary action to dismiss/close the menu without selecting a command, or explicitly request Escape. Then read the window again. Never reuse pre-menu coordinates.");
-      if (coordinateAction && !snapshot.imageDelivered) throw new ComputerUseInputError("computer_use_screenshot_required", "This snapshot's image was not delivered to the model. No action was sent. Call computer_state with observation:text_and_image, inspect its image and use its new snapshotId. Do not reuse coordinates from an older image.");
-      if (input.action === "click" && "element_index" in input.arguments && ("x" in input.arguments || "y" in input.arguments)) throw new ComputerUseInputError("computer_use_ambiguous_target", "Choose either element_index or screenshot coordinates, not both. No action was sent.");
-      const schema = broker.tools.get(input.action)?.inputSchema;
-      if (!schema || "app" in input.arguments) throw new ComputerUseInputError("computer_use_invalid_action", "Use app only at the top level. Supply action, arguments (without app), reason and the latest snapshotId from computer_state or computer_action.");
-      const args = this.deps.platform.prepareAction(input.action, { ...input.arguments, app: target });
-      const parsed = z.fromJSONSchema(schema as Parameters<typeof z.fromJSONSchema>[0]).safeParse(args);
-      if (!parsed.success) throw new ComputerUseInputError("computer_use_invalid_arguments", "Match actionSchemas[action] from the latest observation; app belongs only at the top level.");
-      await this.deps.platform.preflight(target, input.allowActivation === true);
+      const client = await this.startHelper(lifetime);
       this.assertActive(lifetime);
-      const reusable = this.deps.platform.reusableElementSnapshots === true && !coordinateAction && input.action !== "paste" && ("element_index" in args || "element_token" in args);
-      this.snapshots.clear();
       this.state = "running";
-      this.stage = input.action;
-      actionOutcome = "unknown";
-      // 동작 이력은 출처 단서일 뿐 현재 선택의 작성자나 효과를 증명하지 않는다.
-      if (this.lastAgentActions.size >= 32 && !this.lastAgentActions.has(target)) this.lastAgentActions.delete(this.lastAgentActions.keys().next().value!);
-      const lastAgentAction = { action: input.action, outcome: "unknown" as "unknown" | "returned" | "error", at: new Date().toISOString() };
-      this.lastAgentActions.set(target, lastAgentAction);
-      const actionResult = await this.call(broker, input.action, args, input.action === "paste" ? { allowActivation: input.allowActivation === true } : undefined);
-      actionText = actionResult.content.filter((block) => block.type === "text");
-      actionOutcome = actionResult.dispatchBlocked ? "not_started" : actionResult.isError ? "error" : "completed";
+      this.stage = "helper_request";
+      const actor = caller?.actor ?? owner;
+      switch (tool) {
+        case "computer_apps": output = withOk(await this.list(client, (args as { query?: string }).query, lifetime)); break;
+        case "computer_open": output = await this.open(client, args as OpenArgs, lifetime); break;
+        case "computer_state": output = withOk(await this.observe(client, args as StateArgs, actor, lifetime, caller)); break;
+        case "computer_action": output = await this.act(client, args as ActionArgs, actor, lifetime, (value) => { clipboard = value; }, () => { sent = true; }); break;
+        case "computer_verify": output = await this.verify(client, args as VerifyArgs, lifetime); break;
+      }
       this.assertActive(lifetime);
-      if (actionResult.isError) {
-        const error = this.deps.platform.classifyFailure(actionResult);
-        return { ...actionResult, content: [...result({ actionOutcome: error === "computer_use_app_closed" ? "app_closed" : actionOutcome, error, observation: "unavailable", ...(actionResult.dispatchBlocked ? { snapshotId: null } : {}), context: { imageAvailable: snapshot.imageAvailable, snapshotAgeMs: Date.now() - snapshot.at, target: coordinateAction ? "screenshot_coordinates" : "element_index" in args ? "accessibility_element" : "keyboard", focus: "unknown", display: "unknown", appSupport: "not_determined" }, hint: this.deps.platform.failureHint(error) }).content, ...actionResult.content] };
+      return output!;
+    } catch (cause) {
+      if (lifetime.signal.aborted || signal?.aborted) return output = reject("computer_use_stopped");
+      const error = cause instanceof FleetHelperError ? cause : new FleetHelperError("internal", sent);
+      if (tool === "computer_state" || tool === "computer_action" || tool === "computer_verify") {
+        if (error.code === "window_unavailable") this.publishCapture();
+        else if (error.code === "permission_required" && Array.isArray(error.details?.missing) && error.details.missing.includes("accessibility")) this.publishCapture(undefined, "accessibility_permission_required");
       }
-      if (reusable) {
-        this.snapshots.set(target, { ...snapshot, imageAvailable: false, imageDelivered: false });
-        return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, snapshotId: snapshot.id, snapshotReusable: "elements_only", observation: "not_refreshed", hint: "Reuse only while the intended UI structure is unchanged. Verify the task condition; re-observe after navigation, layout changes or uncertainty. Coordinates require a fresh image." }).content, ...actionResult.content] };
-      }
-      // Native actions already return their own observation. A second read may
-      // restore a just-minimized window or activate an app. Never read implicitly.
-      if (!this.deps.platform.hasActionObservation(actionResult)) {
-        this.captureUnavailable = true;
-        this.captureFailure = null;
-        this.deps.onCaptureTarget?.(null);
-        this.captureDiagnostic("action_without_observation");
-        return { ...actionResult, content: [...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "unavailable", snapshotId: null, hint: "Action returned without a usable native AX observation. No follow-up read was made. Do not repeat the action. If more observation is needed, request computer_state explicitly; reads may activate/restore the app." }).content, ...actionResult.content] };
-      }
-      const observation = this.publishObservation(broker, target, actionResult, false, observationMode, 0);
-      return { ...observation, content: [
-        ...result({ actionOutcome: "completed", effectVerified: false, action: input.action, observation: "completed", observationSource: "action_response" }).content,
-        ...observation.content,
-      ] };
-    } catch (error) {
-      if (error instanceof ComputerUseInputError) return result({ error: error.message, hint: error.hint, actionOutcome: "not_started" }, true);
-      const code = error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed";
-      this.error = code;
-      await this.stop();
-      return { isError: true, content: [...result({ error: code, actionOutcome, observation: "failed", hint: code === "computer_use_runtime_incompatible" ? "The CLI/native MCP handshake failed. Select compatible versions (CODEX_BIN overrides the CLI). Repeated app reads cannot repair this; no GUI action was confirmed." : actionOutcome === "completed" ? "The action returned but its observation could not be published. The following text is from the action. Do not repeat the action; explicitly request computer_state only if necessary." : "Do not retry the action automatically. Request computer_state explicitly if necessary; reads may activate/restore the app." }).content, ...actionText] };
+      const code = error.uncertain ? "dispatch_unknown" : tool === "computer_action" ? `not_sent:${error.code}` : error.code;
+      return output = { result: renderError(error, tool === "computer_action" ? args as ActionArgs : undefined, clipboard), code };
     } finally {
       signal?.removeEventListener("abort", onAbort);
+      this.lastCall = { tool, outcome: output?.result.isError ? "error" : "returned", elapsedMs: Math.max(0, Date.now() - this.startedAt!), error: output?.result.isError ? output.code : null };
       this.busy = false;
       this.activeTool = null;
       this.startedAt = null;
       this.stage = null;
-      if (this.owner === owner && !lifetime.signal.aborted) {
-        this.state = "ready";
-        this.idleTimer = setTimeout(() => { this.stopDetached(); }, IDLE_TIMEOUT_MS);
+      if (!lifetime.signal.aborted) {
+        this.state = this.client?.live ? "ready" : "idle";
+        this.idleTimer = setTimeout(() => this.stopDetached(), IDLE_TIMEOUT_MS);
+        this.idleTimer.unref();
       }
     }
   }
 
-  private async observe(broker: ComputerUseBackend, app: string, lifetime: AbortController, includeSchemas = true, observationMode: ObservationMode = "text", allowActivation = false, fullTree = false, options: Record<string, unknown> = {}): Promise<ComputerUseResult> {
-    await this.deps.platform.preflight(app, allowActivation);
-    this.assertActive(lifetime);
-    if (this.captureApp !== app) {
-      this.captureApp = app;
-      this.captureUnavailable = false;
-      this.captureFailure = null;
-      this.deps.onCaptureTarget?.(null);
-    }
-    this.snapshots.clear();
-    this.state = "running";
-    this.stage = "get_app_state";
-    const state = await this.call(broker, "get_app_state", { app, ...options });
-    this.assertActive(lifetime);
-    if (state.isError) { this.deps.onCaptureTarget?.(null); this.captureDiagnostic("observation_error"); return state; }
-    if (fullTree && !this.deps.platform.hasFullObservation(state)) {
-      this.captureUnavailable = true;
-      this.captureFailure = null;
-      this.deps.onCaptureTarget?.(null);
-      this.captureDiagnostic("full_tree_unavailable");
-      return result({ error: "computer_use_full_tree_unavailable", snapshotId: null, observationReads: 1, hint: "The native response was not a standalone App/Window tree. No diff was presented as a full tree and no extra read was made. This backend may not support forcing full trees for this surface." }, true);
-    }
-    return this.publishObservation(broker, app, state, includeSchemas, observationMode, 1);
+  private assertActive(lifetime: AbortController) {
+    if (lifetime.signal.aborted || !this.deps.enabled() || !this.deps.localControl()) throw new FleetHelperError("computer_use_stopped");
   }
 
-  private publishObservation(broker: ComputerUseBackend, app: string, state: ComputerUseResult, includeSchemas: boolean, observationMode: ObservationMode, observationReads: number): ComputerUseResult {
-    const captureTarget = this.deps.platform.captureTarget?.(state);
-    if (state.captureWindow !== undefined) {
-      this.captureUnavailable = state.captureWindow === null;
-      this.captureFailure = state.captureWindow === null ? state.captureFailure ?? null : null;
+  private async startHelper(lifetime: AbortController) {
+    if (this.client?.live && !(await this.permissionsGrantedSince(this.client))) return this.client;
+    const old = this.client;
+    if (old) {
+      await old.stop();
+      this.assertActive(lifetime);
+      this.resetReferences();
     }
-    // 동일 앱의 diff·메뉴 관찰은 새 창 식별자가 없어도 기존 공유를 유지한다.
-    // 다른 앱으로 전환하면 위에서 먼저 해제하며, 식별 가능한 새 창을 얻은 뒤에만 공유한다.
-    if (captureTarget && this.owner) this.deps.onCaptureTarget?.({ ...captureTarget, owner: this.owner });
-    else if (state.captureWindow === null) this.deps.onCaptureTarget?.(null);
-    this.captureDiagnostic(captureTarget && this.owner ? "window_identified" : captureTarget ? "owner_missing" : state.captureWindow === null ? "window_unidentified" : "identity_not_reported");
-    const interactionHints = this.deps.platform.interactionHints(state);
-    this.apps.add(this.deps.platform.displayTarget(app));
-    const snapshotId = crypto.randomUUID();
-    const imageAvailable = state.content.some((block) => block.type === "image" && typeof block.data === "string" && block.data.length > 0 && typeof block.mimeType === "string" && block.mimeType.startsWith("image/"));
-    const imageDelivered = imageAvailable && observationMode === "text_and_image";
-    this.snapshots.set(app, { id: snapshotId, at: Date.now(), imageAvailable, imageDelivered });
-    const actionSchemas = this.deps.platform.actionSchemas(broker.tools);
-    const actionSchemasVersion = crypto.createHash("sha256").update(JSON.stringify(actionSchemas)).digest("hex").slice(0, 16);
-    const sendSchemas = includeSchemas || !this.deliveredSchemas.has(actionSchemasVersion);
-    this.deliveredSchemas.add(actionSchemasVersion);
-    return { isError: false, content: [...result({ app, snapshotId, observationReads, ...(interactionHints.length ? { interactionHints } : {}), snapshotScope: "broker_session", lastAgentAction: this.lastAgentActions.get(app) ?? null, imageAvailable, imageDelivered, coordinateActionsAvailable: imageDelivered ? "unverified" : false, ...(imageDelivered ? { coordinateSpace: "latest_native_screenshot_pixels" } : {}), actionSchemasVersion, actionSchemasIncluded: sendSchemas, observationMode: imageDelivered ? "image_and_text" : "text_only", ...(imageAvailable ? {} : { navigationHint: "Image unavailable; tree may be a menu. Use current menu elements/advertised secondary actions; never old coordinates." }), treeFormat: this.deps.platform.hasFullObservation(state) ? "full" : "upstream text or diff", selectionSource: "not_established", trust: "untrusted_app_content", ...(sendSchemas ? { actionSchemas } : {}) }).content, ...state.content] };
-  }
-
-  private async call(broker: ComputerUseBackend, tool: string, args: Record<string, unknown>, options?: { readonly allowActivation: boolean }): Promise<ComputerUseResult> {
-    const startedAt = Date.now();
-    const emit = (event: ComputerUseDiagnostic) => { try { this.deps.diagnostic?.({ ...event, scope: "native_output" }); } catch { /* 진단 실패가 조작을 반복시키면 안 된다. */ } };
-    emit({ tool, phase: "start", ...(options ? { allowActivation: options.allowActivation } : {}) });
+    this.state = "starting";
+    if (await this.inspectInstallation() !== "available") throw new FleetHelperError("helper_missing");
+    this.assertActive(lifetime);
+    this.stage = "hello";
+    const client = this.client = this.deps.platform.createClient();
     try {
-      const value = await (options ? broker.call(tool, args, options) : broker.call(tool, args));
-      // 반환된 시점에 이력을 확정한 뒤 직렬화해야 액션과 후속 관찰의 값이 일치한다.
-      if (tool !== "get_app_state" && tool !== "verify_state" && typeof args.app === "string") {
-        const lastAction = this.lastAgentActions.get(args.app);
-        if (lastAction) lastAction.outcome = value.isError ? "error" : "returned";
+      const hello = await client.start();
+      if (this.client === client) this.selfCheckFailed = !hello.selfCheck.ok && hello.selfCheck.reason !== "permission_required";
+    }
+    catch (error) { await client.stop(); if (this.client === client) this.client = null; throw error; }
+    return client;
+  }
+
+  /**
+   * hello의 권한과 자가 점검은 그 헬퍼 프로세스가 사는 동안 고정이다. 시작 때 빠졌던 권한을 사용자가
+   * 준 뒤에는 헬퍼를 새로 띄워야 새 hello가 그 권한으로 판정된다. 화면 기록 허용은 이미 떠 있는
+   * 프로세스에 반영되지 않을 수 있으므로 다시 읽기보다 재시작한다.
+   */
+  private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
+    const started = client.hello?.permissions;
+    if (!started || COMPUTER_USE_PERMISSIONS.every((permission) => started[permission])) return false;
+    const now = await (this.deps.readPermissions ?? readMacPermissions)();
+    return now !== null && COMPUTER_USE_PERMISSIONS.some((permission) => !started[permission] && now[permission]);
+  }
+
+  private resetReferences() {
+    this.windows.clear();
+    this.liveWindows.clear();
+    this.views.clear();
+  }
+
+  private registerWindow(w: HelperWindow): KnownWindow {
+    const identity = identityOf(w);
+    let known = this.liveWindows.get(identity);
+    if (!known) {
+      known = { id: `w${++this.windowSequence}`, identity, issued: new Map(), closed: false };
+      this.liveWindows.set(identity, known);
+      this.windows.set(known.id, known);
+    }
+    return known;
+  }
+  private closeWindow(known: KnownWindow) {
+    this.liveWindows.delete(known.identity);
+    known.closed = true;
+    known.issued.clear();
+    for (const views of this.views.values()) views.delete(known.id);
+  }
+  private async windowsNow(client: FleetHelperClient, lifetime: AbortController) {
+    const rows = (await client.request("windows", {})).windows.filter((w) => Number.isFinite(w.processStartedAt) && w.processStartedAt > 0);
+    this.assertActive(lifetime);
+    const live = new Set(rows.map(identityOf));
+    for (const known of this.liveWindows.values()) if (!live.has(known.identity)) this.closeWindow(known);
+    return rows;
+  }
+  private async resolveWindow(client: FleetHelperClient, id: string, lifetime: AbortController) {
+    const known = this.windows.get(id);
+    if (!known || known.closed) throw unavailable(known?.closed ? "closed" : undefined);
+    const windows = await this.windowsNow(client, lifetime);
+    const window = windows.find((w) => identityOf(w) === known.identity);
+    if (!window) throw unavailable("closed");
+    const reason = availableReason(window);
+    if (reason) throw unavailable(reason);
+    return { known, window };
+  }
+
+  private async list(client: FleetHelperClient, query: string | undefined, lifetime: AbortController) {
+    if (!query) return renderApps((await this.windowsNow(client, lifetime)).map((w) => windowLine(this.registerWindow(w).id, w)), undefined);
+    const result = await client.request("windows", { query });
+    this.assertActive(lifetime);
+    return renderApps(result.windows.filter((w) => w.processStartedAt > 0).map((w) => windowLine(this.registerWindow(w).id, w)), result.installed);
+  }
+
+  private async open(client: FleetHelperClient, args: OpenArgs, lifetime: AbortController) {
+    let app = args.app;
+    if (app !== app.trim() || /[\u0000-\u001f\u007f]/u.test(app)) throw new InvalidComputerUseParameters("Use an exact .app path or an unambiguous bundle ID.");
+    if (!isAbsolute(app)) {
+      if (!/^[a-z0-9_-]+(?:\.[a-z0-9_-]+)+$/iu.test(app)) throw new InvalidComputerUseParameters("Use an exact .app path or an unambiguous bundle ID.");
+      const matches = await client.request("windows", { query: app });
+      const paths = new Set([...(matches.installed ?? []).filter((x) => x.bundleId === app).map((x) => x.path), ...matches.windows.filter((x) => x.bundleId === app).map((x) => x.bundlePath)].filter(Boolean));
+      if (paths.size !== 1) throw new InvalidComputerUseParameters("Bundle ID did not match exactly one installation; use the exact .app path.");
+      app = [...paths][0]!;
+    }
+    try {
+      if (!isAbsolute(app) || !app.endsWith(".app")) throw new Error();
+      app = await realpath(app);
+      if (!app.endsWith(".app") || !(await stat(app)).isDirectory()) throw new Error();
+    } catch { throw new InvalidComputerUseParameters("Use an existing .app bundle path."); }
+    this.assertActive(lifetime);
+    this.views.clear();
+    this.publishCapture();
+    const opened = await (this.deps.openApp ?? openMacApp)(app, lifetime.signal, args.activate === true);
+    const result = renderOpen(opened.requestDispatched, Boolean(opened.error), app);
+    return { result, code: result.isError ? opened.requestDispatched ? "dispatch_unknown" : "not_sent:open_failed" : "ok" };
+  }
+
+  private rememberElements(known: KnownWindow, elements: HelperElement[]): void {
+    if (known.closed) return;
+    for (const { ref, role, actions, settable } of elements) {
+      if (isElementId(ref)) known.issued.set(ref, { role, actions, settable });
+    }
+  }
+
+  private issuedElement(known: KnownWindow, ref: string) {
+    const element = known.issued.get(ref);
+    if (!element) throw new FleetHelperError("stale_element");
+    return element;
+  }
+
+  private async observe(client: FleetHelperClient, args: StateArgs, actor: string, lifetime: AbortController, caller?: Caller) {
+    const { known, window } = await this.resolveWindow(client, args.window, lifetime);
+    if (args.expand) this.issuedElement(known, args.expand);
+    const { elements, image, omitted, window: observed } = await client.request("snapshot", {
+      ...address(window), find: args.find, expand: args.expand, limit: args.limit ?? 200, valueLimit: 80, image: args.image ?? false,
+    });
+    this.assertActive(lifetime);
+    if (identityOf(observed) !== known.identity) { this.closeWindow(known); throw unavailable("closed"); }
+    // 필터에 보이지 않는다고 요소가 사라진 것은 아니다. 현재 동일성은 헬퍼가 확인한다.
+    if (!args.expand) this.rememberElements(known, elements);
+    this.apps.add(window.app);
+    if (client.hello?.permissions.accessibility === false) this.publishCapture(undefined, "accessibility_permission_required");
+    else this.publishCapture(window.startedAtSource === "kernel" ? undefined : observed);
+    let view: string | undefined;
+    if (args.image && image && caller?.canDeliver?.() !== false && image.width > 0 && image.height > 0 && ["image/png", "image/jpeg"].includes(image.mime) && image.data) {
+      view = `v${++this.viewSequence}`;
+      const views = this.views.get(actor) ?? new Map();
+      views.set(args.window, { id: view, frame: { ...observed.frame }, width: image.width, height: image.height });
+      this.views.set(actor, views);
+    }
+    const result = renderState(args.window, observed, elements, omitted, args.expand, view);
+    return view && image ? { ...result, content: [...result.content, { type: "image", data: image.data, mimeType: image.mime }] } : result;
+  }
+
+  private async act(client: FleetHelperClient, args: ActionArgs, actor: string, lifetime: AbortController, onClipboard: (value: ClipboardRestoration) => void, didSend: () => void): Promise<DeviceOutput> {
+    client.assertInputAllowed();
+    const { window, known } = await this.resolveWindow(client, args.window, lifetime);
+    const element = args.target ? this.issuedElement(known, args.target) : undefined;
+    const end = dragPoint(args.to);
+    const point = args.x !== undefined && args.y !== undefined ? { x: args.x, y: args.y } : undefined;
+    const view = point || end ? this.views.get(actor)?.get(args.window) : undefined;
+    if (point || end) {
+      if (!view || args.view !== view.id || !sameFrame(view.frame, window.frame)) {
+        if (view && !sameFrame(view.frame, window.frame)) this.views.get(actor)?.delete(args.window);
+        throw new FleetHelperError("coordinates_need_image");
       }
-      const content = value.content.filter((block) => block.type === "text" || block.type === "image");
-      if (tool !== "list_apps") content.unshift(...result({
-        contentSource: "native_tool_output",
-        observationSource: tool === "get_app_state" || tool === "verify_state" ? "agent_requested_observation" : "agent_action_response",
-        selectionSource: tool === "select_text" && !value.isError && (!args.selection || args.selection === "text") ? "agent_requested_selection" : "not_established",
-        cursorPlacement: tool === "select_text" && (args.selection === "cursor_before" || args.selection === "cursor_after") ? args.selection : null,
-        trust: "untrusted_app_content",
-      }).content);
-      const error = value.isError ? this.deps.platform.classifyFailure(value) : null;
-      if (error) content.unshift(...result({ nativeError: error, effectVerified: false, hint: this.deps.platform.failureHint(error), ...(error === "computer_use_ambiguous_app" || error === "computer_use_app_not_found" ? { candidates: this.deps.platform.appCandidates(value, args.app, this.appTargets), recovery: "Choose an exact candidate app path; if none match, call computer_apps. No alternative app was tried." } : {}), ...(tool === "press_key" ? { keyAttempted: args.key } : {}) }).content);
-      this.error = error;
-      this.lastCall = { tool, outcome: error === "computer_use_app_closed" ? "app_closed" : value.isError ? "error" : "returned", elapsedMs: Date.now() - startedAt, error };
-      emit({ tool, phase: "end", elapsedMs: this.lastCall.elapsedMs, outcome: value.isError ? "error" : "returned", ...(error ? { error } : {}),
-        ...contentMetrics(value.content),
-      });
-      return { content, isError: value.isError === true, ...(value.dispatchBlocked ? { dispatchBlocked: true } : {}), ...(value.captureWindow !== undefined ? { captureWindow: value.captureWindow } : {}), ...(value.captureFailure ? { captureFailure: value.captureFailure } : {}) };
+      if ((point && !pointInView(point, view)) || (end && !pointInView(end, view))) throw new InvalidComputerUseParameters("Coordinates must be inside the image.");
+    }
+    if (args.to && !end) this.issuedElement(known, args.to);
+    if (args.action === "drag" && ["chromium", "electron", "catalyst"].includes(window.engine)) throw new FleetHelperError("drag_unsupported", false, { settableSlider: element?.role === "AXSlider" && element.settable === true });
+    const name = args.action === "ax_action" ? element?.actions?.find((raw) => offeredAction(raw) === args.name) : undefined;
+    if (args.action === "ax_action" && !name) throw new FleetHelperError("invalid_name");
+    this.assertActive(lifetime);
+    this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
+    const target = { ...address(window), ref: args.target };
+    let clipboard: ClipboardRestoration | undefined;
+    let lease: Awaited<ReturnType<typeof prepareMacPaste>> | undefined;
+    let params: object;
+    if (args.action === "paste") {
+      const focus = await client.request("focus", target);
+      if (!focus.editable) throw new FleetHelperError("no_editable_focus");
+      this.assertActive(lifetime);
+      try { lease = await (this.deps.preparePaste ?? prepareMacPaste)(args.text!, args.format ?? "text"); }
+      catch { throw new FleetHelperError("clipboard_prepare_failed"); }
+      params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true };
+    } else {
+      params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, to: end ?? (args.to ? { ref: args.to } : undefined) };
+    }
+    let reply;
+    try {
+      this.assertActive(lifetime);
+      reply = await client.request("act", params);
+      if (!reply.sent || !reply.via || !["ax", "event", "event+focus"].includes(reply.via)) throw new FleetHelperError("timeout", true);
+      didSend();
+    } finally {
+      if (lease) {
+        try { clipboard = await lease.finish(); } catch { clipboard = "failed"; }
+        onClipboard(clipboard);
+      }
+    }
+    this.assertActive(lifetime);
+    const changes: string[] = [];
+    for (const change of reply.windowsChanged ?? []) {
+      if (change.op === "+" && change.window.processStartedAt > 0 && change.window.onCurrentSpace && change.window.title.trim()) {
+        changes.push(`+ ${windowLine(this.registerWindow(change.window).id, change.window)}`);
+      }
+      if (change.op === "-") {
+        const closed = this.liveWindows.get(identityOf(change.window));
+        if (closed) {
+          this.closeWindow(closed);
+          changes.push(`- ${windowLine(closed.id, change.window)}`);
+          if (closed === known) this.publishCapture();
+        }
+      }
+    }
+    // 헬퍼가 보조 창 변경만 보고 관측을 끝냈다면, 변화 없음으로 단정할 수 없다.
+    const onlyWindowNoise = reply.observation === "changes" && reply.windowsChanged?.length && !changes.length && !reply.changes.length && !reply.changesMore;
+    const { result, code, exposed } = renderAction(args, onlyWindowNoise ? { ...reply, observation: "unobservable" } : reply, changes, clipboard);
+    this.rememberElements(known, exposed);
+    return { result, code };
+  }
+
+  private async verify(client: FleetHelperClient, args: VerifyArgs, lifetime: AbortController): Promise<DeviceOutput> {
+    const unknown = (reason: string, index = 0) => ({ result: renderVerify({ status: "unknown", reason, index, waitedMs: 0 }, args.expect), code: "unknown" });
+    try {
+      const { window, known } = await this.resolveWindow(client, args.window, lifetime);
+      const stale = args.expect.findIndex((condition) => condition.target && !known.issued.has(condition.target));
+      if (stale >= 0) return unknown("stale_element", stale);
+      this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
+      const expect = args.expect.map(({ target, role, ...rest }) => ({ ...rest, ref: target, role: role ? nativeRole(role) : undefined }));
+      const reply = await client.request("verify", { ...address(window), expect, timeoutMs: args.timeoutMs ?? 0 });
+      this.assertActive(lifetime);
+      return { result: renderVerify(reply, args.expect), code: reply.status };
     } catch (error) {
-      this.lastCall = { tool, outcome: "unknown", elapsedMs: Date.now() - startedAt, error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" };
-      emit({ tool, phase: "end", elapsedMs: Date.now() - startedAt, outcome: "unknown", error: error instanceof Error && /^computer_use_[a-z_]+$/.test(error.message) ? error.message : "computer_use_failed" });
+      if (error instanceof FleetHelperError && error.code === "window_unavailable") { this.publishCapture(); return unknown("window_unavailable"); }
       throw error;
     }
   }
-
-  /** 화면공유 대상이 정해지거나 걷힌 사유. 미리보기의 「창을 식별하지 못했습니다」가 어느 갈래에서 왔는지 로그로 가른다. */
-  private captureDiagnostic(captureReason: NonNullable<ComputerUseDiagnostic["captureReason"]>): void {
-    try { this.deps.diagnostic?.({ tool: this.activeTool ?? "unknown", scope: "capture", phase: "end", captureReason, captureUnavailable: this.captureUnavailable, ...(this.captureFailure ? { captureFailure: this.captureFailure } : {}) }); }
-    catch { /* 진단 실패가 조작을 반복시키면 안 된다. */ }
-  }
-
-  private assertActive(lifetime: AbortController): void {
-    if (lifetime.signal.aborted || !this.deps.enabled() || !this.deps.localControl()) throw new Error("computer_use_stopped");
-  }
-
-}
-
-export interface ComputerUseDiagnostic {
-  readonly allowActivation?: boolean;
-  readonly scope?: "native_output" | "model_output" | "capture";
-  /** scope "capture" 전용 — 공유 대상 판정의 사유 코드. */
-  readonly captureReason?: "window_identified" | "window_unidentified" | "identity_not_reported" | "owner_missing" | "action_without_observation" | "full_tree_unavailable" | "observation_error";
-  /** scope "capture" 전용 — 판정 직후의 공유 불가 표시(미리보기 문구의 근거). */
-  readonly captureUnavailable?: boolean;
-  /** scope "capture" 전용 — 공유 불가의 사람이 고칠 수 있는 원인. */
-  readonly captureFailure?: ComputerUseCaptureFailure;
-  readonly tool: string;
-  readonly phase: "start" | "end";
-  readonly elapsedMs?: number;
-  readonly outcome?: "returned" | "error" | "unknown";
-  readonly error?: string;
-  readonly textChars?: number;
-  readonly imageCount?: number;
-  readonly imageBytes?: number;
 }

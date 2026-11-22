@@ -23,6 +23,7 @@ export interface LoginShellPathProbe {
 export interface HydratedDesktopEnvironmentOptions {
   readonly platform?: NodeJS.Platform;
   readonly homeDirectory?: string;
+  readonly resourcesPath?: string;
   readonly loginShellPathProbe?: LoginShellPathProbe;
 }
 
@@ -35,6 +36,7 @@ const DESKTOP_CONTROL_ENV_KEYS = new Set([
   DESKTOP_PROTOCOL_VERSION_ENV,
   DESKTOP_RESOURCE_ROOT_ENV,
   "FLEET_CONSOLE_DESKTOP_VERSION",
+  "FLEET_COMPUTER_USE_HELPER",
   "FLEET_CONSOLE_DIR",
   "FLEET_CONSOLE_DATA_DIR",
 ]);
@@ -162,6 +164,12 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   const ownerId = fs.existsSync(ownerFile) ? fs.readFileSync(ownerFile, "utf8").trim() : crypto.randomUUID();
   if (!fs.existsSync(ownerFile)) fs.writeFileSync(ownerFile, `${ownerId}\n`, { mode: 0o600 });
   const sanitized = sanitizeEnvironment(env);
+  const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+  const helpers = isPackaged
+    ? resourcesPath && path.resolve(resourcesPath, "../Helpers")
+    : path.resolve(resourceRoot, "../fleet-desktop/dist/helpers");
+  const computerUseHelper = helpers && (options.platform ?? process.platform) === "darwin"
+    ? path.join(helpers, "Fleet Computer Use.app/Contents/MacOS/fleet-computer-use") : undefined;
   const releaseTagOverride = readConsoleReleaseTagOverride(env);
   const serviceBase = isPackaged
     ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform, options.homeDirectory ?? os.homedir())
@@ -174,6 +182,7 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
     dataDir: paths.dataDir,
     serviceEnv: {
       ...serviceBaseWithCa,
+      ...(computerUseHelper && fs.statSync(computerUseHelper, { throwIfNoEntry: false })?.isFile() ? { FLEET_COMPUTER_USE_HELPER: computerUseHelper } : {}),
       [DESKTOP_OWNER_ID_ENV]: ownerId,
       [DESKTOP_OWNER_KIND_ENV]: "desktop",
       [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),
@@ -198,7 +207,7 @@ export async function createHydratedDesktopEnvironment(userDataDir: string, appV
   resolveDesktopDataDirectoryOverride(env);
   resolveFleetDataDir(env);
   const loginShellPath = await readInteractiveLoginShellPath(isPackaged, env, options);
-  return createDesktopEnvironment(userDataDir, appVersion, resourceRoot, isPackaged, env, { platform, homeDirectory: options.homeDirectory, loginShellPath });
+  return createDesktopEnvironment(userDataDir, appVersion, resourceRoot, isPackaged, env, { ...options, platform, loginShellPath });
 }
 
 export async function readInteractiveLoginShellPath(isPackaged: boolean, env: NodeJS.ProcessEnv, options: HydratedDesktopEnvironmentOptions = {}): Promise<string | undefined> {

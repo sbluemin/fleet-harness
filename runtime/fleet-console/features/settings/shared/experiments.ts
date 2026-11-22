@@ -11,11 +11,6 @@
 
 import { AGENT_EFFORTS, isAgentEffort, type AgentEffort } from "../../ai-gateway/shared/models.js";
 
-export type ComputerUseBackendId = "sky-computer-use" | "cua-driver";
-export function isComputerUseBackendId(value: unknown): value is ComputerUseBackendId {
-  return value === "sky-computer-use" || value === "cua-driver";
-}
-
 /**
  * 모델·강도 좌표를 가진 보조 AI 표면. 사령관의 자율 운영은 Theater 별로 켜고 끈다.
  * `analyst`는 옛 클라이언트·플러그인의 ID 호환만 남기며 활성 목록에는 싣지 않는다.
@@ -39,7 +34,6 @@ export interface ExperimentAideSelection {
 export interface ConsoleExperimentSettings {
   /** 로컬 Computer Use. 옵트인이 앱 읽기·조작 권한을 승인한다. */
   readonly computerUse: boolean;
-  readonly computerUseBackend: ComputerUseBackendId;
   /** 옛 클라이언트·플러그인 응답 호환 필드. 기능은 퇴역했으며 저장값·요청값과 무관하게 기본 좌표다. */
   readonly analystModel: string;
   readonly analystEffort: ExperimentEffort;
@@ -62,7 +56,6 @@ const COMMODORE_DEFAULT_SELECTION: ExperimentAideSelection = Object.freeze({ mod
 
 export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   computerUse: false,
-  computerUseBackend: "sky-computer-use",
   analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
   analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
   commodore: true,
@@ -106,7 +99,6 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
   const record = value as Record<string, unknown>;
   return {
     computerUse: record.computerUse === true,
-    computerUseBackend: isComputerUseBackendId(record.computerUseBackend) ? record.computerUseBackend : "sky-computer-use",
     analystModel: DEFAULT_EXPERIMENT_AIDE_SELECTION.model,
     analystEffort: DEFAULT_EXPERIMENT_AIDE_SELECTION.effort,
     commodore: true,

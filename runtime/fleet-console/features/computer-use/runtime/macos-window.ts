@@ -1,37 +1,5 @@
 import { execFile } from "node:child_process";
-import { ComputerUseInputError, type ComputerUseWindowIdentity, type ComputerUseWindowState, type ComputerUseOpenResult } from "./platform.js";
-
-// Read only: no AX writes, app activation, window raising, or process launch.
-const INTERACTION_READINESS = `
-ObjC.import('AppKit'); ObjC.import('ApplicationServices');
-function run(args) {
-  var target=args[0], apps=$.NSWorkspace.sharedWorkspace.runningApplications, matches=[];
-  for (var i=0;i<apps.count;i++) {
-    var item=apps.objectAtIndex(i);
-    if (ObjC.unwrap(item.bundleIdentifier)===target || ObjC.unwrap(item.bundleURL.path)===target.replace(/\\/$/,'') || ObjC.unwrap(item.localizedName)===target) matches.push(item);
-  }
-  if (!matches.length) return 'not_running';
-  if (matches.length!==1) return 'ambiguous';
-  var running=matches[0];
-  if (running.hidden) return 'hidden';
-  if (Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier)!==Number(running.processIdentifier)) return 'not_frontmost';
-  var app=$.AXUIElementCreateApplication(Number(running.processIdentifier)), focused=Ref();
-  if ($.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused)!==0) return 'window_unavailable';
-  var minimized=Ref();
-  if ($.AXUIElementCopyAttributeValue(ObjC.castRefToObject(focused[0]),$('AXMinimized'),minimized)!==0) return 'window_unavailable';
-  return ObjC.unwrap(ObjC.castRefToObject(minimized[0])) ? 'minimized' : 'ready';
-}`;
-
-export type MacInteractionReadiness = "ready" | "not_running" | "ambiguous" | "hidden" | "not_frontmost" | "window_unavailable" | "minimized" | "unavailable";
-
-export function readMacInteractionReadiness(app: string): Promise<MacInteractionReadiness> {
-  return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", INTERACTION_READINESS, app], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
-      const state = stdout.trim();
-      resolve(!error && ["ready", "not_running", "ambiguous", "hidden", "not_frontmost", "window_unavailable", "minimized"].includes(state) ? state as MacInteractionReadiness : "unavailable");
-    });
-  });
-}
+import type { ComputerUseWindowIdentity, ComputerUseWindowState, ComputerUseOpenResult } from "./platform.js";
 
 const WINDOW_STATE = `
 ObjC.import('AppKit'); ObjC.import('ApplicationServices');
@@ -102,86 +70,45 @@ export async function openMacApp(app: string, signal: AbortSignal, activate: boo
   return { ...request, windowReady: false, windowState, error: "computer_use_stopped" };
 }
 
-export async function assertMacInteractionReadiness(app: string, allowActivation: boolean): Promise<void> {
-  if (allowActivation) {
-    const [state] = await inspectMacWindows([app]);
-    if (state?.hidden === true) throw new ComputerUseInputError("computer_use_app_hidden", "The app is hidden. Native AX reads can succeed while the Objective live preview is blank. No capture or input was sent. If showing the app is authorized, use computer_open on the same exact installation with activate:false, verify hidden:false, then request computer_state. Background reopen requests do not guarantee focus preservation. Do not replay an earlier input action.");
-    if (state?.status === "no_window") throw new ComputerUseInputError("computer_use_no_action_window", "The app is running but AXWindows is empty. No capture or input was sent. Closing a window differs from minimizing it. Use computer_open with the exact app path only when opening the app is authorized, then request computer_state. Do not replay a previous action.");
-    return;
-  }
-  const readiness = await readMacInteractionReadiness(app);
-  if (readiness !== "ready") throw new ComputerUseInputError("computer_use_activation_blocked", `Native call not sent (${readiness}). Ask the user to show/focus the intended window, or use allowActivation:true only when the task authorizes foreground use. This is a best-effort preflight, not background execution support.`);
-}
-
-// 제목·창 순서 대신 해당 프로세스의 AX 선택 창을 CGWindowID로 연결한다.
-// 비공개 AX 브리지가 없는 OS에서는 추측하지 않고 식별 불가로 반환한다.
 const WINDOW_IDENTITY = `
-ObjC.import('AppKit'); ObjC.import('ApplicationServices'); ObjC.import('CoreGraphics');
-ObjC.bindFunction('_AXUIElementGetWindow', ['int', ['void *', 'unsigned int *']]);
+ObjC.import('AppKit'); ObjC.import('CoreGraphics');
 function run(args) {
-  if (args[0]==='verify') {
-    var pid=Number(args[1]), id=Number(args[2]), started=Number(args[3]);
-    var process=$.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
-    if (!process || process.hidden || Number(process.launchDate.timeIntervalSince1970)!==started) return 'false';
-    var windows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
-    return JSON.stringify(windows.some(w=>w.kCGWindowOwnerPID===pid&&w.kCGWindowNumber===id));
-  }
-  var target=args[0], apps=$.NSWorkspace.sharedWorkspace.runningApplications;
-  var matches=[];
-  for (var i=0;i<apps.count;i++) {
-    var item=apps.objectAtIndex(i);
-    if (ObjC.unwrap(item.bundleIdentifier)===target || ObjC.unwrap(item.bundleURL.path)===target.replace(/\\/$/,'') || ObjC.unwrap(item.localizedName)===target) matches.push(item);
-  }
-  if (matches.length!==1) return JSON.stringify({reason:matches.length?'app_ambiguous':'app_unmatched',matches:matches.length});
-  var running=matches[0], pid=Number(running.processIdentifier);
-  var app=$.AXUIElementCreateApplication(pid), focused=Ref();
-  var axError=$.AXUIElementCopyAttributeValue(app,$('AXFocusedWindow'),focused);
-  if (axError!==0) return JSON.stringify({reason:axError===-25211?'accessibility_permission_required':'ax_focused_window_error',axError:axError,pid:pid});
-  var id=Ref();
-  var idError=$._AXUIElementGetWindow(focused[0],id);
-  if (idError!==0) return JSON.stringify({reason:'ax_window_id_unavailable',axError:idError,pid:pid});
-  var rows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
-  var row=rows.find(w=>w.kCGWindowNumber===id[0]&&w.kCGWindowOwnerPID===pid);
-  if (!row) return JSON.stringify({reason:'cg_window_missing',pid:pid,windowId:Number(id[0])});
-  return JSON.stringify({pid:pid,windowId:id[0],processStartedAt:Number(running.launchDate.timeIntervalSince1970),title:row.kCGWindowName||''});
+  var pid=Number(args[0]), id=Number(args[1]), started=Number(args[2]);
+  var process=$.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+  if (!process || process.hidden || Number(process.launchDate.timeIntervalSince1970)!==started) return 'false';
+  var windows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
+  return JSON.stringify(windows.some(w=>w.kCGWindowOwnerPID===pid&&w.kCGWindowNumber===id));
 }`;
 
 export function verifyMacWindowIdentity(target: ComputerUseWindowIdentity): Promise<boolean> {
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, "verify", String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
   });
 }
 
-/**
- * 창 식별 실패의 사유 코드. 진단 로그에만 실리고 판정은 바꾸지 않는다 — 식별자가 없으면 여전히 공유하지 않는다.
- * 경로·창 제목·앱 이름은 싣지 않고, 비민감 수치(pid·windowId·AX 오류 번호·일치 개수)만 남긴다.
- */
-export interface MacWindowIdentityRead {
-  readonly identity: ComputerUseWindowIdentity | null;
-  readonly reason: "identified" | "app_unmatched" | "app_ambiguous" | "accessibility_permission_required" | "ax_focused_window_error" | "ax_window_id_unavailable" | "cg_window_missing" | "identity_invalid" | "identity_unparsable" | "window_lookup_failed";
-  readonly detail?: { readonly matches?: number; readonly axError?: number; readonly pid?: number; readonly windowId?: number };
+const READ_PERMISSIONS = `
+ObjC.import('ApplicationServices'); ObjC.import('CoreGraphics');
+ObjC.bindFunction('CGPreflightScreenCaptureAccess', ['bool', []]);
+JSON.stringify({ accessibility: Boolean($.AXIsProcessTrusted()), screenRecording: Boolean($.CGPreflightScreenCaptureAccess()) });`;
+
+export async function readMacPermissions(): Promise<{ accessibility: boolean; screenRecording: boolean } | null> {
+  return new Promise((resolve) => {
+    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", READ_PERMISSIONS], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
+      if (!error) {
+        try {
+          const value = JSON.parse(stdout);
+          if (typeof value.accessibility === "boolean" && typeof value.screenRecording === "boolean") { resolve(value); return; }
+        } catch { /* An unavailable probe is not a denial. */ }
+      }
+      resolve(null);
+    });
+  });
 }
 
-const IDENTITY_FAILURES = new Set(["app_unmatched", "app_ambiguous", "accessibility_permission_required", "ax_focused_window_error", "ax_window_id_unavailable", "cg_window_missing"]);
-const finiteOrUndefined = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
-export function readMacWindowIdentity(app: string): Promise<MacWindowIdentityRead> {
+export async function openMacPrivacySettings(missing: readonly ("accessibility" | "screenRecording")[]): Promise<boolean> {
+  if (process.platform !== "darwin" || !missing.length) return false;
+  const pane = missing.length > 1 ? "Privacy" : missing[0] === "accessibility" ? "Privacy_Accessibility" : "Privacy_ScreenCapture";
   return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", WINDOW_IDENTITY, app], { timeout: 3000, maxBuffer: 64 * 1024, windowsHide: true }, (error, stdout) => {
-      // 시간 초과·JXA 예외. 오류 문구에는 스크립트 원문이 실리므로 사유 코드만 남긴다.
-      if (error) { resolve({ identity: null, reason: "window_lookup_failed" }); return; }
-      let value: unknown;
-      try { value = JSON.parse(stdout); } catch { resolve({ identity: null, reason: "identity_unparsable" }); return; }
-      const record = value !== null && typeof value === "object" ? value as Record<string, unknown> : null;
-      if (record && typeof record.reason === "string" && IDENTITY_FAILURES.has(record.reason)) {
-        const detail = { matches: finiteOrUndefined(record.matches), axError: finiteOrUndefined(record.axError), pid: finiteOrUndefined(record.pid), windowId: finiteOrUndefined(record.windowId) };
-        resolve({ identity: null, reason: record.reason as MacWindowIdentityRead["reason"], detail: Object.fromEntries(Object.entries(detail).filter(([, v]) => v !== undefined)) });
-        return;
-      }
-      const identity = record as ComputerUseWindowIdentity | null;
-      resolve(identity && Number.isSafeInteger(identity.pid) && identity.pid > 0 && Number.isSafeInteger(identity.windowId) && identity.windowId > 0
-        && Number.isFinite(identity.processStartedAt) && identity.processStartedAt > 0 && typeof identity.title === "string"
-        ? { identity, reason: "identified" } : { identity: null, reason: "identity_invalid" });
-    });
+    execFile("/usr/bin/open", [`x-apple.systempreferences:com.apple.preference.security?${pane}`], { timeout: 3000, windowsHide: true }, (error) => resolve(!error));
   });
 }

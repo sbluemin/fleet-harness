@@ -157,14 +157,15 @@ describe("global settings routes", () => {
     const local = createRouterHarness({ body: { experiments: { computerUse: true } } });
     await local.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(local.currentGeneral()?.experiments?.computerUse).toBe(true);
-    expect(local.currentGeneral()?.experiments?.computerUseBackend).toBe("sky-computer-use");
-    const backend = createRouterHarness({ local: false, body: { experiments: { computerUseBackend: "cua-driver" } } });
-    await backend.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(backend.writes[0]?.status).toBe(403);
-    expect(backend.updateCalls).toBe(0);
-    const invalid = createRouterHarness({ body: { experiments: { computerUseBackend: "unknown" } } });
-    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(invalid.writes[0]?.status).toBe(400);
+    const retiredSelector = "computerUse" + "Backend";
+    const stored = sanitizeConsoleSettingsData({ version: 1, general: { experiments: { computerUse: true, [retiredSelector]: "retired" } } });
+    expect(stored.general?.experiments?.computerUse).toBe(true);
+    expect(stored.general?.experiments).not.toHaveProperty(retiredSelector);
+    const legacyWrite = createRouterHarness({ local: false, installation: "unsupported", general: stored.general, body: { experiments: { [retiredSelector]: "retired" } } });
+    await legacyWrite.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(legacyWrite.writes[0]?.status).toBe(200);
+    expect(legacyWrite.currentGeneral()?.experiments?.computerUse).toBe(true);
+    expect(legacyWrite.currentGeneral()?.experiments).not.toHaveProperty(retiredSelector);
     // 보조 AI 강도는 Agent SDK 사다리 안의 값만 받고, 하네스 센티넬 ultra는 거절한다.
     const ultra = createRouterHarness({ body: { experiments: { commodoreEffort: "ultra" } } });
     await ultra.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });

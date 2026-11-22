@@ -44,7 +44,7 @@ export async function createMacDevWrapper(input) {
 }
 
 export function createInfoPlist(sourceInfo, electronAppPath) {
-  return appendPlistString(appendPlistString(
+  return appendPlistString(
     replacePlistString(
       replacePlistString(
         replacePlistString(
@@ -60,11 +60,11 @@ export function createInfoPlist(sourceInfo, electronAppPath) {
     ),
     wrapperSourceKey,
     electronAppPath,
-  ), "NSAppleEventsUsageDescription", "Fleet Console Dev uses the Computer Use service to read and control apps when you allow an Objective.");
+  );
 }
 
 export function createMacDevLaunchArguments(wrapperPath, appPath, args = [], env = process.env) {
-  const overrides = ["FLEET_CONSOLE_DATA_DIR", "FLEET_DESKTOP_DATA_DIR", "FLEET_DATA_DIR", "FLEET_CONSOLE_NODE_PATH", "FLEET_DESKTOP_DEV_UPDATE_FEED", "TMPDIR"]
+  const overrides = ["FLEET_CONSOLE_DATA_DIR", "FLEET_DESKTOP_DATA_DIR", "FLEET_DATA_DIR", "FLEET_CONSOLE_NODE_PATH", "FLEET_DESKTOP_DEV_UPDATE_FEED", "FLEET_COMPUTER_USE_FAULT", "TMPDIR"]
     .flatMap((key) => env[key] ? ["--env", `${key}=${env[key]}`] : []);
   return ["-W", "-n", ...overrides, wrapperPath, "--args", appPath, ...args];
 }

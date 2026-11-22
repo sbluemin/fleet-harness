@@ -14,7 +14,6 @@ packages:
   - "runtime/fleet-console/foundation/link"
   - "runtime/fleet-console/foundation/lifecycle"
   - "runtime/fleet-console/foundation/approval"
-  - "runtime/fleet-console/features/computer-use/runtime"
   - "runtime/fleet-console/foundation/font-picker"
 allowBuilds:
   esbuild: true
