@@ -222,6 +222,13 @@ struct EventFactory {
     return EventSequence(beforeFocusPrimer: primer, events: actual, needsFocus: focus)
   }
 
+  /// 대상 창만 AppKit key로 만드는 프라이머. 대상 창을 소유한 PSN에 focus 레코드를 보낸 뒤, 화면·창 밖 좌표 (-1,-1)의 왼쪽 클릭
+  /// 한 번을 창 번호·pid를 찍어 그 프로세스에만 보낸다(postToPid). 좌표가 콘텐츠 밖이라 페이지에는 아무 이벤트도 닿지 않는다.
+  /// 포인터를 옮기지 않고, 앱을 활성화하지 않으며, HID·세션 탭에는 보내지 않는다(e7e293ee m3: 사람 상태 78행 불변).
+  func windowPrimer(_ win: WindowInfo) throws -> EventSequence {
+    EventSequence(beforeFocusPrimer: try focusPrimer(win), events: [], needsFocus: true)
+  }
+
   func typing(_ text: String, focus: Bool) throws -> EventSequence {
     let count = text.count
     let delay = min(8, 350 / max(1, count))
