@@ -108,8 +108,14 @@ import Dispatch
     var ready = false
     repeat {
       ready = appWindowReady(request.app, activate: request.activate)
-      if ready || !delivery.completed || DispatchTime.now() >= deadline { break }
-      Thread.sleep(forTimeInterval: 0.2)
+      let now = DispatchTime.now()
+      if ready || !delivery.completed || now >= deadline { break }
+      // NSWorkspace and NSRunningApplication refresh only after a turn in a common mode.
+      let interval = min(0.2, Double(deadline.uptimeNanoseconds - now.uptimeNanoseconds) / 1_000_000_000)
+      let wake = Timer(timeInterval: interval, repeats: false) { _ in }
+      RunLoop.main.add(wake, forMode: .default)
+      _ = CFRunLoopRunInMode(.defaultMode, interval, false)
+      wake.invalidate()
     } while DispatchTime.now() < deadline
     var result: Object = ["requestDispatched": delivery.dispatched, "windowReady": ready]
     if !delivery.completed { result["error"] = "computer_use_open_failed" }
