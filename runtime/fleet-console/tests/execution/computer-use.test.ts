@@ -11,7 +11,7 @@ import type { DeviceTool } from "../../features/computer-use/host/computer-use-i
 import { computerUseFeedbackTool, computerUseTools } from "../../features/computer-use/host/computer-use-tools.js";
 import { FleetHelperClient, createFleetComputerUsePlatform, type HelperWindow } from "../../features/computer-use/runtime/fleet-helper.js";
 import { createComputerUseRouter } from "../../features/computer-use/host/routes.js";
-import type { MacPermissions } from "../../features/computer-use/runtime/macos-window.js";
+import type { ComputerUsePermissions } from "../../features/computer-use/runtime/platform.js";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
 import { bindComputerUseApprovals } from "../../features/computer-use/host/approval.js";
 import { createApprovalCore } from "@fleet-console/approval";
@@ -85,16 +85,23 @@ function setup(installed = true) {
   const finish = vi.fn(async () => "preserved_newer_contents" as const);
   const preparePaste = vi.fn(async () => ({ finish }));
   const diagnostic = vi.fn();
-  const readPermissions = vi.fn(async (): Promise<MacPermissions | null> => ({ accessibility: true, screenRecording: true }));
+  const openPrivacySettings = vi.fn(async (_permissions: readonly string[]) => true);
+  const readPermissions = vi.fn(async (): Promise<ComputerUsePermissions | null> => ({ accessibility: true, screenRecording: true }));
   const service = new ComputerUseService({
-    enabled: () => enabled, onCaptureTarget, preparePaste, diagnostic, readPermissions,
-    platform: { supported: () => true, inspectInstallation: async () => installed, createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use") },
+    enabled: () => enabled, onCaptureTarget, diagnostic,
+    platform: {
+      supported: () => true, inspectInstallation: async () => installed,
+      createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use"),
+      preparePaste, readPermissions, openPrivacySettings,
+      verifyWindow: async () => "matches", resolveApp: async (target) => ({ app: target }),
+      openApp: async () => ({ requestDispatched: true, windowReady: true }),
+    },
   });
   services.push(service);
   const invoke = (tool: DeviceTool, args: unknown, owner = "owner", actor?: string) => service.execute(tool, args, owner, undefined, { actor });
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
-  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
+  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions, openPrivacySettings,
     enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
@@ -138,7 +145,7 @@ describe("Fleet Computer Use", () => {
 
   it.each(["win32", "linux"] as const)("keeps a saved opt-in but exposes no Computer Use MCP on %s", async (platform) => {
     const spawnProcess = vi.fn(() => { throw new Error("must not spawn"); });
-    const service = new ComputerUseService({ enabled: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, "/not/used", platform) });
+    const service = new ComputerUseService({ enabled: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, { command: "/not/used", supported: false }) });
     services.push(service);
     const host = createComputerUseMcpHost({ service, experimentEnabled: () => true });
     try {
@@ -149,6 +156,17 @@ describe("Fleet Computer Use", () => {
       expect(text(await service.execute("computer_session", { op: "status" }, "objective"))).toContain("computer_use_platform_unsupported");
       expect(spawnProcess).not.toHaveBeenCalled();
     } finally { await host.dispose(); }
+  });
+
+  it("treats an executable from an older Desktop as the existing missing-helper state", async () => {
+    const spawnProcess = vi.fn(() => { throw new Error("must not spawn"); });
+    for (const platformVersion of [undefined, "2"]) {
+      const service = new ComputerUseService({ enabled: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, { command: process.execPath, supported: true, platformVersion }) });
+      expect(await service.readStatus()).toMatchObject({ supported: true, enabled: true, helperAvailable: false, missingPermissions: null });
+      expect(text(await service.execute("computer_apps", {}, "objective"))).toContain("helper_missing");
+      await service.stop();
+    }
+    expect(spawnProcess).not.toHaveBeenCalled();
   });
 
   it("reports helper availability and the permission holder without starting the helper", async () => {
@@ -172,11 +190,10 @@ describe("Fleet Computer Use", () => {
     const f = setup();
     f.grant({ accessibility: true, screenRecording: false });
     f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
-    const openPrivacySettings = vi.fn(async () => true);
     let exact = false;
     const request = async (service: ComputerUseService) => {
       const writeJson = vi.fn();
-      const router = createComputerUseRouter({ computerUse: service, writeJson, openPrivacySettings, isLoopbackListener: () => true, isExactConsoleOrigin: () => exact });
+      const router = createComputerUseRouter({ computerUse: service, writeJson, isLoopbackListener: () => true, isExactConsoleOrigin: () => exact });
       await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
       return writeJson.mock.calls[0]?.slice(1);
     };
@@ -187,9 +204,9 @@ describe("Fleet Computer Use", () => {
     // 화면 기록도 헬퍼가 묻는다. 떠 있지 않던 헬퍼는 요청만 하고 내린다.
     expect(f.calls("requestPermissions")).toEqual([{ permissions: ["screenRecording"] }]);
     expect(f.calls("shutdown")).toHaveLength(1);
-    expect(openPrivacySettings).not.toHaveBeenCalled();
+    expect(f.openPrivacySettings).not.toHaveBeenCalled();
     expect(await request(f.service)).toEqual([200, { opened: true }]);
-    expect(openPrivacySettings).toHaveBeenCalledExactlyOnceWith(["screenRecording"]);
+    expect(f.openPrivacySettings).toHaveBeenCalledExactlyOnceWith(["screenRecording"]);
     f.grant({ accessibility: false, screenRecording: true });
     f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: true });
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5 * 60_000);
@@ -236,10 +253,9 @@ describe("Fleet Computer Use", () => {
     const f = setup();
     f.grant({ accessibility: false, screenRecording: false });
     f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
-    const openPrivacySettings = vi.fn(async () => true);
     const press = async () => {
       const writeJson = vi.fn();
-      const router = createComputerUseRouter({ computerUse: f.service, writeJson, openPrivacySettings, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
+      const router = createComputerUseRouter({ computerUse: f.service, writeJson, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
       await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
       return writeJson.mock.calls[0]?.slice(1);
     };
@@ -247,7 +263,7 @@ describe("Fleet Computer Use", () => {
     f.grant({ accessibility: true, screenRecording: false });
     f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
     expect(await press()).toEqual([200, { requested: ["screenRecording"] }]);
-    expect(openPrivacySettings).not.toHaveBeenCalled();
+    expect(f.openPrivacySettings).not.toHaveBeenCalled();
     expect(f.calls("shutdown")).toHaveLength(2);
   });
 

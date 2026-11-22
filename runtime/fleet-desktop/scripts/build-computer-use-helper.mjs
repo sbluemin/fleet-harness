@@ -27,6 +27,9 @@ writeFileSync(join(contents, "Info.plist"), `<?xml version="1.0" encoding="UTF-8
   <key>LSUIElement</key><true/>
 </dict></plist>
 `);
+// Seal the compiled platform ABI marker inside the helper bundle before signing.
+mkdirSync(join(contents, "Resources"), { recursive: true });
+writeFileSync(join(contents, "Resources", "computer-use-platform-version"), "1\n");
 // 개발 실행은 이 헬퍼를 그대로 쓴다. Fleet Console Dev와 같은 ID로 서명해 릴리스(앱과 같은 팀으로 헬퍼 서명)와 맞춘다.
 // 설치본은 electron-builder가 Developer ID로 다시 서명하므로 여기의 ID와 무관하다.
 await codesignWithFallback("Fleet Computer Use helper", await resolveDevCodesignIdentity(), async (identity) => {

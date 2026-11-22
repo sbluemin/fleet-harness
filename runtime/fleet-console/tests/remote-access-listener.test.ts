@@ -112,6 +112,10 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       supported: () => true,
       inspectInstallation: async () => true,
       createClient: () => new fleetHelper.FleetHelperClient({ childEnv: () => ({}), spawnProcess: spawnHelper }, process.execPath),
+      readPermissions: async () => ({ accessibility: true, screenRecording: true }),
+      verifyWindow: async () => "unknown", resolveApp: async () => ({ error: "exact_target_required" }),
+      openApp: async () => ({ requestDispatched: false, windowReady: false }), openPrivacySettings: async () => false,
+      preparePaste: async () => { throw new Error("unexpected clipboard request"); },
     });
     const fixture = await startFixture({ remote: true });
     const origin = new URL(fixture.loopbackEndpoint).origin;

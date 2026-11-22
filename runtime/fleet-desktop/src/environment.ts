@@ -27,6 +27,10 @@ export interface HydratedDesktopEnvironmentOptions {
   readonly loginShellPathProbe?: LoginShellPathProbe;
 }
 
+const COMPUTER_USE_PLATFORM_VERSION_ENV = "FLEET_COMPUTER_USE_PLATFORM_VERSION";
+const COMPUTER_USE_PLATFORM_VERSION = "1";
+const COMPUTER_USE_PLATFORM_VERSION_FILE = "computer-use-platform-version";
+
 const DESKTOP_CONTROL_ENV_KEYS = new Set([
   CONSOLE_RELEASE_TAG_OVERRIDE_ENV,
   DESKTOP_CONSOLE_SOURCE_ENV,
@@ -37,6 +41,7 @@ const DESKTOP_CONTROL_ENV_KEYS = new Set([
   DESKTOP_RESOURCE_ROOT_ENV,
   "FLEET_CONSOLE_DESKTOP_VERSION",
   "FLEET_COMPUTER_USE_HELPER",
+  COMPUTER_USE_PLATFORM_VERSION_ENV,
   "FLEET_CONSOLE_DIR",
   "FLEET_CONSOLE_DATA_DIR",
 ]);
@@ -150,6 +155,24 @@ function moveBrowserProfileRoot(legacyRoot: string, targetRoot: string, renameDi
   fs.rmSync(legacyRoot, { recursive: true, force: true });
 }
 
+function computerUseHelperEnvironment(contents: string): NodeJS.ProcessEnv {
+  const executable = path.join(contents, "MacOS", "fleet-computer-use");
+  if (!fs.statSync(executable, { throwIfNoEntry: false })?.isFile()) return {};
+  // The helper path remains available to old Consoles. Only the build-owned
+  // marker in this helper bundle can advertise the new platform ABI.
+  const env: NodeJS.ProcessEnv = { FLEET_COMPUTER_USE_HELPER: executable };
+  try {
+    fs.accessSync(executable, fs.constants.X_OK);
+    const marker = path.join(contents, "Resources", COMPUTER_USE_PLATFORM_VERSION_FILE);
+    const version = `${COMPUTER_USE_PLATFORM_VERSION}\n`;
+    const stat = fs.lstatSync(marker);
+    if (stat.isFile() && stat.size === version.length && fs.readFileSync(marker, "utf8") === version) {
+      env[COMPUTER_USE_PLATFORM_VERSION_ENV] = COMPUTER_USE_PLATFORM_VERSION;
+    }
+  } catch { /* No usable marker: do not advertise this capability. */ }
+  return env;
+}
+
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {
   // 개발 실행도 명시 슬롯을 존중한다 — 단 **새 이름만**. 옛 이름은 개발 모드에서 계속 무시하는
   // 것이 기존 불변식이다: 개발자 셸에 떠돌던 값 하나가 dev Desktop을 엉뚱한 슬롯으로 끌고 가면
@@ -168,8 +191,8 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   const helpers = isPackaged
     ? resourcesPath && path.resolve(resourcesPath, "../Helpers")
     : path.resolve(resourceRoot, "../fleet-desktop/dist/helpers");
-  const computerUseHelper = helpers && (options.platform ?? process.platform) === "darwin"
-    ? path.join(helpers, "Fleet Computer Use.app/Contents/MacOS/fleet-computer-use") : undefined;
+  const computerUseEnvironment = helpers && (options.platform ?? process.platform) === "darwin"
+    ? computerUseHelperEnvironment(path.join(helpers, "Fleet Computer Use.app", "Contents")) : {};
   const releaseTagOverride = readConsoleReleaseTagOverride(env);
   const serviceBase = isPackaged
     ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform, options.homeDirectory ?? os.homedir())
@@ -182,7 +205,7 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
     dataDir: paths.dataDir,
     serviceEnv: {
       ...serviceBaseWithCa,
-      ...(computerUseHelper && fs.statSync(computerUseHelper, { throwIfNoEntry: false })?.isFile() ? { FLEET_COMPUTER_USE_HELPER: computerUseHelper } : {}),
+      ...computerUseEnvironment,
       [DESKTOP_OWNER_ID_ENV]: ownerId,
       [DESKTOP_OWNER_KIND_ENV]: "desktop",
       [DESKTOP_PROTOCOL_VERSION_ENV]: String(DESKTOP_PROTOCOL_VERSION),

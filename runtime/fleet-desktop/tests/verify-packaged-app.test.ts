@@ -36,6 +36,10 @@ describe("release package verification", () => {
       await chmod(helper, 0o644);
       await expect(verifier.assertMacComputerUseHelper(appBundle)).rejects.toThrow("Computer Use helper is missing or not executable");
       await chmod(helper, 0o755);
+      await expect(verifier.assertMacComputerUseHelper(appBundle)).rejects.toThrow("platform ABI marker is missing or incompatible");
+      const resources = path.resolve(macos, "../Resources");
+      await mkdir(resources);
+      await writeFile(path.join(resources, "computer-use-platform-version"), "1\n");
       await expect(verifier.assertMacComputerUseHelper(appBundle)).resolves.toBeUndefined();
       expect(verifier.macSigningTeam("Authority=Developer ID Application: Fleet (ABCDE12345)\nTeamIdentifier=ABCDE12345\n")).toBe("ABCDE12345");
       expect(verifier.macSigningTeam("Signature=adhoc\nTeamIdentifier=not set\n")).toBeNull();

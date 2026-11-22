@@ -1,7 +1,6 @@
 import type { HelperAction, HelperElement, HelperHello, HelperVerify, HelperWindow, HelperWindows, SnapshotWindow } from "../runtime/fleet-helper.js";
 import { FleetHelperError } from "../runtime/fleet-helper.js";
-import type { ClipboardRestoration } from "../runtime/macos-paste.js";
-import { permissionHolderName, type ComputerUseResult } from "../runtime/platform.js";
+import { permissionHolderName, type ClipboardRestoration, type ComputerUseResult } from "../runtime/platform.js";
 import { InvalidComputerUseParameters, isElementId, type ActionArgs, type Expectation } from "./computer-use-input.js";
 
 export function quoteApp(value: string): string {

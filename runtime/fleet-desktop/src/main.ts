@@ -1240,7 +1240,8 @@ async function boot(): Promise<void> {
           confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
             && (await withOwnModal(createdWindow.base, () => dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin)))).response === 1,
         });
-        installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
+        installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message),
+          environment.serviceEnv.FLEET_COMPUTER_USE_PLATFORM_VERSION === "1" ? environment.serviceEnv.FLEET_COMPUTER_USE_HELPER : undefined);
         consoleSection.attach(createdWindow.consoleContents);
         bridge.attach(createdWindow.consoleContents);
         // 붙잡아 둔 옛 화면 아래의 렌더러가 죽었다 — 판만 남기지 않는다.

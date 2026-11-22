@@ -2,20 +2,29 @@ import { execFile } from "node:child_process";
 import { desktopCapturer, shell, systemPreferences, type WebContents } from "electron";
 import { DESKTOP_COMPUTER_CAPTURE_PATH, DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, isDesktopComputerCaptureTarget, type DesktopComputerCaptureTarget, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot } from "@fleet-console/protocol/desktop";
 
-const VERIFY_WINDOW = `
-ObjC.import('AppKit'); ObjC.import('CoreGraphics');
-function run(args) {
-  var pid=Number(args[0]), id=Number(args[1]), started=Number(args[2]);
-  var app=$.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
-  if (!app || app.hidden || Number(app.launchDate.timeIntervalSince1970)!==started) return 'false';
-  var rows=ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(0,0)));
-  return JSON.stringify(rows.some(w=>w.kCGWindowOwnerPID===pid && w.kCGWindowNumber===id));
-}`;
+type WindowVerification = "matches" | "mismatch" | "unknown";
 
-async function verifyWindow(target: DesktopComputerCaptureTarget): Promise<boolean> {
-  return new Promise((resolve) => {
-    execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", VERIFY_WINDOW, String(target.pid), String(target.windowId), String(target.processStartedAt)], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => resolve(!error && stdout.trim() === "true"));
-  });
+function verifyWindow(executable: string | undefined, target: DesktopComputerCaptureTarget): Promise<WindowVerification> {
+  if (!executable) return Promise.resolve("unknown");
+  return new Promise<WindowVerification>((resolve) => {
+    const { pid, windowId, processStartedAt } = target;
+    const body = Buffer.from(JSON.stringify({ version: 1, method: "verifyWindowIdentity", params: { pid, windowId, processStartedAt } }));
+    const child = execFile(executable, ["--platform"], { timeout: 3000, killSignal: "SIGKILL", maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
+      if (!error) {
+        try {
+          const result = JSON.parse(stdout);
+          const identity = result?.result?.identity;
+          if (result?.version === 1 && result.ok === true && (identity === "matches" || identity === "mismatch")) {
+            resolve(identity);
+            return;
+          }
+        } catch { /* A malformed reply is not proof of a mismatch. */ }
+      }
+      resolve("unknown");
+    });
+    child.stdin?.on("error", () => resolve("unknown"));
+    child.stdin?.end(Buffer.concat([Buffer.from(String(body.length).padStart(8, "0")), body]));
+  }).catch(() => "unknown");
 }
 
 /** 화면 기록 권한 상태. 창 식별 실패와 권한 부족을 같은 로그 줄에서 가르기 위해 붙인다. 묻지 않고 읽기만 한다. */
@@ -81,7 +90,7 @@ export function requestAccessibilityPermission(log: (message: string) => void, n
 }
 
 /** Console가 관찰 시 확보한 창 ID와 프로세스 수명을 검증한다. 제목으로 다른 창을 찾지 않는다. */
-export function installComputerCapture(contents: WebContents, localOrigin: () => string | null, log: (message: string) => void): void {
+export function installComputerCapture(contents: WebContents, localOrigin: () => string | null, log: (message: string) => void, verifierExecutable?: string): void {
   contents.session.setDisplayMediaRequestHandler((request, callback) => {
     let answered = false;
     const respond: typeof callback = (streams) => { answered = true; callback(streams); };
@@ -105,9 +114,17 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
       const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
       const source = sources.find(source => source.id === `window:${target.windowId}:0`);
       if (process.platform !== "darwin" && !source) { log(`computer capture rejected: exact window source unavailable, screen permission=${screenAccess()}`); respond({}); return; }
-      if (process.platform === "darwin" && !await verifyWindow(target)) { log(`computer capture rejected: window owner changed or closed, screen permission=${screenAccess()}`); respond({}); return; }
+      const matchesWindow = async () => {
+        const verification = await verifyWindow(verifierExecutable, target);
+        if (verification === "matches") return true;
+        const reason = verification === "mismatch" ? "window owner changed or closed" : "window verification unavailable";
+        log(`computer capture rejected: ${reason}, screen permission=${screenAccess()}`);
+        return false;
+      };
+      if (process.platform === "darwin" && !await matchesWindow()) { respond({}); return; }
       const current = await readTarget();
-      if (current?.id !== target.id || localOrigin() !== origin || (process.platform === "darwin" && !await verifyWindow(target))) { log("computer capture rejected: selection changed"); respond({}); return; }
+      if (current?.id !== target.id || localOrigin() !== origin) { log("computer capture rejected: selection changed"); respond({}); return; }
+      if (process.platform === "darwin" && !await matchesWindow()) { respond({}); return; }
       log(`computer capture source selected window=${target.windowId} listed=${source ? "yes" : "no"}, screen permission=${screenAccess()}`);
       respond({ video: { id: `window:${target.windowId}:0`, name: target.title } });
     })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${screenAccess()}`); if (!answered) respond({}); });

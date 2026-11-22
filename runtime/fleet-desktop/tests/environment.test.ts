@@ -51,17 +51,26 @@ describe("desktop environment", () => {
     const relative = path.join("Fleet Computer Use.app", "Contents", "MacOS", "fleet-computer-use");
     const dev = path.join(root, "runtime", "fleet-desktop", "dist", "helpers", relative);
     const packaged = path.join(resourcesPath, "..", "Helpers", relative);
-    const env = { FLEET_DATA_DIR: root, FLEET_COMPUTER_USE_HELPER: "/untrusted/inherited/path" };
-    const helper = (isPackaged: boolean, platform: NodeJS.Platform = "darwin") => createDesktopEnvironment(root, "1.23.0", resourceRoot, isPackaged, env, { platform, resourcesPath }).serviceEnv.FLEET_COMPUTER_USE_HELPER;
-    expect(helper(false)).toBeUndefined();
-    expect(helper(true)).toBeUndefined();
-    for (const entry of [dev, packaged]) {
+    const env = { FLEET_DATA_DIR: root, FLEET_COMPUTER_USE_HELPER: "/untrusted/inherited/path", fleet_computer_use_platform_version: "1" };
+    const helper = (isPackaged: boolean, platform: NodeJS.Platform = "darwin") => createDesktopEnvironment(root, "1.23.0", resourceRoot, isPackaged, env, { platform, resourcesPath }).serviceEnv;
+    expect(helper(false).FLEET_COMPUTER_USE_HELPER).toBeUndefined();
+    expect(helper(true).FLEET_COMPUTER_USE_HELPER).toBeUndefined();
+    expect(helper(true).fleet_computer_use_platform_version).toBeUndefined();
+    for (const [isPackaged, entry] of [[false, dev], [true, packaged]] as const) {
       fs.mkdirSync(path.dirname(entry), { recursive: true });
       fs.writeFileSync(entry, "", { mode: 0o700 });
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_HELPER).toBe(entry);
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
+
+      const marker = path.resolve(path.dirname(entry), "../Resources/computer-use-platform-version");
+      fs.mkdirSync(path.dirname(marker), { recursive: true });
+      fs.writeFileSync(marker, "2\n");
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
+      fs.writeFileSync(marker, "1\n");
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBe("1");
     }
-    expect(helper(false)).toBe(dev);
-    expect(helper(true)).toBe(packaged);
-    expect(helper(true, "linux")).toBeUndefined();
+    expect(helper(true, "linux").FLEET_COMPUTER_USE_HELPER).toBeUndefined();
+    expect(helper(true, "linux").FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
   });
 
   it("rejects a relative isolation override instead of silently using the real user root", () => {
