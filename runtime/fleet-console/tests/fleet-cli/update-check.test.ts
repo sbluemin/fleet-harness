@@ -45,6 +45,16 @@ describe("update check status", () => {
     expect(mockedWriteCachedLatestVersion).toHaveBeenCalledWith("latest", "1.3.0");
   });
 
+  it("does not look up a public release when the release tag is source", async () => {
+    await expect(checkUpdateStatus({ channel: "stable", version: "1.315.0" }, {
+      forceRefresh: true,
+      env: { FLEET_CONSOLE_RELEASE_TAG: "source" },
+    })).resolves.toEqual({ status: "unavailable", reason: "invalid_override" });
+
+    expect(mockedFetchFleetCliRelease).not.toHaveBeenCalled();
+    expect(mockedReadCachedLatestVersion).not.toHaveBeenCalled();
+  });
+
   it("returns unavailable when a forced release check cannot read the manifest", async () => {
     mockedReadCachedLatestVersion.mockReturnValue("1.2.0");
 

@@ -35,6 +35,21 @@ export interface ReleaseCheckResult {
   readonly unavailable?: boolean;
 }
 
+export type PackagedConsoleProcurement =
+  | { readonly action: "install"; readonly release: ConsoleReleaseManifest }
+  | { readonly action: "keep"; readonly version: string; readonly unavailable: boolean }
+  | { readonly action: "refuse" };
+
+/**
+ * Decides whether a packaged boot may download a Console release.
+ * A missing release never installs: a fresh home refuses, and an existing install is kept.
+ */
+export function selectPackagedConsoleProcurement(result: ReleaseCheckResult, installedVersion: string | null): PackagedConsoleProcurement {
+  if (result.release) return { action: "install", release: result.release };
+  if (installedVersion === null || installedVersion.length === 0) return { action: "refuse" };
+  return { action: "keep", version: installedVersion, unavailable: result.unavailable === true };
+}
+
 /**
  * 관리형 Console을 조달할 때 "무엇을 설치할 것인가"를 정하는 한 가지 물음. 셸 자신의 갱신과는
  * 다른 축이다(shell-update.ts) — 둘 다 GitHub Release를 보지만, 이쪽은 Console 릴리스의 고정

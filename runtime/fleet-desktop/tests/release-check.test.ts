@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createReleaseChecker, type ReleaseFetch } from "../src/runtime/release-check.js";
+import { createReleaseChecker, selectPackagedConsoleProcurement, type ReleaseFetch } from "../src/runtime/release-check.js";
 
 function manifest(version: string, tag = `v${version}`) {
   return { schema: 1, package: "@dotobokuri/fleet-console", version, tag, tarball: { name: `fleet-console-${version}.tgz`, size: 1, sha256: "0".repeat(64) } };
@@ -30,6 +30,22 @@ describe("release checker", () => {
     await expect(withoutOverride.checker.check("2.0.0")).resolves.toEqual({ release: null, unavailable: true });
     await expect(withOverride.checker.check("2.0.0")).resolves.toMatchObject({ release: { version: "2.1.0-exp.1" } });
     expect(withOverride.fetch).toHaveBeenCalledWith("https://github.com/sbluemin/fleet-harness/releases/download/console-exp-2.1.0-exp.1/fleet-console-release.json", expect.anything());
+  });
+
+  it("does not fetch or install a public Console when the release tag is source", async () => {
+    const fetch = vi.fn<ReleaseFetch>(() => {
+      throw new Error("public console lookup");
+    });
+    const checker = createReleaseChecker({ environment: { FLEET_CONSOLE_RELEASE_TAG: "source" }, dependencies: { fetch } });
+    const freshHome = await checker.check("");
+    const seededHome = await checker.check("1.315.0");
+
+    expect(freshHome).toEqual({ release: null, unavailable: true });
+    expect(seededHome).toEqual({ release: null, unavailable: true });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(selectPackagedConsoleProcurement(freshHome, null)).toEqual({ action: "refuse" });
+    expect(selectPackagedConsoleProcurement(seededHome, "1.315.0")).toEqual({ action: "keep", version: "1.315.0", unavailable: true });
+    expect(selectPackagedConsoleProcurement({ release: null, unavailable: true }, null).action).not.toBe("install");
   });
 
   it("reports an unreachable release as unavailable rather than as no update", async () => {

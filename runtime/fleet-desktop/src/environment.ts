@@ -171,6 +171,7 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   const computerUseHelper = helpers && (options.platform ?? process.platform) === "darwin"
     ? path.join(helpers, "Fleet Computer Use.app/Contents/MacOS/fleet-computer-use") : undefined;
   const releaseTagOverride = readConsoleReleaseTagOverride(env);
+  const releaseTagValue = readEnvironmentValue(env, CONSOLE_RELEASE_TAG_OVERRIDE_ENV)?.trim();
   const serviceBase = isPackaged
     ? createPackagedServiceEnvironment(sanitized, options.loginShellPath, options.platform ?? process.platform, options.homeDirectory ?? os.homedir())
     : sanitized;
@@ -193,9 +194,15 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
       ...(isPackaged && overrideDirectory === undefined ? {} : { FLEET_CONSOLE_DIR: paths.dir, FLEET_CONSOLE_DATA_DIR: paths.dir }),
       FLEET_CONSOLE_DESKTOP_VERSION: appVersion,
       // This shell procures Console from GitHub Releases, so Console may offer its own updates here.
-      // The release tag override reaches Console only in the form the installer itself accepted.
+      // A valid release tag is forwarded as itself. Any other set value is forwarded unchanged.
       ...(isPackaged ? { [DESKTOP_CONSOLE_SOURCE_ENV]: DESKTOP_CONSOLE_SOURCE_GITHUB_RELEASE } : {}),
-      ...(releaseTagOverride.kind === "tag" ? { [CONSOLE_RELEASE_TAG_OVERRIDE_ENV]: releaseTagOverride.tag } : {}),
+      // A valid tag selects that release. Any other set value is forwarded unchanged so the child
+      // also treats it as invalid and does not fall back to the latest public release.
+      ...(releaseTagOverride.kind === "tag"
+        ? { [CONSOLE_RELEASE_TAG_OVERRIDE_ENV]: releaseTagOverride.tag }
+        : releaseTagOverride.kind === "invalid" && releaseTagValue !== undefined
+          ? { [CONSOLE_RELEASE_TAG_OVERRIDE_ENV]: releaseTagValue }
+          : {}),
     },
   };
 }
