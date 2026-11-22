@@ -32,8 +32,9 @@ import {
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
-/** 컴포저 오른쪽 위의 사용량 요약. 공급자 글리프를 정밀 원형 링으로 감싸 공간을 줄이고,
- * 호버 시 공유 글라이딩 카드로 해당 공급자의 전 창·리셋·지출을, 클릭 시 전체 사용 한도 팝업을 연다. */
+/** 컴포저 오른쪽 위의 사용량 요약. 평상시에는 공급자 글리프를 정밀 원형 링으로 감싸 공간을 줄이고,
+ * 경고·위험 압박에 들어간 공급자만 캡슐 안에 2층 퍼센트를 상시 표출한다. 호버 시 공유 글라이딩 카드로
+ * 전 창·리셋·지출을, 클릭 시 전체 사용 한도 팝업을 연다. */
 
 /** Claude의 세션 창(5시간) — 기간을 싣지 않은 세션 창을 짧은 쪽에 세우는 기준. */
 const SESSION_FALLBACK_MS = 5 * 3_600_000;
@@ -52,6 +53,17 @@ const HOVER_ARROW_INSET = 14;
 
 type T = Translate<QuotaMessageKey>;
 type RingSeverity = "normal" | "warning" | "critical";
+
+const SEVERITY_RANK: Readonly<Record<RingSeverity, number>> = {
+  normal: 0,
+  warning: 1,
+  critical: 2,
+};
+
+interface PillLine {
+  readonly percent: number;
+  readonly severity: RingSeverity;
+}
 
 export interface QuotaToolbarReading {
   readonly id: ProviderId;
@@ -74,8 +86,9 @@ interface RingPresentation {
   readonly exhausted: boolean;
   readonly percent: number | null;
   readonly severity: RingSeverity;
-  /** 2창 이상인 공급자에서 대표 창 외의 보조 창도 경고·위험 압박에 닿았을 때 우상단 미세 점으로 알린다. */
-  readonly secondaryAlert: "warning" | "critical" | null;
+  /** 경고·위험 공급자 캡슐의 2층 퍼센트(최대 2줄). 평상시 링 ↔ 캡슐 전환 모션이 끊기지 않도록 읽을 수 있을 때 채워 둔다. */
+  readonly pillLines: readonly PillLine[];
+  readonly elevated: boolean;
 }
 
 function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindow[] {
@@ -123,6 +136,29 @@ export function summaryLines(windows: readonly QuotaWindow[]): readonly QuotaWin
   return long === null ? [short] : [short, long];
 }
 
+function pillLinesOf(reading: QuotaToolbarReading, readable: boolean): readonly PillLine[] {
+  if (!readable) return [];
+  if (reading.lines.length > 0) {
+    const entries = reading.lines.map((window, index) => ({
+      index,
+      percent: Math.round(window.usedPercent),
+      rawPercent: window.usedPercent,
+      severity: meterSeverity(window),
+    }));
+    const selected = entries.length <= 2
+      ? entries
+      : [...entries]
+        .sort((a, b) => (SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]) || (b.rawPercent - a.rawPercent))
+        .slice(0, 2)
+        .sort((a, b) => a.index - b.index);
+    return selected.map(({ percent, severity }) => ({ percent, severity }));
+  }
+  if (reading.spendPercent !== undefined) {
+    return [{ percent: Math.round(reading.spendPercent), severity: spendSeverity(reading.spendPercent) }];
+  }
+  return [];
+}
+
 function ringPresentationOf(
   reading: QuotaToolbarReading,
   data: QuotaSummaryDto | null,
@@ -133,11 +169,6 @@ function ringPresentationOf(
   const readable = !loading && (status === "ok" || status === "stale");
   const windows = readable ? readableWindows(provider) : [];
   const primary = mostUrgentWindow(windows);
-  const secondary = primary !== null && windows.length > 1
-    ? mostUrgentWindow(windows.filter((window) => window !== primary))
-    : null;
-  const secondarySeverity = secondary !== null ? meterSeverity(secondary) : "normal";
-  const secondaryAlert = secondarySeverity === "normal" ? null : secondarySeverity;
 
   const percent = primary !== null
     ? primary.usedPercent
@@ -145,6 +176,8 @@ function ringPresentationOf(
   const severity: RingSeverity = primary !== null
     ? meterSeverity(primary)
     : (percent !== null ? spendSeverity(percent) : "normal");
+  const pillLines = pillLinesOf(reading, readable);
+  const elevated = readable && severity !== "normal" && pillLines.length > 0;
 
   return {
     id: reading.id,
@@ -156,7 +189,8 @@ function ringPresentationOf(
     exhausted: readable && percent !== null && percent >= 100,
     percent,
     severity,
-    secondaryAlert,
+    pillLines,
+    elevated,
   };
 }
 
@@ -417,6 +451,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
             const showArc = !ring.disconnected && !ring.loading && ring.percent !== null && ring.percent > 0;
             const ringClassName = [
               "quota-toolbar-summary__ring",
+              ring.elevated ? "quota-toolbar-summary__ring--elevated" : "",
               ring.disconnected || ring.loading ? "quota-toolbar-summary__ring--muted" : "",
               ring.stale ? "quota-toolbar-summary__ring--stale" : "",
               hovered ? "is-hovered" : "",
@@ -454,7 +489,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
                       cx="12"
                       cy="12"
                       r={RING_RADIUS}
-                      strokeWidth="1.5"
+                      strokeWidth="1.6"
                     />
                     {showArc && ring.percent !== null ? (
                       <circle
@@ -462,7 +497,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
                         cx="12"
                         cy="12"
                         r={RING_RADIUS}
-                        strokeWidth="1.7"
+                        strokeWidth="1.8"
                         strokeDasharray={RING_CIRCUMFERENCE.toFixed(2)}
                         strokeDashoffset={ringArcOffset(ring.percent).toFixed(2)}
                       />
@@ -473,9 +508,16 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
                   </span>
                   {ring.stale ? (
                     <span className="quota-toolbar-summary__pip quota-toolbar-summary__pip--stale" />
-                  ) : ring.secondaryAlert !== null ? (
-                    <span className={`quota-toolbar-summary__pip quota-toolbar-summary__pip--secondary quota-toolbar-summary__pip--${ring.secondaryAlert}`} />
                   ) : null}
+                </span>
+                <span className="quota-toolbar-summary__pill-slot" aria-hidden="true">
+                  <span className="quota-toolbar-summary__pill-lines">
+                    {ring.pillLines.map((line, index) => (
+                      <span key={index} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${line.severity}`}>
+                        {line.percent}%
+                      </span>
+                    ))}
+                  </span>
                 </span>
               </button>
             );
