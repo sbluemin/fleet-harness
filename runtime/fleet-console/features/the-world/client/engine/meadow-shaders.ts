@@ -457,3 +457,89 @@ void main() {
   fragColor = vec4(col, alpha);
 }
 `;
+
+/**
+ * 지형 표면을 따라 끊김 없이 흐르는 동화풍 곡선 흙길 리본 셰이더 (단일 병합 BufferGeometry 1 draw call).
+ * - UV.x 기반 부드러운 가장자리 페더링 + 잔자갈/모래 질감 노이즈 + 시냇물 수로 자동 알파 컷.
+ */
+export const ROAD_RIBBON_VERTEX = /* glsl */ `
+in float aEndFade;
+out vec2 vUv;
+out vec3 vWorldPos;
+out float vEndFade;
+
+void main() {
+  vUv = uv;
+  vEndFade = aEndFade;
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+export const ROAD_RIBBON_FRAGMENT = /* glsl */ `
+in vec2 vUv;
+in vec3 vWorldPos;
+in float vEndFade;
+out vec4 fragColor;
+
+uniform float uNight;
+uniform vec3 uSunDir;
+
+float roadHash(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float roadNoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = roadHash(i);
+  float b = roadHash(i + vec2(1.0, 0.0));
+  float c = roadHash(i + vec2(0.0, 1.0));
+  float d = roadHash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void main() {
+  // 시냇물 수로 위에서는 물과 겹치지 않도록 자동 페이드아웃 (목교 아래 수면 보존)
+  if (abs(vWorldPos.x) < 86.5) {
+    float centerZ = 9.2 + sin(vWorldPos.x * 0.095) * 2.9 + cos(vWorldPos.x * 0.04) * 1.1;
+    float pondBell = exp(-pow((vWorldPos.x - 5.8) / 4.8, 2.0));
+    float halfW = 1.45 + pondBell * 2.15;
+    float edgeDist = abs(vWorldPos.z - centerZ) - halfW;
+    if (edgeDist < 0.08) discard;
+  }
+
+  float nBroad = roadNoise(vWorldPos.xz * 0.55);
+  float nFine = roadNoise(vWorldPos.xz * 3.4);
+  float nPebble = roadNoise(vWorldPos.xz * 9.5);
+
+  // 유기적인 흙길 가장자리 굴곡 + 부드러운 페더링 (중앙 광장 석재 코어는 자연스럽게 개방)
+  float edgeWobble = (nBroad - 0.5) * 0.11 + (nFine - 0.5) * 0.045;
+  float u = vUv.x + edgeWobble;
+  float across = smoothstep(0.02, 0.25, u) * smoothstep(0.98, 0.75, u);
+  float plazaFade = smoothstep(3.8, 5.2, length(vWorldPos.xz - vec2(0.0, -1.6)));
+  float alpha = across * clamp(vEndFade, 0.0, 1.0) * plazaFade * 0.94;
+  if (alpha < 0.02) discard;
+
+  // 중앙은 밝은 크림 황토, 가장자리는 살짝 진한 따뜻한 흙 + 잔자갈 하이라이트 (선형 색공간 보정 → cPath 0xdac49b 자연 매칭)
+  float centerBand = 1.0 - smoothstep(0.0, 0.44, abs(vUv.x - 0.5));
+  vec3 dirtEdge = vec3(0.42, 0.30, 0.16);
+  vec3 dirtMid = vec3(0.66, 0.52, 0.32);
+  vec3 dirtSun = vec3(0.80, 0.67, 0.45);
+  vec3 base = mix(dirtEdge, dirtMid, 0.44 + centerBand * 0.56);
+  base = mix(base, dirtSun, smoothstep(0.55, 0.88, nFine) * 0.30 + smoothstep(0.76, 0.96, nPebble) * 0.24);
+  base *= 0.92 + nBroad * 0.14;
+
+  // 태양광 · 노을 · 밤하늘 색조 반응 (지형 정점 컬러와 자연스럽게 융합)
+  float sunset = clamp(1.0 - abs(uNight - 0.38) * 2.6, 0.0, 1.0);
+  float sunLift = clamp(uSunDir.y * 0.58 + 0.56, 0.62, 1.12);
+  vec3 dayCol = base * sunLift;
+  vec3 sunsetCol = base * vec3(1.04, 0.72, 0.48);
+  vec3 nightCol = base * vec3(0.22, 0.30, 0.48);
+  vec3 col = mix(mix(dayCol, sunsetCol, sunset * 0.62), nightCol, smoothstep(0.32, 0.95, uNight));
+
+  fragColor = vec4(col, alpha);
+}
+`;
