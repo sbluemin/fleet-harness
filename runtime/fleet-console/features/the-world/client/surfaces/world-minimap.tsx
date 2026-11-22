@@ -2,6 +2,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import {
   forwardRef,
   memo,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -139,9 +140,40 @@ export const WorldMinimap = memo(
     const [warpOpen, setWarpOpen] = useState(false);
     const [hoveredVillageId, setHoveredVillageId] = useState<string | null>(null);
 
+    const minimapSectionRef = useRef<HTMLElement | null>(null);
     const roamingGroupRef = useRef<SVGGElement | null>(null);
     const roamingDotsRef = useRef<Map<string, SVGCircleElement>>(new Map());
     const activeIdsScratchRef = useRef<Set<string>>(new Set());
+
+    // 구역 이동 팝오버: 바깥 클릭 · Esc · 하늘 비행 모드 전환 시 자동 닫힘
+    useEffect(() => {
+      if (!warpOpen) return;
+      const onPointerDown = (event: PointerEvent) => {
+        if (
+          minimapSectionRef.current
+          && event.target instanceof Node
+          && minimapSectionRef.current.contains(event.target)
+        ) {
+          return;
+        }
+        setWarpOpen(false);
+      };
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") {
+          setWarpOpen(false);
+        }
+      };
+      window.addEventListener("pointerdown", onPointerDown, true);
+      window.addEventListener("keydown", onKeyDown, true);
+      return () => {
+        window.removeEventListener("pointerdown", onPointerDown, true);
+        window.removeEventListener("keydown", onKeyDown, true);
+      };
+    }, [warpOpen]);
+
+    useEffect(() => {
+      setWarpOpen(false);
+    }, [overviewMode]);
 
     useImperativeHandle(
       ref,
@@ -233,6 +265,7 @@ export const WorldMinimap = memo(
       const wx = nx * scale;
       const wz = ny * scale;
       if (Math.hypot(wx, wz) > MINIMAP_WORLD_RADIUS) return;
+      setWarpOpen(false);
       onClickPoint(wx, wz);
     };
 
@@ -269,6 +302,7 @@ export const WorldMinimap = memo(
 
     return (
       <section
+        ref={minimapSectionRef}
         className={`the-world-minimap${overviewMode ? " is-overview" : ""}`}
         aria-label={t("theWorld.minimap.aria")}
         onPointerDown={(e) => e.stopPropagation()}
@@ -324,7 +358,10 @@ export const WorldMinimap = memo(
               aria-label={t("theWorld.minimap.expandAria")}
               aria-pressed={overviewMode}
               title={t("theWorld.hud.overviewTitle")}
-              onClick={onToggleOverview}
+              onClick={() => {
+                setWarpOpen(false);
+                onToggleOverview();
+              }}
             >
               M
             </button>
@@ -436,7 +473,10 @@ export const WorldMinimap = memo(
             }}
             aria-label={t("theWorld.minimap.plazaAria")}
             title={t("theWorld.minimap.plazaAria")}
-            onClick={onSelectPlaza}
+            onClick={() => {
+              setWarpOpen(false);
+              onSelectPlaza();
+            }}
           />
 
           {/* 사령관별 마을 클릭 노드 */}
@@ -471,7 +511,10 @@ export const WorldMinimap = memo(
                 onMouseLeave={() => setHoveredVillageId((cur) => (cur === village.id ? null : cur))}
                 onFocus={() => setHoveredVillageId(village.id)}
                 onBlur={() => setHoveredVillageId((cur) => (cur === village.id ? null : cur))}
-                onClick={() => onSelectVillage(village)}
+                onClick={() => {
+                  setWarpOpen(false);
+                  onSelectVillage(village);
+                }}
               >
                 <span className="the-world-minimap-node-tier">{village.overallTier}</span>
                 {isAttention || isError ? (

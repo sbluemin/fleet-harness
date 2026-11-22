@@ -158,7 +158,7 @@ void main() {
   }
 
   float bankAlpha = 1.0 - smoothstep(0.94, 1.10, vShore);
-  float channelFade = 1.0 - smoothstep(43.0, 53.0, abs(vWorldPos.x));
+  float channelFade = 1.0 - smoothstep(76.0, 86.0, abs(vWorldPos.x));
   float waterAlpha = mix(0.88, 0.95, foamMask) * bankAlpha * channelFade;
   if (waterAlpha < 0.02) discard;
 

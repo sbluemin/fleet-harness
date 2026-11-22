@@ -5168,6 +5168,7 @@
 .the-world-root.is-photo-mode .the-world-campfire-banner,
 .the-world-root.is-photo-mode .the-world-overview-drag-svg,
 .the-world-root.is-photo-mode .the-world-quick-menu,
+.the-world-root.is-photo-mode .the-world-companion-shell,
 .the-world-root.is-photo-mode .the-world-companion-pill,
 .the-world-root.is-photo-mode .the-world-sky-hover-card,
 .the-world-root.is-photo-mode .the-world-sky-cmd-popover,
@@ -5182,6 +5183,7 @@
 .the-world-root.is-cinema-mode .the-world-overview-banner,
 .the-world-root.is-cinema-mode .the-world-campfire-banner,
 .the-world-root.is-cinema-mode .the-world-quick-menu,
+.the-world-root.is-cinema-mode .the-world-companion-shell,
 .the-world-root.is-cinema-mode .the-world-companion-pill,
 .the-world-root.is-cinema-mode .the-world-sky-hover-card,
 .the-world-root.is-cinema-mode .the-world-sky-cmd-popover,
@@ -6561,20 +6563,30 @@
   }
 }
 
-/* 1. 동행 산책 & 하늘 순찰 상태 배지 (상단 중앙 아래 컴팩트 필) */
-.the-world-companion-pill {
+/* 1. 동행 산책 & 하늘 순찰 상태 배지 + 편대 로스터 팝오버 (상단 중앙 아래) */
+.the-world-companion-shell {
   position: absolute;
   top: 58px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 8;
-  display: inline-flex;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-  max-width: min(520px, calc(100vw - 32px));
-  padding: 5px 7px 5px 12px;
+  max-width: calc(100vw - 24px);
+  pointer-events: none;
+  animation: the-world-s17-pill-in var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-companion-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(540px, calc(100vw - 28px));
+  padding: 4px 6px 4px 6px;
   border-radius: var(--radius-pill);
-  background: oklch(16% 0.022 258 / 92%);
+  background: oklch(16% 0.022 258 / 93%);
   backdrop-filter: blur(18px) saturate(135%);
   border: 1px solid color-mix(in oklch, var(--mongle-amber) 48%, oklch(100% 0 0 / 18%));
   box-shadow: var(--shadow-soft), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
@@ -6583,7 +6595,37 @@
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   pointer-events: auto;
-  animation: the-world-s17-pill-in var(--duration-base) var(--ease-spring) both;
+  transition: border-color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-pill.is-open {
+  border-color: color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 24%));
+  background: oklch(18% 0.022 258 / 96%);
+}
+
+.the-world-companion-pill-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-pill-trigger:hover {
+  background: oklch(100% 0 0 / 9%);
+}
+
+.the-world-companion-pill-trigger:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
 }
 
 .the-world-companion-pill-dot {
@@ -6615,6 +6657,13 @@
   color: oklch(97% 0.006 85);
 }
 
+.the-world-companion-pill-caret {
+  flex-shrink: 0;
+  color: var(--mongle-amber);
+  font-size: var(--t-2xs);
+  line-height: 1;
+}
+
 .the-world-companion-pill-end {
   flex-shrink: 0;
   display: inline-flex;
@@ -6642,6 +6691,235 @@
 .the-world-companion-pill-end:focus-visible {
   outline: none;
   box-shadow: var(--focus-face);
+}
+
+/* Sprint 19: 편대 로스터 팝오버 (개별 해제 + 원클릭 합류 / 모두 부르기) */
+.the-world-companion-roster {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  width: min(352px, calc(100vw - 28px));
+  max-height: min(420px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  background: oklch(16% 0.022 258 / 95%);
+  backdrop-filter: blur(22px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 42%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
+  color: oklch(97% 0.006 85);
+  overflow: hidden;
+  pointer-events: auto;
+  animation: the-world-s17-pop var(--duration-fast) var(--ease-spring) both;
+}
+
+.the-world-companion-roster-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
+  flex-shrink: 0;
+}
+
+.the-world-companion-roster-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.006 85);
+  white-space: nowrap;
+}
+
+.the-world-companion-roster-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.the-world-companion-roster-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 25px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  background: oklch(24% 0.022 258 / 90%);
+  color: oklch(93% 0.008 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-roster-btn:hover {
+  background: oklch(30% 0.024 258 / 96%);
+  border-color: oklch(100% 0 0 / 28%);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-companion-roster-btn.is-primary {
+  background: var(--mongle-amber);
+  border-color: color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 32%));
+  color: oklch(14% 0.018 258);
+}
+
+.the-world-companion-roster-btn.is-primary:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 88%, oklch(98% 0.006 85));
+  color: oklch(14% 0.018 258);
+}
+
+.the-world-companion-roster-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-companion-roster-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.the-world-companion-roster-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.the-world-companion-roster-heading {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(83% 0.012 255);
+}
+
+.the-world-companion-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.the-world-companion-roster-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: oklch(22% 0.022 258 / 90%);
+  border: 1px solid oklch(100% 0 0 / 15%);
+}
+
+.the-world-companion-roster-row.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 12%, oklch(22% 0.022 258 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 36%, oklch(100% 0 0 / 16%));
+}
+
+.the-world-companion-roster-row.is-busy {
+  opacity: 0.72;
+}
+
+.the-world-companion-roster-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.the-world-companion-roster-name {
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.006 85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-companion-roster-remove {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(18% 0.022 258 / 90%);
+  color: oklch(86% 0.012 255);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-roster-remove:hover {
+  background: oklch(28% 0.024 258 / 96%);
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(98% 0.006 85);
+}
+
+.the-world-companion-roster-remove:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-companion-roster-join {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 54%, oklch(100% 0 0 / 18%));
+  background: color-mix(in oklch, var(--mongle-teal) 20%, oklch(20% 0.022 258 / 94%));
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-companion-roster-join:hover {
+  background: color-mix(in oklch, var(--mongle-teal) 32%, oklch(22% 0.022 258 / 98%));
+  border-color: var(--mongle-teal);
+}
+
+.the-world-companion-roster-join:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-companion-roster-busy {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(18% 0.022 258 / 88%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  color: oklch(82% 0.012 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+}
+
+.the-world-companion-roster-empty {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(20% 0.022 258 / 80%);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  color: oklch(84% 0.012 255);
+  font-size: var(--t-xs);
+  text-align: center;
 }
 
 /* 2. 스카이 호버 스캔 카드 (공중 비행 중 마을 호버 시 마우스 근처 미니 상태 카드) */
@@ -7296,7 +7574,9 @@
   .the-world-chat-icon-btn.is-spinning svg,
   .the-world-working-dot,
   .the-world-chat-cursor,
+  .the-world-companion-shell,
   .the-world-companion-pill,
+  .the-world-companion-roster,
   .the-world-sky-hover-card,
   .the-world-sky-cmd-popover,
   .the-world-photo-studio-bar,
@@ -7311,7 +7591,11 @@
 }
 
 @media (forced-colors: active) {
+  .the-world-companion-pill-trigger:focus-visible,
   .the-world-companion-pill-end:focus-visible,
+  .the-world-companion-roster-btn:focus-visible,
+  .the-world-companion-roster-remove:focus-visible,
+  .the-world-companion-roster-join:focus-visible,
   .the-world-sky-cmd-close:focus-visible,
   .the-world-sky-cmd-send:focus-visible,
   .the-world-sky-cmd-btn:focus-visible,

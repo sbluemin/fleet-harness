@@ -79,6 +79,7 @@ export interface PlayerAndCameraController {
     readonly focusActorPos: { readonly x: number; readonly z: number } | null;
     readonly focusFraming?: CameraFocusFraming | undefined;
     readonly cinemaTarget?: CinemaCameraTarget | null | undefined;
+    readonly companionCount?: number | undefined;
     readonly camera: PerspectiveCamera;
     readonly getGroundHeight: (x: number, z: number) => number;
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
@@ -1016,6 +1017,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         ? player.takeoffProgress * player.takeoffProgress * (3 - 2 * player.takeoffProgress)
         : 0;
 
+      const campfireWithCompanions = sittingAtCampfire && !opts.inputLocked && (opts.companionCount ?? 0) > 0;
       if (customizerFraming) {
         // 실시간 3D 제독 드레스업: 타깃을 카메라 우측 벡터(+cos(camYaw)*0.95, -sin(camYaw)*0.95)로 밀어
         // 우측 플로팅 드레스업 시트를 피해 좌측 65% 열린 화면 정중앙에 제독 얼굴·모자를 클로즈업
@@ -1070,8 +1072,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetZ = baseZ - Math.sin(camYaw) * 1.45;
       } else if (sittingAtCampfire && !opts.inputLocked) {
         desiredTargetX = (CAMPFIRE_BENCH_X + CAMPFIRE_FIRE_X) * 0.5;
-        desiredTargetY = gy + 0.92;
-        desiredTargetZ = (CAMPFIRE_BENCH_Z + CAMPFIRE_FIRE_Z) * 0.5;
+        desiredTargetY = gy + (campfireWithCompanions ? 0.85 : 0.92);
+        desiredTargetZ = campfireWithCompanions
+          ? CAMPFIRE_BENCH_Z * 0.35 + CAMPFIRE_FIRE_Z * 0.65
+          : (CAMPFIRE_BENCH_Z + CAMPFIRE_FIRE_Z) * 0.5;
       } else if (interactingClose && opts.focusActorPos) {
         desiredTargetX = player.x + (opts.focusActorPos.x - player.x) * 0.42;
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
@@ -1109,7 +1113,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                         : drawerFraming
                           ? 7.2
                           : sittingAtCampfire && !opts.inputLocked
-                            ? 4.45
+                            ? (campfireWithCompanions ? 4.9 + Math.min(3.3, (opts.companionCount ?? 0) * 0.44) : 4.45)
                             : opts.cameraMode === "orbit"
                               ? Math.max(28, camDist * 2.65)
                               : focusDist;
@@ -1133,7 +1137,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                         : drawerFraming
                           ? 0.25
                           : sittingAtCampfire && !opts.inputLocked
-                            ? 0.26
+                            ? (campfireWithCompanions ? 0.37 : 0.26)
                             : opts.cameraMode === "orbit"
                               ? Math.max(0.54, camPitch)
                               : camPitch;

@@ -1,6 +1,7 @@
 import { NATIVE_VIEW_COVER_ATTRIBUTE } from "@fleet-console/ui/native-view";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import {
   type WorldActorPanelMode,
   type WorldActorSpec,
@@ -22,6 +23,7 @@ import {
   type WorldRuntimeHandle,
 } from "../engine/world-runtime.js";
 import {
+  playCompanionCall,
   playDistrictHover,
   playDistrictSelect,
   playFlagPlant,
@@ -36,6 +38,7 @@ import {
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
+  addCompanionActorId,
   clearCompanionActorIds,
   clearDispatchFlag,
   clearPhotoSnapshotPreview,
@@ -177,6 +180,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [debugPanelVisible, setDebugPanelVisible] = useState(false);
   const [playerHovered, setPlayerHovered] = useState(false);
   const [skyHoverTarget, setSkyHoverTarget] = useState<WorldSkyHoverTarget | null>(null);
+  const [companionRosterOpen, setCompanionRosterOpen] = useState(false);
+  const companionShellRef = useRef<HTMLDivElement | null>(null);
   const [overviewDragLink, setOverviewDragLink] = useState<{
     readonly fromVillage: WorldVillageSpec;
     readonly startX: number;
@@ -1017,9 +1022,62 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     return list;
   }, [snapshot.actors, store.companionActorIds]);
 
+  const otherCommodores = useMemo<readonly { readonly actor: WorldActorSpec; readonly busy: boolean }[]>(() => {
+    const activeIds = new Set(store.companionActorIds);
+    const items: { readonly actor: WorldActorSpec; readonly busy: boolean }[] = [];
+    for (const actor of snapshot.actors) {
+      if (actor.role !== "commodore" || !actor.commodoreId) continue;
+      if (activeIds.has(actor.id)) continue;
+      const busy = actor.state === "running" || actor.needsAttention;
+      items.push({ actor, busy });
+    }
+    items.sort((a, b) => Number(a.busy) - Number(b.busy));
+    return items;
+  }, [snapshot.actors, store.companionActorIds]);
+
+  const idleAvailableCommodores = useMemo<readonly WorldActorSpec[]>(
+    () => otherCommodores.filter((entry) => !entry.busy).map((entry) => entry.actor),
+    [otherCommodores],
+  );
+
+  // 편대 로스터 팝오버 자동 닫힘(동행 0명·모드 전환·바깥 클릭·Esc)
+  useEffect(() => {
+    if (companionActors.length === 0 || store.photoMode || store.cinemaMode || store.overviewMode) {
+      setCompanionRosterOpen(false);
+    }
+  }, [companionActors.length, store.cinemaMode, store.overviewMode, store.photoMode]);
+
+  useEffect(() => {
+    if (!companionRosterOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        companionShellRef.current
+        && event.target instanceof Node
+        && companionShellRef.current.contains(event.target)
+      ) {
+        return;
+      }
+      setCompanionRosterOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setCompanionRosterOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [companionRosterOpen]);
+
   const handleEndCompanionWalk = useCallback(() => {
     const count = companionActors.length;
     const firstName = companionActors[0]?.name ?? "";
+    setCompanionRosterOpen(false);
     clearCompanionActorIds();
     playDistrictSelect();
     if (count === 1 && firstName) {
@@ -1030,6 +1088,30 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       pushToast(tNow("theWorld.companion.leftAllToast", { count }));
     }
   }, [companionActors, deps, pushToast]);
+
+  const handleRemoveSingleCompanion = useCallback((actor: WorldActorSpec) => {
+    removeCompanionActorId(actor.id);
+    playDistrictSelect();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.companion.leftToast", { name: actor.name }));
+  }, [deps, pushToast]);
+
+  const handleJoinSingleCompanion = useCallback((actor: WorldActorSpec) => {
+    addCompanionActorId(actor.id);
+    playCompanionCall();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.companion.joinedToast", { name: actor.name }));
+  }, [deps, pushToast]);
+
+  const handleRecruitAllCompanions = useCallback(() => {
+    if (idleAvailableCommodores.length === 0) return;
+    for (const actor of idleAvailableCommodores) {
+      addCompanionActorId(actor.id);
+    }
+    playCompanionCall();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.companion.recruitedAllToast", { count: idleAvailableCommodores.length }));
+  }, [deps, idleAvailableCommodores, pushToast]);
 
   const minimapJumpItems = useMemo<readonly WorldMinimapJumpItem[]>(() => {
     const items: WorldMinimapJumpItem[] = [];
@@ -1559,29 +1641,166 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
           ) : null}
           {companionActors.length > 0 && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode ? (
             <div
-              className="the-world-companion-pill"
-              role="status"
-              aria-live="polite"
+              ref={companionShellRef}
+              className="the-world-companion-shell"
               onPointerDown={(e) => e.stopPropagation()}
+              onWheel={(e) => e.stopPropagation()}
             >
-              <span className="the-world-companion-pill-dot" aria-hidden="true" />
-              <span className="the-world-companion-pill-text">
-                {companionActors.length === 1
-                  ? t("theWorld.companion.pill", { name: companionActors[0]!.name })
-                  : t("theWorld.companion.pillMulti", {
-                      name: companionActors[0]!.name,
-                      others: companionActors.length - 1,
-                    })}
-              </span>
-              <button
-                type="button"
-                className="the-world-companion-pill-end"
-                onClick={handleEndCompanionWalk}
+              <div
+                className={`the-world-companion-pill${companionRosterOpen ? " is-open" : ""}`}
+                role="status"
+                aria-live="polite"
               >
-                {companionActors.length === 1
-                  ? t("theWorld.companion.endWalk")
-                  : t("theWorld.companion.endWalkAll")}
-              </button>
+                <button
+                  type="button"
+                  className="the-world-companion-pill-trigger"
+                  aria-expanded={companionRosterOpen}
+                  aria-label={t("theWorld.companion.rosterToggleAria")}
+                  onClick={() => {
+                    playDistrictHover();
+                    setCompanionRosterOpen((prev) => !prev);
+                  }}
+                >
+                  <span className="the-world-companion-pill-dot" aria-hidden="true" />
+                  <span className="the-world-companion-pill-text">
+                    {companionActors.length === 1
+                      ? t("theWorld.companion.pill", { name: companionActors[0]!.name })
+                      : t("theWorld.companion.pillMulti", {
+                          name: companionActors[0]!.name,
+                          others: companionActors.length - 1,
+                        })}
+                  </span>
+                  <span className="the-world-companion-pill-caret" aria-hidden="true">
+                    {companionRosterOpen ? "▴" : "▾"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="the-world-companion-pill-end"
+                  onClick={handleEndCompanionWalk}
+                >
+                  {companionActors.length === 1
+                    ? t("theWorld.companion.endWalk")
+                    : t("theWorld.companion.endWalkAll")}
+                </button>
+              </div>
+
+              {companionRosterOpen ? (
+                <section
+                  className="the-world-companion-roster"
+                  role="dialog"
+                  aria-label={t("theWorld.companion.rosterAria")}
+                >
+                  <div className="the-world-crest" aria-hidden="true" />
+                  <header className="the-world-companion-roster-head">
+                    <span className="the-world-companion-roster-title">
+                      <WorldIcon name="crew" size={13} tone="amber" />
+                      <span>{t("theWorld.companion.rosterTitle", { count: companionActors.length })}</span>
+                    </span>
+                    <div className="the-world-companion-roster-actions">
+                      {idleAvailableCommodores.length > 0 ? (
+                        <button
+                          type="button"
+                          className="the-world-companion-roster-btn is-primary"
+                          onClick={handleRecruitAllCompanions}
+                        >
+                          <WorldIcon name="sparkle" size={11} tone="inherit" />
+                          <span>{t("theWorld.companion.recruitAll")}</span>
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="the-world-companion-roster-btn"
+                        onClick={handleEndCompanionWalk}
+                      >
+                        <span>{t("theWorld.companion.endWalkAll")}</span>
+                      </button>
+                    </div>
+                  </header>
+
+                  <div className="the-world-companion-roster-body">
+                    <div className="the-world-companion-roster-section">
+                      <span className="the-world-companion-roster-heading">
+                        {t("theWorld.companion.activeHeading")}
+                      </span>
+                      <div className="the-world-companion-roster-list">
+                        {companionActors.map((actor) => (
+                          <div key={actor.id} className="the-world-companion-roster-row is-active">
+                            <div className="the-world-companion-roster-who">
+                              <MongleAvatar
+                                base={actor.baseId}
+                                tone={actor.tone}
+                                role={actor.role}
+                                state={actor.state}
+                                activity={actor.activity}
+                                size={24}
+                                label={actor.name}
+                                decorative
+                              />
+                              <span className="the-world-companion-roster-name">{actor.name}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="the-world-companion-roster-remove"
+                              aria-label={t("theWorld.companion.removeOneAria", { name: actor.name })}
+                              onClick={() => handleRemoveSingleCompanion(actor)}
+                            >
+                              <WorldIcon name="close" size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="the-world-companion-roster-section">
+                      <span className="the-world-companion-roster-heading">
+                        {t("theWorld.companion.availableHeading")}
+                      </span>
+                      {otherCommodores.length === 0 ? (
+                        <p className="the-world-companion-roster-empty">
+                          {t("theWorld.companion.allJoinedEmpty")}
+                        </p>
+                      ) : (
+                        <div className="the-world-companion-roster-list">
+                          {otherCommodores.map(({ actor, busy }) => (
+                            <div
+                              key={actor.id}
+                              className={`the-world-companion-roster-row${busy ? " is-busy" : ""}`}
+                            >
+                              <div className="the-world-companion-roster-who">
+                                <MongleAvatar
+                                  base={actor.baseId}
+                                  tone={actor.tone}
+                                  role={actor.role}
+                                  state={actor.state}
+                                  activity={actor.activity}
+                                  size={24}
+                                  label={actor.name}
+                                  decorative
+                                />
+                                <span className="the-world-companion-roster-name">{actor.name}</span>
+                              </div>
+                              {busy ? (
+                                <span className="the-world-companion-roster-busy">
+                                  {t("theWorld.companion.busyLabel")}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="the-world-companion-roster-join"
+                                  onClick={() => handleJoinSingleCompanion(actor)}
+                                >
+                                  {t("theWorld.companion.joinOne")}
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
             </div>
           ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (

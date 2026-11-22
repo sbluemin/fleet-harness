@@ -64,6 +64,9 @@ export interface CompanionFlightContext {
   readonly playerTakeoffProgress: number;
   readonly playerFlying: boolean;
   readonly playerDiving: boolean;
+  readonly playerBoosting?: boolean | undefined;
+  readonly playerVx?: number | undefined;
+  readonly playerVz?: number | undefined;
   readonly playerFlightAlt: number;
   readonly playerMoveSpeed: number;
   readonly playerFlightRoll: number;
@@ -231,6 +234,23 @@ const CAMPFIRE_NIGHT_SPOTS: readonly PatrolWaypoint[] = [
   { x: 4.5, z: 1.5, faceX: 2.8, faceZ: 1.0 },
   { x: 1.4, z: -0.5, faceX: 2.8, faceZ: 1.0 },
 ];
+
+/** 모닥불(2.8, 1.0) 북·동·서쪽 카메라 맞은편 동행 합석 좌석(남쪽 벤치 2.8, 2.55 & 카메라 시야 가림 방지). */
+const CAMPFIRE_COMPANION_SEATS: readonly { readonly x: number; readonly z: number }[] = [
+  { x: 4.55, z: 0.45 },  // 0: 동북동
+  { x: 3.75, z: -0.75 }, // 1: 북동
+  { x: 2.80, z: -1.15 }, // 2: 북쪽 정면
+  { x: 1.85, z: -0.75 }, // 3: 북서
+  { x: 1.05, z: 0.45 },  // 4: 서북서
+];
+
+function vividToneHex(tone: keyof typeof PLUSH_VIVID_TONES): number {
+  const rgb = PLUSH_VIVID_TONES[tone];
+  const r = Math.min(255, Math.round(rgb[0] * 255));
+  const g = Math.min(255, Math.round(rgb[1] * 255));
+  const b = Math.min(255, Math.round(rgb[2] * 255));
+  return (r << 16) | (g << 8) | b;
+}
 
 export interface ChoreographyDirector {
   readonly motions: Map<string, LiveActorMotion>;
@@ -857,15 +877,21 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
 
     if (turn === 0) {
       return [
-        `[greet] ${nameB}님! 우리 ${shortA} 벌써 T${planA.topDistrictTier}예요!`,
-        `[cheer] 우와! 여긴 총 ${planB.totalEntries.toLocaleString()}항목 정리 중이에요!`,
+        planA.topDistrictTier > 0
+          ? `[greet] ${nameB}님! 우리 ${shortA} 벌써 T${planA.topDistrictTier}예요!`
+          : `[greet] ${nameB}님! 곧 첫 영지를 개척할 거예요!`,
+        planB.totalEntries > 0
+          ? `[cheer] 우와! 여긴 총 ${planB.totalEntries.toLocaleString()}항목 정리 중이에요!`
+          : `[cheer] 기대돼요! 여기도 새 임무를 기다리며 초원을 가꾸고 있어요!`,
       ];
     }
     if (turn === 1) {
       return [
         planA.activeObjectiveCount > 0
           ? `[quest] 지금 목표 ${planA.activeObjectiveCount}건 진행 중이에요!`
-          : `[greet] ${nameB}님 마을(T${planB.overallTier}) 산책 왔어요!`,
+          : planB.overallTier > 0
+            ? `[greet] ${nameB}님 마을(T${planB.overallTier}) 산책 왔어요!`
+            : `[greet] ${nameB}님 새 초원 마을 구경하러 산책 왔어요!`,
         planB.completedObjectiveCount > 0
           ? `[party] 여긴 벌써 목표 ${planB.completedObjectiveCount}건 완수했죠!`
           : `[greet] ${nameA}님 반가워요! ${shortB}도 들러보세요!`,
@@ -873,13 +899,19 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     }
     if (turn === 2) {
       return [
-        `[chat] ${shortA} 쪽 ${planA.totalEntries.toLocaleString()}항목이 쑥쑥 자라네요!`,
-        `[cheer] ${nameA}님 마을 T${planA.overallTier} 진짜 멋져요! 화이팅!`,
+        planA.totalEntries > 0
+          ? `[chat] ${shortA} 쪽 ${planA.totalEntries.toLocaleString()}항목이 쑥쑥 자라네요!`
+          : `[chat] ${shortA} 터를 닦으면서 첫 프로젝트를 기다리고 있어요!`,
+        planA.overallTier > 0
+          ? `[cheer] ${nameA}님 마을 T${planA.overallTier} 진짜 멋져요! 화이팅!`
+          : `[cheer] ${nameA}님 마을 새 출발 응원해요! 곧 멋진 영지가 될 거예요!`,
       ];
     }
     return [
       `[greet] 오늘 초원 바람 좋죠, ${nameB}님?`,
-      `[greet] 네! ${shortB}(T${planB.topDistrictTier}) 돌보고 잠깐 나왔어요!`,
+      planB.topDistrictTier > 0
+        ? `[greet] 네! ${shortB}(T${planB.topDistrictTier}) 돌보고 잠깐 나왔어요!`
+        : `[greet] 네! 새 영지 개척 준비하고 잠깐 산책 나왔어요!`,
     ];
   }
 
@@ -1550,19 +1582,23 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
               continue;
             }
 
-            // 3) 하늘 순찰 V자 편대 동시 비행 (+ Space 배럴롤 파도 전파!)
+            // 3) 하늘 순찰 V자 편대 동시 비행 (+ Shift 부스트 밀착 추종 · 미니 별꼬리 · Space 배럴롤 파도 전파!)
             if (pFlying) {
+              const pBoosting = companionCtx?.playerBoosting ?? false;
+              const pVx = companionCtx?.playerVx ?? 0;
+              const pVz = companionCtx?.playerVz ?? 0;
               const lat = side * (2.1 + (rank - 1) * 1.75);
               const back = 1.6 + (rank - 1) * 1.65;
-              const wingX = playerPos.x + rightX * lat + backX * back;
-              const wingZ = playerPos.z + rightZ * lat + backZ * back;
+              const leadSec = pBoosting ? 0.055 : 0.03;
+              const wingX = playerPos.x + pVx * leadSec + rightX * lat + backX * back;
+              const wingZ = playerPos.z + pVz * leadSec + rightZ * lat + backZ * back;
               const wingAlt = Math.max(0.6, pFlightAlt - 0.28 * rank + Math.sin(elapsed * 2.7 + slotIndex * 0.9) * 0.28);
-              const k = Math.min(1, dt * 6.4);
+              const k = Math.min(1, dt * (pBoosting ? 16.5 : 8.5));
               m.x += (wingX - m.x) * k;
               m.z += (wingZ - m.z) * k;
               m.tx = wingX;
               m.tz = wingZ;
-              m.flightAlt += (wingAlt - m.flightAlt) * Math.min(1, dt * 6.8);
+              m.flightAlt += (wingAlt - m.flightAlt) * Math.min(1, dt * (pBoosting ? 10.5 : 6.8));
 
               // 플레이어 배럴롤 감지 → V자 편대를 따라 앞줄→뒷줄 순차 파도처럼 360° 배럴롤!
               if (pBarrelRollTimer > 0.42 && cs.barrelDelay <= 0 && cs.barrelTimer <= 0) {
@@ -1585,23 +1621,35 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
               let dfYaw = cYaw - m.yaw;
               while (dfYaw > Math.PI) dfYaw -= Math.PI * 2;
               while (dfYaw < -Math.PI) dfYaw += Math.PI * 2;
-              m.yaw += dfYaw * Math.min(1, dt * 8.5);
+              m.yaw += dfYaw * Math.min(1, dt * (pBoosting ? 13.0 : 8.5));
               m.moving = pMoveSpeed > 0.6;
               m.moveSpeed = pMoveSpeed;
               m.flightRoll = pFlightRoll + extraRoll;
               m.flightPitch = pFlightPitch;
               m.worldAnim = "fly";
               m.animPhase = 0;
-              m.expression = pMoveSpeed > 20 ? "happy" : "normal";
-              m.blush = pMoveSpeed > 20 ? 0.55 : 0.25;
+              m.expression = pBoosting || pMoveSpeed > 20 ? "happy" : "normal";
+              m.blush = pBoosting ? 0.72 : pMoveSpeed > 20 ? 0.55 : 0.25;
               m.gazeTargetX = null;
               m.gazeTargetZ = null;
 
               cs.sparkleAccum += dt;
-              const flySparkleInterval = 0.09 + Math.min(0.06, (rank - 1) * 0.015);
+              const flySparkleInterval = pBoosting
+                ? 0.034 + Math.min(0.024, (rank - 1) * 0.006)
+                : 0.09 + Math.min(0.06, (rank - 1) * 0.015);
               if (pMoveSpeed > 2.5 && cs.sparkleAccum >= flySparkleInterval) {
                 cs.sparkleAccum = 0;
-                spawnTrailSparkle(m.x, m.flightAlt + 0.45, m.z, 0x7dd3fc, 0.55, false);
+                const trailColor = pBoosting
+                  ? (((Math.floor(elapsed * 24) + slotIndex) % 2 === 0) ? vividToneHex(m.spec.tone) : 0xffe57f)
+                  : 0x7dd3fc;
+                spawnTrailSparkle(
+                  m.x + backX * 0.45,
+                  m.flightAlt + 0.45,
+                  m.z + backZ * 0.45,
+                  trailColor,
+                  pBoosting ? 0.68 : 0.55,
+                  pBoosting,
+                );
               }
               cs.prevHeroLand = false;
               continue;
@@ -1670,19 +1718,22 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             m.flightRoll *= Math.max(0, 1 - dt * 12);
             m.flightPitch *= Math.max(0, 1 - dt * 12);
 
-            // 6) 모닥불 벤치 합석 동행: 1번은 제독 옆 벤치, 2번~N번은 모닥불(2.8, 1.0) 둘레 아늑한 반원 좌석!
+            // 6) 모닥불 합석 동행: 모닥불(2.8, 1.0) 기준 북·동·서쪽(남쪽 벤치·카메라 맞은편 호)에 둘러앉아 불멍!
             if (pCampfire) {
-              let seatX = 3.85;
-              let seatZ = 2.42;
-              if (slotIndex >= 1) {
-                const arcCount = Math.max(1, companionActorIds.length - 1);
-                const arcIdx = slotIndex - 1;
-                const theta = arcCount === 1
-                  ? 2.18
-                  : 2.18 + (arcIdx / (arcCount - 1)) * (Math.PI * 2 + 0.22 - 2.18);
-                const seatRadius = 2.05 + (arcIdx >= 6 ? 1.15 : 0);
-                seatX = 2.8 + Math.cos(theta) * seatRadius;
-                seatZ = 1.0 + Math.sin(theta) * seatRadius;
+              let seatX: number;
+              let seatZ: number;
+              const presetSeat = CAMPFIRE_COMPANION_SEATS[slotIndex];
+              if (presetSeat) {
+                seatX = presetSeat.x;
+                seatZ = presetSeat.z;
+              } else {
+                const outerIdx = slotIndex - CAMPFIRE_COMPANION_SEATS.length;
+                const outerCount = Math.max(1, companionActorIds.length - CAMPFIRE_COMPANION_SEATS.length);
+                const theta = outerCount === 1
+                  ? -Math.PI * 0.5
+                  : -0.18 - (outerIdx / (outerCount - 1)) * (Math.PI - 0.36);
+                seatX = 2.8 + Math.cos(theta) * 3.25;
+                seatZ = 1.0 + Math.sin(theta) * 3.25;
               }
               const sd = Math.hypot(seatX - m.x, seatZ - m.z);
               if (sd > 0.36) {

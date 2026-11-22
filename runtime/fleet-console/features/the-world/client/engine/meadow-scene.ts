@@ -1279,7 +1279,18 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   let currentSignature = "";
   let currentZones: readonly WorldZoneSpec[] = [];
   let currentVillages: readonly WorldVillageSpec[] = [];
-  let roadSegments: { ax: number; az: number; bx: number; bz: number; width: number }[] = [];
+  interface RoadSegment {
+    readonly ax: number;
+    readonly az: number;
+    readonly bx: number;
+    readonly bz: number;
+    readonly width: number;
+    readonly curveAmp: number;
+    readonly curvePhase: number;
+    readonly isMainRoad?: boolean | undefined;
+  }
+
+  let roadSegments: RoadSegment[] = [];
   let colliders: CircleCollider[] = [];
   let grassClearZones: CircleCollider[] = [];
   let cameraOccluders: CameraOccluder[] = [];
@@ -1287,7 +1298,33 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   let lastHoveredDistrict: WorldDistrictSpec | null = null;
   let lastSelectedDistrict: WorldDistrictSpec | null = null;
 
-  /** 도로까지 최단 거리 계산 (포장도로 정점 컬러 & 풀잎 제외 마스크용) */
+  function sampleRoadPoint(
+    seg: RoadSegment,
+    t: number,
+  ): { x: number; z: number; dirX: number; dirZ: number; perpX: number; perpZ: number } {
+    const vx = seg.bx - seg.ax;
+    const vz = seg.bz - seg.az;
+    const len = Math.max(0.001, Math.hypot(vx, vz));
+    const dirX = vx / len;
+    const dirZ = vz / len;
+    const perpX = -dirZ;
+    const perpZ = dirX;
+    // 양끝(광장·다리·마을 정문 앞마당)에서 값과 기울기가 0으로 감쇠하는 C1 동화풍 S자 굴곡
+    const taper = Math.sin(t * Math.PI);
+    const curve = seg.curveAmp > 0.001
+      ? taper * taper * Math.sin(t * Math.PI * 2.0 + seg.curvePhase) * seg.curveAmp
+      : 0;
+    return {
+      x: seg.ax + vx * t + perpX * curve,
+      z: seg.az + vz * t + perpZ * curve,
+      dirX,
+      dirZ,
+      perpX,
+      perpZ,
+    };
+  }
+
+  /** 도로까지 최단 거리 계산 (포장도로 정점 컬러 & 풀잎 제외 마스크용, 0-GC) */
   function minRoadDistance(x: number, z: number): { dist: number; halfWidth: number } {
     const plazaCourtDist = Math.hypot(x, z + 1.6);
     if (plazaCourtDist < 4.6) {
@@ -1303,7 +1340,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const invLen = 1 / Math.sqrt(len2);
       const perpX = -vz * invLen;
       const perpZ = vx * invLen;
-      const curve = Math.sin(t * Math.PI) * 0.72;
+      let curve = 0;
+      if (seg.curveAmp > 0.001) {
+        const taper = Math.sin(t * Math.PI);
+        curve = taper * taper * Math.sin(t * Math.PI * 2.0 + seg.curvePhase) * seg.curveAmp;
+      }
       const px = seg.ax + vx * t + perpX * curve;
       const pz = seg.az + vz * t + perpZ * curve;
       const d = Math.hypot(x - px, z - pz);
@@ -1701,6 +1742,20 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     });
     addContactShadow(b, bx, bz, 0.90, 0.54, yaw);
     addGrassClearZone(bx, bz, 1.35);
+  }
+
+  function addWoodenSignpost(b: InstancedBucketBuilder, sx: number, sz: number, yaw: number): void {
+    const sy = getTerrainBaseHeight(sx, sz);
+    if (sy < 0.08) return;
+    b.withFrame(sx, sy, sz, yaw, 1, () => {
+      b.addCylinder(matBark, [0, 0.88, 0], [0.17, 1.78, 0.17], undefined, { tapered: true, castShadow: true });
+      b.addBox(matWoodLight, [0.22, 1.50, 0], [0.94, 0.20, 0.06], [0, 0.34, 0]);
+      b.addBox(matWood, [-0.20, 1.22, 0], [0.86, 0.20, 0.06], [0, -0.44, 0]);
+      b.addSphere(matBrass, [0, 1.80, 0], [0.14, 0.14, 0.14]);
+    });
+    addContactShadow(b, sx, sz, 0.52, 0.52);
+    addGrassClearZone(sx, sz, 0.86);
+    colliders.push({ x: sx, z: sz, r: 0.34 });
   }
 
   function registerBanner(x: number, y: number, z: number, baseRotY: number, colorHex: number, width = 0.92, height = 0.46): void {
@@ -3054,32 +3109,88 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     currentZones = zones;
     currentVillages = villages;
 
-    // 1. 광장 ↔ 사령관 마을 ↔ 아웃포스트 도로 세그먼트 생성
+    // 1. 광장 ↔ 사령관 마을 정문 ↔ 아웃포스트 도로 세그먼트 생성 (정문 진입 2단 정렬 + 동화풍 자연 굴곡)
     roadSegments = [];
-    // 중앙 광장 → 양쪽 목교 기본 간선
-    roadSegments.push({ ax: 1.0, az: 1.4, bx: BRIDGE_EAST.x, bz: BRIDGE_EAST.z, width: 1.35 });
-    roadSegments.push({ ax: -1.8, az: 1.6, bx: BRIDGE_WEST.x, bz: BRIDGE_WEST.z, width: 1.30 });
+    const eastNorth = fromBridgeLocal(BRIDGE_EAST, 0, -BRIDGE_EAST.halfSpan - 0.35);
+    const eastSouth = fromBridgeLocal(BRIDGE_EAST, 0, BRIDGE_EAST.halfSpan + 0.45);
+    const westNorth = fromBridgeLocal(BRIDGE_WEST, 0, -BRIDGE_WEST.halfSpan - 0.35);
+    const westSouth = fromBridgeLocal(BRIDGE_WEST, 0, BRIDGE_WEST.halfSpan + 0.45);
+    // 중앙 광장 → 양쪽 목교 북단 진입로 + 직선 교량 구간
+    roadSegments.push({ ax: 1.0, az: 1.4, bx: eastNorth.x, bz: eastNorth.z, width: 1.35, curveAmp: 0.32, curvePhase: 0.4 });
+    roadSegments.push({ ax: eastNorth.x, az: eastNorth.z, bx: eastSouth.x, bz: eastSouth.z, width: 1.35, curveAmp: 0, curvePhase: 0 });
+    roadSegments.push({ ax: -1.8, az: 1.6, bx: westNorth.x, bz: westNorth.z, width: 1.30, curveAmp: 0.30, curvePhase: -0.5 });
+    roadSegments.push({ ax: westNorth.x, az: westNorth.z, bx: westSouth.x, bz: westSouth.z, width: 1.30, curveAmp: 0, curvePhase: 0 });
 
-    for (const v of villages) {
-      const gateX = v.x + Math.cos(v.gateAngle) * (v.radius - 0.1);
-      const gateZ = v.z + Math.sin(v.gateAngle) * (v.radius - 0.1);
-      if (v.z > 13.5) {
-        const bridge = v.x >= -2 ? BRIDGE_EAST : BRIDGE_WEST;
-        roadSegments.push({ ax: bridge.x, az: bridge.z, bx: gateX, bz: gateZ, width: 1.35 });
-      } else {
-        roadSegments.push({ ax: 0, az: -1.2, bx: gateX, bz: gateZ, width: 1.35 });
-      }
+    for (let vi = 0; vi < villages.length; vi += 1) {
+      const v = villages[vi]!;
+      const gCos = Math.cos(v.gateAngle);
+      const gSin = Math.sin(v.gateAngle);
+      const gateInnerX = v.x + gCos * (v.radius - 0.15);
+      const gateInnerZ = v.z + gSin * (v.radius - 0.15);
+      const gateOuterX = v.x + gCos * (v.radius + 2.8);
+      const gateOuterZ = v.z + gSin * (v.radius + 2.8);
+      // 1) 정문 앞마당 → 정문 입구 직선 에이프런 (울타리 측면 관통 방지)
+      roadSegments.push({
+        ax: gateOuterX,
+        az: gateOuterZ,
+        bx: gateInnerX,
+        bz: gateInnerZ,
+        width: 1.40,
+        curveAmp: 0,
+        curvePhase: 0,
+      });
+      // 2) 광장/남부 목교 남단 → 정문 앞마당 동화풍 완만한 오솔길
+      const startPt = v.z > 13.5
+        ? (v.x >= -2 ? eastSouth : westSouth)
+        : { x: 0, z: -1.2 };
+      const segLen = Math.hypot(gateOuterX - startPt.x, gateOuterZ - startPt.z);
+      const curveAmp = segLen >= 12 ? Math.min(0.95, segLen * 0.026) : 0.25;
+      const curvePhase = (vi % 2 === 0 ? 0.0 : Math.PI) + (hash2(v.x, v.z) - 0.5) * 0.6;
+      roadSegments.push({
+        ax: startPt.x,
+        az: startPt.z,
+        bx: gateOuterX,
+        bz: gateOuterZ,
+        width: 1.35,
+        curveAmp,
+        curvePhase,
+        isMainRoad: true,
+      });
     }
     for (const zSpec of zones) {
       if (zSpec.kind === "plaza" || zSpec.kind === "village") continue;
       if (zSpec.kind === "garden") {
-        roadSegments.push({ ax: BRIDGE_EAST.x, az: BRIDGE_EAST.z, bx: zSpec.x, bz: zSpec.z, width: 1.30 });
+        roadSegments.push({
+          ax: eastSouth.x,
+          az: eastSouth.z,
+          bx: zSpec.x,
+          bz: zSpec.z,
+          width: 1.30,
+          curveAmp: 0.45,
+          curvePhase: 0.3,
+        });
       } else if (zSpec.kind === "outpost") {
         const ownerVillage = zSpec.commodoreId ? villages.find((v) => v.commodoreId === zSpec.commodoreId) : undefined;
         if (ownerVillage) {
-          roadSegments.push({ ax: ownerVillage.x, az: ownerVillage.z, bx: zSpec.x, bz: zSpec.z, width: 1.15 });
+          roadSegments.push({
+            ax: ownerVillage.x,
+            az: ownerVillage.z,
+            bx: zSpec.x,
+            bz: zSpec.z,
+            width: 1.15,
+            curveAmp: 0.35,
+            curvePhase: 0.5,
+          });
         } else {
-          roadSegments.push({ ax: 0, az: -1.2, bx: zSpec.x * 0.92, bz: zSpec.z * 0.92, width: 1.25 });
+          roadSegments.push({
+            ax: 0,
+            az: -1.2,
+            bx: zSpec.x * 0.92,
+            bz: zSpec.z * 0.92,
+            width: 1.25,
+            curveAmp: 0.55,
+            curvePhase: -0.4,
+          });
         }
       }
     }
@@ -3178,10 +3289,99 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       buildZoneStructures(bucketBuilder, dynamicWorldGroup, zSpec);
     }
 
-    // 4. 광장 및 초원 외곽 풍경림 · 울타리 · 가로등 배치
+    // 4. 광장 및 초원 외곽 풍경림 · 울타리 · 길가 가로등 · 갈림길 이정표 · 초원 쉼터 배치
     addHangingStreetlamp(bucketBuilder, -2.9, -3.5, 0.4, true);
     addHangingStreetlamp(bucketBuilder, 3.1, -3.4, -0.4, true);
     addHangingStreetlamp(bucketBuilder, 5.4, 5.6, -0.8, true);
+
+    // 4a-1. 34~60m 장거리 마을 간 오솔길 양옆 길가 가로등 (기존 인스탄싱 버킷 & 야간 근접 6광원 풀 활용)
+    for (let si = 0; si < roadSegments.length; si += 1) {
+      const seg = roadSegments[si]!;
+      if (!seg.isMainRoad) continue;
+      const segLen = Math.hypot(seg.bx - seg.ax, seg.bz - seg.az);
+      if (segLen < 18) continue;
+      const stops: readonly number[] = segLen >= 38 ? [0.27, 0.53, 0.77] : [0.35, 0.67];
+      for (let k = 0; k < stops.length; k += 1) {
+        const pt = sampleRoadPoint(seg, stops[k]!);
+        const side = (si + k) % 2 === 0 ? 1 : -1;
+        const offset = seg.width + 1.15;
+        const lx = pt.x + pt.perpX * offset * side;
+        const lz = pt.z + pt.perpZ * offset * side;
+        const ly = getTerrainBaseHeight(lx, lz);
+        if (ly < 0.14) continue;
+        if (Math.hypot(lx, lz) < 9.5 || Math.hypot(lx, lz) > WORLD_PLAY_RADIUS - 3.5) continue;
+        if (zones.some((z) => z.kind !== "plaza" && Math.hypot(lx - z.x, lz - z.z) < z.radius + 2.0)) continue;
+        if (villages.some((v) => Math.hypot(lx - v.x, lz - v.z) < v.radius + 2.2)) continue;
+        if (streetlampAnchors.some((a) => Math.hypot(lx - a.x, lz - a.z) < 9.2)) continue;
+        const armYaw = Math.atan2(-pt.perpX * side, -pt.perpZ * side);
+        addHangingStreetlamp(bucketBuilder, lx, lz, armYaw, true);
+      }
+    }
+
+    // 4a-2. 주요 갈림길 나무 방향 이정표 (0 추가 draw call)
+    const crossroadSigns: readonly [number, number, number][] = [
+      [2.2, -12.6, 0.18],
+      [-12.8, -11.5, -0.52],
+      [eastSouth.x + 2.4, eastSouth.z + 2.6, 2.85],
+      [westSouth.x - 2.4, westSouth.z + 2.4, -2.75],
+    ];
+    for (const [sx, sz, syaw] of crossroadSigns) {
+      const sy = getTerrainBaseHeight(sx, sz);
+      if (sy < 0.16) continue;
+      if (zones.some((z) => z.kind !== "plaza" && Math.hypot(sx - z.x, sz - z.z) < z.radius + 2.0)) continue;
+      if (villages.some((v) => Math.hypot(sx - v.x, sz - v.z) < v.radius + 2.2)) continue;
+      const rd = minRoadDistance(sx, sz);
+      if (rd.dist < rd.halfWidth + 0.55) continue;
+      addWoodenSignpost(bucketBuilder, sx, sz, syaw);
+    }
+
+    // 4a-3. 마을 사이 넓은 초원 공터 쉼터 (벚나무/참나무 + 벤치 + 화단 + 들꽃 군락 4~5곳)
+    const gladeFlowerAnchors: { readonly x: number; readonly z: number }[] = [];
+    const meadowGlades: readonly [number, number, "oak" | "blossom", number][] = [
+      [-19.5, -14.8, "blossom", 0.55],
+      [20.2, -15.4, "oak", -0.60],
+      [21.5, 25.5, "blossom", -2.35],
+      [-21.5, 24.8, "oak", 2.35],
+      [-45.0, -24.5, "blossom", 0.85],
+      [46.0, -24.5, "oak", -0.85],
+    ];
+    for (const [gx, gz, treeKind, faceYaw] of meadowGlades) {
+      if (gladeFlowerAnchors.length >= 5) break;
+      const gy = getTerrainBaseHeight(gx, gz);
+      if (gy < 0.18) continue;
+      const bp = brookProfile(gx);
+      if (Math.abs(gz - bp.centerZ) < bp.halfWidth + 3.2) continue;
+      if (zones.some((z) => z.kind !== "plaza" && Math.hypot(gx - z.x, gz - z.z) < z.radius + 3.8)) continue;
+      if (villages.some((v) => Math.hypot(gx - v.x, gz - v.z) < v.radius + 4.0)) continue;
+      const rd = minRoadDistance(gx, gz);
+      if (rd.dist < rd.halfWidth + 2.8) continue;
+
+      addTree(bucketBuilder, dynamicWorldGroup, gx, gz, 1.18, treeKind, true);
+      const benchX = gx + Math.sin(faceYaw) * 1.95;
+      const benchZ = gz + Math.cos(faceYaw) * 1.95;
+      addWoodenBench(bucketBuilder, benchX, benchZ, faceYaw);
+
+      const bedX = gx + Math.cos(faceYaw) * 2.15;
+      const bedZ = gz - Math.sin(faceYaw) * 2.15;
+      const bedY = getTerrainBaseHeight(bedX, bedZ);
+      if (bedY >= 0.14) {
+        if (assetRegistry.hasCustomModel("flowerbed")) {
+          queueInstancedSlot("flowerbed", {
+            x: bedX,
+            y: bedY,
+            z: bedZ,
+            rotationY: faceYaw + 0.4,
+            scale: 0.96,
+          });
+          addContactShadow(bucketBuilder, bedX, bedZ, 0.90, 0.90);
+          addGrassClearZone(bedX, bedZ, 1.15);
+        } else {
+          addBushAndRockCluster(bucketBuilder, bedX, bedZ, 0.95);
+        }
+      }
+      addBushAndRockCluster(bucketBuilder, gx - Math.cos(faceYaw) * 2.05, gz + Math.sin(faceYaw) * 2.05, 0.92);
+      gladeFlowerAnchors.push({ x: gx, z: gz });
+    }
 
     const scenicTrees: readonly [number, number, number, "oak" | "pine" | "blossom"][] = [
       // 중앙 광장 · 근접 풍경림
@@ -3390,6 +3590,31 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       new Color(0xc4b5fd), // 들라벤더 연보라
     ];
     let fCount = 0;
+    // 초원 쉼터(glade) 주변에 화사한 들꽃 군락 우선 배치 (지상 산책·하늘 조망 시각 밀도 보강, 0 추가 draw call)
+    for (let gi = 0; gi < gladeFlowerAnchors.length && fCount < MAX_FLOWERS; gi += 1) {
+      const glade = gladeFlowerAnchors[gi]!;
+      for (let k = 0; k < 18 && fCount < MAX_FLOWERS; k += 1) {
+        const ang = (k / 18) * Math.PI * 2 + hash2(glade.x + k, glade.z) * 0.45;
+        const rad = 2.4 + hash2(glade.z + k * 1.7, glade.x) * 3.1;
+        const fx = glade.x + Math.cos(ang) * rad;
+        const fz = glade.z + Math.sin(ang) * rad;
+        const fy = getTerrainBaseHeight(fx, fz);
+        if (fy < 0.18) continue;
+        const rd = minRoadDistance(fx, fz);
+        if (rd.dist < rd.halfWidth + 0.40) continue;
+        if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.30)) continue;
+        if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.10)) continue;
+
+        dummy.position.set(fx, fy - 0.02, fz);
+        dummy.rotation.set(0, hash2(fx, fz) * Math.PI * 2, 0);
+        const sc = 0.88 + hash2(fz, fx) * 0.56;
+        dummy.scale.setScalar(sc);
+        dummy.updateMatrix();
+        flowerInstanced.setMatrixAt(fCount, dummy.matrix);
+        flowerInstanced.setColorAt(fCount, flowerPalette[(gi * 3 + k) % flowerPalette.length]!);
+        fCount += 1;
+      }
+    }
     for (let attempt = 0; attempt < MAX_FLOWERS * 3 && fCount < MAX_FLOWERS; attempt += 1) {
       const u1 = hash2(attempt * 3.17 + 50, 11.7);
       const u2 = hash2(attempt * 5.09 + 20, 29.3);
