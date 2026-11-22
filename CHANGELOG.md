@@ -5,6 +5,24 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.316.0] - 2026-11-22
+
+### fleet-console
+
+#### Added
+- Commodores can use your Mac apps without a per-call approval whenever Computer Use is turned on in Settings, and you can follow their work from the sidebar and, in the desktop app, a live preview in the Commodore chat.
+- Agents can file feedback tickets about Computer Use problems, saved in `~/.fleet/console/feedback/computer-use`.
+
+#### Changed
+- On macOS, agents use apps in the background without moving your pointer or switching the active app. Fleet's own cursor appears only when an agent acts on an on-screen window. On the current Space, agents can read a minimized or hidden window, press supported controls, set field values and scroll without showing it. Typing, shortcuts, pasting, dragging and some clicks require the window to be on screen. On another Space, agents can take a screenshot of a window but can't control it. Computer Use requires the Fleet Console desktop app but no longer needs Codex or Cua Driver.
+- With Screen Recording permission, the Computer Use preview can show a still image of the selected window even when it's minimized or hidden. On macOS 26, this also works for a window on another Space. Fleet refreshes the image about once a second, but only while the preview card is visible on the host or a remote device with full access is viewing the preview.
+- The first time Computer Use needs Accessibility or Screen Recording, Fleet asks macOS for them, so the app appears in System Settings and you only need to turn it on. When both are missing, the Screen Recording prompt follows as soon as you turn on Accessibility. Permission messages name the app macOS actually checks and say what to do if the app isn't listed or doesn't reopen after Quit & Reopen.
+- Show stacked usage percentages beside warning and critical provider rings in the composer quota summary while keeping calm providers compact.
+- Use Computer Use from a paired remote device with full access, and keep it running when a remote device connects. During Computer Use, the device with full access can show a still image of the window the agent selects, updated once per second. Monitoring-only devices remain read-only and don't receive previews. Fleet doesn't save preview images. Preview sharing is on by default and can be turned off only in Settings on the host Mac.
+
+#### Removed
+- Computer Use is no longer available on Windows or Linux.
+
 ## [1.315.0] - 2026-11-21
 
 ### fleet-cli
