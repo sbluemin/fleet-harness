@@ -38,7 +38,7 @@ let bgmGainCtx: AudioContext | null = null;
 let bgmRainSource: AudioBufferSourceNode | null = null;
 let bgmRainFilter: BiquadFilterNode | null = null;
 let bgmRainGain: GainNode | null = null;
-let bgmVisBound = false;
+let audioVisBound = false;
 
 const MASTER_VOLUME = 0.16;
 const HOVER_COOLDOWN_MS = 90;
@@ -681,6 +681,8 @@ function stopRainAmbienceInternal(): void {
 
 function startRainAmbienceInternal(): void {
   if (rainSource || muted) return;
+  if (typeof document !== "undefined" && document.hidden) return;
+  bindAudioVisibilityOnce();
   const eng = getAudioEngine();
   if (!eng) return;
   const buf = getRainNoiseBuffer(eng.ctx);
@@ -1045,14 +1047,17 @@ function stopBgmInternal(): void {
   stopBgmRainBed();
 }
 
-function bindBgmVisibilityOnce(): void {
-  if (bgmVisBound || typeof document === "undefined") return;
-  bgmVisBound = true;
+function bindAudioVisibilityOnce(): void {
+  if (audioVisBound || typeof document === "undefined") return;
+  audioVisBound = true;
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
       stopBgmInternal();
-    } else if (bgmDesired && !muted) {
-      startBgmInternal();
+      stopRainAmbienceInternal();
+      stopSpatialAmbienceInternal();
+    } else if (!muted) {
+      if (bgmDesired) startBgmInternal();
+      if (rainDesired) startRainAmbienceInternal();
     }
   });
 }
@@ -1060,7 +1065,7 @@ function bindBgmVisibilityOnce(): void {
 function startBgmInternal(): void {
   if (!bgmDesired || muted || typeof window === "undefined") return;
   if (typeof document !== "undefined" && document.hidden) return;
-  bindBgmVisibilityOnce();
+  bindAudioVisibilityOnce();
   // AudioContext 활성화 시도 (사용자 클릭 직후 resume)
   const eng = getAudioEngine();
   if (!eng) return;
@@ -1465,6 +1470,8 @@ function stopSpatialAmbienceInternal(): void {
 
 function ensureSpatialAmbienceNodes(): SpatialAmbienceNodes | null {
   if (muted || !audioCtx || !masterGain || audioCtx.state !== "running") return null;
+  if (typeof document !== "undefined" && document.hidden) return null;
+  bindAudioVisibilityOnce();
   if (spatialNodes && spatialNodes.ctx === audioCtx) return spatialNodes;
   stopSpatialAmbienceInternal();
 

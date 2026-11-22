@@ -180,26 +180,27 @@ void main() {
 
     vec3 farDay = mix(vec3(0.56, 0.76, 0.92), uSkyHorizon, 0.58);
     vec3 farSet = mix(vec3(0.68, 0.50, 0.64), uSkyHorizon, 0.52);
-    vec3 farNight = mix(vec3(0.14, 0.21, 0.39), uSkyHorizon, 0.45);
+    vec3 farNight = mix(vec3(0.042, 0.068, 0.135), uSkyHorizon, 0.58);
     vec3 cFar = mix(mix(farDay, farSet, sunset), farNight, smoothstep(0.42, 0.92, uNight));
-    // 최원경 봉우리 정상에 은은한 설산 햇살 림
-    float ridgeSnow = smoothstep(hFar - 0.018, hFar - 0.002, dir.y) * (1.0 - uNight * 0.75);
+    // 최원경 봉우리 정상에 은은한 설산 햇살 림 (야간에는 완전 소거해 지평선 밝은 띠 방지)
+    float ridgeSnow = smoothstep(hFar - 0.018, hFar - 0.002, dir.y) * (1.0 - smoothstep(0.25, 0.85, uNight));
     cFar = mix(cFar, vec3(0.95, 0.97, 1.0), ridgeSnow * 0.22);
 
     vec3 midDay = mix(vec3(0.39, 0.64, 0.78), uSkyHorizon, 0.36);
     vec3 midSet = mix(vec3(0.49, 0.35, 0.52), uSkyHorizon, 0.34);
-    vec3 midNight = mix(vec3(0.10, 0.16, 0.31), uSkyHorizon, 0.30);
+    vec3 midNight = mix(vec3(0.028, 0.046, 0.095), uSkyHorizon, 0.40);
     vec3 cMid = mix(mix(midDay, midSet, sunset), midNight, smoothstep(0.42, 0.92, uNight));
 
     vec3 nearDay = mix(vec3(0.31, 0.58, 0.58), uSkyHorizon, 0.18);
     vec3 nearSet = mix(vec3(0.36, 0.26, 0.38), uSkyHorizon, 0.20);
-    vec3 nearNight = mix(vec3(0.07, 0.12, 0.23), uSkyHorizon, 0.18);
+    vec3 nearNight = mix(vec3(0.018, 0.030, 0.065), uSkyHorizon, 0.24);
     vec3 cNear = mix(mix(nearDay, nearSet, sunset), nearNight, smoothstep(0.42, 0.92, uNight));
 
-    // 산기슭 대기 원근 안개 그라데이션
-    float baseMistFar = smoothstep(0.08, -0.01, dir.y) * 0.55;
-    float baseMistMid = smoothstep(0.055, -0.01, dir.y) * 0.45;
-    float baseMistNear = smoothstep(0.025, -0.02, dir.y) * 0.42;
+    // 산기슭 대기 원근 안개 그라데이션 (야간엔 근경 3D 능선과 자연스럽게 이어지도록 부드럽게 블렌딩)
+    float nightBlendBoost = smoothstep(0.45, 0.95, uNight) * 0.18;
+    float baseMistFar = smoothstep(0.08, -0.01, dir.y) * (0.55 + nightBlendBoost);
+    float baseMistMid = smoothstep(0.055, -0.01, dir.y) * (0.45 + nightBlendBoost);
+    float baseMistNear = smoothstep(0.025, -0.02, dir.y) * (0.42 + nightBlendBoost * 0.65);
 
     col = mix(col, mix(cFar, uSkyHorizon, baseMistFar), mFar);
     col = mix(col, mix(cMid, uSkyHorizon, baseMistMid), mMid);

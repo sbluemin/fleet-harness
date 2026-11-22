@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import {
+  WORLD_CAMPFIRE_BENCH_POS,
   type WorldActorPanelMode,
   type WorldActorSpec,
   type WorldAdmiralHat,
@@ -97,7 +98,7 @@ import {
   useWorldStore,
   type WorldStampId,
 } from "../world-store.js";
-import { useWorldShortcuts } from "./use-world-shortcuts.js";
+import { CAMPFIRE_F_PRIORITY_RADIUS, useWorldShortcuts } from "./use-world-shortcuts.js";
 import { WorldAdmiralCustomizer } from "./world-admiral-customizer.js";
 import { WorldChatLog, WorldSpeechSync } from "./world-chat-log.js";
 import { WorldControlsGuide } from "./world-controls-guide.js";
@@ -239,14 +240,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [skyHoverTarget, setSkyHoverTarget] = useState<WorldSkyHoverTarget | null>(null);
   const [companionRosterOpen, setCompanionRosterOpen] = useState(false);
   const [nearParadeBell, setNearParadeBell] = useState(false);
+  const [nearCampfire, setNearCampfire] = useState(false);
   const [nearFishingWater, setNearFishingWater] = useState(false);
   const [stampBookInitialTab, setStampBookInitialTab] = useState<WorldStampBookTab>("stamps");
   const companionShellRef = useRef<HTMLDivElement | null>(null);
   const nearParadeBellRef = useRef(nearParadeBell);
   nearParadeBellRef.current = nearParadeBell;
+  const nearCampfireRef = useRef(nearCampfire);
+  nearCampfireRef.current = nearCampfire;
   const nearFishingWaterRef = useRef(nearFishingWater);
   nearFishingWaterRef.current = nearFishingWater;
   const fishCatchTimerRef = useRef<number | null>(null);
+  const villageDragCleanupRef = useRef<(() => void) | null>(null);
   const [overviewDragLink, setOverviewDragLink] = useState<{
     readonly fromVillage: WorldVillageSpec;
     readonly startX: number;
@@ -277,23 +282,32 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     labelsOverlayRef.current?.applyFramePositions(positions);
     minimapRef.current?.updateRoamingDots?.(positions.minimapActors);
 
+    const px = positions.playerWorldX;
+    const pz = positions.playerWorldZ;
+    const pyaw = positions.playerYaw;
+
+    // 모닥불 `F` 키 우선 반경 엣지 트리거 갱신 (상태 전환 시에만 리렌더, 평시 0Hz)
+    const distCampfire = Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z);
+    const nextNearCampfire = distCampfire <= CAMPFIRE_F_PRIORITY_RADIUS;
+    if (nextNearCampfire !== nearCampfireRef.current) {
+      nearCampfireRef.current = nextNearCampfire;
+      setNearCampfire(nextNearCampfire);
+    }
+
     // 전략 미니맵 플레이어 위치/방향 마커 0Hz Direct-DOM 갱신 (정지 중 SVG 쓰기 0)
-    const markerEl = minimapPlayerRef.current;
-    if (markerEl) {
-      const prev = lastMinimapPoseRef.current;
-      const px = positions.playerWorldX;
-      const pz = positions.playerWorldZ;
-      const pyaw = positions.playerYaw;
-      if (
-        Number.isNaN(prev.x)
-        || Math.abs(px - prev.x) >= 0.08
-        || Math.abs(pz - prev.z) >= 0.08
-        || Math.abs(pyaw - prev.yaw) >= 0.03
-      ) {
+    const prev = lastMinimapPoseRef.current;
+    if (
+      Number.isNaN(prev.x)
+      || Math.abs(px - prev.x) >= 0.08
+      || Math.abs(pz - prev.z) >= 0.08
+      || Math.abs(pyaw - prev.yaw) >= 0.03
+    ) {
+      prev.x = px;
+      prev.z = pz;
+      prev.yaw = pyaw;
+      const markerEl = minimapPlayerRef.current;
+      if (markerEl) {
         markerEl.setAttribute("transform", formatMinimapPlayerTransform(px, pz, pyaw));
-        prev.x = px;
-        prev.z = pz;
-        prev.yaw = pyaw;
       }
     }
   }, []);
@@ -359,6 +373,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current);
     if (fishCatchTimerRef.current !== null) window.clearTimeout(fishCatchTimerRef.current);
+    villageDragCleanupRef.current?.();
+    villageDragCleanupRef.current = null;
   }, []);
 
   // 월드에 표시되는 모든 사령관 기록과 활성 Objective 타임라인을 미리 구독한다.
@@ -795,6 +811,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [deps, pushCelebrationToast]);
 
   const handleStartFishing = useCallback(() => {
+    if (fishCatchTimerRef.current !== null) {
+      window.clearTimeout(fishCatchTimerRef.current);
+      fishCatchTimerRef.current = null;
+    }
+    clearLastFishCatch();
     runtimeRef.current?.startFishing();
   }, []);
 
@@ -830,6 +851,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     lastPlayerPoseRef: lastMinimapPoseRef,
     controlsGuideOpenRef,
     nearParadeBellRef,
+    nearCampfireRef,
     nearFishingWaterRef,
     onToggleControlsGuide: handleToggleControlsGuide,
     onCloseControlsGuide: handleCloseControlsGuide,
@@ -1013,6 +1035,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       return;
     }
 
+    // 낚시 중 캔버스 클릭: 입질(`bite`)이면 즉시 릴 감기, 대기/포획 중에는 구역·액터 피킹 차단
+    if (snap.fishingPhase === "bite") {
+      handleReelFishing();
+      return;
+    }
+    if (snap.fishingPhase !== "idle") {
+      return;
+    }
+
     // 별빛 비행(`overviewMode`) 중 클릭 우선순위:
     // 1. 액터 · 퀘스트 게시판 → 2. 마을/구역 유성 급강하 → 3. 일반 초원 땅 어디든 클릭 유성 착지
     if (snap.overviewMode) {
@@ -1098,7 +1129,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       closeActorInteraction();
       return;
     }
-  }, [deps, pushToast]);
+  }, [deps, handleReelFishing, pushToast]);
 
   // 모달 & HUD & 미니맵 콜백 (React.memo 안정성 유지)
   const handleCloseQuestBoard = useCallback(() => {
@@ -1759,6 +1790,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      villageDragCleanupRef.current = null;
       setOverviewDragLink(null);
       if (isDragging) {
         suppressVillageClickRef.current = true;
@@ -1790,9 +1822,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     const onUp = () => finish(false);
     const onCancel = () => finish(true);
 
+    villageDragCleanupRef.current?.();
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
+    villageDragCleanupRef.current = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
   }, [deps, pushCelebrationToast]);
 
   const visibleLabelMetas = useMemo(
@@ -1811,6 +1849,22 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
   const playerLabelRevealed = !store.overviewMode && (playerHovered || store.admiralCustomizerOpen);
+
+  // 낚시 중 모달·포토·채팅·이모트 휠·모닥불 착석·시네마·비행·대화 진입 시 즉시 낚시 자동 취소 (유령 입질/키 충돌 차단)
+  const fishingInterrupted = anyModalOpen
+    || store.photoMode
+    || store.chatActive
+    || store.emoteWheelOpen
+    || store.sittingAtCampfire
+    || store.cinemaMode
+    || store.overviewMode
+    || store.interactionMode !== "closed";
+
+  useEffect(() => {
+    if (store.fishingPhase !== "idle" && fishingInterrupted) {
+      runtimeRef.current?.cancelFishing();
+    }
+  }, [fishingInterrupted, store.fishingPhase]);
 
   // 근처 사령관/마을 정문 원클릭 결재·질문 퀵 액션 해소
   const nearFieldReviewTarget = useMemo(() => {
@@ -2127,94 +2181,87 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               ) : null}
             </div>
           ) : null}
-          {nearFieldReviewTarget && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" ? (
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                bottom: "76px",
-                transform: "translateX(-50%)",
-                zIndex: 9,
-                pointerEvents: "none",
-              }}
-            >
-              <button
-                type="button"
-                className={`the-world-field-review-chip ${nearFieldReviewTarget.kind === "ask" ? "is-ask" : "is-review"}`}
-                aria-label={t(
-                  nearFieldReviewTarget.kind === "ask"
-                    ? "theWorld.fieldReview.askAria"
-                    : "theWorld.fieldReview.reviewAria",
-                  { name: nearFieldReviewTarget.actor.name },
-                )}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => {
-                  playDistrictSelect();
-                  if (nearFieldReviewTarget.kind === "review" && nearFieldReviewTarget.objectiveId) {
-                    openActorPanel(nearFieldReviewTarget.actor.id, "goals", nearFieldReviewTarget.objectiveId);
-                  } else {
-                    openActorDialogue(nearFieldReviewTarget.actor.id);
-                  }
-                }}
-              >
-                <WorldIcon
-                  name={nearFieldReviewTarget.kind === "ask" ? "bell" : "questBoard"}
-                  size={12}
-                  tone={nearFieldReviewTarget.kind === "ask" ? "amber" : "cerulean"}
-                />
-                <span>
-                  {nearFieldReviewTarget.actor.name} ·{" "}
-                  {t(
+          {!store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed"
+            && (
+              nearFieldReviewTarget !== null
+              || (store.fishingPhase === "idle" && nearParadeBell)
+              || (store.fishingPhase === "idle" && !store.sittingAtCampfire && (nearCampfire || nearFishingWater))
+            ) ? (
+            <div className="the-world-proximity-dock">
+              {nearFieldReviewTarget ? (
+                <button
+                  type="button"
+                  className={`the-world-field-review-chip ${nearFieldReviewTarget.kind === "ask" ? "is-ask" : "is-review"}`}
+                  aria-label={t(
                     nearFieldReviewTarget.kind === "ask"
-                      ? "theWorld.fieldReview.answerAsk"
-                      : "theWorld.fieldReview.reviewMission",
+                      ? "theWorld.fieldReview.askAria"
+                      : "theWorld.fieldReview.reviewAria",
+                    { name: nearFieldReviewTarget.actor.name },
                   )}
-                </span>
-              </button>
-            </div>
-          ) : null}
-          {nearParadeBell && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" && store.fishingPhase === "idle" ? (
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                bottom: "108px",
-                transform: "translateX(-50%)",
-                zIndex: 9,
-                pointerEvents: "none",
-              }}
-            >
-              <button
-                type="button"
-                className="the-world-field-review-chip is-ask"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={handleRingParadeBell}
-              >
-                <WorldIcon name="bell" size={12} tone="amber" />
-                <span>{t("theWorld.bell.prompt")}</span>
-              </button>
-            </div>
-          ) : null}
-          {nearFishingWater && store.fishingPhase === "idle" && !store.sittingAtCampfire && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" ? (
-            <div
-              style={{
-                position: "absolute",
-                left: "50%",
-                bottom: "76px",
-                transform: "translateX(-50%)",
-                zIndex: 9,
-                pointerEvents: "none",
-              }}
-            >
-              <button
-                type="button"
-                className="the-world-field-review-chip is-review"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={handleStartFishing}
-              >
-                <WorldIcon name="sparkle" size={12} tone="teal" />
-                <span>{t("theWorld.fishing.castPrompt")}</span>
-              </button>
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    playDistrictSelect();
+                    if (nearFieldReviewTarget.kind === "review" && nearFieldReviewTarget.objectiveId) {
+                      openActorPanel(nearFieldReviewTarget.actor.id, "goals", nearFieldReviewTarget.objectiveId);
+                    } else {
+                      openActorDialogue(nearFieldReviewTarget.actor.id);
+                    }
+                  }}
+                >
+                  <WorldIcon
+                    name={nearFieldReviewTarget.kind === "ask" ? "bell" : "questBoard"}
+                    size={12}
+                    tone={nearFieldReviewTarget.kind === "ask" ? "amber" : "cerulean"}
+                  />
+                  <span className="the-world-field-review-chip-label">
+                    {nearFieldReviewTarget.actor.name} ·{" "}
+                    {t(
+                      nearFieldReviewTarget.kind === "ask"
+                        ? "theWorld.fieldReview.answerAsk"
+                        : "theWorld.fieldReview.reviewMission",
+                    )}
+                  </span>
+                </button>
+              ) : null}
+              {nearParadeBell && store.fishingPhase === "idle" ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-ask"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleRingParadeBell}
+                >
+                  <WorldIcon name="bell" size={12} tone="amber" />
+                  <span className="the-world-field-review-chip-label">{t("theWorld.bell.prompt")}</span>
+                </button>
+              ) : null}
+              {nearCampfire && store.fishingPhase === "idle" && !store.sittingAtCampfire ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-ask"
+                  aria-label={t("theWorld.campfire.sitAria")}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    playDistrictSelect();
+                    setSittingAtCampfire(true);
+                  }}
+                >
+                  <WorldIcon name="fire" size={12} tone="amber" />
+                  <span className="the-world-field-review-chip-label">
+                    F · {t("theWorld.campfire.sitHint")}
+                  </span>
+                </button>
+              ) : null}
+              {nearFishingWater && !nearCampfire && store.fishingPhase === "idle" && !store.sittingAtCampfire ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-review"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleStartFishing}
+                >
+                  <WorldIcon name="sparkle" size={12} tone="teal" />
+                  <span className="the-world-field-review-chip-label">{t("theWorld.fishing.castPrompt")}</span>
+                </button>
+              ) : null}
             </div>
           ) : null}
           {(store.fishingPhase === "waiting" || store.fishingPhase === "bite") && !store.photoMode && !store.cinemaMode && !anyModalOpen ? (

@@ -51,11 +51,15 @@ import {
  * - `Escape`: 포토 → 시네마 → 모달 → 불멍 → 채팅 → 상호작용 → 하늘 조망 → 월드 탈출 우선순위 해제
  */
 
+/** 모닥불 벤치 `F` 키 우선 판정 반경 (`world-stage.tsx` 근접 칩과 단일 기준 공유). */
+export const CAMPFIRE_F_PRIORITY_RADIUS = 3.2;
+
 export interface UseWorldShortcutsOptions {
   readonly rootRef: RefObject<HTMLDivElement | null>;
   readonly lastPlayerPoseRef: RefObject<{ readonly x: number; readonly z: number }>;
   readonly controlsGuideOpenRef: RefObject<boolean>;
   readonly nearParadeBellRef: RefObject<boolean>;
+  readonly nearCampfireRef: RefObject<boolean>;
   readonly nearFishingWaterRef: RefObject<boolean>;
   readonly onToggleControlsGuide: () => void;
   readonly onCloseControlsGuide: () => void;
@@ -74,6 +78,7 @@ export function useWorldShortcuts({
   lastPlayerPoseRef,
   controlsGuideOpenRef,
   nearParadeBellRef,
+  nearCampfireRef,
   nearFishingWaterRef,
   onToggleControlsGuide,
   onCloseControlsGuide,
@@ -282,7 +287,7 @@ export function useWorldShortcuts({
         }
       }
 
-      // Space: 낚시 대기/입질 중 즉시 릴 감기
+      // Space: 낚시 대기/입질 중 즉시 릴 감기 (모달·채팅·포토·시네마·이모트 휠 비활성 시에만)
       if (
         event.code === "Space"
         && !event.isComposing
@@ -290,7 +295,14 @@ export function useWorldShortcuts({
         && !event.ctrlKey
         && !event.altKey
       ) {
-        if (snap.fishingPhase === "waiting" || snap.fishingPhase === "bite") {
+        if (
+          (snap.fishingPhase === "waiting" || snap.fishingPhase === "bite")
+          && !anyModalOpen
+          && !snap.chatActive
+          && !snap.photoMode
+          && !snap.cinemaMode
+          && !snap.emoteWheelOpen
+        ) {
           event.preventDefault();
           onReelFishing();
           return;
@@ -329,16 +341,8 @@ export function useWorldShortcuts({
             setSittingAtCampfire(false);
             return;
           }
-          const pose = lastPlayerPoseRef.current;
-          const px = Number.isNaN(pose.x) ? 0.4 : pose.x;
-          const pz = Number.isNaN(pose.z) ? 2.2 : pose.z;
-          const distCampfire = Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z);
-          if (nearFishingWaterRef.current && distCampfire > 5.2 && snap.fishingPhase === "idle") {
-            event.preventDefault();
-            onStartFishing();
-            return;
-          }
-          if (distCampfire <= 10.5) {
+          // 하단 근접 칩과 1:1 동일한 단일 우선순위: 모닥불 바로 앞(`nearCampfire`) → 시냇가(`nearFishingWater`) → 광장 반경 내 모닥불
+          if (nearCampfireRef.current) {
             event.preventDefault();
             playDistrictSelect();
             setSittingAtCampfire(true);
@@ -347,6 +351,16 @@ export function useWorldShortcuts({
           if (nearFishingWaterRef.current && snap.fishingPhase === "idle") {
             event.preventDefault();
             onStartFishing();
+            return;
+          }
+          const pose = lastPlayerPoseRef.current;
+          const px = Number.isNaN(pose.x) ? 0.4 : pose.x;
+          const pz = Number.isNaN(pose.z) ? 2.2 : pose.z;
+          const distCampfire = Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z);
+          if (distCampfire <= 10.5) {
+            event.preventDefault();
+            playDistrictSelect();
+            setSittingAtCampfire(true);
             return;
           }
         }

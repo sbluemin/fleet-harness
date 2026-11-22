@@ -81,10 +81,10 @@ import {
 
 export const WORLD_PLAY_RADIUS = 88;
 
-/** 중앙 길드 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 좌표 및 피킹 반경 (우물·이정표·길드 홀 비충돌, 스폰 정면 시인성 확보). */
+/** 중앙 길드 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 좌표 및 피킹 반경 (화단·이정표·우물 비충돌, 스폰 정면 시인성 확보). */
 export const PARADE_BELL_POS = {
-  x: -3.2,
-  z: 2.8,
+  x: -5.4,
+  z: 2.3,
   radius: 1.75,
 } as const;
 
@@ -1078,6 +1078,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   const bellBodyGeo = markSharedGeometry(new CylinderGeometry(0.15, 0.34, 0.42, 16));
   const bellRimGeo = markSharedGeometry(new CylinderGeometry(0.36, 0.38, 0.08, 16));
   const bellClapperGeo = markSharedGeometry(new SphereGeometry(0.085, 8, 6));
+  const bellRopeGeo = markSharedGeometry(new CylinderGeometry(0.018, 0.018, 0.88, 8));
+  const bellTasselGeo = markSharedGeometry(new SphereGeometry(0.055, 8, 6));
+  const matBellRope = ownMat(new MeshStandardMaterial({ color: 0xe6d2a2, roughness: 0.86 }));
   const matBronzeBell = ownMat(new MeshStandardMaterial({
     color: 0xf5c542,
     emissive: 0xd97706,
@@ -1095,7 +1098,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   bellRim.position.y = -0.49;
   const bellClapper = new Mesh(bellClapperGeo, matIron);
   bellClapper.position.y = -0.54;
-  paradeBellSwingPivot.add(bellCrown, bellBody, bellRim, bellClapper);
+  const bellRope = new Mesh(bellRopeGeo, matBellRope);
+  bellRope.position.set(0.26, -0.56, 0.08);
+  const bellTassel = new Mesh(bellTasselGeo, matBronzeBell);
+  bellTassel.position.set(0.26, -1.02, 0.08);
+  paradeBellSwingPivot.add(bellCrown, bellBody, bellRim, bellClapper, bellRope, bellTassel);
   paradeBellMountGroup.add(paradeBellSwingPivot);
   root.add(paradeBellMountGroup);
   let paradeBellRingRemaining = 0;
@@ -2230,6 +2237,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         receiveShadow: true,
       });
       b.addSphere(matBrass, [0, 2.74, 0], [0.15, 0.15, 0.15]);
+      // 종루 처마 아래 소형 황금빛 걸이 등불 (야간 자동 점등, 기존 matLanternGlass 배칭 공유)
+      b.addCylinder(matIron, [0.62, 2.02, 0.34], [0.025, 0.14, 0.025]);
+      b.addCylinder(matBrass, [0.62, 1.94, 0.34], [0.11, 0.04, 0.11]);
+      b.addCylinder(matLanternGlass, [0.62, 1.84, 0.34], [0.09, 0.16, 0.09]);
+      b.addCylinder(matBrass, [0.62, 1.74, 0.34], [0.10, 0.035, 0.10]);
     });
     paradeBellMountGroup.position.set(pbx, pby + 1.90, pbz);
     paradeBellMountGroup.rotation.y = pbYaw;
@@ -3112,6 +3124,28 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
             addContactShadow(b, bx, bz, 0.85, 0.78);
             addGrassClearZone(bx, bz, 0.95);
           }
+        }
+      }
+      if (isAutumnBiome) {
+        // 가을 단풍 마을 마당 가장자리 낙엽 산포 (기존 matFoliageBase 배칭 공유, 추가 draw call 0)
+        const leafPalette = [0xd94832, 0xe87b22, 0xf5ba32] as const;
+        const leafSeed = Math.abs(Math.sin(v.x * 12.9898 + v.z * 78.233)) * 6.283185;
+        for (let li = 0; li < 20; li += 1) {
+          const ang = (li / 20) * Math.PI * 2 + leafSeed + Math.sin(li * 3.7) * 0.14;
+          let dGate = Math.abs(Math.atan2(Math.sin(ang - v.gateAngle), Math.cos(ang - v.gateAngle)));
+          if (dGate < 0.34) continue;
+          const rDist = v.radius - 0.85 + ((li * 0.37) % 1) * 2.15;
+          const lx = v.x + Math.cos(ang) * rDist;
+          const lz = v.z + Math.sin(ang) * rDist;
+          const ly = getTerrainBaseHeight(lx, lz);
+          if (ly < 0.08) continue;
+          const lw = 0.24 + (li % 3) * 0.07;
+          const ld = 0.18 + ((li + 1) % 3) * 0.06;
+          const rotY = ang + (li % 5) * 0.62;
+          b.addBox(matFoliageBase, [lx, ly + 0.022, lz], [lw, 0.024, ld], [0, rotY, 0], {
+            color: leafPalette[li % leafPalette.length]!,
+            receiveShadow: true,
+          });
         }
       }
     }
@@ -5010,6 +5044,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       bellBodyGeo.dispose();
       bellRimGeo.dispose();
       bellClapperGeo.dispose();
+      bellRopeGeo.dispose();
+      bellTasselGeo.dispose();
       smokeGeo.dispose();
       highlightGeo.dispose();
       hoverHighlightMat.dispose();
@@ -5020,10 +5056,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       brookMat.dispose();
       roadRibbonMat.dispose();
       matWaterTile.dispose();
+      grassInstanced.dispose();
       grassBladeGeo.dispose();
       grassMat.dispose();
+      flowerInstanced.dispose();
       flowerHeadGeo.dispose();
       flowerMat.dispose();
+      fireflyInstanced.dispose();
       fireflyGeo.dispose();
       fireflyMat.dispose();
       for (const mat of sharedMaterials) mat.dispose();

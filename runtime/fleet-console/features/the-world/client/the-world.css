@@ -5175,6 +5175,7 @@
 .the-world-root.is-photo-mode .the-world-emote-wheel,
 .the-world-root.is-photo-mode .the-world-fishing-hud,
 .the-world-root.is-photo-mode .the-world-fish-catch-card,
+.the-world-root.is-photo-mode .the-world-proximity-dock,
 .the-world-root.is-photo-mode .the-world-flight-cam-btn,
 .the-world-root.is-cinema-mode .the-world-hud-top,
 .the-world-root.is-cinema-mode .the-world-quick-bar,
@@ -5193,6 +5194,7 @@
 .the-world-root.is-cinema-mode .the-world-emote-wheel,
 .the-world-root.is-cinema-mode .the-world-fishing-hud,
 .the-world-root.is-cinema-mode .the-world-fish-catch-card,
+.the-world-root.is-cinema-mode .the-world-proximity-dock,
 .the-world-root.is-cinema-mode .the-world-flight-cam-btn {
   opacity: 0;
   pointer-events: none;
@@ -5562,7 +5564,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
+  min-width: 0;
   height: 34px;
   padding: 0 var(--space-2);
   border-radius: var(--radius-xs);
@@ -5572,8 +5575,16 @@
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-admiral-hat-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .the-world-admiral-hat-pill:hover {
@@ -7804,6 +7815,10 @@
 }
 
 .the-world-admiral-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
   margin-left: auto;
   padding: 1px 6px;
   border-radius: var(--radius-pill);
@@ -7813,16 +7828,32 @@
   font-family: var(--font-ui);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
+  line-height: 1.25;
   white-space: nowrap;
 }
 
-/* 마을 정문 원클릭 결재 / 대기 질문 바로 답하기 플로팅 칩 */
+/* 좌하단 퀵바 상단 근접 액션 칩 도크 (중앙 앰비언트 채팅 피드와 0px 겹침) */
+.the-world-proximity-dock {
+  position: absolute;
+  left: var(--space-3);
+  bottom: 56px;
+  z-index: 9;
+  max-width: min(244px, calc(50vw - 268px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
+/* 마을 정문 원클릭 결재 / 소집 종 / 모닥불 / 시냇가 낚시 근접 액션 칩 */
 .the-world-field-review-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 24px;
-  padding: 0 10px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 11px;
   border-radius: var(--radius-pill);
   background: oklch(17% 0.022 258 / 94%);
   backdrop-filter: blur(14px) saturate(135%);
@@ -7836,6 +7867,20 @@
   pointer-events: auto;
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-field-review-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .the-world-proximity-dock {
+    bottom: 224px;
+    max-width: calc(100vw - 24px);
+  }
 }
 
 .the-world-field-review-chip.is-ask {
@@ -8074,11 +8119,11 @@
   word-break: keep-all;
 }
 
-/* 시냇가 힐링 낚시 플로팅 HUD & 입질 강조 바 & 포획 카드 */
+/* 시냇가 힐링 낚시 플로팅 HUD & 입질 강조 바 & 포획 카드 (중앙 앰비언트 채팅 210px 상단 바깥 배치) */
 .the-world-fishing-hud {
   position: absolute;
   left: 50%;
-  bottom: 78px;
+  bottom: 226px;
   transform: translateX(-50%);
   z-index: 12;
   display: inline-flex;
@@ -8135,7 +8180,7 @@
 .the-world-fish-catch-card {
   position: absolute;
   left: 50%;
-  bottom: 126px;
+  bottom: 230px;
   transform: translateX(-50%);
   z-index: 14;
   width: min(340px, calc(100vw - 28px));

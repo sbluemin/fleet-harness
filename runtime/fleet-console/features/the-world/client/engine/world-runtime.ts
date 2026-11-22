@@ -366,9 +366,12 @@ void main() {
 const METEOR_RIBBON_SEGMENTS = 28;
 const METEOR_RIBBON_VERTEX = /* glsl */ `
 out vec2 vUv;
+out vec3 vWorldPos;
 void main() {
   vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldPos = worldPos.xyz;
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
 }
 `;
 
@@ -378,6 +381,7 @@ uniform float uAlpha;
 uniform float uBoost;
 uniform int uTrailMode;
 in vec2 vUv;
+in vec3 vWorldPos;
 out vec4 fragColor;
 
 vec3 rainbowPastel(float t) {
@@ -391,8 +395,9 @@ void main() {
   float core = pow(edge, 2.8);
   float halo = pow(edge, 1.25);
 
-  float headSoft = smoothstep(0.0, 0.045, vUv.x);
+  float headSoft = smoothstep(0.0, 0.10, vUv.x);
   float tailFade = pow(clamp(1.0 - vUv.x, 0.0, 1.0), 1.38);
+  float camFade = smoothstep(2.4, 7.6, length(cameraPosition - vWorldPos));
   float shimmer = 0.86 + 0.14 * sin(vUv.x * 26.0 - uTime * 11.0);
 
   vec3 colHead = vec3(1.0, 0.98, 0.88);
@@ -414,7 +419,7 @@ void main() {
   col = mix(col, colHead, core * 0.82);
 
   float modeGain = (uTrailMode == 3) ? 0.42 : 1.0;
-  float alpha = (halo * 0.55 + core * 0.85) * headSoft * tailFade * shimmer * uAlpha * modeGain * (1.0 + uBoost * 0.42);
+  float alpha = (halo * 0.55 + core * 0.85) * headSoft * tailFade * camFade * shimmer * uAlpha * modeGain * (1.0 + uBoost * 0.42);
   if (alpha < 0.004) discard;
   fragColor = vec4(col * (1.1 + uBoost * 0.45), clamp(alpha, 0.0, 1.0));
 }
@@ -528,12 +533,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     depthBuffer: true,
   });
   const composer = new EffectComposer(renderer, msaaTarget);
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  composer.addPass(renderPass);
   // 주간에는 블룸 패스를 자동 우회하고, 야간/연출 시에만 반해상도로 발광체를 부드럽게 블룸시킨다.
   const bloomPass = new UnrealBloomPass(new Vector2(400, 300), 0.12, 0.42, 1.12);
   bloomPass.enabled = false;
   composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
+  const outputPass = new OutputPass();
+  composer.addPass(outputPass);
 
   const skyLighting = createSkyAndLighting(scene);
   const meadow = createMeadowScene(scene) as MeadowSceneS8;
@@ -724,19 +731,94 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   config.canvas.addEventListener("pointerdown", onPointerDown);
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", onPointerUp);
+  window.addEventListener("pointercancel", onPointerUp);
   config.canvas.addEventListener("wheel", onWheel, { passive: false });
 
-  // rAF 제로-할당 스크래치 객체들
+  // rAF 제로-할당 스크래치 객체들 & 호이스팅 콜백
   const viewProj = new Matrix4();
   const tempPos = new Vector3();
   const tempTint = new Vector3();
   const playerPosVec = new Vector3();
+  const focusActorPosScratch = { x: 0, z: 0 };
+  const poseScratch = {
+    x: 0,
+    groundY: 0,
+    liftY: 0,
+    z: 0,
+    yaw: 0,
+    state: "idle" as WorldActorSpec["state"],
+    activity: null as WorldActorSpec["activity"],
+    carrying: false,
+    needsAttention: false,
+    isSelected: false,
+    isNearPlayer: false,
+    elapsed: 0,
+    fuzz: 0,
+    sunDir: skyLighting.sunDir,
+    worldTint: tempTint,
+    viewProj,
+    worldAnim: "idle" as WorldAnimMode,
+    expression: "normal" as WorldExpression,
+    animPhase: 0,
+    moveSpeed: 0,
+    jumpVel: 0,
+    landSquash: 0,
+    lookYaw: 0,
+    lookPitch: 0,
+    blush: 0,
+    hatBounce: 0,
+    flightRoll: 0,
+    flightPitch: 0,
+    nightGlow: 0,
+    rainUmbrella: 0,
+  };
   const commanderPosPool: Vector3[] = Array.from({ length: 16 }, () => new Vector3());
   const commanderPositions: Vector3[] = [];
   const projTop: ProjectedScratch = { x: 0, y: 0, w: 0 };
   const projBody: ProjectedScratch = { x: 0, y: 0, w: 0 };
   const raycaster = new Raycaster();
   const pickNdc = new Vector2();
+
+  const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
+    meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
+  const getCameraOccludersFn = (): readonly CameraOccluder[] =>
+    meadow.getCameraOccluders?.() ?? EMPTY_OCCLUDERS;
+  const handleCompanionDutyReturn = (actor: WorldActorSpec): void => {
+    config.onCompanionDutyReturn?.(actor.id, actor.name);
+  };
+  const companionFlightCtxScratch = {
+    playerYaw: 0,
+    playerTakeoffPhase: "none" as "none" | "charge" | "ascend",
+    playerTakeoffProgress: 0,
+    playerFlying: false,
+    playerDiving: false,
+    playerBoosting: false,
+    playerVx: 0,
+    playerVz: 0,
+    playerFlightAlt: 0,
+    playerMoveSpeed: 0,
+    playerFlightRoll: 0,
+    playerFlightPitch: 0,
+    playerBarrelRollTimer: 0,
+    playerHeroLandTimer: 0,
+    playerSittingAtCampfire: false,
+    onCompanionDutyReturn: handleCompanionDutyReturn,
+  };
+  const handleBobberSplash = (sx: number, sy: number, sz: number): void => {
+    playFishingCast();
+    director.spawnBurst(sx, sy + 0.10, sz, 0xbae6fd, 10);
+    for (let k = 0; k < 4; k += 1) {
+      const ang = (k / 4) * Math.PI * 2 + 0.35;
+      director.spawnTrailSparkle(
+        sx + Math.cos(ang) * 0.28,
+        sy + 0.14,
+        sz + Math.sin(ang) * 0.28,
+        0xffffff,
+        0.58,
+        true,
+      );
+    }
+  };
 
   const actorPosPool: WorldFrameActorPosition[] = [];
   const visibleActorIdx = new Int32Array(64);
@@ -969,6 +1051,154 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     return { target: cinemaTargetScratch, label: chosen.label };
   };
 
+  const resolvePlayerJump = (): void => {
+    playJump();
+    if (currentAdmiralTrail === "none") return;
+    const pCur = playerCtrl.player;
+    const bx = -Math.sin(pCur.yaw) * 0.24;
+    const bz = -Math.cos(pCur.yaw) * 0.24;
+    for (let k = 0; k < 5; k += 1) {
+      const c = resolveTrailColor(currentAdmiralTrail, k);
+      if (c !== null) {
+        director.spawnTrailSparkle(
+          pCur.x + bx + (Math.random() - 0.5) * 0.36,
+          pCur.y + 0.24 + k * 0.05,
+          pCur.z + bz + (Math.random() - 0.5) * 0.36,
+          c,
+          0.78,
+          currentAdmiralTrail !== "sakura",
+        );
+      }
+    }
+  };
+
+  const resolvePlayerLand = (): void => {
+    const px = playerCtrl.player.x;
+    const py = playerCtrl.player.y;
+    const pz = playerCtrl.player.z;
+    const surface = resolveSurface(px, pz);
+    playFootstep(surface);
+    if (surface === "water") {
+      director.spawnBurst(px, py + 0.10, pz, 0x7dd3fc, 8);
+    } else {
+      director.spawnDust(px, py + 0.06, pz);
+      director.spawnDust(px + 0.16, py + 0.06, pz - 0.12);
+      director.spawnDust(px - 0.16, py + 0.06, pz + 0.12);
+    }
+    if (currentAdmiralTrail !== "none") {
+      for (let k = 0; k < 3; k += 1) {
+        const c = resolveTrailColor(currentAdmiralTrail, k);
+        if (c !== null) {
+          director.spawnTrailSparkle(
+            px + (Math.random() - 0.5) * 0.42,
+            py + 0.18 + k * 0.05,
+            pz + (Math.random() - 0.5) * 0.42,
+            c,
+            0.72,
+            currentAdmiralTrail !== "sakura",
+          );
+        }
+      }
+    }
+  };
+
+  const resolveStarTakeoffCharge = (): void => {
+    playStarTakeoffCharge();
+    ribbonPrimed = false;
+    const pCur = playerCtrl.player;
+    director.reactToStarTakeoff(pCur.x, pCur.z);
+    const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+    for (let k = 0; k < 8; k += 1) {
+      const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+      const ang = (k / 8) * Math.PI * 2;
+      director.spawnTrailSparkle(
+        pCur.x + Math.cos(ang) * 0.95,
+        pCur.y + 0.32 + (k % 3) * 0.14,
+        pCur.z + Math.sin(ang) * 0.95,
+        c,
+        0.84,
+        true,
+      );
+    }
+  };
+
+  const resolveStarTakeoffAscend = (): void => {
+    playStarTakeoffAscend();
+    ribbonPrimed = false;
+    const pCur = playerCtrl.player;
+    const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+    director.spawnBurst(pCur.x, pCur.y + 0.45, pCur.z, resolveTrailColor(theme, 0) ?? 0xffe57f, 14);
+    for (let k = 0; k < 10; k += 1) {
+      const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+      const ang = (k / 10) * Math.PI * 2;
+      director.spawnTrailSparkle(
+        pCur.x + Math.cos(ang) * 0.65,
+        pCur.y + 0.28 + (k % 3) * 0.18,
+        pCur.z + Math.sin(ang) * 0.65,
+        c,
+        0.94,
+        true,
+      );
+    }
+  };
+
+  const resolveMeteorDive = (): void => {
+    playMeteorDive();
+    ribbonPrimed = false;
+  };
+
+  const resolveStarBoost = (): void => {
+    playStarBoost();
+  };
+
+  const resolveBarrelRoll = (): void => {
+    playBarrelRoll();
+    const pCur = playerCtrl.player;
+    const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+    const sideX = Math.cos(pCur.yaw);
+    const sideZ = -Math.sin(pCur.yaw);
+    for (let k = 0; k < 12; k += 1) {
+      const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+      const ang = (k / 12) * Math.PI * 2;
+      const rX = Math.cos(ang) * 0.82;
+      const rY = Math.sin(ang) * 0.82;
+      director.spawnTrailSparkle(
+        pCur.x + sideX * rX,
+        pCur.y + 0.56 + rY,
+        pCur.z + sideZ * rX,
+        c,
+        0.90,
+        true,
+      );
+    }
+  };
+
+  const resolveMeteorImpact = (ix: number, iz: number): void => {
+    playMeteorImpact();
+    shockwaveX = ix;
+    shockwaveZ = iz;
+    shockwaveTimer = SHOCKWAVE_DURATION;
+    const impactGy = Math.max(-0.05, meadow.getGroundHeight(ix, iz));
+    const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+    const burstColor = resolveTrailColor(theme, 0) ?? 0xffe57f;
+    director.spawnBurst(ix, impactGy + 0.42, iz, burstColor, 22);
+    for (let k = 0; k < 12; k += 1) {
+      const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+      const ang = (k / 12) * Math.PI * 2;
+      const rad = 0.55 + (k % 3) * 0.35;
+      director.spawnTrailSparkle(
+        ix + Math.cos(ang) * rad,
+        impactGy + 0.22 + (k % 2) * 0.16,
+        iz + Math.sin(ang) * rad,
+        c,
+        0.96,
+        true,
+      );
+    }
+    director.reactToMeteorLanding(ix, iz);
+    config.onMeteorLanded?.();
+  };
+
   const tick = (now: number) => {
     if (disposed) return;
     rafId = requestAnimationFrame(tick);
@@ -1019,9 +1249,6 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
             ? "cinema"
             : "none";
 
-    const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
-      meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
-
     if (
       fishing.getPhase() !== "idle"
       && (
@@ -1029,6 +1256,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         || customizerOpen
         || cinemaActiveNow
         || playerCtrl.isOverviewMode()
+        || playerCtrl.isSittingAtCampfire()
         || playerCtrl.player.flying
         || playerCtrl.player.diving
         || currentLifecycle !== "open"
@@ -1038,164 +1266,36 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     }
     const isFishingActive = fishing.getPhase() !== "idle";
 
+    if (focusedMotion) {
+      focusActorPosScratch.x = focusedMotion.x;
+      focusActorPosScratch.z = focusedMotion.z;
+    }
+
     playerCtrl.update({
       dt,
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
       inputLocked: interacting || customizerOpen || cinemaActiveNow || isFishingActive,
-      focusActorPos: focusedMotion ? { x: focusedMotion.x, z: focusedMotion.z } : null,
+      focusActorPos: focusedMotion ? focusActorPosScratch : null,
       focusFraming,
       cinemaTarget: activeCinemaTarget,
       companionCount: director.getCompanionActorIds().length,
       camera,
       getGroundHeight: meadow.getGroundHeight,
       resolveMovement: meadow.resolveMovement,
-      getCameraOccluders: () => meadow.getCameraOccluders?.() ?? EMPTY_OCCLUDERS,
+      getCameraOccluders: getCameraOccludersFn,
       onDustParticle: director.spawnDust,
       onOverviewAutoExit: config.onOverviewAutoExit,
-      onJump: () => {
-        playJump();
-        if (currentAdmiralTrail === "none") return;
-        // 제독 도약 시 선택한 궤적 테마(별가루·벚꽃·무지개)로 발끝·망토 뒤 작은 스파클 방출 (Draw Call +0)
-        const pCur = playerCtrl.player;
-        const bx = -Math.sin(pCur.yaw) * 0.24;
-        const bz = -Math.cos(pCur.yaw) * 0.24;
-        for (let k = 0; k < 5; k += 1) {
-          const c = resolveTrailColor(currentAdmiralTrail, k);
-          if (c !== null) {
-            director.spawnTrailSparkle(
-              pCur.x + bx + (Math.random() - 0.5) * 0.36,
-              pCur.y + 0.24 + k * 0.05,
-              pCur.z + bz + (Math.random() - 0.5) * 0.36,
-              c,
-              0.78,
-              currentAdmiralTrail !== "sakura",
-            );
-          }
-        }
-      },
-      onLand: () => {
-        const px = playerCtrl.player.x;
-        const py = playerCtrl.player.y;
-        const pz = playerCtrl.player.z;
-        const surface = resolveSurface(px, pz);
-        playFootstep(surface);
-        if (surface === "water") {
-          director.spawnBurst(px, py + 0.10, pz, 0x7dd3fc, 8);
-        } else {
-          director.spawnDust(px, py + 0.06, pz);
-          director.spawnDust(px + 0.16, py + 0.06, pz - 0.12);
-          director.spawnDust(px - 0.16, py + 0.06, pz + 0.12);
-        }
-        if (currentAdmiralTrail !== "none") {
-          for (let k = 0; k < 3; k += 1) {
-            const c = resolveTrailColor(currentAdmiralTrail, k);
-            if (c !== null) {
-              director.spawnTrailSparkle(
-                px + (Math.random() - 0.5) * 0.42,
-                py + 0.18 + k * 0.05,
-                pz + (Math.random() - 0.5) * 0.42,
-                c,
-                0.72,
-                currentAdmiralTrail !== "sakura",
-              );
-            }
-          }
-        }
-      },
+      onJump: resolvePlayerJump,
+      onLand: resolvePlayerLand,
       onStandUp: config.onCampfireStandUp,
-      onStarTakeoffCharge: () => {
-        playStarTakeoffCharge();
-        ribbonPrimed = false;
-        const pCur = playerCtrl.player;
-        director.reactToStarTakeoff(pCur.x, pCur.z);
-        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
-        for (let k = 0; k < 8; k += 1) {
-          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
-          const ang = (k / 8) * Math.PI * 2;
-          director.spawnTrailSparkle(
-            pCur.x + Math.cos(ang) * 0.95,
-            pCur.y + 0.32 + (k % 3) * 0.14,
-            pCur.z + Math.sin(ang) * 0.95,
-            c,
-            0.84,
-            true,
-          );
-        }
-      },
-      onStarTakeoffAscend: () => {
-        playStarTakeoffAscend();
-        ribbonPrimed = false;
-        const pCur = playerCtrl.player;
-        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
-        director.spawnBurst(pCur.x, pCur.y + 0.45, pCur.z, resolveTrailColor(theme, 0) ?? 0xffe57f, 14);
-        for (let k = 0; k < 10; k += 1) {
-          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
-          const ang = (k / 10) * Math.PI * 2;
-          director.spawnTrailSparkle(
-            pCur.x + Math.cos(ang) * 0.65,
-            pCur.y + 0.28 + (k % 3) * 0.18,
-            pCur.z + Math.sin(ang) * 0.65,
-            c,
-            0.94,
-            true,
-          );
-        }
-      },
-      onMeteorDive: () => {
-        playMeteorDive();
-        ribbonPrimed = false;
-      },
-      onStarBoost: () => {
-        playStarBoost();
-      },
-      onBarrelRoll: () => {
-        playBarrelRoll();
-        const pCur = playerCtrl.player;
-        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
-        const sideX = Math.cos(pCur.yaw);
-        const sideZ = -Math.sin(pCur.yaw);
-        for (let k = 0; k < 12; k += 1) {
-          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
-          const ang = (k / 12) * Math.PI * 2;
-          const rX = Math.cos(ang) * 0.82;
-          const rY = Math.sin(ang) * 0.82;
-          director.spawnTrailSparkle(
-            pCur.x + sideX * rX,
-            pCur.y + 0.56 + rY,
-            pCur.z + sideZ * rX,
-            c,
-            0.90,
-            true,
-          );
-        }
-      },
-      onMeteorImpact: (ix, iz) => {
-        playMeteorImpact();
-        shockwaveX = ix;
-        shockwaveZ = iz;
-        shockwaveTimer = SHOCKWAVE_DURATION;
-        const impactGy = Math.max(-0.05, meadow.getGroundHeight(ix, iz));
-        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
-        const burstColor = resolveTrailColor(theme, 0) ?? 0xffe57f;
-        director.spawnBurst(ix, impactGy + 0.42, iz, burstColor, 22);
-        for (let k = 0; k < 12; k += 1) {
-          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
-          const ang = (k / 12) * Math.PI * 2;
-          const rad = 0.55 + (k % 3) * 0.35;
-          director.spawnTrailSparkle(
-            ix + Math.cos(ang) * rad,
-            impactGy + 0.22 + (k % 2) * 0.16,
-            iz + Math.sin(ang) * rad,
-            c,
-            0.96,
-            true,
-          );
-        }
-        director.reactToMeteorLanding(ix, iz);
-        config.onMeteorLanded?.();
-      },
+      onStarTakeoffCharge: resolveStarTakeoffCharge,
+      onStarTakeoffAscend: resolveStarTakeoffAscend,
+      onMeteorDive: resolveMeteorDive,
+      onStarBoost: resolveStarBoost,
+      onBarrelRoll: resolveBarrelRoll,
+      onMeteorImpact: resolveMeteorImpact,
     });
 
     if (playerEmoteHop > 0) {
@@ -1353,6 +1453,22 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     prevPlayerX = playerCtrl.player.x;
     prevPlayerZ = playerCtrl.player.z;
 
+    companionFlightCtxScratch.playerYaw = playerCtrl.player.yaw;
+    companionFlightCtxScratch.playerTakeoffPhase = playerCtrl.player.takeoffPhase;
+    companionFlightCtxScratch.playerTakeoffProgress = playerCtrl.player.takeoffProgress;
+    companionFlightCtxScratch.playerFlying = playerCtrl.player.flying;
+    companionFlightCtxScratch.playerDiving = playerCtrl.player.diving;
+    companionFlightCtxScratch.playerBoosting = playerCtrl.player.boosting;
+    companionFlightCtxScratch.playerVx = playerCtrl.player.vx;
+    companionFlightCtxScratch.playerVz = playerCtrl.player.vz;
+    companionFlightCtxScratch.playerFlightAlt = playerCtrl.player.flightAlt;
+    companionFlightCtxScratch.playerMoveSpeed = playerCtrl.player.moveSpeed;
+    companionFlightCtxScratch.playerFlightRoll = playerCtrl.player.flightRoll;
+    companionFlightCtxScratch.playerFlightPitch = playerCtrl.player.flightPitch;
+    companionFlightCtxScratch.playerBarrelRollTimer = playerCtrl.player.barrelRollTimer;
+    companionFlightCtxScratch.playerHeroLandTimer = playerCtrl.player.heroLandTimer;
+    companionFlightCtxScratch.playerSittingAtCampfire = playerCtrl.isSittingAtCampfire();
+
     const nearIdRaw = director.update(
       dt,
       elapsed,
@@ -1361,26 +1477,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       focusedActorId,
       meadow.isWalkable,
       meadow.resolveMovement,
-      {
-        playerYaw: playerCtrl.player.yaw,
-        playerTakeoffPhase: playerCtrl.player.takeoffPhase,
-        playerTakeoffProgress: playerCtrl.player.takeoffProgress,
-        playerFlying: playerCtrl.player.flying,
-        playerDiving: playerCtrl.player.diving,
-        playerBoosting: playerCtrl.player.boosting,
-        playerVx: playerCtrl.player.vx,
-        playerVz: playerCtrl.player.vz,
-        playerFlightAlt: playerCtrl.player.flightAlt,
-        playerMoveSpeed: playerCtrl.player.moveSpeed,
-        playerFlightRoll: playerCtrl.player.flightRoll,
-        playerFlightPitch: playerCtrl.player.flightPitch,
-        playerBarrelRollTimer: playerCtrl.player.barrelRollTimer,
-        playerHeroLandTimer: playerCtrl.player.heroLandTimer,
-        playerSittingAtCampfire: playerCtrl.isSittingAtCampfire(),
-        onCompanionDutyReturn: (actor) => {
-          config.onCompanionDutyReturn?.(actor.id, actor.name);
-        },
-      },
+      companionFlightCtxScratch,
     );
     const nearId = (playerCtrl.player.flying || playerCtrl.player.diving) ? null : nearIdRaw;
     config.onNearActorChanged(nearId);
@@ -1394,14 +1491,20 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       playerCtrl.player.y,
       playerCtrl.player.z,
       playerCtrl.player.yaw,
+      handleBobberSplash,
     );
+    if (nextFishingPhase !== "idle" && nextFishingPhase !== "caught") {
+      // 낚시 중 별 제독이 찌 방향을 자연스럽게 마주보도록 회전 동기화
+      const targetFishYaw = fishing.getCastTargetYaw();
+      playerCtrl.player.yaw += angleDelta(targetFishYaw, playerCtrl.player.yaw) * Math.min(1, dt * 11.0);
+    }
     if (nextFishingPhase !== prevFishingPhase) {
       if (nextFishingPhase === "bite") {
         playFishingBite();
       } else if (prevFishingPhase === "bite" && nextFishingPhase === "idle") {
         config.onFishingMissed?.();
       }
-      notifyFishingPhase(nextFishingPhase);
+      notifyFishingPhase(fishing.getUiPhase());
     }
 
     const onGroundOpen =
@@ -1523,15 +1626,17 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       : 0;
     const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
 
-    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 회오리 상승·비행·급강하 중 +1 Draw Call, 지상·충전 중 visible=false로 +0)
+    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 에이스 추격 시점 눈부심 방지 · 정지 호버 감쇠)
+    const isChaseCam = playerCtrl.isOverviewMode() && playerCtrl.getFlightCamMode() === "chase";
     const ribbonActive = currentLifecycle === "open" && (p.diving || (p.flying && p.takeoffPhase !== "charge"));
     ribbonFade = ribbonActive
       ? Math.min(1, ribbonFade + dt * 6.5)
       : Math.max(0, ribbonFade - dt * 3.8);
     if (ribbonActive || ribbonFade > 0.005) {
-      const headX = p.x - Math.sin(p.yaw) * 0.32;
+      const headBack = isChaseCam ? 0.65 : 0.45;
+      const headX = p.x - Math.sin(p.yaw) * headBack;
       const headY = pGround + pTotalLift + 0.56;
-      const headZ = p.z - Math.cos(p.yaw) * 0.32;
+      const headZ = p.z - Math.cos(p.yaw) * headBack;
       if (!ribbonPrimed) {
         ribbonPrimed = true;
         for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
@@ -1551,7 +1656,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
 
       const boostAmt = p.diving || p.takeoffPhase === "ascend" ? 1.0 : p.boosting ? 0.85 : Math.min(0.4, p.moveSpeed / 30);
-      const baseHalfW = p.diving || p.takeoffPhase === "ascend" ? 0.62 : p.boosting ? 0.56 : 0.36;
+      const speedT = p.diving || p.takeoffPhase === "ascend"
+        ? 1.0
+        : Math.max(0, Math.min(1, (p.moveSpeed - 1.2) / (7.5 - 1.2)));
+      const hoverSpeedFade = speedT * speedT * (3 - 2 * speedT);
+      const baseHalfW = (p.diving || p.takeoffPhase === "ascend" ? 0.62 : p.boosting ? 0.56 : 0.36) * (isChaseCam ? 0.56 : 1.0);
       const camX = camera.position.x;
       const camY = camera.position.y;
       const camZ = camera.position.z;
@@ -1616,7 +1725,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
       ribbonPosAttr.needsUpdate = true;
       ribbonMat.uniforms["uTime"]!.value = elapsed;
-      ribbonMat.uniforms["uAlpha"]!.value = ribbonFade * (p.diving ? 0.98 : 0.86);
+      ribbonMat.uniforms["uAlpha"]!.value = ribbonFade * hoverSpeedFade * (p.diving ? 0.98 : 0.86) * (isChaseCam ? 0.55 : 1.0);
       ribbonMat.uniforms["uBoost"]!.value = boostAmt;
       ribbonMat.uniforms["uTrailMode"]!.value =
         currentAdmiralTrail === "sakura"
@@ -1715,6 +1824,19 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       playerAnim = playerEmoteKind;
       playerExpr = "happy";
       playerBlush = playerEmoteKind === "spin" || playerEmoteKind === "twirl" ? 0.92 : 0.82;
+    } else if (nextFishingPhase === "casting") {
+      playerAnim = "fish-cast";
+      playerAnimPhase = fishing.getCastProgress();
+      playerExpr = "focused";
+      playerBlush = 0.22;
+    } else if (nextFishingPhase === "bite") {
+      playerAnim = "fish-bite";
+      playerExpr = "surprised";
+      playerBlush = 0.58;
+    } else if (nextFishingPhase === "waiting") {
+      playerAnim = "fish-wait";
+      playerExpr = "normal";
+      playerBlush = 0.16;
     } else if (sittingCampfire) {
       if (p.campfireSitSec > 8.0) {
         playerAnim = "doze";
@@ -1784,35 +1906,37 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       skyLighting.avatarWorldTint.y + fireWarmP * 0.32,
       skyLighting.avatarWorldTint.z + fireWarmP * 0.05,
     );
-    playerRig.updatePose({
-      x: p.x,
-      groundY: pGround,
-      liftY: pTotalLift,
-      z: p.z,
-      yaw: p.yaw,
-      state: p.walking || p.flying || p.diving ? "running" : "idle",
-      activity: p.sprinting || p.boosting ? "run" : null,
-      carrying: false,
-      needsAttention: false,
-      elapsed,
-      fuzz,
-      sunDir: skyLighting.sunDir,
-      worldTint: tempTint,
-      viewProj,
-      worldAnim: playerAnim,
-      expression: playerExpr,
-      animPhase: playerAnimPhase,
-      moveSpeed: p.moveSpeed,
-      jumpVel: p.jumpVel,
-      landSquash: p.landSquash,
-      lookYaw: playerLookYaw,
-      lookPitch: playerLookPitch,
-      blush: playerBlush,
-      hatBounce: playerHatPos,
-      flightRoll: p.flightRoll,
-      flightPitch: p.flightPitch,
-      nightGlow: nightFactor,
-    });
+    poseScratch.x = p.x;
+    poseScratch.groundY = pGround;
+    poseScratch.liftY = pTotalLift;
+    poseScratch.z = p.z;
+    poseScratch.yaw = p.yaw;
+    poseScratch.state = p.walking || p.flying || p.diving ? "running" : "idle";
+    poseScratch.activity = p.sprinting || p.boosting ? "run" : null;
+    poseScratch.carrying = false;
+    poseScratch.needsAttention = false;
+    poseScratch.isSelected = false;
+    poseScratch.isNearPlayer = false;
+    poseScratch.elapsed = elapsed;
+    poseScratch.fuzz = fuzz;
+    poseScratch.sunDir = skyLighting.sunDir;
+    poseScratch.worldTint = tempTint;
+    poseScratch.viewProj = viewProj;
+    poseScratch.worldAnim = playerAnim;
+    poseScratch.expression = playerExpr;
+    poseScratch.animPhase = playerAnimPhase;
+    poseScratch.moveSpeed = p.moveSpeed;
+    poseScratch.jumpVel = p.jumpVel;
+    poseScratch.landSquash = p.landSquash;
+    poseScratch.lookYaw = playerLookYaw;
+    poseScratch.lookPitch = playerLookPitch;
+    poseScratch.blush = playerBlush;
+    poseScratch.hatBounce = playerHatPos;
+    poseScratch.flightRoll = p.flightRoll;
+    poseScratch.flightPitch = p.flightPitch;
+    poseScratch.nightGlow = nightFactor;
+    poseScratch.rainUmbrella = 0;
+    playerRig.updatePose(poseScratch);
 
     // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · 미니맵 산책 도트 · Direct-DOM 투영 계산
     const isOpen = currentLifecycle === "open";
@@ -1835,10 +1959,34 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       aoBlobCount += 1;
     }
 
+    const hidePhotobomb = focusFraming === "customizer";
+    const camToPlayerDx = p.x - camera.position.x;
+    const camToPlayerDz = p.z - camera.position.z;
+    const camToPlayerLenSq = camToPlayerDx * camToPlayerDx + camToPlayerDz * camToPlayerDz;
+
     for (const m of director.motions.values()) {
       idx += 1;
       const entry = actorRigs.get(m.spec.id);
       if (!entry) continue;
+
+      if (hidePhotobomb) {
+        const dToPlayer = Math.hypot(m.x - p.x, m.z - p.z);
+        let inSightCorridor = false;
+        if (dToPlayer > 4.2 && camToPlayerLenSq > 0.01) {
+          const tSeg = Math.max(
+            0,
+            Math.min(1.25, ((m.x - camera.position.x) * camToPlayerDx + (m.z - camera.position.z) * camToPlayerDz) / camToPlayerLenSq),
+          );
+          const projX = camera.position.x + camToPlayerDx * tSeg;
+          const projZ = camera.position.z + camToPlayerDz * tSeg;
+          inSightCorridor = Math.hypot(m.x - projX, m.z - projZ) < 2.2;
+        }
+        if (dToPlayer <= 4.2 || inSightCorridor) {
+          entry.rig.group.visible = false;
+          continue;
+        }
+      }
+      entry.rig.group.visible = true;
       const gy = Math.max(-0.05, meadow.getGroundHeight(m.x, m.z));
       const roleScale = m.spec.role === "commodore" ? 0.96 : m.spec.role === "commander" ? 0.82 : 0.70;
       const waddle = m.moving && m.flightAlt < 0.6 ? Math.abs(Math.sin(elapsed * 11 + idx)) * 0.11 : 0;
@@ -1924,37 +2072,37 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           ? rainUmbrellaLevel
           : 0;
 
-      entry.rig.updatePose({
-        x: m.x,
-        groundY: gy,
-        liftY: totalLift,
-        z: m.z,
-        yaw: m.yaw + (director.celebratingTimer > 0 ? elapsed * 4.5 : 0),
-        state: m.spec.state,
-        activity: m.spec.activity,
-        carrying: m.carrying,
-        needsAttention: m.spec.needsAttention,
-        isSelected,
-        isNearPlayer,
-        elapsed,
-        fuzz,
-        sunDir: skyLighting.sunDir,
-        worldTint: tempTint,
-        viewProj,
-        worldAnim: effAnim,
-        expression: effExpr,
-        animPhase: m.animPhase,
-        moveSpeed: m.moveSpeed,
-        jumpVel: m.hopBoost > 0.2 ? Math.cos(elapsed * 10) * m.hopBoost * 2.2 : 0,
-        landSquash: 0,
-        lookYaw: sp.lookYaw,
-        lookPitch: sp.lookPitch,
-        blush: effBlush,
-        hatBounce: sp.hatPos,
-        flightRoll: m.flightRoll,
-        flightPitch: m.flightPitch,
-        rainUmbrella: actorRainUmbrella,
-      });
+      poseScratch.x = m.x;
+      poseScratch.groundY = gy;
+      poseScratch.liftY = totalLift;
+      poseScratch.z = m.z;
+      poseScratch.yaw = m.yaw + (director.celebratingTimer > 0 ? elapsed * 4.5 : 0);
+      poseScratch.state = m.spec.state;
+      poseScratch.activity = m.spec.activity;
+      poseScratch.carrying = m.carrying;
+      poseScratch.needsAttention = m.spec.needsAttention;
+      poseScratch.isSelected = isSelected;
+      poseScratch.isNearPlayer = isNearPlayer;
+      poseScratch.elapsed = elapsed;
+      poseScratch.fuzz = fuzz;
+      poseScratch.sunDir = skyLighting.sunDir;
+      poseScratch.worldTint = tempTint;
+      poseScratch.viewProj = viewProj;
+      poseScratch.worldAnim = effAnim;
+      poseScratch.expression = effExpr;
+      poseScratch.animPhase = m.animPhase;
+      poseScratch.moveSpeed = m.moveSpeed;
+      poseScratch.jumpVel = m.hopBoost > 0.2 ? Math.cos(elapsed * 10) * m.hopBoost * 2.2 : 0;
+      poseScratch.landSquash = 0;
+      poseScratch.lookYaw = sp.lookYaw;
+      poseScratch.lookPitch = sp.lookPitch;
+      poseScratch.blush = effBlush;
+      poseScratch.hatBounce = sp.hatPos;
+      poseScratch.flightRoll = m.flightRoll;
+      poseScratch.flightPitch = m.flightPitch;
+      poseScratch.nightGlow = nightFactor;
+      poseScratch.rainUmbrella = actorRainUmbrella;
+      entry.rig.updatePose(poseScratch);
 
       // 배치 Soft AO 접촉 그림자 (점프/바운스 높이에 따라 반응, 2.2m 이상 상공 비행 윙맨은 숨김)
       if (aoBlobCount < MAX_ACTOR_AO_BLOBS && totalLift < 2.2) {
@@ -2532,7 +2680,6 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const gy = Math.max(0.05, meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z));
       const started = fishing.startCast(playerCtrl.player.x, playerCtrl.player.z, playerCtrl.player.yaw, gy);
       if (started) {
-        playFishingCast();
         notifyFishingPhase("waiting");
       }
       return started;
@@ -2571,6 +2718,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const pz = playerCtrl.player.z;
       playEmoteSparkle(emote);
       if (emote === "sit") {
+        cancelFishingInternal();
         playerCtrl.setCampfireSit(true);
         director.triggerAdmiralEmoteReaction(px, pz, "sit");
         return;
@@ -2991,6 +3139,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       config.canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
       config.canvas.removeEventListener("wheel", onWheel);
       for (const entry of actorRigs.values()) {
         scene.remove(entry.rig.group);
@@ -3017,6 +3166,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       skyLighting.dispose();
       envRT.dispose();
       pmremGenerator.dispose();
+      renderPass.dispose();
+      bloomPass.dispose();
+      outputPass.dispose();
       msaaTarget.dispose();
       composer.dispose();
       renderer.dispose();

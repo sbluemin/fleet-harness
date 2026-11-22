@@ -129,6 +129,66 @@ void main() {
 }
 `;
 
+const SKY_RING_VERTEX = /* glsl */ `
+out vec2 vUv;
+out vec3 vNormalView;
+out vec3 vViewDir;
+out vec3 vInstColor;
+
+void main() {
+  vUv = uv;
+  #ifdef USE_INSTANCING
+    mat4 mv = modelViewMatrix * instanceMatrix;
+    vec4 mvPos = mv * vec4(position, 1.0);
+    vNormalView = normalize(mat3(mv) * normal);
+  #else
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vNormalView = normalize(normalMatrix * normal);
+  #endif
+  #ifdef USE_INSTANCING_COLOR
+    vInstColor = instanceColor;
+  #else
+    vInstColor = vec3(1.0, 0.88, 0.35);
+  #endif
+  vViewDir = normalize(-mvPos.xyz);
+  gl_Position = projectionMatrix * mvPos;
+}
+`;
+
+const SKY_RING_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uCorePass;
+in vec2 vUv;
+in vec3 vNormalView;
+in vec3 vViewDir;
+in vec3 vInstColor;
+out vec4 fragColor;
+
+void main() {
+  // 토러스 둘레를 따라 회전하는 황금 쉐브론 에너지 파동 + 미세 별빛 스파클
+  float ang = vUv.x * 6.2831853;
+  float tube = abs(vUv.y - 0.5) * 2.0;
+  float speed = mix(4.2, -6.8, uCorePass);
+  float chevron = 0.5 + 0.5 * sin(ang * 8.0 - uTime * speed + tube * 5.2);
+  float chevronSharp = smoothstep(0.28, 0.94, chevron);
+  float sparkle = pow(0.5 + 0.5 * sin(ang * 16.0 + uTime * 6.2), 4.0);
+
+  // 시선각 기반 프레넬 글로우로 입체감 있는 빛 고리 연출
+  float ndv = abs(dot(normalize(vNormalView), normalize(vViewDir)));
+  float fresnel = pow(1.0 - clamp(ndv, 0.0, 1.0), 1.65);
+  float coreBand = pow(clamp(ndv, 0.0, 1.0), 0.75);
+
+  vec3 warmWhite = vec3(1.0, 0.97, 0.82);
+  vec3 col = mix(vInstColor, warmWhite, clamp(chevronSharp * 0.42 + sparkle * 0.35 + uCorePass * 0.25, 0.0, 0.88));
+  col *= (0.72 + chevronSharp * 0.55 + fresnel * 0.48 + sparkle * 0.32);
+
+  float alpha = mix(0.46, 0.88, clamp(coreBand * 0.68 + chevronSharp * 0.42 + fresnel * 0.35, 0.0, 1.0));
+  alpha *= mix(0.84, 0.92, uCorePass);
+  if (alpha < 0.01) discard;
+  fragColor = vec4(col, alpha);
+}
+`;
+
 interface CourierOrb {
   active: boolean;
   sx: number;
@@ -308,14 +368,20 @@ export function createLivingWorkflowFx(
   crystalCoreInst.renderOrder = 8;
   root.add(crystalCoreInst);
 
-  // 4. 하늘 순찰 황금 별빛 링 8기 (외곽 토러스 + 내부 별빛 코어 링, 비행 중에만 활성화)
-  const skyRingOuterGeo = new TorusGeometry(2.85, 0.17, 12, 32);
-  const skyRingOuterMat = new MeshBasicMaterial({
-    color: 0xffffff,
+  // 4. 하늘 순찰 황금 별빛 링 8기 (GLSL3 회전 쉐브론/글로우 셰이더 외곽 링 + 코어 링, 비행 중에만 활성화)
+  const skyRingOuterGeo = new TorusGeometry(2.85, 0.19, 12, 36);
+  const skyRingOuterMat = new ShaderMaterial({
+    glslVersion: GLSL3,
     transparent: true,
-    opacity: 0.86,
-    blending: AdditiveBlending,
     depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uCorePass: { value: 0 },
+    },
+    vertexShader: SKY_RING_VERTEX,
+    fragmentShader: SKY_RING_FRAGMENT,
   });
   const skyRingOuterInst = new InstancedMesh(skyRingOuterGeo, skyRingOuterMat, SKY_RING_COUNT);
   skyRingOuterInst.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -325,13 +391,19 @@ export function createLivingWorkflowFx(
   skyRingOuterInst.renderOrder = 9;
   root.add(skyRingOuterInst);
 
-  const skyRingCoreGeo = new TorusGeometry(2.38, 0.065, 8, 28);
-  const skyRingCoreMat = new MeshBasicMaterial({
-    color: 0xffffff,
+  const skyRingCoreGeo = new TorusGeometry(2.38, 0.075, 8, 32);
+  const skyRingCoreMat = new ShaderMaterial({
+    glslVersion: GLSL3,
     transparent: true,
-    opacity: 0.72,
-    blending: AdditiveBlending,
     depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uCorePass: { value: 1 },
+    },
+    vertexShader: SKY_RING_VERTEX,
+    fragmentShader: SKY_RING_FRAGMENT,
   });
   const skyRingCoreInst = new InstancedMesh(skyRingCoreGeo, skyRingCoreMat, SKY_RING_COUNT);
   skyRingCoreInst.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -503,9 +575,9 @@ export function createLivingWorkflowFx(
       const ring = skyRings[i]!;
       if (ring.cooldown > 0) continue;
       const dx = px - ring.x;
-      const dy = (py - ring.y) * 1.15;
+      const dy = (py - ring.y) * 1.05;
       const dz = pz - ring.z;
-      if (dx * dx + dy * dy + dz * dz <= 3.75 * 3.75) {
+      if (dx * dx + dy * dy + dz * dz <= 3.85 * 3.85) {
         ring.cooldown = SKY_RING_COOLDOWN_SEC;
         ring.flashTimer = 0.9;
         skyRingCombo += 1;
@@ -932,6 +1004,8 @@ export function createLivingWorkflowFx(
       if (ring.flashTimer > 0) ring.flashTimer = Math.max(0, ring.flashTimer - safeDt);
     }
     if (skyRingsVisible) {
+      skyRingOuterMat.uniforms["uTime"]!.value = elapsed;
+      skyRingCoreMat.uniforms["uTime"]!.value = elapsed;
       for (let i = 0; i < SKY_RING_COUNT; i += 1) {
         const ring = skyRings[i]!;
         const bobY = ring.y + Math.sin(elapsed * 2.0 + i * 0.85) * 0.34;

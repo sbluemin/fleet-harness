@@ -302,13 +302,17 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
               {ADMIRAL_HATS.map((hat) => {
                 const active = style.hat === hat.id;
                 const locked = !isCosmeticUnlocked(unlockedStampCount, hat.id);
+                const lockedHint = locked && hat.requiredStamps
+                  ? t("theWorld.stamps.lockedHint", { count: hat.requiredStamps })
+                  : undefined;
                 return (
                   <button
                     key={hat.id}
                     type="button"
                     className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
-                    title={locked && hat.requiredStamps ? t("theWorld.stamps.lockedHint", { count: hat.requiredStamps }) : undefined}
+                    aria-label={lockedHint ? `${t(hat.key)} · ${lockedHint}` : undefined}
+                    title={lockedHint}
                     onClick={() => {
                       if (locked && hat.requiredStamps) {
                         handleLockedCosmeticClick(hat.requiredStamps);
@@ -320,10 +324,11 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                     }}
                   >
                     <WorldIcon name={hat.icon} size={14} tone={active ? "amber" : hat.tone} />
-                    <span>{t(hat.key)}</span>
+                    <span className="the-world-admiral-hat-label">{t(hat.key)}</span>
                     {locked && hat.requiredStamps ? (
-                      <span className="the-world-admiral-lock-badge">
-                        {t("theWorld.stamps.unlockReq", { count: hat.requiredStamps })}
+                      <span className="the-world-admiral-lock-badge" aria-hidden="true">
+                        <WorldIcon name="trophy" size={10} tone="amber" />
+                        <span>{Math.min(unlockedStampCount, hat.requiredStamps)}/{hat.requiredStamps}</span>
                       </span>
                     ) : null}
                   </button>
@@ -343,13 +348,17 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
               {ADMIRAL_CAPES.map((cape) => {
                 const active = style.cape === cape.id;
                 const locked = !isCosmeticUnlocked(unlockedStampCount, cape.id);
+                const lockedHint = locked && cape.requiredStamps
+                  ? t("theWorld.stamps.lockedHint", { count: cape.requiredStamps })
+                  : undefined;
                 return (
                   <button
                     key={cape.id}
                     type="button"
                     className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
-                    title={locked && cape.requiredStamps ? t("theWorld.stamps.lockedHint", { count: cape.requiredStamps }) : undefined}
+                    aria-label={lockedHint ? `${t(cape.key)} · ${lockedHint}` : undefined}
+                    title={lockedHint}
                     onClick={() => {
                       if (locked && cape.requiredStamps) {
                         handleLockedCosmeticClick(cape.requiredStamps);
@@ -361,10 +370,11 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                     }}
                   >
                     <WorldIcon name={cape.icon} size={14} tone={active ? "amber" : cape.tone} />
-                    <span>{t(cape.key)}</span>
+                    <span className="the-world-admiral-hat-label">{t(cape.key)}</span>
                     {locked && cape.requiredStamps ? (
-                      <span className="the-world-admiral-lock-badge">
-                        {t("theWorld.stamps.unlockReq", { count: cape.requiredStamps })}
+                      <span className="the-world-admiral-lock-badge" aria-hidden="true">
+                        <WorldIcon name="trophy" size={10} tone="amber" />
+                        <span>{Math.min(unlockedStampCount, cape.requiredStamps)}/{cape.requiredStamps}</span>
                       </span>
                     ) : null}
                   </button>
@@ -384,13 +394,17 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
               {ADMIRAL_TRAILS.map((trail) => {
                 const active = style.trail === trail.id;
                 const locked = !isCosmeticUnlocked(unlockedStampCount, trail.id);
+                const lockedHint = locked && trail.requiredStamps
+                  ? t("theWorld.stamps.lockedHint", { count: trail.requiredStamps })
+                  : undefined;
                 return (
                   <button
                     key={trail.id}
                     type="button"
                     className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
-                    title={locked && trail.requiredStamps ? t("theWorld.stamps.lockedHint", { count: trail.requiredStamps }) : undefined}
+                    aria-label={lockedHint ? `${t(trail.key)} · ${lockedHint}` : undefined}
+                    title={lockedHint}
                     onClick={() => {
                       if (locked && trail.requiredStamps) {
                         handleLockedCosmeticClick(trail.requiredStamps);
@@ -402,10 +416,11 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                     }}
                   >
                     <WorldIcon name={trail.icon} size={14} tone={active ? "amber" : trail.tone} />
-                    <span>{t(trail.key)}</span>
+                    <span className="the-world-admiral-hat-label">{t(trail.key)}</span>
                     {locked && trail.requiredStamps ? (
-                      <span className="the-world-admiral-lock-badge">
-                        {t("theWorld.stamps.unlockReq", { count: trail.requiredStamps })}
+                      <span className="the-world-admiral-lock-badge" aria-hidden="true">
+                        <WorldIcon name="trophy" size={10} tone="amber" />
+                        <span>{Math.min(unlockedStampCount, trail.requiredStamps)}/{trail.requiredStamps}</span>
                       </span>
                     ) : null}
                   </button>

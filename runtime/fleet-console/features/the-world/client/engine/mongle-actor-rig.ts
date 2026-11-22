@@ -535,6 +535,59 @@ AnimRig computeAnimRigFor(int worldAnim, int state, int activity, float t) {
     r.auraBoost = 0.32 + arc * 0.38;
     r.blushAdd = 0.65;
     r.exprMode = 1;
+  } else if (worldAnim == 25) {
+    // fish-cast: 0..0.38 뒤로 크게 젖히며 백스윙 → 0.38..0.68 힘찬 전방 채찍 캐스팅 → 0.68..1.0 자세 안정
+    float ph = clamp(uAnimPhase, 0.0, 1.0);
+    if (ph < 0.38) {
+      float u = smoothstep(0.0, 0.38, ph);
+      r.pitchAdd = -0.24 * u;
+      r.yawAdd = -0.18 * u;
+      r.roll = 0.06 * u;
+      r.scale = mix(vec3(1.0), vec3(0.96, 1.06, 0.96), u);
+      r.wingFlapR = 0.62 * u;
+      r.exprMode = 4;
+    } else if (ph < 0.68) {
+      float u = smoothstep(0.38, 0.68, ph);
+      r.pitchAdd = mix(-0.24, 0.26, u);
+      r.yawAdd = mix(-0.18, 0.14, u);
+      r.roll = mix(0.06, -0.07, u);
+      r.offset.y += sin(u * 3.1415926) * 0.055;
+      r.scale = mix(vec3(0.96, 1.06, 0.96), vec3(1.05, 0.94, 1.05), u);
+      r.wingFlapR = mix(0.62, -0.34, u);
+      r.wingFlapL = -0.18 * u;
+      r.exprMode = 4;
+    } else {
+      float u = smoothstep(0.68, 1.0, ph);
+      r.pitchAdd = mix(0.26, 0.04, u);
+      r.yawAdd = mix(0.14, 0.0, u);
+      r.roll = mix(-0.07, 0.0, u);
+      r.scale = mix(vec3(1.05, 0.94, 1.05), vec3(1.0), u);
+      r.wingFlapR = mix(-0.34, 0.12, u);
+      r.exprMode = 4;
+    }
+  } else if (worldAnim == 26) {
+    // fish-wait: 찌를 바라보며 잔잔한 호흡 + 오른팔로 낚싯대 지탱 + 간헐적 살짝 끄덕임
+    float br = sin(t * 2.1);
+    float nod = pow(max(0.0, sin(t * 0.65)), 6.0) * 0.065;
+    r.offset.y += br * 0.014;
+    r.scale = vec3(1.0 + br * 0.012, 1.0 - br * 0.014, 1.0 + br * 0.010);
+    r.pitchAdd = 0.04 + nod;
+    r.roll = sin(t * 1.15) * 0.025;
+    r.eyeShift = vec2(sin(t * 0.9) * 0.022, -0.045);
+    r.wingFlapR = 0.12 + sin(t * 1.8) * 0.04;
+    r.wingFlapL = -0.06;
+  } else if (worldAnim == 27) {
+    // fish-bite: 입질! 뒤로 몸을 젖히며 버티고 양팔로 힘껏 당기는 긴장 릴링 자세
+    float pull = 0.5 + 0.5 * sin(t * 17.5);
+    r.offset.y -= 0.055 + pull * 0.032;
+    r.pitchAdd = -0.26 - pull * 0.08;
+    r.roll = sin(t * 12.0) * 0.095;
+    r.yawAdd = cos(t * 11.0) * 0.055;
+    r.scale = vec3(1.06 + pull * 0.04, 0.91 - pull * 0.03, 1.05);
+    r.wingFlapL = -0.32 - pull * 0.20;
+    r.wingFlapR = -0.36 - pull * 0.24;
+    r.blushAdd = 0.45;
+    r.exprMode = 3;
   }
 
   return r;
@@ -576,7 +629,7 @@ AnimRig computeAnim() {
   float ly = clamp(uLookYaw, -1.0, 1.0);
   float lp = clamp(uLookPitch, -1.0, 1.0);
   r.eyeShift += vec2(ly * 0.058, lp * 0.048);
-  if (uWorldAnim != 10 && uWorldAnim != 11 && uWorldAnim != 17 && uWorldAnim != 20 && uWorldAnim != 21 && uWorldAnim != 22 && uWorldAnim != 24) {
+  if (uWorldAnim != 10 && uWorldAnim != 11 && uWorldAnim != 17 && uWorldAnim != 20 && uWorldAnim != 21 && uWorldAnim != 22 && uWorldAnim != 24 && uWorldAnim != 25 && uWorldAnim != 27) {
     r.yawAdd += ly * 0.14;
     r.pitchAdd -= lp * 0.09;
   }
@@ -623,6 +676,15 @@ float sdMarioStar(vec3 q, AnimRig rig) {
     float phC = (uAnimPhase > 0.001) ? uAnimPhase : (uTime + uPhase);
     float cIn = pow(max(0.0, sin(phC * 12.6)), 2.0);
     armLTip = mix(armLTip, vec3(-0.24, 0.04, 0.34), cIn * 0.65);
+  } else if (uWorldAnim == 25) {
+    float phF = clamp(uAnimPhase, 0.0, 1.0);
+    float castBal = smoothstep(0.0, 0.38, phF) * (1.0 - smoothstep(0.68, 1.0, phF));
+    armLTip = mix(armLTip, vec3(-0.54, 0.08, -0.10), castBal * 0.75);
+  } else if (uWorldAnim == 26) {
+    armLTip = mix(armLTip, vec3(-0.50, 0.05, 0.08), 0.72);
+  } else if (uWorldAnim == 27) {
+    float tugA = 0.5 + 0.5 * sin((uTime + uPhase) * 17.5);
+    armLTip = mix(armLTip, vec3(-0.26, 0.08 + tugA * 0.05, 0.24 - tugA * 0.10), 0.92);
   }
   float armL = sdRoundCone(sp, armLStart, armLTip, 0.245, 0.152);
 
@@ -642,15 +704,39 @@ float sdMarioStar(vec3 q, AnimRig rig) {
     float phC = (uAnimPhase > 0.001) ? uAnimPhase : (uTime + uPhase);
     float cIn = pow(max(0.0, sin(phC * 12.6)), 2.0);
     armRTip = mix(armRTip, vec3(0.24, 0.04, 0.34), cIn * 0.65);
+  } else if (uWorldAnim == 25) {
+    // fish-cast: 오른 별 팔을 뒤로 힘차게 치켜들었다가 앞으로 휘두르며 캐스팅
+    float phF = clamp(uAnimPhase, 0.0, 1.0);
+    vec3 backTip = vec3(0.42, 0.54, -0.22);
+    vec3 whipTip = vec3(0.34, 0.16, 0.46);
+    vec3 holdTip = vec3(0.36, 0.10, 0.36);
+    vec3 castTip = (phF < 0.38)
+      ? mix(armRTip, backTip, smoothstep(0.0, 0.38, phF))
+      : (phF < 0.68
+        ? mix(backTip, whipTip, smoothstep(0.38, 0.68, phF))
+        : mix(whipTip, holdTip, smoothstep(0.68, 1.0, phF)));
+    armRTip = mix(armRTip, castTip, 0.94);
+  } else if (uWorldAnim == 26) {
+    // fish-wait: 오른 별 팔을 앞으로 부드럽게 뻗어 낚싯대 받침
+    float bobR = sin((uTime + uPhase) * 1.8) * 0.025;
+    armRTip = mix(armRTip, vec3(0.36, 0.10 + bobR, 0.36), 0.90);
+  } else if (uWorldAnim == 27) {
+    // fish-bite: 입질 순간 양팔을 몸쪽으로 힘껏 당기는 릴링 자세
+    float tugA = 0.5 + 0.5 * sin((uTime + uPhase) * 17.5);
+    armRTip = mix(armRTip, vec3(0.28, 0.14 + tugA * 0.06, 0.22 - tugA * 0.12), 0.92);
   }
   float armR = sdRoundCone(sp, armRStart, armRTip, 0.245, 0.152);
 
-  // 4~5) 하단 좌우 별 다리: 기본 5각 대칭 ↔ 질주 교차 발구름 ↔ 슈퍼맨 뒤로 쭉 뻗은 다리
+  // 4~5) 하단 좌우 별 다리: 기본 5각 대칭 ↔ 질주 교차 발구름 ↔ 낚시 입질 버팀 ↔ 슈퍼맨 비행 다리
   vec3 legLTip = vec3(-0.35, -0.47, 0.0);
   vec3 legRTip = vec3( 0.35, -0.47, 0.0);
   if (abs(rig.legStride) > 0.001) {
     legLTip += vec3(0.0, max(0.0, rig.legStride) * 0.08, rig.legStride * 0.16);
     legRTip += vec3(0.0, max(0.0, -rig.legStride) * 0.08, -rig.legStride * 0.16);
+  }
+  if (uWorldAnim == 27) {
+    legLTip += vec3(-0.08, 0.03, 0.12);
+    legRTip += vec3( 0.08, 0.03, 0.12);
   }
   legLTip = mix(legLTip, vec3(-0.19, -0.58, -0.04), sm);
   legRTip = mix(legRTip, vec3( 0.19, -0.58, -0.04), sm);
@@ -733,29 +819,29 @@ vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin, int hatCode)
     float feather = sdEllipsoid(fp, vec3(0.045, 0.19, 0.085));
     res = opU(res, vec2(feather * sMin, 3.0));
   } else if (hatCode == 4) {
-    // 지브리 들꽃 화관 (Flower Crown: 초록 덩굴 링 + 6송이 파스텔 들꽃 + 황금 꽃술 + 작은 잎사귀)
+    // 지브리 들꽃 화관 (Flower Crown: 슬림 초록 덩굴 링 바깥으로 6송이 파스텔 들꽃이 또렷하게 돌출)
     vec3 fp = hatOrigin - vec3(0.0, 0.01 + hb, 0.0);
     fp.yz = rot2(-0.10 - hb * 0.65) * fp.yz;
     // 초록 덩굴 화관 링 (mId == 13)
     float rXZ = length(fp.xz);
-    vec2 qTorus = vec2(rXZ - 0.37, fp.y - 0.02);
-    float vine = length(qTorus) - 0.050;
+    vec2 qTorus = vec2(rXZ - 0.36, fp.y - 0.015);
+    float vine = length(qTorus) - 0.044;
     res = opU(res, vec2(vine * sMin, 13.0));
-    // 6방위 극좌표 반복으로 작은 꽃송이 6개 + 잎사귀 배치
+    // 6방위 극좌표 반복으로 덩굴 바깥으로 또렷하게 돌출된 6송이 들꽃 + 잎사귀 배치
     float aFl = atan(fp.z, fp.x);
     float seg = mod(aFl + 3.1415926, 1.0471975) - 0.5235988;
     vec3 sf = vec3(cos(seg) * rXZ, fp.y, sin(seg) * rXZ);
-    vec3 fc = sf - vec3(0.405, 0.045, 0.0);
-    // 꽃잎 클러스터 (mId == 14) + 황금 꽃술 중심 (mId == 4)
+    vec3 fc = sf - vec3(0.435, 0.056, 0.0);
+    // 도톰한 4장 꽃잎 클러스터 (mId == 14) + 선명한 황금 꽃술 중심 (mId == 4)
     float petals = min(
-      min(sdSphere(fc - vec3(0.01, 0.048, 0.0), 0.048), sdSphere(fc - vec3(0.01, -0.045, 0.0), 0.048)),
-      min(sdSphere(fc - vec3(0.01, 0.0, 0.050), 0.048), sdSphere(fc - vec3(0.01, 0.0, -0.050), 0.048))
+      min(sdSphere(fc - vec3(0.012, 0.054, 0.0), 0.058), sdSphere(fc - vec3(0.012, -0.050, 0.0), 0.058)),
+      min(sdSphere(fc - vec3(0.012, 0.0, 0.056), 0.058), sdSphere(fc - vec3(0.012, 0.0, -0.056), 0.058))
     );
-    float bud = sdSphere(fc - vec3(0.036, 0.0, 0.0), 0.034);
+    float bud = sdSphere(fc - vec3(0.048, 0.0, 0.0), 0.042);
     // 꽃 사이 초록 잎사귀 (mId == 12)
     float segLeaf = mod(aFl + 3.1415926 + 0.5235988, 1.0471975) - 0.5235988;
     vec3 sl = vec3(cos(segLeaf) * rXZ, fp.y, sin(segLeaf) * rXZ);
-    float leaf = sdEllipsoid(sl - vec3(0.39, 0.03, 0.0), vec3(0.032, 0.032, 0.072));
+    float leaf = sdEllipsoid(sl - vec3(0.395, 0.032, 0.0), vec3(0.034, 0.032, 0.078));
     res = opU(res, vec2(petals * sMin, 14.0));
     res = opU(res, vec2(bud * sMin, 4.0));
     res = opU(res, vec2(leaf * sMin, 12.0));
@@ -1392,15 +1478,16 @@ void main() {
           ? vec3(0.98, 0.46, 0.34)
           : (uCape == 2 ? vec3(0.42, 0.84, 0.54) : vec3(0.38, 0.48, 0.92));
         if (uCape == 4) {
-          // 오로라 별빛 망토: 시안 → 라벤더 보라 → 별빛 골드 흐르는 오로라 쉬머 그라데이션
-          float aurWave = 0.5 + 0.5 * sin(q.y * 5.2 + q.x * 3.1 - tAnim * 2.1 + sin(q.x * 5.5 + tAnim * 1.4) * 0.8);
-          float aurGold = smoothstep(0.62, 0.98, 0.5 + 0.5 * cos(q.y * 4.4 - q.x * 3.8 + tAnim * 1.6));
-          vec3 aurCyan = vec3(0.16, 0.86, 0.96);
-          vec3 aurViolet = vec3(0.64, 0.36, 0.98);
-          vec3 aurStar = vec3(1.0, 0.86, 0.36);
-          baseCloth = mix(mix(aurCyan, aurViolet, aurWave), aurStar, aurGold * 0.55);
+          // 오로라 별빛 망토: 시안 → 딥 바이올렛 → 별빛 골드 주간/야간 고대비 흐르는 오로라 쉬머
+          float rawWave = 0.5 + 0.5 * sin(q.y * 5.6 + q.x * 3.4 - tAnim * 2.1 + sin(q.x * 5.8 + tAnim * 1.4) * 0.85);
+          float aurWave = smoothstep(0.14, 0.86, rawWave);
+          float aurGold = smoothstep(0.56, 0.96, 0.5 + 0.5 * cos(q.y * 4.6 - q.x * 3.8 + tAnim * 1.6));
+          vec3 aurCyan = vec3(0.08, 0.92, 0.98);
+          vec3 aurViolet = vec3(0.46, 0.22, 0.94);
+          vec3 aurStar = vec3(1.0, 0.88, 0.34);
+          baseCloth = mix(mix(aurCyan, aurViolet, aurWave), aurStar, aurGold * 0.58);
           rimTint = mix(aurCyan, aurStar, aurWave);
-          emissiveCol += toLinear(baseCloth) * (0.24 + capeRim * 0.52) * (0.55 + clamp(uNightGlow, 0.0, 1.0) * 0.75);
+          emissiveCol += toLinear(baseCloth) * (0.28 + capeRim * 0.56) * (0.68 + clamp(uNightGlow, 0.0, 1.0) * 0.65);
         }
         vec3 capeVelvet = toLinear(baseCloth) * (0.42 + 0.72 * wrap)
           + toLinear(rimTint) * capeRim * 0.30;
@@ -1457,16 +1544,16 @@ void main() {
         coreCol = toLinear(vec3(0.18, 0.42, 0.18)) * (0.38 + 0.72 * wrap);
       }
       else if (mId == 14) {
-        // 지브리 들꽃 화관 6송이 파스텔 꽃잎 (방위각별 분홍·레몬·하늘·크림·라벤더·코랄)
+        // 지브리 들꽃 화관 6송이 파스텔 꽃잎 (덩굴 대비 뚜렷한 채도·밝기 + 햇살 림 보강)
         int flIdx = int(mod(floor((atan(q.z, q.x) + 3.1415926) / 1.0471975), 6.0));
-        vec3 flCol = (flIdx == 0) ? vec3(0.99, 0.66, 0.82)
-          : ((flIdx == 1) ? vec3(1.00, 0.92, 0.46)
-          : ((flIdx == 2) ? vec3(0.56, 0.86, 1.00)
-          : ((flIdx == 3) ? vec3(1.00, 0.97, 0.90)
-          : ((flIdx == 4) ? vec3(0.80, 0.70, 1.00)
-          : vec3(1.00, 0.60, 0.64)))));
-        float flRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.2);
-        coreCol = toLinear(flCol) * (0.50 + 0.62 * wrap) + vec3(1.0, 0.98, 0.92) * flRim * 0.24;
+        vec3 flCol = (flIdx == 0) ? vec3(1.00, 0.56, 0.78)
+          : ((flIdx == 1) ? vec3(1.00, 0.90, 0.34)
+          : ((flIdx == 2) ? vec3(0.46, 0.84, 1.00)
+          : ((flIdx == 3) ? vec3(1.00, 0.98, 0.92)
+          : ((flIdx == 4) ? vec3(0.76, 0.62, 1.00)
+          : vec3(1.00, 0.52, 0.56)))));
+        float flRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.0);
+        coreCol = toLinear(flCol) * (0.58 + 0.64 * wrap) + vec3(1.0, 0.98, 0.94) * flRim * 0.32;
       }
       else coreCol = toLinear(uBaseCol) * (0.35 + 0.80 * wrap);
     }
@@ -1547,7 +1634,10 @@ export type WorldAnimMode =
   | "takeoff-ascend"
   | "hero-land"
   | "clap"
-  | "twirl";
+  | "twirl"
+  | "fish-cast"
+  | "fish-wait"
+  | "fish-bite";
 
 export type WorldExpression = "normal" | "happy" | "sleepy" | "surprised" | "focused";
 
@@ -1690,6 +1780,9 @@ const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
   "hero-land": 22,
   clap: 23,
   twirl: 24,
+  "fish-cast": 25,
+  "fish-wait": 26,
+  "fish-bite": 27,
 };
 
 const WORLD_EXPRESSION_CODE: Readonly<Record<WorldExpression, number>> = {
@@ -1739,6 +1832,10 @@ function resolveRigTransitionDuration(prevAnim: number, nextAnim: number): numbe
     || nextAnim === 22
   ) {
     return 0.06;
+  }
+  // 낚시 캐스팅·입질 당기기 전이는 즉각적인 손맛을 위해 민첩하게(0.11초)
+  if (nextAnim === 25 || nextAnim === 27) {
+    return 0.11;
   }
   // 플레이어 지상 이동·질주·점프 전이는 민첩하게(0.16초)
   if (prevAnim <= 3 && nextAnim <= 3 && (prevAnim !== 0 || nextAnim !== 0)) {
