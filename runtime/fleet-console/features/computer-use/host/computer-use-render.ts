@@ -171,7 +171,7 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
-  if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; page handlers may run.");
+  if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }
 
