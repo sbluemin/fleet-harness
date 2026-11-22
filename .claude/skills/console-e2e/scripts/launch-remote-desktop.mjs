@@ -109,7 +109,7 @@
  *   the live CDP Browser string so the verifier can prove no substitution.
  *
  * Preconditions on the remote Mac: the SSH user has a logged-in GUI session,
- * plus `unzip`, `shasum` (or `sha256sum`), `lsof`, `ps`, `awk`, `grep`.
+ * plus `ditto`, `plutil`, `shasum` (or `sha256sum`), `lsof`, `ps`, `awk`, `grep`.
  *
  * Exit codes: 0 reclaimed and complete after normal remote exit or SIGTERM;
  * 130 SIGINT with complete reclaim; 1 runtime failure, dropped tunnel, or any
@@ -826,7 +826,7 @@ async function main() {
     {
       const q = shQuote(remoteDir);
       const { stdout: listing } = await ssh(
-        `cd ${q} && rm -rf pkg && mkdir pkg && unzip -q package.zip -d pkg && ls -A pkg`,
+        `cd ${q} && mkdir pkg && /usr/bin/ditto -x -k package.zip pkg && ls -A pkg`,
         'extract-failed',
         { timeout: 180_000 },
       );

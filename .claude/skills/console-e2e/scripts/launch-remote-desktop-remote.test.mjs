@@ -105,7 +105,7 @@ if (cmd.includes('lsof') && /-iTCP:\\d+/.test(cmd) && env.MOCK_LSOF) {
   process.stdout.write(env.MOCK_LSOF);
   return;
 }
-if (cmd.includes('unzip -q')) {
+if (cmd.includes('/usr/bin/ditto -x -k')) {
   materialize(cmd);
   process.stdout.write('Fleet Console.app\\nconsole\\nfleet-package-identity.json\\n');
   return;
