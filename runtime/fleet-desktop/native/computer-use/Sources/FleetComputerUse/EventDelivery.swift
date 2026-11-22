@@ -127,6 +127,7 @@ struct KeyStroke {
   }
 
   var paste: Bool { code == CGKeyCode(kVK_ANSI_V) && flags == .maskCommand }
+  var selectAll: Bool { code == CGKeyCode(kVK_ANSI_A) && flags == .maskCommand }
 }
 
 enum PointerAction { case click, doubleClick, rightClick, drag(CGPoint), scroll(AICursorPulse.Direction, Double) }

@@ -132,7 +132,8 @@ const clipboardLine = (result?: ClipboardRestoration) => result ? `\nclipboard: 
 export function renderAction(args: ActionArgs, reply: HelperAction, windowChanges: string[], clipboard?: ClipboardRestoration) {
   const verified = reply.verified === "value_contains_text" ? `${args.target ?? "editable field"} value contains the ${args.action === "paste" ? "pasted" : "typed"} text`
     : reply.verified === "value_equals" ? `${args.target ?? "editable field"} value equals the new value`
-      : reply.verified === "selection_matches" && args.text !== undefined ? `selection matches ${quoteApp(args.text)}` : null;
+      : reply.verified === "selection_matches" && args.text !== undefined ? `selection matches ${quoteApp(args.text)}`
+        : reply.verified === "selection_covers_all" ? `${args.target ?? "editable field"} selection covers all text` : null;
   const code = verified ? "verified" : reply.observation === "changes" ? "changes" : reply.observation === "none" ? "no_visible_change" : "effect_unknown";
   const verdict = verified ? `verified: ${verified}` : code === "changes" ? "sent; changes:" : code === "no_visible_change" ? "sent; no visible change" : "sent; effect unknown";
   const lines = [`${actionTarget(args)}${reply.via ? ` via ${reply.via}` : ""}: ${verdict}`];
@@ -145,6 +146,7 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
+  if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; page handlers may run.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }
 

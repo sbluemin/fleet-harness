@@ -478,7 +478,9 @@ export class ComputerUseService {
       this.assertActive(lifetime);
       try { lease = await (this.deps.preparePaste ?? prepareMacPaste)(args.text!, args.format ?? "text"); }
       catch { throw new FleetHelperError("clipboard_prepare_failed"); }
-      params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true };
+      // 일반 텍스트 붙여넣기만 헬퍼가 같은 문자열이 늘었는지로 검증한다. md·html은 필드 값이 원문과 달라 관측 결과를 그대로 쓴다.
+      const plain = args.format === undefined || args.format === "text";
+      params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true, ...(plain ? { text: args.text } : {}) };
     } else {
       params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, to: end ?? (args.to ? { ref: args.to } : undefined) };
     }

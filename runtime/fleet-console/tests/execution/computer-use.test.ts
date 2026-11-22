@@ -325,10 +325,30 @@ describe("Fleet Computer Use", () => {
     f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ editable: true, focusedRef: "e2" }).mockResolvedValueOnce({ error: { code: "timeout", dispatch: "unknown" } });
     const uncertain = text(await f.action({ action: "paste", target: "e2", text: "private" }));
     expect(uncertain).toBe("paste e2: dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action.\nclipboard: kept newer contents");
-    expect(f.calls("act")).toEqual([{ pid: 5, windowId: 10, processStartedAt: 100, ref: "e2", action: "key", key: "cmd+v", requireEditableFocus: true }]);
+    // 일반 텍스트는 검증용으로만 헬퍼에 간다. 최근 호출 기록과 진단에는 남지 않는다.
+    expect(f.calls("act")).toEqual([{ pid: 5, windowId: 10, processStartedAt: 100, ref: "e2", action: "key", key: "cmd+v", requireEditableFocus: true, text: "private" }]);
     expect(f.finish).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(f.service.recentCalls("owner"))).not.toContain("private");
     expect(JSON.stringify(f.diagnostic.mock.calls)).not.toContain("private");
+  });
+
+  it("verifies plain-text paste and Command+A only from helper facts and discloses the key-window click", async () => {
+    const f = setup();
+    await f.invoke("computer_apps", {});
+    await f.invoke("computer_state", { window: "w1" });
+    const focusNote = "note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.";
+    const clickNote = "note: Sent a click to the target field before the shortcut; page handlers may run.";
+    const reply = { sent: true, via: "event+focus", changes: [], observation: "none", notes: ["focus_record_used", "key_window_click"] };
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ editable: true, focusedRef: "e2" }).mockResolvedValueOnce({ ...reply, verified: "value_contains_text" });
+    expect(text(await f.action({ action: "paste", target: "e2", text: "XYZ" }))).toBe(`paste e2 via event+focus: verified: e2 value contains the pasted text\n${focusNote}\n${clickNote}\nclipboard: kept newer contents`);
+    expect(f.calls("act").at(-1)).toMatchObject({ key: "cmd+v", requireEditableFocus: true, text: "XYZ" });
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ editable: true, focusedRef: "e2" }).mockResolvedValueOnce(reply);
+    await f.action({ action: "paste", target: "e2", text: "**XYZ**", format: "md" });
+    expect(f.calls("act").at(-1)).not.toHaveProperty("text");
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, verified: "selection_covers_all" });
+    expect(text(await f.action({ action: "key", target: "e2", key: "cmd+a" }))).toBe(`key e2 via event+focus: verified: e2 selection covers all text\n${focusNote}\n${clickNote}`);
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, notes: ["focus_record_used"], observation: "unobservable" });
+    expect(text(await f.action({ action: "key", target: "e2", key: "cmd+a" }))).toBe(`key e2 via event+focus: sent; effect unknown\n${focusNote}`);
   });
 
   it("returns unknown rather than success for stale, ambiguous, or incomplete verification", async () => {

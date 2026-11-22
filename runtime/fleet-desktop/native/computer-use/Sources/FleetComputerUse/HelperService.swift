@@ -26,7 +26,7 @@ private struct ActionRequest {
     case .scroll: allowed.formUnion(["ref", "x", "y", "direction", "pages"])
     case .drag: allowed.formUnion(["ref", "x", "y", "to"])
     case .type, .setValue, .select: allowed.formUnion(["ref", "text"])
-    case .key: allowed.formUnion(["key", "ref", "requireEditableFocus"])
+    case .key: allowed.formUnion(["key", "ref", "requireEditableFocus", "text"])
     case .axAction: allowed.formUnion(["ref", "name"])
     }
     try validateKeys(p, allowed: allowed)
@@ -55,6 +55,8 @@ private struct ActionRequest {
        (action == .key && requireEditableFocus && stroke?.paste != true) {
       throw HelperError("invalid_params", "requireEditableFocus applies to cmd+v only")
     }
+    // key의 text는 붙여넣기 검증용으로만 받는다(입력으로 보내지 않는다).
+    if action == .key && text != nil && !requireEditableFocus { throw HelperError("invalid_params", "text applies to paste only") }
     var direction: AICursorPulse.Direction?
     if action == .scroll {
       switch p["direction"] as? String {
@@ -128,6 +130,16 @@ private enum Verification {
   case contains(AXUIElement, String)
   case value(AXUIElement, Any)
   case selection(AXUIElement, String, CFRange)
+  /// 붙여넣기: 같은 문자열이 붙여넣기 전보다 늘었을 때만 참이다. 이미 있던 문자열만으로는 삽입을 구별할 수 없다.
+  case pasted(AXUIElement, String, Int)
+  /// Command+A: 비어 있지 않은 현재 값 전체(UTF-16 길이)가 선택돼 있을 때만 참이다.
+  case selectsAll(AXUIElement)
+
+  /// 값이나 선택 범위를 읽을 수 없으면 변화 없음으로 단정하지 않는다.
+  func unreadable(in win: WindowInfo, root: AXUIElement?) -> Bool {
+    guard case .selectsAll(let el) = self else { return false }
+    return !AXReader.belongs(el, win, root: root) || AXReader.attribute(el, kAXValueAttribute) as? String == nil || AXReader.selectedRange(el) == nil
+  }
 
   func check(in win: WindowInfo, root: AXUIElement?) -> String? {
     switch self {
@@ -144,8 +156,39 @@ private enum Verification {
       guard AXValueGetValue(raw as! AXValue, .cfRange, &range), range.location == wantedRange.location, range.length == wantedRange.length,
             (AXReader.attribute(el, kAXSelectedTextAttribute) as? String) == expected else { return nil }
       return "selection_matches"
+    case .pasted(let el, let text, let prior):
+      guard AXReader.belongs(el, win, root: root), let value = AXReader.attribute(el, kAXValueAttribute) as? String,
+            occurrences(of: text, in: value) > prior else { return nil }
+      return "value_contains_text"
+    case .selectsAll(let el):
+      guard AXReader.belongs(el, win, root: root), let value = AXReader.attribute(el, kAXValueAttribute) as? String,
+            let range = AXReader.selectedRange(el) else { return nil }
+      let length = (value as NSString).length
+      guard length > 0, range.location == 0, range.length == length else { return nil }
+      return "selection_covers_all"
     }
   }
+}
+
+private func occurrences(of text: String, in value: String) -> Int {
+  guard !text.isEmpty else { return 0 }
+  let haystack = value as NSString
+  var count = 0, from = 0
+  while from < haystack.length {
+    let found = haystack.range(of: text, options: [], range: NSRange(location: from, length: haystack.length - from))
+    guard found.location != NSNotFound else { break }
+    count += 1; from = found.location + found.length
+  }
+  return count
+}
+
+/// Chromium·Electron은 창이 AppKit 안에서 key가 아니면 Command 단축키를 버린다(RenderWidgetHostViewCocoa
+/// performKeyEquivalent와 CommandDispatcher redispatchKeyEvent의 key 검사). 대상 입력칸에 대상 전용 클릭을 한 번 보내면
+/// 앱 활성화·실제 포인터 이동 없이 창이 key가 된다. 클릭이 옮긴 선택 범위는 단축키 전에 AX로 되돌리고 확인한다.
+private struct KeyWindowPrimer {
+  let element: AXUIElement
+  let range: AXValue
+  let click: EventSequence
 }
 
 private struct Expectation {
@@ -517,6 +560,7 @@ private struct Expectation {
     var typingElement: AXUIElement?
     var requiresKeyWindow = false
     var needsTargetFocus = false
+    var primer: KeyWindowPrimer?
 
     func revalidate() throws {
       try Task.checkCancellation()
@@ -550,6 +594,19 @@ private struct Expectation {
       let hitActions = node?.actions ?? hit.map(AXReader.actions) ?? []
       let custom = !hitActions.contains(kAXPressAction) && (hitRole == nil || ["AXGroup", "AXUnknown", "AXLayoutArea", "AXWindow"].contains(hitRole!))
       return try factory.pointer(action, win: win, point: point, focus: detected == .webkit || detected == .electron || (detected == .appkit && custom))
+    }
+
+    // 적중 검사가 대상(또는 그 자손)일 때만 클릭한다. 다른 요소에 맞으면 프라이머 없이 지금 동작을 유지한다.
+    func keyWindowPrimer(for el: AXUIElement) -> KeyWindowPrimer? {
+      guard AXReader.settable(el, kAXSelectedTextRangeAttribute), let raw = AXReader.attribute(el, kAXSelectedTextRangeAttribute),
+            CFGetTypeID(raw) == AXValueGetTypeID(), let frame = AXReader.frame(el) else { return nil }
+      let visible = frame.offsetBy(dx: -win.frame.minX, dy: -win.frame.minY).intersection(win.localFrame)
+      guard !visible.isNull, !visible.isEmpty else { return nil }
+      let center = CGPoint(x: visible.midX, y: visible.midY)
+      // 새로 뜬(아직 key가 아닌) 창에서는 focus 레코드와 화면 밖 프라이머를 앞세운 클릭만 실측으로 확인됐다(m3 E1a·R1).
+      guard let hit = AXReader.hit(win, center), AXReader.within(hit, el),
+            let click = try? factory.pointer(.click, win: win, point: center, focus: true) else { return nil }
+      return KeyWindowPrimer(element: el, range: raw as! AXValue, click: click)
     }
 
     switch request.name {
@@ -612,15 +669,29 @@ private struct Expectation {
       let focus = stroke.flags.contains(.maskCommand) && win.engine != .catalyst
       sequence = try factory.key(stroke, focus: focus)
       requiresKeyWindow = !focus
+      var editable: AXUIElement?
       if request.requireEditableFocus {
-        typingElement = try focusEditable(node, in: win, root: before.root, mayFocus: false)
-        point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, typingElement!) }, explicit: nil, in: win)
+        let target = try focusEditable(node, in: win, root: before.root, mayFocus: false)
+        typingElement = target; editable = target
+        point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, target) }, explicit: nil, in: win)
+        if let text = request.text, !text.isEmpty, let value = AXReader.attribute(target, kAXValueAttribute) as? String {
+          verification = .pasted(target, text, occurrences(of: text, in: value))
+        }
       } else if let node {
         try revalidate()
-        _ = try focusTarget(node, in: win, root: before.root, mayFocus: true)
+        let focused = try focusTarget(node, in: win, root: before.root, mayFocus: true)
         needsTargetFocus = true
         point = try? localPoint(node: node, explicit: nil, in: win)
+        if AXReader.editable(focused, role: node.role) { editable = focused }
+      } else if let focused = AXReader.focused(win, root: before.root), let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+                AXReader.editable(focused, role: role) {
+        editable = focused
       }
+      if stroke.selectAll, let editable { verification = .selectsAll(editable) }
+      // 앱이 활성이고 대상 창이 그 앱의 포커스 창이면 이미 AppKit key 창이라 클릭이 필요 없다. 비활성 앱에서는
+      // AXFocusedWindow가 대상 창이어도 단축키가 버려졌으므로(b3c7139e m3 E2a, Chrome) key 여부를 믿지 않는다.
+      let alreadyKey = NSRunningApplication(processIdentifier: pid)?.isActive == true && AXReader.focusedWindow(win, root: before.root)
+      if focus, !alreadyKey, [.chromium, .electron].contains(win.engine), let editable { primer = keyWindowPrimer(for: editable) }
     case .setValue:
       guard let node, AXReader.settable(node.el, kAXValueAttribute) else { throw HelperError("not_settable") }
       let text = request.text!
@@ -681,10 +752,30 @@ private struct Expectation {
       let dragging = destination.map { target in Task { @MainActor in
         await self.cursor?.move(to: win.screen(target), above: win.key.id)
       } }
-      do { try await sequence.send(to: win, using: symbols, revalidate: revalidate) }
-      catch {
+      var clicked = false
+      do {
+        if let primer {
+          try await primer.click.send(to: win, using: symbols, revalidate: revalidate)
+          clicked = true
+          notes.append("key_window_click")
+          record.confirmed(via: via, notes: notes)
+          try await pause(150)
+          _ = AXReader.set(primer.element, kAXSelectedTextRangeAttribute, primer.range)
+          try await pause(50)
+          guard let restored = AXReader.selectedRange(primer.element), let wanted = AXReader.range(primer.range),
+                restored.location == wanted.location, restored.length == wanted.length else {
+            throw HelperError("timeout", "selection_restore_unconfirmed")
+          }
+        }
+        try await sequence.send(to: win, using: symbols, revalidate: revalidate)
+      } catch {
         dragging?.cancel()
         hideCursor(animated: false)
+        // 클릭은 이미 페이지에 갔으므로 "보내지 않음"으로 바꾸지 않는다.
+        if clicked, (error as? HelperError)?.code != "timeout" { throw HelperError("timeout", "key_window_click_sent") }
+        // 프라이머 전송 중의 HelperError(재검증 실패)는 실제 클릭 이벤트 전에만 난다(EventSequence.send).
+        // 그 밖의 오류(취소 등)는 클릭이 반쯤 나간 뒤일 수 있으므로 전송 불명으로 올린다.
+        if primer != nil, !(error is HelperError) { throw HelperError("timeout", "key_window_click_unknown") }
         throw error
       }
       record.confirmed(via: via, notes: notes)
@@ -757,6 +848,7 @@ private struct Expectation {
       if verification == nil && (!changes.isEmpty || !windowsChanged.isEmpty || !tree.observable) { return result }
       if millis(since: start) >= maxObservation {
         if maxObservation < 1_500, result["observation"] as? String == "none" { result["observation"] = "timeout" }
+        if result["observation"] as? String == "none", verification?.unreadable(in: fresh, root: tree.root) == true { result["observation"] = "unobservable" }
         return result
       }
     }
