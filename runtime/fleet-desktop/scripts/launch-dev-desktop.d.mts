@@ -6,5 +6,7 @@ export function createMacDevWrapper(input: {
   resolveSigning?: () => Promise<import("./dev-codesign.mjs").DevCodesignChoice>;
   log?: (message: string) => void;
 }): Promise<{ appPath: string; executablePath: string }>;
+export function createDevWrapperCodesignArgs(signer: string, wrapperPath: string, entitlementsPath: string): string[];
+export function isReusableDevSignature(signing: import("./dev-codesign.mjs").DevCodesignChoice, details: string, requirement: string): boolean;
 export function createInfoPlist(sourceInfo: string, electronAppPath: string): string;
 export function createMacDevLaunchArguments(wrapperPath: string, appPath: string, args?: string[], env?: NodeJS.ProcessEnv): string[];

@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { codesignWithFallback, resolveDevCodesignIdentity, signingEnv } from "./dev-codesign.mjs";
+import { codesignWithFallback, designatedRequirementArgs, hasFixedDesignatedRequirement, resolveDevCodesignIdentity, signingEnv } from "./dev-codesign.mjs";
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
@@ -26,7 +26,7 @@ export async function createMacDevWrapper(input) {
   for (const file of [path.join(electronAppPath, "Contents", "MacOS", "Electron"), path.join(electronAppPath, "Contents", "Info.plist"), input.iconPath,
     path.join(desktopDirectory, "build", "entitlements.mac.plist")]) sourceIdentity.update(await readFile(file));
   const identity = sourceIdentity.digest("hex");
-  // 팀 ID 서명이어야 macOS가 화면 기록을 묻고 목록에 올린다. 고른 ID가 바뀌면 다시 서명한다.
+  // 고른 ID(팀 서명 또는 식별자 고정 adhoc)와 다른 서명이면 다시 서명한다. 둘 다 재빌드 뒤에도 TCC 허용이 유지된다.
   const signing = await (input.resolveSigning ?? resolveDevCodesignIdentity)();
   if (await isReusableWrapper(wrapperPath, identity, signing)) {
     return { appPath: wrapperPath, executablePath };
@@ -41,11 +41,28 @@ export async function createMacDevWrapper(input) {
   await writeFile(wrapperInfoPath, createInfoPlist(sourceInfo, identity));
   await copyFile(input.iconPath, wrapperIconPath);
   await codesignWithFallback(productName, signing, async (signer) => {
-    await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", signer, "--timestamp=none", "--identifier", bundleIdentifier,
-      "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath], { env: signingEnv() });
-  }, input.log ?? ((message) => process.stderr.write(`${message}\n`)));
+    await execFileAsync("/usr/bin/codesign", createDevWrapperCodesignArgs(signer, wrapperPath, path.join(desktopDirectory, "build", "entitlements.mac.plist")), { env: signingEnv() });
+  }, input.log ?? ((message) => process.stderr.write(`${message}\n`)), { fixedRequirement: true });
   await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
   return { appPath: wrapperPath, executablePath };
+}
+
+/**
+ * 래퍼 서명 인자. adhoc이면 지정 요구 조건을 번들 식별자로 고정한다. 기본 adhoc 요구 조건(cdhash)은 Electron 갱신·래퍼 재생성마다
+ * TCC 허용을 무효로 만들고, 켜짐으로 남은 목록 줄은 껐다 켜도 되살아나지 않았다(macOS 26.5 실측). 팀 서명 인자는 그대로다.
+ */
+export function createDevWrapperCodesignArgs(signer, wrapperPath, entitlementsPath) {
+  return ["--force", "--deep", "--sign", signer, "--timestamp=none", "--identifier", bundleIdentifier,
+    ...designatedRequirementArgs(signer, bundleIdentifier), "--entitlements", entitlementsPath, wrapperPath];
+}
+
+/**
+ * 기존 래퍼 서명을 그대로 쓸 수 있는가. `details`는 `codesign -dvv`의 stderr, `requirement`는 `codesign -d -r-`의 stdout이다.
+ * adhoc은 식별자 고정 요구 조건까지 있어야 한다. 이전 빌드가 남긴 cdhash 요구 조건 래퍼는 한 번 다시 서명한다.
+ */
+export function isReusableDevSignature(signing, details, requirement) {
+  if (signing.identity !== "-") return details.includes(`Authority=${signing.label}\n`);
+  return details.includes("Signature=adhoc") && hasFixedDesignatedRequirement(requirement, bundleIdentifier);
 }
 
 export function createInfoPlist(sourceInfo, electronAppPath) {
@@ -101,7 +118,8 @@ async function isReusableWrapper(wrapperPath, electronAppPath, signing) {
     await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
     // 서명 ID가 고른 것과 다르면(adhoc으로 물러났던 래퍼 포함) 다시 서명한다.
     const { stderr } = await execFileAsync("/usr/bin/codesign", ["-dvv", wrapperPath]);
-    return signing.identity === "-" ? stderr.includes("Signature=adhoc") : stderr.includes(`Authority=${signing.label}\n`);
+    const requirement = signing.identity === "-" ? (await execFileAsync("/usr/bin/codesign", ["-d", "-r-", wrapperPath])).stdout : "";
+    return isReusableDevSignature(signing, stderr, requirement);
   } catch {
     return false;
   }

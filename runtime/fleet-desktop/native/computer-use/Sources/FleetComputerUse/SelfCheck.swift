@@ -45,8 +45,8 @@ struct HelperPermissions {
   var json: Object { ["accessibility": accessibility, "screenRecording": screenRecording] }
 
   /// 빠진 권한을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
-  /// 팀 ID로 서명한 앱에서는 화면 기록도 이 요청으로 "화면 기록" 창이 뜨고 목록에 오른다(macOS 26.5 실측). adhoc 서명 앱에서는
-  /// 창도 목록 등록도 없었으므로 안내가 + 추가를 함께 말한다. tccd의 "does not allow prompting" 기록은 창이 떠도 남는다.
+  /// 팀 ID로 서명한 앱도, adhoc 서명 앱도 화면 기록 요청에 "화면 기록" 창이 뜨고 목록에 오른다(macOS 26.5 실측). 다만 앱이 temp 폴더에
+  /// 있으면 창은 떠도 시스템 설정이 앱을 찾지 못해 목록에 줄이 생기지 않았다. tccd의 "does not allow prompting" 기록은 창이 떠도 남는다.
   /// 손쉬운 사용이 아직 없으면 화면 기록은 지금 묻지 않고 손쉬운 사용이 켜지는 즉시 묻는다(`deferred`). 손쉬운 사용 창이 떠 있는
   /// 동안의 화면 기록 요청은 창도 목록 등록도 없이 사라졌기 때문이다(실측). 허용은 사람이 하고, 결과는 다음 hello에서 읽는다.
   static func request(_ wanted: Set<String>) -> (requested: [String], deferred: [String]) {

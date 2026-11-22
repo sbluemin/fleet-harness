@@ -226,7 +226,7 @@ describe("Fleet Computer Use", () => {
     await f.invoke("computer_apps", {});
     // 두 권한을 헬퍼 한 번의 요청으로 보낸다. 헬퍼는 손쉬운 사용 창을 띄우고, 화면 기록은 손쉬운 사용이 켜지면 이어서 묻는다.
     expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }]);
-    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Accessibility and Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Accessibility and Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. If the app’s Screen Recording switch is on but access is still denied, have the user select its entry and click −. For a missing or removed entry, have them request access in Fleet and turn the switch on when the app appears. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
     // 미룬 화면 기록은 기록하지 않으므로 다음 호출이 다시 이어 건다. 손쉬운 사용은 간격 안이라 다시 띄우지 않는다.
     expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }, { permissions: ["screenRecording"] }]);
     expect(f.calls("act")).toHaveLength(0);
@@ -244,7 +244,7 @@ describe("Fleet Computer Use", () => {
     // 손쉬운 사용을 켜면 다음 호출이 헬퍼를 새로 띄우고, 간격을 기다리지 않고 화면 기록을 곧바로 묻는다.
     f.grant({ accessibility: true, screenRecording: false });
     f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
-    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet requested access from macOS. Ask the user to enable Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet requested access from macOS. Ask the user to enable Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. If the app’s Screen Recording switch is on but access is still denied, have the user select its entry and click −. For a missing or removed entry, have them request access in Fleet and turn the switch on when the app appears. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
     expect(f.calls("requestPermissions").at(-1)).toEqual({ permissions: ["screenRecording"] });
     expect(f.calls("shutdown")).toHaveLength(1);
   });
@@ -297,7 +297,7 @@ describe("Fleet Computer Use", () => {
       ? { error: { code: "permission_required", message: "permission_required", details: { missing: ["screenRecording"], holder: "Fleet Console" } } }
       : base(request));
     await f.invoke("computer_apps", {});
-    expect(text(await f.invoke("computer_state", { window: "w1" }))).toBe("error permission_required: Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
+    expect(text(await f.invoke("computer_state", { window: "w1" }))).toBe("error permission_required: Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console in System Settings › Privacy & Security. If the app’s Screen Recording switch is on but access is still denied, have the user select its entry and click −. For a missing or removed entry, have them request access in Fleet and turn the switch on when the app appears. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
   });
 
   it("keeps window tools working when the shell cannot verify a kernel start time for capture", async () => {
