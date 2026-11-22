@@ -195,8 +195,7 @@ private struct KeyWindowPrimer {
 }
 
 /// type 앞에서 대상 창이 key여야 하는지 정한다. Electron은 대상 창이 앱의 AXFocusedWindow가 아니면(한 번도 key가 아니었던 창)
-/// AXFocused가 확인돼도 입력 문자를 버린다(e7e293ee m3: 재시도만 넣으면 'sent; changes:'). AppKit은 그런 창(닫았다 다시 연 창)에서
-/// 입력칸 포커스 확인부터 실패한다(dbdbe742 실측). 다른 엔진은 실측하지 않아 그대로 둔다.
+/// AXFocused가 확인돼도 입력 문자를 버린다(e7e293ee m3: 재시도만 넣으면 'sent; changes:'). 다른 엔진은 실측하지 않아 그대로 둔다.
 enum TypeKeyWindow: Equatable {
   /// 그대로 입력한다.
   case ready
@@ -206,7 +205,7 @@ enum TypeKeyWindow: Equatable {
   case refuse
 
   static func decide(engine: Engine, reportsFocusedWindow: Bool, appActive: Bool) -> Self {
-    guard [.electron, .appkit].contains(engine), !reportsFocusedWindow else { return .ready }
+    guard engine == .electron, !reportsFocusedWindow else { return .ready }
     return appActive ? .refuse : .prime
   }
 }
@@ -316,7 +315,8 @@ private struct Expectation {
       try validateKeys(p, allowed: [])
       let os = ProcessInfo.processInfo.operatingSystemVersion
       let version = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion == 0 ? "" : ".\(os.patchVersion)")
-      var hello: Object = ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check]
+      var hello: Object = ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check,
+                           "activationYields": activation.yields]
       if let permissionHolder { hello["permissionHolder"] = permissionHolder }
       if permissionHolderHostsConsole { hello["permissionHolderHostsSession"] = true }
       return hello
@@ -464,7 +464,7 @@ private struct Expectation {
     let image = jsonBool(p["image"]) == true
     // 다른 스페이스의 창은 앱의 AX 창 목록에 없어 읽을 수 없고, 화면 캡처만 된다(dbdbe742 실측). 이미지를 청할 때만 보기 전용으로 돌려준다.
     var win = try window(pid, id, started: started, allowOtherSpace: image)
-    let viewOnly = !win.onCurrentSpace
+    let viewOnly = !win.inActiveSpace
     // 손쉬운 사용이 없으면 AX 트리가 오류 없이 비어 버려 부족이 클릭 단계에서야 드러난다. 여기서 함께 알린다.
     let permissions = HelperPermissions()
     guard permissions.allowed else { throw permissions.error }
@@ -678,6 +678,8 @@ private struct Expectation {
         }
       }
       if requiredFrame == nil && current.frame != win.frame { throw HelperError.unavailable() }
+      // 계획 뒤에 창이 화면에서 사라지면(사람이 앱을 숨김 등) 화면에 있어야 하는 입력을 보내지 않는다.
+      if win.onscreen && !current.onscreen { throw HelperError.unavailable(current.hidden ? "hidden" : current.minimized ? "minimized" : "unknown") }
       if let root = before.root, (AXReader.attribute(root, kAXMinimizedAttribute) as? Bool == true) != win.minimized {
         throw HelperError.unavailable(win.minimized ? "unknown" : "minimized")
       }
@@ -764,21 +766,23 @@ private struct Expectation {
     case .type:
       let text = request.text!
       try revalidate()
-      // 비활성 AppKit 앱이 대상 창을 포커스 창으로 보고하지 않으면(창을 닫았다 다시 연 경우 등) 입력칸 포커스를 확인할 수 없다
-      // (dbdbe742 실측: target_focus_unconfirmed). 포커스 확인 전에 창 프라이머로 창을 key로 만든다. 프라이머는 화면 밖 좌표의
-      // 클릭과 focus 레코드뿐이라 창 내용에 닿지 않는다.
-      if win.engine == .appkit,
-         TypeKeyWindow.decide(engine: .appkit, reportsFocusedWindow: AXReader.reportsFocusedWindow(win, root: before.root),
-                              appActive: NSRunningApplication(processIdentifier: pid)?.isActive == true) == .prime {
-        try await factory.windowPrimer(win).send(to: win, using: symbols, revalidate: revalidate)
-        guard try await settleReportedKeyWindow(win, root: before.root) else { throw HelperError("no_editable_focus", "key_window_unconfirmed") }
-        notes.append("key_window_primed")
-      }
       // Chromium·Electron은 AXFocused 설정이 늦게 보이므로(451f7d30 m2) 단축키처럼 같은 확인을 짧게 다시 한다.
       // 다른 엔진은 type에서 실측하지 않아 즉시 확인을 유지한다.
-      let target = [.chromium, .electron].contains(win.engine)
-        ? try await settleEditableFocus(node, in: win, root: before.root)
-        : try focusEditable(node, in: win, root: before.root, mayFocus: true)
+      let target: AXUIElement
+      if [.chromium, .electron].contains(win.engine) { target = try await settleEditableFocus(node, in: win, root: before.root) }
+      else {
+        do { target = try focusEditable(node, in: win, root: before.root, mayFocus: true) }
+        catch let error as HelperError where error.code == "no_editable_focus" && win.engine == .appkit
+          && NSRunningApplication(processIdentifier: pid)?.isActive != true && !AXReader.reportsFocusedWindow(win, root: before.root) {
+          // 비활성 AppKit 앱이 대상 창을 포커스 창으로 보고하지 않으면(창을 닫았다 다시 연 경우 등) 입력칸 포커스를 확인할 수 없다
+          // (dbdbe742 실측). 그때만 창 프라이머로 창을 key로 만든 뒤 한 번 더 확인한다. 프라이머는 화면 밖 좌표의 클릭과 focus
+          // 레코드뿐이라 창 내용에 닿지 않는다. 앞의 경로가 통하는 경우(활성 앱, 시트, 이미 key인 창)는 바뀌지 않는다.
+          try await factory.windowPrimer(win).send(to: win, using: symbols, revalidate: revalidate)
+          guard try await settleReportedKeyWindow(win, root: before.root) else { throw error }
+          notes.append("key_window_primed")
+          target = try focusEditable(node, in: win, root: before.root, mayFocus: true)
+        }
+      }
       let detected = engine(for: node ?? before.nodes.first { CFEqual($0.el, target) }, at: nil, tree: before, win: win)
       let web = detected == .webkit || (detected == .appkit && AXReader.insideWebArea(target))
       sequence = try factory.typing(text, focus: web || detected == .electron)

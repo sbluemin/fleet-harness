@@ -22,12 +22,19 @@ import AppKit
 
   private func yieldActivation() {
     yields += 1
-    guard let previous, !previous.isTerminated else { NSApp.deactivate(); return }
+    // 직전 앱의 창이 지금 화면(현재 스페이스)에 없으면 그 앱을 활성화할 때 macOS가 그 창이 있는 스페이스로 화면을 넘길 수 있다.
+    // 그때는 헬퍼만 비활성화해 화면에 있는 창의 앱에 넘긴다.
+    guard let previous, !previous.isTerminated, Self.hasOnscreenWindow(previous.processIdentifier) else { NSApp.deactivate(); return }
     if #available(macOS 14.0, *) {
       NSApp.yieldActivation(to: previous)
       _ = previous.activate()
     } else {
       _ = previous.activate(options: [])
     }
+  }
+
+  private static func hasOnscreenWindow(_ pid: pid_t) -> Bool {
+    let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [Object] ?? []
+    return rows.contains { $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowLayer as String] as? Int == 0 }
   }
 }

@@ -342,7 +342,7 @@ describe("Fleet Computer Use", () => {
 
   it("controls a minimized window in place but only views a window on another Space", async () => {
     const f = setup();
-    f.rows = [{ ...sample, minimized: true }, { ...sample, windowId: 11, title: "Elsewhere", onCurrentSpace: false }];
+    f.rows = [{ ...sample, minimized: true, onCurrentSpace: false }, { ...sample, windowId: 11, title: "Elsewhere", onCurrentSpace: false }];
     expect(text(await f.invoke("computer_apps", {}))).toMatch(/w1 .* minimized\nw2 .* other-space/u);
     expect((await f.invoke("computer_state", { window: "w1" })).isError).toBe(false);
     expect(text(await f.action({ action: "click", target: "e1" }))).toContain("via ax: sent");

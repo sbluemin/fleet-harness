@@ -71,15 +71,16 @@ struct WindowInfo {
   var startedAtSource = "launchDate"
   /// WindowServer가 지금 화면에 그리는 창인가. 최소화·숨김 창과 다른 스페이스 창은 거짓이다.
   var onscreen = true
+  /// 창의 스페이스가 활성 스페이스 중 하나인가. 화면에 없는 최소화·숨김 창도 참이다. onCurrentSpace(화면에 있는 창만 참)와 달리
+  /// 목록 표시에는 쓰지 않고, 앞으로 올리지 않고 다룰 창을 가르는 데만 쓴다.
+  var inActiveSpace = true
 
   /// 사람 화면에 보이는 창. 화면 좌표가 그대로 맞고 새 창 감지(전후 비교)의 기준이 된다.
   var visible: Bool { onscreen && onCurrentSpace && !hidden && !minimized && frame.width > 0 && frame.height > 0 }
   /// 읽기와 조작 대상이 되는 창: 현재 스페이스의 보이는 창과, 앞으로 올리지 않은 최소화·숨김 창(dbdbe742 실측).
   /// 다른 스페이스의 창은 앱의 AX 창 목록에 없어 읽거나 조작할 수 없다.
-  var usable: Bool { onCurrentSpace && frame.width > 0 && frame.height > 0 }
+  var usable: Bool { (visible || (inActiveSpace && (minimized || hidden))) && frame.width > 0 && frame.height > 0 }
   var localFrame: CGRect { CGRect(origin: .zero, size: frame.size) }
-  /// 현재 스페이스에서 화면에 없고 최소화·숨김도 아닌 창: 닫힌 뒤 앱이 해제하지 않은 창이다. minimized는 AX로 채운 뒤에만 믿는다.
-  var isOrderedOut: Bool { !onscreen && onCurrentSpace && !hidden && !minimized }
   func screen(_ point: CGPoint) -> CGPoint { CGPoint(x: frame.minX + point.x, y: frame.minY + point.y) }
   func snapshotJSON() -> Object {
     ["pid": key.pid, "windowId": key.id, "processStartedAt": key.launched?.timeIntervalSince1970 ?? 0,
@@ -161,14 +162,14 @@ struct WindowInfo {
     let key = WindowKey(pid: pid, id: id, launched: process.started)
     let engine = process.engine
     let onscreen = info[kCGWindowIsOnscreen as String] as? Bool == true
-    // 화면에 없는 창도 그 창의 스페이스가 활성 스페이스면 현재 스페이스에 있다(최소화·숨김 창, 닫힌 뒤 앱이 붙든 창).
-    let inSpace = symbols.windowSpaces(id).map { activeSpaces.isEmpty || !$0.isDisjoint(with: activeSpaces) } ?? onscreen
+    let spaces = symbols.windowSpaces(id).map { activeSpaces.isEmpty || !$0.isDisjoint(with: activeSpaces) }
+    let inSpace = !onscreen ? false : spaces ?? true
     let window = WindowInfo(key: key, app: app.localizedName ?? info[kCGWindowOwnerName as String] as? String ?? "",
                       bundleId: app.bundleIdentifier ?? "", bundlePath: app.bundleURL?.path ?? "",
                       title: info[kCGWindowName as String] as? String ?? "", frame: frame, front: front == pid,
                       hidden: app.isHidden, minimized: false, onCurrentSpace: inSpace,
                       engine: engine == .appkit && webWindows.contains(key) ? .webkit : engine, startedAtSource: process.source,
-                      onscreen: onscreen)
+                      onscreen: onscreen, inActiveSpace: spaces ?? onscreen)
     knownWindows[id] = window
     return window
   }
@@ -187,7 +188,7 @@ struct WindowInfo {
         return window
       }
       var hasAXWindow = false
-      if describeWithAX && (!window.onscreen || window.title.isEmpty) {
+      if describeWithAX && (!window.onCurrentSpace || window.title.isEmpty) {
         let pid = window.key.pid
         if axWindows[pid] == nil { axWindows[pid] = AXReader.windows(pid) }
         if let ax = AXReader.window(window, candidates: axWindows[pid]) {
@@ -200,8 +201,6 @@ struct WindowInfo {
       }
       // 현재 화면 밖의 빈 제목 보조 표면은 실제 AX 창일 때만 목록에 남긴다.
       if !window.onCurrentSpace && window.title.isEmpty && !hasAXWindow { return nil }
-      // 현재 스페이스에서 화면에 없고 최소화·숨김도 아니면 닫힌 뒤 앱이 붙들고 있는 창이다. 다른 스페이스 창으로 보이지 않게 뺀다.
-      if describeWithAX && window.isOrderedOut { return nil }
       return window
     }
   }
@@ -225,8 +224,7 @@ struct WindowInfo {
     if !window.onscreen && AXIsProcessTrusted() {
       window.minimized = AXReader.window(window).flatMap { AXReader.attribute($0, kAXMinimizedAttribute) as? Bool } ?? false
     }
-    if window.isOrderedOut { throw HelperError.unavailable("closed") }
-    if window.usable || (allowOtherSpace && !window.onCurrentSpace && !window.frame.isEmpty) { return window }
+    if window.usable || (allowOtherSpace && !window.inActiveSpace && !window.frame.isEmpty) { return window }
     throw HelperError.unavailable(unavailableReason(window, app: process.app, missingFromCG: false))
   }
 
