@@ -1432,10 +1432,11 @@ async function main() {
     // whatever the race observed: our own reclaim kills the tunnel, which
     // must not be mistaken for a drop.
     if (aborted || outcome === 'aborted') {
-      const summary = await shutdown(exitSignal === 'SIGINT' ? 'sigint' : 'sigterm');
-      const signal = exitSignal === 'SIGINT' ? 'SIGINT' : exitSignal === 'SIGTERM' ? 'SIGTERM' : 'abort';
-      log(`aborted (${signal}); reclaimed; exiting ${exitCodeFor(summary, signal === 'SIGINT' ? 130 : 0)}`);
-      return exitCodeFor(summary, signal === 'SIGINT' ? 130 : 0);
+      const reason = exitSignal === 'SIGINT' ? 'sigint' : exitSignal === 'SIGTERM' ? 'sigterm' : 'watchdog-dropped';
+      const summary = await shutdown(reason);
+      const code = exitCodeFor(summary, reason === 'sigint' ? 130 : reason === 'sigterm' ? 0 : 1);
+      log(`run stopped (${reason}); exiting ${code}`);
+      return code;
     }
     if (outcome === 'tunnel-dropped') {
       const summary = await shutdown('tunnel-dropped');

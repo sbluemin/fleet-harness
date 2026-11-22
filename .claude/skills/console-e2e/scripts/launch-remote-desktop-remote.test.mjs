@@ -58,7 +58,7 @@ describe('mock-SSH remote flow (no real target; loopback only)', { skip: process
     // them as CommonJS: require() below, no top-level await.
     ssh: `#!/usr/bin/env node
 const { execFileSync, spawn } = require('node:child_process');
-const { mkdirSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, writeFileSync } = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const argv = process.argv.slice(2);
@@ -94,6 +94,9 @@ if (tunnel || cmdParts.length === 0) {
   return;
 }
 const cmd = cmdParts.join(' ');
+if (env.MOCK_DROP_CONTROL && cmd.startsWith('sh -c ') && cmd.includes(' watchdog ')) {
+  setInterval(() => { if (existsSync(env.MOCK_DROP_CONTROL)) process.exit(255); }, 50);
+}
 if (env.MOCK_HANG && cmd.includes(env.MOCK_HANG)) { hold(); return; }
 if (cmd.includes('connect_ex')) process.exit(env.MOCK_PORT_PROBE === 'occupied' ? 1 : 0);
 if (cmd === '/usr/bin/getconf DARWIN_USER_TEMP_DIR') {
@@ -374,6 +377,18 @@ main().then(() => {}, () => process.exit(1));
     const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
     assert.equal(last.appGone, true);
     assert.equal(last.dirGone, true);
+  });
+
+  test('losing the watchdog connection after READY is a failure even after reclaim', async (t) => {
+    const ctx = await arrange(t, { app: 'full', extraEnv: { MOCK_FORWARD: '1' } });
+    const drop = path.join(ctx.base, 'drop-control');
+    const proc = launch(ctx.args, { ...ctx.env, MOCK_DROP_CONTROL: drop });
+    await proc.waitReady();
+    fs.writeFileSync(drop, '');
+    const { code } = await proc.done;
+    assert.ok(!fs.existsSync(ctx.remoteDir), 'run directory reclaimed');
+    assert.ok(!(await localConnects(ctx.localPort)), 'tunnel is down');
+    assert.equal(code, 1, proc.output().stderr);
   });
 
   test('a pre-existing empty run directory is never adopted or removed', async (t) => {

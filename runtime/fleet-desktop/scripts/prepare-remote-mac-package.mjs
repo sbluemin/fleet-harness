@@ -207,6 +207,10 @@ async function prepareRemoteMacPackage() {
   const repoRoot = (await git(desktopDirectory, ["rev-parse", "--show-toplevel"])).trim();
   const { sourceRevision, sourceDirty } = await readSourceRevision(repoRoot);
   if (sourceDirty) throw new Error("refusing to package a dirty source tree");
+  await execFileAsync("pnpm", ["--filter", "@dotobokuri/fleet-console", "build"], {
+    cwd: repoRoot,
+    maxBuffer: 32 * 1024 * 1024,
+  });
   const releaseDirectory = join(desktopDirectory, "release");
   const outputDirectory = join(releaseDirectory, "remote-mac");
   await mkdir(outputDirectory, { recursive: true });
