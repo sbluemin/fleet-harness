@@ -614,6 +614,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 대화 중심 화면의 사령관 — Objective 대화와 같은 화면(호스트 대화 렌더러)이다. 그 화면이 이 칸을 채우고, 입력 캡슐은 그 화면의
    입력 자리(진행 줄 아래)에 그룹 입력창과 같은 좌우 여백·아래 여백으로 선다. */
 .objectives-commodore-conversation { container: commodore-conv / inline-size; }
+/* 컴퓨터 사용 미리보기는 입력 독 위에 뜬다 — 그룹 대화(.is-group)와 같은 높이다. */
+.objectives-commodore-conversation .computer-screen-share.is-commodore { bottom: 7.5rem; }
 .objectives-commodore-conversation-log { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 /* 사령관 원장 — 호스트 원장(ctx.chat.Ledger: 그룹 원장 틀 + Objective 채팅 면)이 전부 그린다. 이 상자는 머리 pill 오버레이
    밑에서 시작하는 자리만 진다. */

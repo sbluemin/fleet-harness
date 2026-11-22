@@ -852,7 +852,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     get: objectiveRecords.get,
     turnOpen: (objectiveId) => { const activity = consoleControl.observe(objectiveId)?.activity; return activity === "running" || activity === "awaiting"; },
   });
-  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; objectiveId: string; actor: string } | null = null;
+  // 화면의 주인은 목표(objectiveId)이거나 사령관 자신의 세션(commodoreId)이다 — 소유자 종류는 ownerKind 가 구분하고, 사령관 소유일 때 objectiveId 는 null 이다.
+  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; ownerKind: "objective" | "commodore"; objectiveId: string | null; commodoreId: string | null; actor: string } | null = null;
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
@@ -863,16 +864,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const objectiveId = target ? computerUseMcp.objectiveIdForOwner(target.owner) : null;
-      // 공유 컨텍스트에서는 화면의 주인(objectiveId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다.
-      const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? objectiveId : null;
-      if (!target || !objectiveId || !actor || !objectiveRecords.get(objectiveId)) {
-        if (target) logComputerCapture({ captureReason: "objectiveRecord_unresolved", objectiveRecordResolved: Boolean(objectiveId && objectiveRecords.get(objectiveId)), actorResolved: Boolean(actor) });
+      // 사령관 자신의 세션이 잡은 기기 — 목표가 아니라 사령관 id 로 따로 푼다(browserCommodores 와 같은 자리).
+      const commodoreId = target && !objectiveId ? computerUseMcp.commodoreIdForOwner(target.owner) : null;
+      // 공유 컨텍스트에서는 화면의 주인(objectiveId)이 루트이고, 지금 조작하는 참가자(actor)는 따로 싣는다. 사령관의 조작자는 사령관 자신이다.
+      const actor = target ? computerUseMcp.actorForOwner(target.owner) ?? objectiveId ?? commodoreId : null;
+      const objectiveOwned = Boolean(objectiveId && objectiveRecords.get(objectiveId));
+      const commodoreOwned = Boolean(commodoreId && !ownership?.isDeleting(commodoreId) && ownership?.entities.dirOf(commodoreId) != null);
+      if (!target || !actor || (!objectiveOwned && !commodoreOwned)) {
+        if (target) logComputerCapture({ captureReason: "objectiveRecord_unresolved", objectiveRecordResolved: objectiveOwned, actorResolved: Boolean(actor) });
         computerCaptureTarget = null;
-      } else if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
-        && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.objectiveId === objectiveId) {
-        computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
       } else {
-        computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, objectiveId, actor, id: crypto.randomUUID() };
+        const ownerKind = objectiveOwned ? "objective" : "commodore";
+        const ownerObjectiveId = objectiveOwned ? objectiveId : null;
+        const ownerCommodoreId = objectiveOwned ? null : commodoreId;
+        if (computerCaptureTarget?.pid === target.pid && computerCaptureTarget.windowId === target.windowId
+          && computerCaptureTarget.processStartedAt === target.processStartedAt && computerCaptureTarget.ownerKind === ownerKind
+          && computerCaptureTarget.objectiveId === ownerObjectiveId && computerCaptureTarget.commodoreId === ownerCommodoreId) {
+          computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
+        } else {
+          computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, ownerKind, objectiveId: ownerObjectiveId, commodoreId: ownerCommodoreId, actor, id: crypto.randomUUID() };
+        }
       }
       broadcastComputerCapture();
       watchComputerCapture();
@@ -2424,8 +2435,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const unavailableOwner = computerUse.captureUnavailableOwner();
     const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     return {
-      target: target ? { id: target.id, objectiveId: target.objectiveId, actor: target.actor, title: target.title } : null,
+      target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title } : null,
       unavailableObjectiveId: unavailableOwner ? computerUseMcp.objectiveIdForOwner(unavailableOwner) : null,
+      ...(unavailableOwner && computerUseMcp.commodoreIdForOwner(unavailableOwner) ? { unavailableCommodoreId: computerUseMcp.commodoreIdForOwner(unavailableOwner) } : {}),
       // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
       ...(unavailableReason ? { unavailableReason } : {}),
     };

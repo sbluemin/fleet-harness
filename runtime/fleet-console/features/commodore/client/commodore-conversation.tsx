@@ -33,6 +33,9 @@ import { useTheaterInboxState } from "../../workspace/client/theater-inbox/store
 import { readCommodoreList, setZoneCommodore, useZoneCommodore } from "./commodore-list.js";
 import { useCommodoreSpeakerSection } from "./sidebar-sections.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
+import { ComputerScreenShare } from "../../computer-use/client/computer-screen-share.js";
+import { SpeakerMark } from "../../execution/client/agent/chat/group/speaker-mark.js";
+import { getGroupT } from "../../execution/client/agent/chat/group/group-chat-i18n.js";
 import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js";
 
 type T = Translate<CommodoreMessageKey>;
@@ -537,6 +540,14 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
         ) : renderComposer(null)}
       </div>
       )}</>
+      ) : null}
+      {/* 사령관이 컴퓨터를 쓰는 동안의 화면공유 미리보기 — 목표 대화와 같은 카드이고, 조작자 칩은 그룹 대화의 것을 그대로 쓴다. 영상은 로컬 Desktop 셸만 가진다. */}
+      {mapMode === "chat" ? (
+        <ComputerScreenShare
+          commodoreId={commodoreId}
+          className="is-commodore"
+          actor={() => <span className="group-share-actor"><span className="group-share-actor-dot" aria-hidden="true" /><SpeakerMark speaker={speaker} size="sm" />{getGroupT(language)("group.share.actor", { name: speaker.name })}</span>}
+        />
       ) : null}
     </div>
   );
