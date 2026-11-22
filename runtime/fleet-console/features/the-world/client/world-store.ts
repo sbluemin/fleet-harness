@@ -28,7 +28,6 @@ import {
 } from "./engine/fishing-controller.js";
 
 export type { WorldFishId, WorldFishingPhase, WorldFishRarity };
-export type WorldFlightCamMode = "overview" | "chase";
 
 export interface WorldFishCatchRecord {
   readonly fishId: WorldFishId;
@@ -37,6 +36,22 @@ export interface WorldFishCatchRecord {
   readonly count: number;
   readonly senderName?: string | undefined;
   readonly caughtAt: number;
+}
+
+export interface WorldOperationFlagDeployInput {
+  readonly villageId: string;
+  readonly districtId?: string | undefined;
+  readonly commodoreId: string;
+  readonly commodoreName: string;
+  readonly label: string;
+  readonly directive: string;
+  readonly x: number;
+  readonly z: number;
+}
+
+export interface WorldOperationFlag extends WorldOperationFlagDeployInput {
+  readonly id: string;
+  readonly createdAt: number;
 }
 
 /**
@@ -59,7 +74,12 @@ const DISTRICT_NOTES_STORAGE_KEY = "fleet.theWorld.districtNotes.v1";
 const UNLOCKED_STAMPS_STORAGE_KEY = "fleet.theWorld.unlockedStamps.v1";
 const AURORA_ENABLED_STORAGE_KEY = "fleet.theWorld.auroraEnabled.v1";
 const CAUGHT_FISH_STORAGE_KEY = "fleet.theWorld.caughtFishCounts.v1";
+const RELEASED_FISH_STORAGE_KEY = "fleet.theWorld.releasedFishIds.v1";
+const AMBIENT_CHAT_COLLAPSED_STORAGE_KEY = "fleet.theWorld.ambientChatCollapsed.v1";
+const MAILBOX_READ_KEYS_STORAGE_KEY = "fleet.theWorld.mailboxReadKeys.v1";
 const MAX_DISTRICT_NOTE_LEN = 240;
+const MAX_RELEASED_FISH_COUNT = 8;
+const MAX_MAILBOX_READ_KEYS = 200;
 
 export const WORLD_STAMP_IDS = [
   "first_dive",
@@ -208,6 +228,86 @@ function persistCaughtFishCounts(counts: Readonly<Record<string, number>>): void
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CAUGHT_FISH_STORAGE_KEY, JSON.stringify(counts));
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+function readInitialReleasedFishIds(): readonly string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(RELEASED_FISH_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const result: string[] = [];
+    for (const item of parsed) {
+      if (typeof item === "string" && WORLD_FISH_ID_SET.has(item) && !result.includes(item)) {
+        result.push(item);
+        if (result.length >= MAX_RELEASED_FISH_COUNT) break;
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+function persistReleasedFishIds(ids: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RELEASED_FISH_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+function readInitialAmbientChatCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(AMBIENT_CHAT_COLLAPSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function persistAmbientChatCollapsed(collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AMBIENT_CHAT_COLLAPSED_STORAGE_KEY, collapsed ? "1" : "0");
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+function readInitialMailboxReadKeys(): readonly string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MAILBOX_READ_KEYS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (typeof item === "string" && item.length > 0 && item.length <= 200 && !seen.has(item)) {
+        seen.add(item);
+        result.push(item);
+      }
+    }
+    return result.slice(-MAX_MAILBOX_READ_KEYS);
+  } catch {
+    return [];
+  }
+}
+
+function persistMailboxReadKeys(keys: readonly string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      MAILBOX_READ_KEYS_STORAGE_KEY,
+      JSON.stringify(keys.slice(-MAX_MAILBOX_READ_KEYS)),
+    );
   } catch {
     // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
   }
@@ -423,27 +523,31 @@ export interface WorldStoreSnapshot {
   readonly admiralCustomizerOpen: boolean;
   readonly gazetteOpen: boolean;
   readonly stampBookOpen: boolean;
+  readonly mailboxOpen: boolean;
   readonly unlockedStamps: readonly WorldStampId[];
   readonly cinemaMode: boolean;
   readonly cinemaSpotlight: string;
   readonly bgmEnabled: boolean;
   readonly commodoreGifts: Readonly<Record<string, WorldAdmiralHat>>;
   readonly chatActive: boolean;
+  readonly ambientChatCollapsed: boolean;
   readonly photoMode: boolean;
   readonly sittingAtCampfire: boolean;
   readonly weatherMode: WorldWeatherMode;
   readonly admiralStyle: WorldAdmiralStyle;
   readonly villageBiomes: Readonly<Record<string, WorldVillageBiome>>;
   readonly dispatchFlags: Readonly<Record<string, WorldDispatchFlag>>;
+  readonly operationFlag: WorldOperationFlag | null;
   readonly districtNotes: Readonly<Record<string, string>>;
   readonly rallyNonce: number;
   readonly playerEmoteCommand: { readonly nonce: number; readonly emote: WorldPlayerEmote } | null;
   readonly overviewMode: boolean;
-  readonly flightCamMode: WorldFlightCamMode;
   readonly auroraEnabled: boolean;
   readonly fishingPhase: WorldFishingPhase;
   readonly lastFishCatch: WorldFishCatchRecord | null;
   readonly caughtFishCounts: Readonly<Record<string, number>>;
+  readonly releasedFishIds: readonly string[];
+  readonly mailboxReadKeys: readonly string[];
   readonly soundMuted: boolean;
   readonly timeMode: WorldTimeMode;
   readonly cameraMode: WorldCameraMode;
@@ -473,27 +577,31 @@ let state: WorldStoreSnapshot = {
   admiralCustomizerOpen: false,
   gazetteOpen: false,
   stampBookOpen: false,
+  mailboxOpen: false,
   unlockedStamps: readInitialUnlockedStamps(),
   cinemaMode: false,
   cinemaSpotlight: "",
   bgmEnabled: readInitialBgmEnabled(),
   commodoreGifts: readInitialCommodoreGifts(),
   chatActive: false,
+  ambientChatCollapsed: readInitialAmbientChatCollapsed(),
   photoMode: false,
   sittingAtCampfire: false,
   weatherMode: readInitialWeatherMode(),
   admiralStyle: readInitialAdmiralStyle(),
   villageBiomes: readInitialVillageBiomes(),
   dispatchFlags: {},
+  operationFlag: null,
   districtNotes: readInitialDistrictNotes(),
   rallyNonce: 0,
   playerEmoteCommand: null,
   overviewMode: false,
-  flightCamMode: "overview",
   auroraEnabled: readInitialAuroraEnabled(),
   fishingPhase: "idle",
   lastFishCatch: null,
   caughtFishCounts: readInitialCaughtFishCounts(),
+  releasedFishIds: readInitialReleasedFishIds(),
+  mailboxReadKeys: readInitialMailboxReadKeys(),
   soundMuted: readInitialSoundMuted(),
   timeMode: "day",
   cameraMode: "follow",
@@ -550,6 +658,38 @@ export function useVillageBiomes(): Readonly<Record<string, WorldVillageBiome>> 
   return useSyncExternalStore(subscribeWorldStore, readVillageBiomes, readVillageBiomes);
 }
 
+function readReleasedFishIds(): readonly string[] {
+  return state.releasedFishIds;
+}
+
+export function useReleasedFishIds(): readonly string[] {
+  return useSyncExternalStore(subscribeWorldStore, readReleasedFishIds, readReleasedFishIds);
+}
+
+function readAmbientChatCollapsed(): boolean {
+  return state.ambientChatCollapsed;
+}
+
+export function useAmbientChatCollapsed(): boolean {
+  return useSyncExternalStore(subscribeWorldStore, readAmbientChatCollapsed, readAmbientChatCollapsed);
+}
+
+function readMailboxReadKeys(): readonly string[] {
+  return state.mailboxReadKeys;
+}
+
+export function useMailboxReadKeys(): readonly string[] {
+  return useSyncExternalStore(subscribeWorldStore, readMailboxReadKeys, readMailboxReadKeys);
+}
+
+function readOperationFlag(): WorldOperationFlag | null {
+  return state.operationFlag;
+}
+
+export function useOperationFlag(): WorldOperationFlag | null {
+  return useSyncExternalStore(subscribeWorldStore, readOperationFlag, readOperationFlag);
+}
+
 export function enterTheWorld(options?: { readonly reducedMotion?: boolean; readonly initialActorId?: string | null }): void {
   if (state.lifecycle === "open" || state.lifecycle === "diving") return;
   clearTransitionTimer();
@@ -572,15 +712,16 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     chatActive: false,
     photoMode: false,
     sittingAtCampfire: false,
     overviewMode: false,
-    flightCamMode: "overview",
     fishingPhase: "idle",
     lastFishCatch: null,
+    operationFlag: null,
   };
   emit();
   if (typeof window !== "undefined") {
@@ -615,15 +756,16 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     chatActive: false,
     photoMode: false,
     sittingAtCampfire: false,
     overviewMode: false,
-    flightCamMode: "overview",
     fishingPhase: "idle",
     lastFishCatch: null,
+    operationFlag: null,
   };
   emit();
   if (typeof window !== "undefined") {
@@ -648,13 +790,13 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         admiralCustomizerOpen: false,
         gazetteOpen: false,
         stampBookOpen: false,
+    mailboxOpen: false,
         cinemaMode: false,
         cinemaSpotlight: "",
         chatActive: false,
         photoMode: false,
         sittingAtCampfire: false,
         overviewMode: false,
-        flightCamMode: "overview",
         fishingPhase: "idle",
         lastFishCatch: null,
       };
@@ -679,6 +821,7 @@ export function openActorRadialMenu(actorId: string): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -703,6 +846,7 @@ export function openActorDialogue(actorId: string): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -727,6 +871,7 @@ export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objec
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -775,6 +920,7 @@ export function selectDistrict(districtId: string | null): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -866,6 +1012,7 @@ export function setPhotoMode(enabled: boolean): void {
           admiralCustomizerOpen: false,
           gazetteOpen: false,
           stampBookOpen: false,
+    mailboxOpen: false,
           cinemaMode: false,
           cinemaSpotlight: "",
           chatActive: false,
@@ -916,6 +1063,7 @@ export function openWarRoom(): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -990,6 +1138,7 @@ export function openGazette(): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1036,6 +1185,7 @@ export function setStampBookOpen(open: boolean): void {
     && !state.warRoomOpen
     && !state.admiralCustomizerOpen
     && !state.gazetteOpen
+    && !state.mailboxOpen
     && !state.cinemaMode
     && !state.photoMode
     && !state.overviewMode
@@ -1045,6 +1195,7 @@ export function setStampBookOpen(open: boolean): void {
   state = {
     ...state,
     stampBookOpen: true,
+    mailboxOpen: false,
     selectedActorId: null,
     interactionMode: "closed",
     inspectedObjectiveId: null,
@@ -1095,6 +1246,7 @@ export function setCinemaMode(enabled: boolean): void {
           admiralCustomizerOpen: false,
           gazetteOpen: false,
           stampBookOpen: false,
+    mailboxOpen: false,
           chatActive: false,
           photoMode: false,
           overviewMode: false,
@@ -1172,6 +1324,7 @@ export function openAdmiralCustomizer(): void {
     warRoomOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1228,6 +1381,7 @@ export function requestRallyAll(): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1310,6 +1464,7 @@ export function openQuestBoard(): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1366,6 +1521,7 @@ export function setOverviewMode(enabled: boolean): void {
           admiralCustomizerOpen: false,
           gazetteOpen: false,
           stampBookOpen: false,
+    mailboxOpen: false,
           cinemaMode: false,
           cinemaSpotlight: "",
           sittingAtCampfire: false,
@@ -1379,16 +1535,6 @@ export function setOverviewMode(enabled: boolean): void {
 
 export function toggleOverviewMode(): void {
   setOverviewMode(!state.overviewMode);
-}
-
-export function setFlightCamMode(mode: WorldFlightCamMode): void {
-  if (state.flightCamMode === mode) return;
-  state = { ...state, flightCamMode: mode };
-  emit();
-}
-
-export function toggleFlightCamMode(): void {
-  setFlightCamMode(state.flightCamMode === "overview" ? "chase" : "overview");
 }
 
 export function setAuroraEnabled(enabled: boolean): void {
@@ -1477,6 +1623,7 @@ export function closeActorInteraction(): void {
     && !state.admiralCustomizerOpen
     && !state.gazetteOpen
     && !state.stampBookOpen
+    && !state.mailboxOpen
   ) {
     return;
   }
@@ -1494,6 +1641,7 @@ export function closeActorInteraction(): void {
     admiralCustomizerOpen: false,
     gazetteOpen: false,
     stampBookOpen: false,
+    mailboxOpen: false,
   };
   emit();
 }
@@ -1545,6 +1693,7 @@ export function setEmoteWheelOpen(open: boolean): void {
           admiralCustomizerOpen: false,
           gazetteOpen: false,
           stampBookOpen: false,
+    mailboxOpen: false,
           photoMode: false,
           cinemaMode: false,
           cinemaSpotlight: "",
@@ -1651,6 +1800,136 @@ export function pushActorSpeech(actorId: string, text: string): void {
     localSpeeches: {
       ...state.localSpeeches,
       [actorId]: { text, nonce: nonceCounter },
+    },
+  };
+  emit();
+}
+
+export function releaseFish(fishId: string): boolean {
+  if (!WORLD_FISH_ID_SET.has(fishId)) return false;
+  if (state.releasedFishIds.includes(fishId)) return false;
+  if (state.releasedFishIds.length >= MAX_RELEASED_FISH_COUNT) return false;
+  const next: readonly string[] = [...state.releasedFishIds, fishId];
+  persistReleasedFishIds(next);
+  state = { ...state, releasedFishIds: next };
+  emit();
+  return true;
+}
+
+export function toggleReleasedFish(fishId: string): boolean {
+  if (!WORLD_FISH_ID_SET.has(fishId)) return false;
+  if (state.releasedFishIds.includes(fishId)) {
+    const next = state.releasedFishIds.filter((id) => id !== fishId);
+    persistReleasedFishIds(next);
+    state = { ...state, releasedFishIds: next };
+    emit();
+    return false;
+  }
+  return releaseFish(fishId);
+}
+
+export function setAmbientChatCollapsed(collapsed: boolean): void {
+  if (state.ambientChatCollapsed === collapsed) return;
+  persistAmbientChatCollapsed(collapsed);
+  state = { ...state, ambientChatCollapsed: collapsed };
+  emit();
+}
+
+export function toggleAmbientChatCollapsed(): void {
+  setAmbientChatCollapsed(!state.ambientChatCollapsed);
+}
+
+export function markMailboxRead(keys: readonly string[]): void {
+  if (keys.length === 0) return;
+  const existingSet = new Set(state.mailboxReadKeys);
+  const additions: string[] = [];
+  for (const key of keys) {
+    if (typeof key === "string" && key.length > 0 && key.length <= 200 && !existingSet.has(key)) {
+      existingSet.add(key);
+      additions.push(key);
+    }
+  }
+  if (additions.length === 0) return;
+  const next = [...state.mailboxReadKeys, ...additions].slice(-MAX_MAILBOX_READ_KEYS);
+  persistMailboxReadKeys(next);
+  state = { ...state, mailboxReadKeys: next };
+  emit();
+}
+
+export function setMailboxOpen(open: boolean): void {
+  if (!open) {
+    if (!state.mailboxOpen) return;
+    state = { ...state, mailboxOpen: false };
+    emit();
+    return;
+  }
+  if (
+    state.mailboxOpen
+    && state.selectedActorId === null
+    && state.interactionMode === "closed"
+    && state.selectedDistrictId === null
+    && state.districtContextMenu === null
+    && !state.questBoardOpen
+    && !state.warRoomOpen
+    && !state.admiralCustomizerOpen
+    && !state.gazetteOpen
+    && !state.stampBookOpen
+    && !state.cinemaMode
+    && !state.photoMode
+    && !state.overviewMode
+  ) {
+    return;
+  }
+  state = {
+    ...state,
+    mailboxOpen: true,
+    selectedActorId: null,
+    interactionMode: "closed",
+    inspectedObjectiveId: null,
+    selectedDistrictId: null,
+    districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
+    questBoardOpen: false,
+    warRoomOpen: false,
+    admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    stampBookOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
+    photoMode: false,
+    overviewMode: false,
+  };
+  emit();
+}
+
+export function openMailbox(): void {
+  setMailboxOpen(true);
+}
+
+export function closeMailbox(): void {
+  setMailboxOpen(false);
+}
+
+export function toggleMailbox(): void {
+  setMailboxOpen(!state.mailboxOpen);
+}
+
+export function setOperationFlag(flag: WorldOperationFlag | null): void {
+  if (state.operationFlag === null && flag === null) return;
+  if (flag === null) {
+    state = { ...state, operationFlag: null };
+    emit();
+    return;
+  }
+  const trimmedDirective = flag.directive.trim().slice(0, 240);
+  const trimmedLabel = flag.label.trim().slice(0, 80);
+  state = {
+    ...state,
+    operationFlag: {
+      ...flag,
+      label: trimmedLabel || flag.commodoreName,
+      directive: trimmedDirective,
     },
   };
   emit();

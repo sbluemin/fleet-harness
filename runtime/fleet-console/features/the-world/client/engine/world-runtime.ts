@@ -56,14 +56,20 @@ import {
 } from "../../shared/world-types.js";
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import { PLUSH_VIVID_TONES } from "../../../workspace/shared/mongle-3d-glsl.js";
+import { brookProfile } from "./brook-geometry.js";
 import { createChoreographyDirector } from "./choreography-director.js";
 import {
   createFishingController,
+  type CompanionAnglerPose,
   type FishingReelResult,
   type WorldFishingPhase,
 } from "./fishing-controller.js";
-import { createLivingWorkflowFx } from "./living-workflow-fx.js";
-import { createMeadowScene, PARADE_BELL_POS } from "./meadow-scene.js";
+import {
+  createLivingWorkflowFx,
+  type OperationFlagFxInput,
+  type WorkingVillageFxInput,
+} from "./living-workflow-fx.js";
+import { createMeadowScene, MAILBOX_POS, PARADE_BELL_POS } from "./meadow-scene.js";
 import {
   createMongleActorRig,
   type MongleActorRig,
@@ -75,12 +81,12 @@ import {
   type CameraFocusFraming,
   type CameraOccluder,
   type CinemaCameraTarget,
-  type FlightCamMode,
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
   playBarrelRoll,
   playEmoteSparkle,
+  playFireworkBurst,
   playFishingBite,
   playFishingCast,
   playFishingCatch,
@@ -92,7 +98,7 @@ import {
   playMongleChirp,
   playParadeBell,
   playRallyHorn,
-  playSkyRingChime,
+  playSkyRingPass,
   playStarBoost,
   playStarTakeoffAscend,
   playStarTakeoffCharge,
@@ -151,14 +157,6 @@ export interface WorldFrameActorPosition {
   speechOffsetY?: number;
 }
 
-export interface WorldFrameMinimapActor {
-  id: string;
-  x: number;
-  z: number;
-  color: string;
-  walking: boolean;
-}
-
 export interface WorldFrameVillagePosition {
   villageId: string;
   commodoreId: string;
@@ -177,7 +175,6 @@ export interface WorldFramePointPosition {
 export interface WorldFrameOverlayPositions {
   readonly actors: readonly WorldFrameActorPosition[];
   readonly actorCount: number;
-  readonly minimapActors: readonly WorldFrameMinimapActor[];
   readonly player: WorldFramePointPosition;
   readonly playerWorldX: number;
   readonly playerWorldZ: number;
@@ -204,12 +201,14 @@ export interface WorldRuntimeConfig {
   readonly onCinemaSpotlight?: ((label: string) => void) | undefined;
   /** 동행 사령관이 실제 작업/확인 필요 상태에 돌입해 마을로 자동 복귀할 때 호출된다. */
   readonly onCompanionDutyReturn?: ((actorId: string, actorName: string) => void) | undefined;
-  /** 하늘 순찰 중 별빛 링을 통과할 때 누적 콤보를 전달한다. */
-  readonly onSkyRingPass?: ((combo: number) => void) | undefined;
+  /** 하늘 순찰 중 별빛 링을 통과할 때 누적 콤보와 부스트 발동 여부를 전달한다. */
+  readonly onSkyRingPass?: ((combo: number, boostTrigger: boolean) => void) | undefined;
   /** 별똥별 유성 급강하로 지면에 착지한 순간 호출된다. */
   readonly onMeteorLanded?: (() => void) | undefined;
   /** 중앙 광장 함대 소집 종 근접 여부가 바뀔 때 호출된다(edge-triggered). */
   readonly onNearParadeBellChange?: ((near: boolean) => void) | undefined;
+  /** 중앙 광장 함대 우체통 근접 여부가 바뀔 때 호출된다(edge-triggered). */
+  readonly onNearMailboxChange?: ((near: boolean) => void) | undefined;
   /** 시냇가 낚시 가능 수변 근접 여부가 바뀔 때 호출된다(edge-triggered). */
   readonly onNearFishingWaterChange?: ((near: boolean) => void) | undefined;
   /** 힐링 낚시 단계가 바뀔 때 호출된다. */
@@ -232,7 +231,6 @@ export interface WorldRuntimeHandle {
     readonly selectedActorId: string | null;
   }): void;
   setOverviewMode(enabled: boolean): void;
-  setFlightCamMode(mode: FlightCamMode): void;
   setAuroraEnabled(enabled: boolean): void;
   setCinemaMode(enabled: boolean): void;
   setWeather(mode: WorldWeatherMode): void;
@@ -251,6 +249,11 @@ export interface WorldRuntimeHandle {
   setCompanionActors(actorIds: readonly string[]): void;
   triggerWelcomeBriefing(speech: string): void;
   spawnJointMissionArch(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
+  setMailboxUnread(hasUnread: boolean): void;
+  pickMailboxAt(clientX: number, clientY: number): boolean;
+  syncPondFish(speciesIds: readonly string[]): void;
+  setOperationFlag(flag: OperationFlagFxInput | null, targetCommodoreId?: string | null): void;
+  triggerVillageFirework(villageId?: string): void;
   triggerPhotoGroupPose(): void;
   triggerAdmiralEmote(emote: "cheer" | "wave" | "clap" | "twirl" | "stardust" | "sit"): void;
   captureSnapshotDataUrl(): string | null;
@@ -326,17 +329,7 @@ const TOP_ACTOR_LABEL_SAFE_Y = 44;
 const WORKSHOP_FX_INTERVAL_SEC = 0.34;
 const MAX_ACTOR_AO_BLOBS = 64;
 const EMPTY_OCCLUDERS: readonly CameraOccluder[] = [];
-
-const TONE_HEX_CSS: Readonly<Record<IdentityTone, string>> = {
-  crimson: "#fb7185",
-  amber: "#fbbf24",
-  moss: "#84cc16",
-  teal: "#2dd4bf",
-  cerulean: "#38bdf8",
-  indigo: "#818cf8",
-  plum: "#c084fc",
-  rose: "#f472b6",
-};
+const CO_FISH_BANK_OFFSETS = [-1.75, 1.75, -3.2] as const;
 
 const AO_BLOB_VERTEX = /* glsl */ `
 attribute float aOpacity;
@@ -575,9 +568,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const aoQuat = new Quaternion();
   const aoScale = new Vector3();
 
-  // 🌠 3D 유성 꼬리 리본 (28세그먼트 0-GC 링버퍼, 비행·급강하 중 +1 Draw Call, 지상 visible=false로 +0)
+  // 🌠 3D 쌍발 윙팁 별빛 리본 (Twin Wingtip Starlight Ribbons, 28세그먼트×2 0-GC 링버퍼, 지상 visible=false로 +0)
   const ribbonVertCount = METEOR_RIBBON_SEGMENTS * 2;
-  const ribbonPositions = new Float32Array(ribbonVertCount * 3);
+  const ribbonPositionsL = new Float32Array(ribbonVertCount * 3);
+  const ribbonPositionsR = new Float32Array(ribbonVertCount * 3);
   const ribbonUvs = new Float32Array(ribbonVertCount * 2);
   const ribbonIndices = new Uint16Array((METEOR_RIBBON_SEGMENTS - 1) * 6);
   for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
@@ -597,12 +591,23 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       ribbonIndices[ii + 5] = bi + 2;
     }
   }
-  const ribbonGeo = new BufferGeometry();
-  const ribbonPosAttr = new BufferAttribute(ribbonPositions, 3);
-  ribbonPosAttr.setUsage(DynamicDrawUsage);
-  ribbonGeo.setAttribute("position", ribbonPosAttr);
-  ribbonGeo.setAttribute("uv", new BufferAttribute(ribbonUvs, 2));
-  ribbonGeo.setIndex(new BufferAttribute(ribbonIndices, 1));
+  const sharedRibbonUvAttr = new BufferAttribute(ribbonUvs, 2);
+  const sharedRibbonIndexAttr = new BufferAttribute(ribbonIndices, 1);
+
+  const ribbonGeoL = new BufferGeometry();
+  const ribbonPosAttrL = new BufferAttribute(ribbonPositionsL, 3);
+  ribbonPosAttrL.setUsage(DynamicDrawUsage);
+  ribbonGeoL.setAttribute("position", ribbonPosAttrL);
+  ribbonGeoL.setAttribute("uv", sharedRibbonUvAttr);
+  ribbonGeoL.setIndex(sharedRibbonIndexAttr);
+
+  const ribbonGeoR = new BufferGeometry();
+  const ribbonPosAttrR = new BufferAttribute(ribbonPositionsR, 3);
+  ribbonPosAttrR.setUsage(DynamicDrawUsage);
+  ribbonGeoR.setAttribute("position", ribbonPosAttrR);
+  ribbonGeoR.setAttribute("uv", sharedRibbonUvAttr);
+  ribbonGeoR.setIndex(sharedRibbonIndexAttr);
+
   const ribbonMat = new ShaderMaterial({
     glslVersion: GLSL3,
     transparent: true,
@@ -618,17 +623,98 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     vertexShader: METEOR_RIBBON_VERTEX,
     fragmentShader: METEOR_RIBBON_FRAGMENT,
   });
-  const ribbonMesh = new Mesh(ribbonGeo, ribbonMat);
-  ribbonMesh.frustumCulled = false;
-  ribbonMesh.renderOrder = 4;
-  ribbonMesh.visible = false;
-  scene.add(ribbonMesh);
+  const ribbonMeshL = new Mesh(ribbonGeoL, ribbonMat);
+  ribbonMeshL.frustumCulled = false;
+  ribbonMeshL.renderOrder = 4;
+  ribbonMeshL.visible = false;
+  scene.add(ribbonMeshL);
 
-  const ribbonPtsX = new Float32Array(METEOR_RIBBON_SEGMENTS);
-  const ribbonPtsY = new Float32Array(METEOR_RIBBON_SEGMENTS);
-  const ribbonPtsZ = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonMeshR = new Mesh(ribbonGeoR, ribbonMat);
+  ribbonMeshR.frustumCulled = false;
+  ribbonMeshR.renderOrder = 4;
+  ribbonMeshR.visible = false;
+  scene.add(ribbonMeshR);
+
+  const ribbonPtsXL = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsYL = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsZL = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsXR = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsYR = new Float32Array(METEOR_RIBBON_SEGMENTS);
+  const ribbonPtsZR = new Float32Array(METEOR_RIBBON_SEGMENTS);
   let ribbonPrimed = false;
   let ribbonFade = 0;
+
+  const updateSingleWingRibbon = (
+    ptsX: Float32Array,
+    ptsY: Float32Array,
+    ptsZ: Float32Array,
+    positions: Float32Array,
+    posAttr: BufferAttribute,
+    baseHalfW: number,
+    playerYaw: number,
+    camX: number,
+    camY: number,
+    camZ: number,
+  ): void => {
+    for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
+      const px = ptsX[i]!;
+      const py = ptsY[i]!;
+      const pz = ptsZ[i]!;
+      const prevIdx = i === 0 ? 0 : i - 1;
+      const nextIdx = i === METEOR_RIBBON_SEGMENTS - 1 ? i : i + 1;
+      let tx = ptsX[prevIdx]! - ptsX[nextIdx]!;
+      let ty = ptsY[prevIdx]! - ptsY[nextIdx]!;
+      let tz = ptsZ[prevIdx]! - ptsZ[nextIdx]!;
+      const tLen = Math.hypot(tx, ty, tz);
+      if (tLen > 0.0005) {
+        tx /= tLen;
+        ty /= tLen;
+        tz /= tLen;
+      } else {
+        tx = Math.sin(playerYaw);
+        ty = 0;
+        tz = Math.cos(playerYaw);
+      }
+
+      let vx = camX - px;
+      let vy = camY - py;
+      let vz = camZ - pz;
+      const vLen = Math.hypot(vx, vy, vz);
+      if (vLen > 0.001) {
+        vx /= vLen;
+        vy /= vLen;
+        vz /= vLen;
+      } else {
+        vx = 0;
+        vy = 1;
+        vz = 0;
+      }
+      let sx = ty * vz - tz * vy;
+      let sy = tz * vx - tx * vz;
+      let sz = tx * vy - ty * vx;
+      const sLen = Math.hypot(sx, sy, sz);
+      if (sLen > 0.001) {
+        sx /= sLen;
+        sy /= sLen;
+        sz /= sLen;
+      } else {
+        sx = Math.cos(playerYaw);
+        sy = 0;
+        sz = -Math.sin(playerYaw);
+      }
+
+      const u = i / (METEOR_RIBBON_SEGMENTS - 1);
+      const halfW = baseHalfW * (1 - u * 0.92);
+      const vi = i * 6;
+      positions[vi + 0] = px - sx * halfW;
+      positions[vi + 1] = py - sy * halfW;
+      positions[vi + 2] = pz - sz * halfW;
+      positions[vi + 3] = px + sx * halfW;
+      positions[vi + 4] = py + sy * halfW;
+      positions[vi + 5] = pz + sz * halfW;
+    }
+    posAttr.needsUpdate = true;
+  };
 
   // 🌠 지면 별빛 스포트라이트 & 착지 충격파 링 (단일 PlaneGeometry 재사용, 비활성 시 Draw Call +0)
   const groundRingGeo = new PlaneGeometry(2, 2);
@@ -824,15 +910,20 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const visibleActorIdx = new Int32Array(64);
   const actorHasSpeechFlags = new Uint8Array(64);
   const actorPriorityFlags = new Uint8Array(64);
-  const minimapActorPool: WorldFrameMinimapActor[] = [];
-  const minimapActorsOut: WorldFrameMinimapActor[] = [];
   const villagePosPool: WorldFrameVillagePosition[] = [];
   const topVillageIdx = new Int32Array(MAX_OVERVIEW_VILLAGE_SIGNS);
   const topVillageDist = new Float64Array(MAX_OVERVIEW_VILLAGE_SIGNS);
+  const companionAnglerPool: { id: string; x: number; z: number; yaw: number }[] = [
+    { id: "", x: 0, z: 0, yaw: 0 },
+    { id: "", x: 0, z: 0, yaw: 0 },
+    { id: "", x: 0, z: 0, yaw: 0 },
+  ];
+  const companionAnglersOut: CompanionAnglerPose[] = [];
+  const activeCoFishingIds = new Set<string>();
+  let companionAnglersSyncedNonEmpty = false;
   const framePositions: {
     actors: WorldFrameActorPosition[];
     actorCount: number;
-    minimapActors: WorldFrameMinimapActor[];
     player: WorldFramePointPosition;
     playerWorldX: number;
     playerWorldZ: number;
@@ -846,7 +937,6 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   } = {
     actors: actorPosPool,
     actorCount: 0,
-    minimapActors: minimapActorsOut,
     player: { x: 0, y: 0, visible: false },
     playerWorldX: 0,
     playerWorldZ: 0,
@@ -879,6 +969,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let elapsed = 0;
   let workshopFxAccum = 0;
   let prevNearParadeBell = false;
+  let prevNearMailbox = false;
   let prevNearFishingWater = false;
   let lastNotifiedFishingPhase: WorldFishingPhase = "idle";
   const notifyFishingPhase = (next: WorldFishingPhase): void => {
@@ -889,6 +980,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const cancelFishingInternal = (): void => {
     if (fishing.getPhase() !== "idle") {
       fishing.cancel();
+    }
+    if (companionAnglersSyncedNonEmpty) {
+      companionAnglersOut.length = 0;
+      activeCoFishingIds.clear();
+      fishing.syncCompanionAnglers(companionAnglersOut, elapsed);
+      companionAnglersSyncedNonEmpty = false;
     }
     notifyFishingPhase("idle");
   };
@@ -1196,6 +1293,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       );
     }
     director.reactToMeteorLanding(ix, iz);
+    livingWorkflowFx.resetSkyRingCombo();
     config.onMeteorLanded?.();
   };
 
@@ -1497,6 +1595,61 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       // 낚시 중 별 제독이 찌 방향을 자연스럽게 마주보도록 회전 동기화
       const targetFishYaw = fishing.getCastTargetYaw();
       playerCtrl.player.yaw += angleDelta(targetFishYaw, playerCtrl.player.yaw) * Math.min(1, dt * 11.0);
+
+      // 동행 사령관 최대 3명이 시냇가 양옆에 자리 잡고 함께 미니 낚싯대·찌 드리우기 (0-GC 풀링)
+      const compIds = director.getCompanionActorIds();
+      companionAnglersOut.length = 0;
+      activeCoFishingIds.clear();
+      if (compIds.length > 0) {
+        const pProf = brookProfile(playerCtrl.player.x);
+        const bankSign = playerCtrl.player.z >= pProf.centerZ ? 1 : -1;
+        const slideLerp = Math.min(1, dt * 4.5);
+        for (let ci = 0; ci < compIds.length && companionAnglersOut.length < CO_FISH_BANK_OFFSETS.length; ci += 1) {
+          const cid = compIds[ci]!;
+          const m = director.motions.get(cid);
+          if (!m || m.flightAlt >= 0.5) continue;
+          const slotIdx = companionAnglersOut.length;
+          const bx = Math.max(-78, Math.min(78, playerCtrl.player.x + CO_FISH_BANK_OFFSETS[slotIdx]!));
+          const bProf = brookProfile(bx);
+          const bz = bProf.centerZ + bankSign * (bProf.halfWidth + 0.95);
+          const nextPos = meadow.resolveMovement(
+            m.x,
+            m.z,
+            m.x + (bx - m.x) * slideLerp,
+            m.z + (bz - m.z) * slideLerp,
+            0.48,
+          );
+          m.x = nextPos.x;
+          m.z = nextPos.z;
+          m.tx = nextPos.x;
+          m.tz = nextPos.z;
+          const faceWaterYaw = Math.atan2(0, bProf.centerZ - m.z);
+          m.yaw += angleDelta(faceWaterYaw, m.yaw) * Math.min(1, dt * 10.0);
+          m.moving = false;
+          m.moveSpeed = 0;
+          m.worldAnim = "fish-wait";
+          m.expression = nextFishingPhase === "bite" ? "surprised" : "happy";
+          m.blush = nextFishingPhase === "bite" ? 0.55 : 0.28;
+          const pose = companionAnglerPool[slotIdx]!;
+          pose.id = m.spec.id;
+          pose.x = m.x;
+          pose.z = m.z;
+          pose.yaw = m.yaw;
+          companionAnglersOut.push(pose);
+          activeCoFishingIds.add(m.spec.id);
+        }
+      }
+      if (companionAnglersOut.length > 0 || companionAnglersSyncedNonEmpty) {
+        fishing.syncCompanionAnglers(companionAnglersOut, elapsed);
+        companionAnglersSyncedNonEmpty = companionAnglersOut.length > 0;
+      }
+    } else if (companionAnglersSyncedNonEmpty) {
+      companionAnglersOut.length = 0;
+      if (nextFishingPhase === "idle") {
+        activeCoFishingIds.clear();
+      }
+      fishing.syncCompanionAnglers(companionAnglersOut, elapsed);
+      companionAnglersSyncedNonEmpty = false;
     }
     if (nextFishingPhase !== prevFishingPhase) {
       if (nextFishingPhase === "bite") {
@@ -1519,6 +1672,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       prevNearParadeBell = nearBellNow;
       config.onNearParadeBellChange?.(nearBellNow);
     }
+    const nearMailboxNow =
+      onGroundOpen
+      && Math.hypot(playerCtrl.player.x - MAILBOX_POS.x, playerCtrl.player.z - MAILBOX_POS.z) <= MAILBOX_POS.radius + 1.55;
+    if (nearMailboxNow !== prevNearMailbox) {
+      prevNearMailbox = nearMailboxNow;
+      config.onNearMailboxChange?.(nearMailboxNow);
+    }
     const nearWaterNow =
       onGroundOpen
       && !playerCtrl.isSittingAtCampfire()
@@ -1537,9 +1697,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         true,
       );
       if (ringHit) {
-        playSkyRingChime(ringHit.combo);
+        playerCtrl.triggerSkyBoostBurst(1.8);
+        playSkyRingPass(ringHit.comboCount);
         director.triggerSquadronRingBoost();
-        config.onSkyRingPass?.(ringHit.combo);
+        config.onSkyRingPass?.(ringHit.comboCount, ringHit.boostTrigger);
       }
     }
     livingWorkflowFx.update(dt, elapsed, currentVillages, currentActors);
@@ -1626,106 +1787,95 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       : 0;
     const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
 
-    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 에이스 추격 시점 눈부심 방지 · 정지 호버 감쇠)
-    const isChaseCam = playerCtrl.isOverviewMode() && playerCtrl.getFlightCamMode() === "chase";
+    // 🌠 3D 쌍발 윙팁 별빛 리본 갱신 (좌/우 28세그먼트 0-GC 링버퍼, 에이스 추격 시점 눈부심 방지 · 정지 호버 감쇠)
     const ribbonActive = currentLifecycle === "open" && (p.diving || (p.flying && p.takeoffPhase !== "charge"));
     ribbonFade = ribbonActive
       ? Math.min(1, ribbonFade + dt * 6.5)
       : Math.max(0, ribbonFade - dt * 3.8);
     if (ribbonActive || ribbonFade > 0.005) {
-      const headBack = isChaseCam ? 0.65 : 0.45;
-      const headX = p.x - Math.sin(p.yaw) * headBack;
-      const headY = pGround + pTotalLift + 0.56;
-      const headZ = p.z - Math.cos(p.yaw) * headBack;
+      const fwdX = Math.sin(p.yaw);
+      const fwdZ = Math.cos(p.yaw);
+      const rightX = Math.cos(p.yaw);
+      const rightZ = -Math.sin(p.yaw);
+      const wingSpan = p.diving ? 0.42 : 0.56;
+      const headBack = p.diving ? 0.48 : 0.54;
+      const rollTiltY = Math.sin(p.flightRoll) * 0.24;
+      const waveL = Math.sin(elapsed * 8.5) * 0.05;
+      const waveR = Math.sin(elapsed * 8.5 + 1.6) * 0.05;
+
+      const baseHeadX = p.x - fwdX * headBack;
+      const baseHeadY = pGround + pTotalLift + 0.56;
+      const baseHeadZ = p.z - fwdZ * headBack;
+      const headXL = baseHeadX - rightX * wingSpan;
+      const headYL = baseHeadY + rollTiltY + waveL;
+      const headZL = baseHeadZ - rightZ * wingSpan;
+      const headXR = baseHeadX + rightX * wingSpan;
+      const headYR = baseHeadY - rollTiltY + waveR;
+      const headZR = baseHeadZ + rightZ * wingSpan;
+
       if (!ribbonPrimed) {
         ribbonPrimed = true;
         for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
-          ribbonPtsX[i] = headX;
-          ribbonPtsY[i] = headY;
-          ribbonPtsZ[i] = headZ;
+          ribbonPtsXL[i] = headXL;
+          ribbonPtsYL[i] = headYL;
+          ribbonPtsZL[i] = headZL;
+          ribbonPtsXR[i] = headXR;
+          ribbonPtsYR[i] = headYR;
+          ribbonPtsZR[i] = headZR;
         }
       } else {
         for (let i = METEOR_RIBBON_SEGMENTS - 1; i > 0; i -= 1) {
-          ribbonPtsX[i] = ribbonPtsX[i - 1]!;
-          ribbonPtsY[i] = ribbonPtsY[i - 1]!;
-          ribbonPtsZ[i] = ribbonPtsZ[i - 1]!;
+          ribbonPtsXL[i] = ribbonPtsXL[i - 1]!;
+          ribbonPtsYL[i] = ribbonPtsYL[i - 1]!;
+          ribbonPtsZL[i] = ribbonPtsZL[i - 1]!;
+          ribbonPtsXR[i] = ribbonPtsXR[i - 1]!;
+          ribbonPtsYR[i] = ribbonPtsYR[i - 1]!;
+          ribbonPtsZR[i] = ribbonPtsZR[i - 1]!;
         }
-        ribbonPtsX[0] = headX;
-        ribbonPtsY[0] = headY;
-        ribbonPtsZ[0] = headZ;
+        ribbonPtsXL[0] = headXL;
+        ribbonPtsYL[0] = headYL;
+        ribbonPtsZL[0] = headZL;
+        ribbonPtsXR[0] = headXR;
+        ribbonPtsYR[0] = headYR;
+        ribbonPtsZR[0] = headZR;
       }
 
-      const boostAmt = p.diving || p.takeoffPhase === "ascend" ? 1.0 : p.boosting ? 0.85 : Math.min(0.4, p.moveSpeed / 30);
+      const boostAmt = p.diving || p.takeoffPhase === "ascend" ? 1.0 : p.boosting ? 0.92 : Math.min(0.42, p.moveSpeed / 30);
       const speedT = p.diving || p.takeoffPhase === "ascend"
         ? 1.0
         : Math.max(0, Math.min(1, (p.moveSpeed - 1.2) / (7.5 - 1.2)));
       const hoverSpeedFade = speedT * speedT * (3 - 2 * speedT);
-      const baseHalfW = (p.diving || p.takeoffPhase === "ascend" ? 0.62 : p.boosting ? 0.56 : 0.36) * (isChaseCam ? 0.56 : 1.0);
+      const baseHalfW = p.diving || p.takeoffPhase === "ascend" ? 0.34 : p.boosting ? 0.28 : 0.19;
       const camX = camera.position.x;
       const camY = camera.position.y;
       const camZ = camera.position.z;
 
-      for (let i = 0; i < METEOR_RIBBON_SEGMENTS; i += 1) {
-        const px = ribbonPtsX[i]!;
-        const py = ribbonPtsY[i]!;
-        const pz = ribbonPtsZ[i]!;
-        const prevIdx = i === 0 ? 0 : i - 1;
-        const nextIdx = i === METEOR_RIBBON_SEGMENTS - 1 ? i : i + 1;
-        let tx = ribbonPtsX[prevIdx]! - ribbonPtsX[nextIdx]!;
-        let ty = ribbonPtsY[prevIdx]! - ribbonPtsY[nextIdx]!;
-        let tz = ribbonPtsZ[prevIdx]! - ribbonPtsZ[nextIdx]!;
-        const tLen = Math.hypot(tx, ty, tz);
-        if (tLen > 0.0005) {
-          tx /= tLen;
-          ty /= tLen;
-          tz /= tLen;
-        } else {
-          tx = Math.sin(p.yaw);
-          ty = 0;
-          tz = Math.cos(p.yaw);
-        }
-
-        // 카메라 시선 벡터와 세그먼트 접선의 외적으로 항상 시선 정면을 향하는 리본 폭 생성
-        let vx = camX - px;
-        let vy = camY - py;
-        let vz = camZ - pz;
-        const vLen = Math.hypot(vx, vy, vz);
-        if (vLen > 0.001) {
-          vx /= vLen;
-          vy /= vLen;
-          vz /= vLen;
-        } else {
-          vx = 0;
-          vy = 1;
-          vz = 0;
-        }
-        let sx = ty * vz - tz * vy;
-        let sy = tz * vx - tx * vz;
-        let sz = tx * vy - ty * vx;
-        const sLen = Math.hypot(sx, sy, sz);
-        if (sLen > 0.001) {
-          sx /= sLen;
-          sy /= sLen;
-          sz /= sLen;
-        } else {
-          sx = Math.cos(p.yaw);
-          sy = 0;
-          sz = -Math.sin(p.yaw);
-        }
-
-        const u = i / (METEOR_RIBBON_SEGMENTS - 1);
-        const halfW = baseHalfW * (1 - u * 0.92);
-        const vi = i * 6;
-        ribbonPositions[vi + 0] = px - sx * halfW;
-        ribbonPositions[vi + 1] = py - sy * halfW;
-        ribbonPositions[vi + 2] = pz - sz * halfW;
-        ribbonPositions[vi + 3] = px + sx * halfW;
-        ribbonPositions[vi + 4] = py + sy * halfW;
-        ribbonPositions[vi + 5] = pz + sz * halfW;
-      }
-      ribbonPosAttr.needsUpdate = true;
+      updateSingleWingRibbon(
+        ribbonPtsXL,
+        ribbonPtsYL,
+        ribbonPtsZL,
+        ribbonPositionsL,
+        ribbonPosAttrL,
+        baseHalfW,
+        p.yaw,
+        camX,
+        camY,
+        camZ,
+      );
+      updateSingleWingRibbon(
+        ribbonPtsXR,
+        ribbonPtsYR,
+        ribbonPtsZR,
+        ribbonPositionsR,
+        ribbonPosAttrR,
+        baseHalfW,
+        p.yaw,
+        camX,
+        camY,
+        camZ,
+      );
       ribbonMat.uniforms["uTime"]!.value = elapsed;
-      ribbonMat.uniforms["uAlpha"]!.value = ribbonFade * hoverSpeedFade * (p.diving ? 0.98 : 0.86) * (isChaseCam ? 0.55 : 1.0);
+      ribbonMat.uniforms["uAlpha"]!.value = ribbonFade * hoverSpeedFade * (p.diving ? 0.88 : 0.62);
       ribbonMat.uniforms["uBoost"]!.value = boostAmt;
       ribbonMat.uniforms["uTrailMode"]!.value =
         currentAdmiralTrail === "sakura"
@@ -1735,9 +1885,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
             : currentAdmiralTrail === "none"
               ? 3
               : 0;
-      ribbonMesh.visible = true;
+      ribbonMeshL.visible = true;
+      ribbonMeshR.visible = true;
     } else {
-      ribbonMesh.visible = false;
+      ribbonMeshL.visible = false;
+      ribbonMeshR.visible = false;
       ribbonPrimed = false;
     }
 
@@ -1938,11 +2090,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     poseScratch.rainUmbrella = 0;
     playerRig.updatePose(poseScratch);
 
-    // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · 미니맵 산책 도트 · Direct-DOM 투영 계산
+    // 사령관·지휘관·구성원 포즈 갱신 · 배치 접촉 그림자(Soft AO) · Direct-DOM 투영 계산
     const isOpen = currentLifecycle === "open";
     let actorCount = 0;
     let visibleCount = 0;
-    let minimapActorCount = 0;
     let aoBlobCount = 0;
     let structSig = isOpen ? "1" : "0";
     let idx = 0;
@@ -2116,22 +2267,6 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         aoBlobCount += 1;
       }
 
-      // 미니맵 실시간 사령관 산책 도트 데이터 (0-GC 사전 할당 풀 재사용)
-      if (m.spec.role === "commodore") {
-        let dot = minimapActorPool[minimapActorCount];
-        if (!dot) {
-          dot = { id: "", x: 0, z: 0, color: "#38bdf8", walking: false };
-          minimapActorPool.push(dot);
-        }
-        dot.id = m.spec.id;
-        dot.x = m.x;
-        dot.z = m.z;
-        dot.color = TONE_HEX_CSS[m.spec.tone] ?? "#38bdf8";
-        dot.walking = m.moving;
-        minimapActorsOut[minimapActorCount] = dot;
-        minimapActorCount += 1;
-      }
-
       if (isOpen) {
         // RPG 대화(`dialogue`)·우측 수첩 채팅(`chat`) 중에는 포커스 대상의 3D 머리 위 말풍선 투영을 숨겨 이름표/얼굴 가림을 방지
         const effectiveSpeech = conversingFocus ? "" : m.speech;
@@ -2209,7 +2344,6 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
     }
     framePositions.actorCount = actorCount;
-    minimapActorsOut.length = minimapActorCount;
 
     // 배치 Soft AO 접촉 그림자 업로드 (단일 InstancedMesh 1 draw call)
     aoBlobInstanced.count = aoBlobCount;
@@ -2474,21 +2608,50 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       currentVillages = snapshot.villages;
       currentActors = snapshot.actors;
       meadow.syncZones(snapshot.zones, snapshot.villages);
+      meadow.syncVillageBiomeParticles(
+        snapshot.villages.map((v) => ({
+          x: v.x,
+          z: v.z,
+          radius: v.radius,
+          biome: v.biome,
+        })),
+      );
       skyLighting.setStreetlampAnchors(meadow.streetlampAnchors);
       director.syncActors(snapshot.actors);
       director.syncVillagePatrols(snapshot.villages);
 
-      // Objective `done` 신규 전환 감지 → 해당 마을 상공 축하 불꽃놀이 + 주변 사령관 환호 + 팡파르 자동 발동
+      // 실시간 작업 중 사령관 마을 상공 홀로그램 설계도 + 공방 불꽃 FX 동기화
+      const workingVillages: WorkingVillageFxInput[] = [];
+      for (const v of snapshot.villages) {
+        const hasWorkingActor = snapshot.actors.some(
+          (a) => a.commodoreId === v.commodoreId && (a.state === "running" || a.activity !== null),
+        );
+        if (v.workStep !== null || hasWorkingActor) {
+          workingVillages.push({
+            id: v.id,
+            x: v.x,
+            z: v.z,
+            radius: v.radius,
+            accentHex: resolveToneHex(v.tone),
+          });
+        }
+      }
+      livingWorkflowFx.syncWorkingVillages(workingVillages);
+
+      // Objective `done` 신규 전환 감지 → 해당 마을 상공 3D 불꽃놀이 + 주변 사령관 환호 + 팡파르 자동 발동
       let celebratedAny = false;
       for (const v of snapshot.villages) {
         const prevDone = prevVillageDoneCounts.get(v.id);
         if (snapshotPrimed && prevDone !== undefined && v.completedObjectiveCount > prevDone) {
-          director.celebrateObjectiveDone(v.x, v.z, resolveToneHex(v.tone));
+          const accentHex = resolveToneHex(v.tone);
+          director.celebrateObjectiveDone(v.x, v.z, accentHex);
+          livingWorkflowFx.triggerVillageFirework(v.x, v.z, accentHex);
           celebratedAny = true;
         }
         prevVillageDoneCounts.set(v.id, v.completedObjectiveCount);
       }
       if (celebratedAny) {
+        playFireworkBurst();
         playLevelUpFanfare();
         rainbowLookTimer = Math.max(rainbowLookTimer, 10);
         skyLighting.triggerRainbow(10);
@@ -2546,10 +2709,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     setOverviewMode(enabled) {
       if (enabled) cancelFishingInternal();
+      else livingWorkflowFx.resetSkyRingCombo();
       playerCtrl.setOverviewMode(enabled);
-    },
-    setFlightCamMode(mode) {
-      playerCtrl.setFlightCamMode(mode);
     },
     setAuroraEnabled(enabled) {
       skyLighting.setAuroraEnabled(enabled);
@@ -2661,6 +2822,69 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex) {
       livingWorkflowFx.spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex);
     },
+    setMailboxUnread(hasUnread) {
+      meadow.setMailboxUnread(hasUnread);
+    },
+    pickMailboxAt(clientX, clientY) {
+      const rect = config.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+      pickNdc.set((mx / rect.width) * 2 - 1, -(my / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pickNdc, camera);
+      const { origin, direction } = raycaster.ray;
+      if (Math.abs(direction.y) < 1e-4) return false;
+      const mbY = meadow.getGroundHeight(MAILBOX_POS.x, MAILBOX_POS.z) + 0.95;
+      const t = (mbY - origin.y) / direction.y;
+      if (t <= 0 || t > 180) return false;
+      const wx = origin.x + direction.x * t;
+      const wz = origin.z + direction.z * t;
+      return Math.hypot(wx - MAILBOX_POS.x, wz - MAILBOX_POS.z) <= MAILBOX_POS.radius + 0.45;
+    },
+    syncPondFish(speciesIds) {
+      meadow.syncPondFish(speciesIds);
+    },
+    setOperationFlag(flag, targetCommodoreId) {
+      if (!flag) {
+        livingWorkflowFx.setOperationFlag(null);
+        return;
+      }
+      let originX = flag.originX;
+      let originZ = flag.originZ;
+      let accentHex = flag.accentHex;
+      if (targetCommodoreId) {
+        for (const m of director.motions.values()) {
+          if (m.spec.role === "commodore" && m.spec.commodoreId === targetCommodoreId) {
+            if (originX === undefined) originX = m.x;
+            if (originZ === undefined) originZ = m.z;
+            if (accentHex === undefined) accentHex = resolveToneHex(m.spec.tone);
+            const safe = meadow.resolveMovement(m.x, m.z, flag.x, flag.z, 0.55);
+            m.tx = safe.x;
+            m.tz = safe.z;
+            m.hopBoost = Math.max(m.hopBoost, 1.15);
+            director.spawnBurst(flag.x, meadow.getGroundHeight(flag.x, flag.z) + 1.1, flag.z, accentHex, 14);
+            break;
+          }
+        }
+      }
+      livingWorkflowFx.setOperationFlag({
+        ...flag,
+        originX: originX ?? 0,
+        originZ: originZ ?? -1.5,
+        accentHex: accentHex ?? 0xfbbf24,
+      });
+    },
+    triggerVillageFirework(villageId) {
+      const targetVillage = villageId
+        ? currentVillages.find((v) => v.id === villageId || v.commodoreId === villageId) ?? null
+        : currentVillages[0] ?? null;
+      const fxX = targetVillage?.x ?? 0;
+      const fxZ = targetVillage?.z ?? -2.0;
+      const accentHex = targetVillage ? resolveToneHex(targetVillage.tone) : 0xfbbf24;
+      livingWorkflowFx.triggerVillageFirework(fxX, fxZ, accentHex);
+      director.celebrateObjectiveDone(fxX, fxZ, accentHex);
+      playFireworkBurst();
+    },
     ringParadeBell(rallySpeech) {
       meadow.ringParadeBell();
       playParadeBell();
@@ -2694,6 +2918,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         playerEmoteHop = 0.72;
         playerHatVel -= 1.25;
         director.spawnBurst(playerCtrl.player.x, playerCtrl.player.y + 1.35, playerCtrl.player.z, res.fish.colorHex, 16);
+        if (activeCoFishingIds.size > 0) {
+          playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
+          const cheerLine = isEnglishDoc() ? "What a catch, Admiral!" : "제독님! 대어예요!";
+          for (const cid of activeCoFishingIds) {
+            director.playEmote(cid, "cheer", playerPosVec);
+            director.applySpeech(cid, cheerLine);
+          }
+        }
         notifyFishingPhase("caught");
       } else if (res.outcome === "missed") {
         notifyFishingPhase("idle");
@@ -3151,9 +3383,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       aoBlobGeo.dispose();
       aoBlobMat.dispose();
       scene.remove(aoBlobInstanced);
-      ribbonGeo.dispose();
+      ribbonGeoL.dispose();
+      ribbonGeoR.dispose();
       ribbonMat.dispose();
-      scene.remove(ribbonMesh);
+      scene.remove(ribbonMeshL);
+      scene.remove(ribbonMeshR);
       groundRingGeo.dispose();
       groundRingMat.dispose();
       scene.remove(groundRingMesh);

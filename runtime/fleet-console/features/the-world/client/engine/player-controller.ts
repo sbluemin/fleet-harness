@@ -59,8 +59,6 @@ export interface CameraOccluder {
 
 export type CameraFocusFraming = "none" | "dialogue" | "drawer" | "customizer" | "cinema";
 
-export type FlightCamMode = "overview" | "chase";
-
 export interface CinemaCameraTarget {
   readonly x: number;
   readonly y: number;
@@ -122,13 +120,11 @@ export interface PlayerAndCameraController {
   /** 심시티 스타일 구역 선택 포커스 — 부드럽게 쿼터뷰로 틸트/줌하며 WASD 이동 또는 해제 시 복귀한다. */
   focusDistrict(x: number, z: number, radius: number, getGroundHeight: (x: number, z: number) => number): void;
   clearDistrictFocus(): void;
-  /** RTS 하늘 조망 모드 (`M` 키) — 88m 초원 전체를 상공 쿼터뷰로 내려다보며 해제/구역 선택 시 급강하한다. */
+  /** 별빛 상공 자유 비행 모드 (`F` 키) — 항상 에이스 추격 시점으로 88m 초원 상공을 비행하며 해제/클릭 시 유성 급강하한다. */
   setOverviewMode(enabled: boolean): void;
   isOverviewMode(): boolean;
-  /** 하늘 비행 중 시점 전환 (`overview` 전략 조망 ↔ `chase` 에이스 추격 시점, `V` 키). */
-  setFlightCamMode(mode: FlightCamMode): void;
-  toggleFlightCamMode(): FlightCamMode;
-  getFlightCamMode(): FlightCamMode;
+  /** 별빛 링 통과 시 단기 비행 가속 부스트(+14m/s, FOV 펀치)를 발동한다. */
+  triggerSkyBoostBurst(durationSec?: number): void;
   /** `Shift` 대시 질주 상태 여부. */
   isSprinting(): boolean;
   /** 광장 모닥불 벤치 불멍 모드 — 벤치 `(2.8, 2.55)`에 앉아 모닥불 `(2.8, 1.0)`을 바라보는 슬로우 오빗 카메라 가동. */
@@ -216,11 +212,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   } | null = null;
 
   let overviewMode = false;
-  let flightCamMode: FlightCamMode = "overview";
   let chaseManualOrbitTimer = 0;
-  const overviewAnchor = new Vector3(0, 1.0, 9.0);
-  let overviewDist = 124;
-  let overviewPitch = 1.06;
+  let chaseDist = 11.4;
+  let chasePitch = 0.25;
+  let skyBoostBurstTimer = 0;
 
   // 유성 급강하 착지 아크 상태 & 2단계 이륙 시퀀스 · 배럴롤 상태
   interface MeteorDiveState {
@@ -273,6 +268,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     overviewMode = false;
     sittingAtCampfire = false;
     pendingLandDive = false;
+    skyBoostBurstTimer = 0;
     player.takeoffPhase = "none";
     player.takeoffProgress = 0;
     player.heroLandTimer = 0;
@@ -353,6 +349,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         overviewMode = false;
         sittingAtCampfire = false;
         diveState = null;
+        skyBoostBurstTimer = 0;
         player.flying = false;
         player.diving = false;
         player.boosting = false;
@@ -385,6 +382,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       sittingAtCampfire = false;
       diveState = null;
       pendingLandDive = false;
+      skyBoostBurstTimer = 0;
       player.flying = false;
       player.diving = false;
       player.boosting = false;
@@ -453,6 +451,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         sittingAtCampfire = false;
         diveState = null;
         pendingLandDive = false;
+        skyBoostBurstTimer = 0;
+        chaseManualOrbitTimer = 0;
+        chaseDist = 11.4;
+        chasePitch = 0.25;
         player.diving = false;
         player.flying = true;
         player.boosting = false;
@@ -469,25 +471,21 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.takeoffPhase = "charge";
         player.takeoffProgress = 0;
         takeoffElapsed = 0;
-        takeoffStartCamYaw = camYaw;
+        // 2단계 상승 종료 시 제독 등 뒤 에이스 추격 시점으로 부드럽게 정렬
+        takeoffStartCamYaw = player.yaw + Math.PI;
         takeoffFrontCamYaw = player.yaw + 0.28;
         pendingChargeCue = true;
         pendingTakeoffCue = true;
-        overviewAnchor.set(
-          Math.max(-44, Math.min(44, player.x * 0.52)),
-          1.0 + FLIGHT_TARGET_ALT * 0.14,
-          Math.max(-40, Math.min(46, player.z * 0.52 + 9.0)),
-        );
-        overviewDist = 124;
-        overviewPitch = 1.06;
       } else if (player.takeoffPhase === "charge") {
         // 지상 충전 중 취소 시 깔끔하게 지상 복귀
+        skyBoostBurstTimer = 0;
         player.takeoffPhase = "none";
         player.takeoffProgress = 0;
         player.flying = false;
         player.onGround = true;
       } else if (player.flying || player.flightAlt > 1.2) {
-        // 비행/상승 중 M/Esc 종료 시 현재 위치 바로 아래 안전한 지면으로 부드러운 유성 급강하 착지 예약
+        // 비행/상승 중 F/Esc 종료 시 현재 위치 바로 아래 안전한 지면으로 부드러운 유성 급강하 착지 예약
+        skyBoostBurstTimer = 0;
         player.takeoffPhase = "none";
         player.takeoffProgress = 0;
         pendingLandDive = true;
@@ -496,25 +494,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     isOverviewMode() {
       return overviewMode;
     },
-    setFlightCamMode(mode) {
-      if (flightCamMode === mode) return;
-      flightCamMode = mode;
-      chaseManualOrbitTimer = 0;
-      if (mode === "chase" && overviewMode && player.flying) {
-        camYaw = player.yaw + Math.PI;
-      }
-    },
-    toggleFlightCamMode() {
-      const next: FlightCamMode = flightCamMode === "overview" ? "chase" : "overview";
-      flightCamMode = next;
-      chaseManualOrbitTimer = 0;
-      if (next === "chase" && overviewMode && player.flying) {
-        camYaw = player.yaw + Math.PI;
-      }
-      return next;
-    },
-    getFlightCamMode() {
-      return flightCamMode;
+    triggerSkyBoostBurst(durationSec = 1.8) {
+      skyBoostBurstTimer = Math.max(skyBoostBurstTimer, Math.max(0.3, durationSec));
     },
     isSprinting() {
       return (player.sprinting && player.walking) || player.boosting;
@@ -528,6 +509,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         overviewMode = false;
         diveState = null;
         pendingLandDive = false;
+        skyBoostBurstTimer = 0;
         player.flying = false;
         player.diving = false;
         player.boosting = false;
@@ -556,11 +538,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onPointerRotate(dx, dy) {
       autoDialogueYaw = null;
       camYaw -= dx * 0.0062;
-      if (overviewMode && flightCamMode === "chase") {
+      if (overviewMode) {
         chaseManualOrbitTimer = 2.4;
-        camPitch = Math.max(0.08, Math.min(0.85, camPitch + dy * 0.0042));
-      } else if (overviewMode) {
-        overviewPitch = Math.max(0.62, Math.min(1.36, overviewPitch + dy * 0.0042));
+        chasePitch = Math.max(0.08, Math.min(0.85, chasePitch + dy * 0.0042));
       } else if (districtFocus) {
         districtFocus.pitch = Math.max(0.22, Math.min(1.16, districtFocus.pitch + dy * 0.0048));
       } else {
@@ -570,7 +550,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onWheelZoom(deltaY) {
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
-        overviewDist = Math.max(32.0, Math.min(165.0, overviewDist * Math.exp(clamped * 0.0012)));
+        chaseDist = Math.max(7.5, Math.min(24.0, chaseDist * Math.exp(clamped * 0.0012)));
       } else if (districtFocus) {
         districtFocus.dist = Math.max(7.2, Math.min(34.0, districtFocus.dist * Math.exp(clamped * 0.0012)));
       } else {
@@ -625,6 +605,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
       if (chaseManualOrbitTimer > 0) {
         chaseManualOrbitTimer = Math.max(0, chaseManualOrbitTimer - opts.dt);
+      }
+      if (skyBoostBurstTimer > 0) {
+        skyBoostBurstTimer = Math.max(0, skyBoostBurstTimer - opts.dt);
       }
 
       if (diveState) {
@@ -741,10 +724,6 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           while (yawBack < -Math.PI) yawBack += Math.PI * 2;
           camYaw += yawBack * (1 - Math.exp(-opts.dt * 5.8));
 
-          const anchorX = Math.max(-44, Math.min(44, player.x * 0.52));
-          const anchorZ = Math.max(-40, Math.min(40, player.z * 0.52 + 3.0));
-          overviewAnchor.set(anchorX, 1.0 + player.flightAlt * 0.14, anchorZ);
-
           if (t >= 1) {
             player.takeoffPhase = "none";
             player.takeoffProgress = 0;
@@ -800,7 +779,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             camYaw += opts.dt * 0.14;
           }
         } else if (overviewMode) {
-          // 🌠 별빛 상공 자유 비행 (`18.0m`, `WASD` 24m/s 슈퍼맨 자세 ↔ 정지 호버, `Shift` 44m/s 부스트, `Space` 360° 배럴롤)
+          // 🌠 별빛 상공 자유 비행 (`18.0m`, 에이스 추격 시점 단일화, `WASD` 24m/s ↔ 정지 호버, `Shift` 44m/s, 링 통과 +14m/s, `Space` 배럴롤)
           flightClock += opts.dt;
           player.campfireSitSec = 0;
           player.flying = true;
@@ -808,12 +787,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           player.walking = false;
           player.onGround = false;
 
-          const boostNow = player.sprinting && (ix !== 0 || iz !== 0);
+          const manualBoost = player.sprinting && (ix !== 0 || iz !== 0);
+          const ringBurstFactor = skyBoostBurstTimer > 0 ? Math.min(1, skyBoostBurstTimer / 0.45) : 0;
+          const boostNow = manualBoost || ringBurstFactor > 0;
           player.boosting = boostNow;
-          if (boostNow && !prevBoostActive) {
+          if (manualBoost && !prevBoostActive) {
             opts.onStarBoost?.();
           }
-          prevBoostActive = boostNow;
+          prevBoostActive = manualBoost;
 
           let targetVx = 0;
           let targetVz = 0;
@@ -822,7 +803,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
             const mz = -sy * (ix / len) + cy * (iz / len);
-            const flySpeed = boostNow ? 44.0 : 24.0;
+            const flySpeed = (manualBoost ? 44.0 : 24.0) + ringBurstFactor * 14.0;
             targetVx = mx * flySpeed;
             targetVz = mz * flySpeed;
 
@@ -832,6 +813,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             while (diff < -Math.PI) diff += Math.PI * 2;
             player.yaw += diff * Math.min(1, opts.dt * 9.5);
             targetBankRoll = Math.max(-0.52, Math.min(0.52, -diff * 0.72));
+          } else if (ringBurstFactor > 0) {
+            // 링 통과 부스트 중에는 별도 WASD 입력 없이도 진행 방향으로 경쾌하게 활공 가속
+            const glideSpeed = 30.0 * ringBurstFactor;
+            targetVx = Math.sin(player.yaw) * glideSpeed;
+            targetVz = Math.cos(player.yaw) * glideSpeed;
           }
 
           const flyAccel = (ix !== 0 || iz !== 0) ? 7.5 : 5.6;
@@ -870,18 +856,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             barrelAdd = barrelRollDir * rollEase * Math.PI * 2;
           }
           player.flightRoll = bankRollSmoothed + barrelAdd;
-          const targetPitch = Math.min(0.45, (speedMag / 44.0) * 0.42 + (boostNow ? 0.08 : 0));
+          const targetPitch = Math.min(0.48, (speedMag / 44.0) * 0.42 + (boostNow ? 0.08 : 0));
           player.flightPitch += (targetPitch - player.flightPitch) * Math.min(1, opts.dt * 8.0);
-
-          // 기본 줌에서는 확장된 8개+ 마을 전체 시야를 유지하고, 근접 줌인 시 상공 비행 중인 별 제독 중심으로 부드럽게 프레이밍
-          const wideX = Math.max(-44, Math.min(44, player.x * 0.52));
-          const wideZ = Math.max(-40, Math.min(46, player.z * 0.52 + 9.0));
-          const wideY = 1.0 + player.flightAlt * 0.14;
-          const closeZoom = Math.max(0, Math.min(1, (110 - overviewDist) / 72));
-          const anchorX = wideX + (player.x - wideX) * closeZoom;
-          const anchorZ = wideZ + (player.z - wideZ) * closeZoom;
-          const anchorY = wideY + (gyUnder + player.flightAlt * 0.85 - wideY) * closeZoom;
-          overviewAnchor.set(anchorX, anchorY, anchorZ);
         } else if (opts.cameraMode === "orbit") {
           // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±80m) 위로 부드럽게 패닝!
           player.campfireSitSec = 0;
@@ -1048,16 +1024,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const takeoffCharging = overviewMode && player.takeoffPhase === "charge";
       const takeoffAscending = overviewMode && player.takeoffPhase === "ascend";
       const aceChaseFraming = overviewMode
-        && !opts.inputLocked
         && player.flying
-        && player.takeoffPhase === "none"
-        && flightCamMode === "chase";
+        && player.takeoffPhase === "none";
       const ascendEase = takeoffAscending
         ? player.takeoffProgress * player.takeoffProgress * (3 - 2 * player.takeoffProgress)
         : 0;
 
-      // 에이스 추격 시점(`V`): 비행 이동 중 별 제독 등 뒤(`player.yaw + π`)로 카메라가 부드럽게 자동 정렬 (마우스 드래그 시 자유 회전)
-      if (aceChaseFraming && player.moveSpeed > 1.5 && chaseManualOrbitTimer <= 0 && !opts.reducedMotion) {
+      // 에이스 추격 시점 단일화: 비행 이동 중 별 제독 등 뒤(`player.yaw + π`)로 카메라가 부드럽게 자동 정렬 (마우스 드래그 시 자유 회전)
+      if (aceChaseFraming && !opts.inputLocked && player.moveSpeed > 1.5 && chaseManualOrbitTimer <= 0 && !opts.reducedMotion) {
         const behindYaw = player.yaw + Math.PI;
         let chaseYawDiff = behindYaw - camYaw;
         while (chaseYawDiff > Math.PI) chaseYawDiff -= Math.PI * 2;
@@ -1078,10 +1052,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetY = gy + 0.78;
         desiredTargetZ = player.z;
       } else if (takeoffAscending) {
-        // 2단계 회오리 급상승(`0.52~1.18s`): 솟구치는 별 제독 → 초원 상공 조망(또는 에이스 추격) 중심으로 부드럽게 전환
-        const ascTargetX = flightCamMode === "chase" ? player.x + Math.sin(player.yaw) * 0.9 : overviewAnchor.x;
-        const ascTargetY = flightCamMode === "chase" ? player.y + 0.55 : overviewAnchor.y;
-        const ascTargetZ = flightCamMode === "chase" ? player.z + Math.cos(player.yaw) * 0.9 : overviewAnchor.z;
+        // 2단계 회오리 급상승(`0.52~1.18s`): 솟구치는 별 제독 → 에이스 추격 시점으로 부드럽게 전환
+        const ascTargetX = player.x + Math.sin(player.yaw) * 0.9;
+        const ascTargetY = player.y + 0.55;
+        const ascTargetZ = player.z + Math.cos(player.yaw) * 0.9;
         desiredTargetX = player.x + (ascTargetX - player.x) * ascendEase;
         desiredTargetY = (gy + 0.8 + player.flightAlt * 0.45) * (1 - ascendEase) + ascTargetY * ascendEase;
         desiredTargetZ = player.z + (ascTargetZ - player.z) * ascendEase;
@@ -1094,15 +1068,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = opts.cinemaTarget.x;
         desiredTargetY = opts.cinemaTarget.y;
         desiredTargetZ = opts.cinemaTarget.z;
-      } else if (aceChaseFraming) {
+      } else if (aceChaseFraming || overviewMode) {
         // 에이스 추격 시점: 별 제독 중심 + 진행 방향 약간 전방(+0.9m)을 쫓는 박진감 있는 3인칭 비행 프레이밍
         desiredTargetX = player.x + Math.sin(player.yaw) * 0.9;
         desiredTargetY = player.y + 0.55;
         desiredTargetZ = player.z + Math.cos(player.yaw) * 0.9;
-      } else if (overviewMode && !opts.inputLocked) {
-        desiredTargetX = overviewAnchor.x;
-        desiredTargetY = overviewAnchor.y;
-        desiredTargetZ = overviewAnchor.z;
       } else if (districtFocus && !opts.inputLocked) {
         desiredTargetX = districtFocus.x;
         desiredTargetY = districtFocus.y;
@@ -1149,80 +1119,73 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       camDist += (targetCamDist - camDist) * zoomLerp;
 
       const focusDist = interactingClose ? Math.min(camDist, 7.6) : camDist;
-      const ascEndDist = flightCamMode === "chase" ? 11.4 : overviewDist;
-      const ascEndPitch = flightCamMode === "chase" ? 0.25 : overviewPitch;
       const desiredEffDist =
         customizerFraming
           ? 4.35
           : takeoffCharging
             ? 4.8
             : takeoffAscending
-              ? 4.8 + (ascEndDist - 4.8) * ascendEase
+              ? 4.8 + (chaseDist - 4.8) * ascendEase
               : player.diving
                 ? Math.max(camDist, 12.5 + player.flightAlt * 0.95)
                 : cinemaFraming && opts.cinemaTarget
                   ? opts.cinemaTarget.dist
-                  : aceChaseFraming
-                    ? 11.4
-                    : overviewMode && !opts.inputLocked
-                      ? overviewDist
-                      : districtFocus && !opts.inputLocked
-                        ? districtFocus.dist
-                        : dialogueFraming
-                          ? 6.1
-                          : drawerFraming
-                            ? 7.2
-                            : sittingAtCampfire && !opts.inputLocked
-                              ? (campfireWithCompanions ? 4.9 + Math.min(3.3, (opts.companionCount ?? 0) * 0.44) : 4.45)
-                              : opts.cameraMode === "orbit"
-                                ? Math.max(28, camDist * 2.65)
-                                : focusDist;
+                  : aceChaseFraming || overviewMode
+                    ? chaseDist
+                    : districtFocus && !opts.inputLocked
+                      ? districtFocus.dist
+                      : dialogueFraming
+                        ? 6.1
+                        : drawerFraming
+                          ? 7.2
+                          : sittingAtCampfire && !opts.inputLocked
+                            ? (campfireWithCompanions ? 4.9 + Math.min(3.3, (opts.companionCount ?? 0) * 0.44) : 4.45)
+                            : opts.cameraMode === "orbit"
+                              ? Math.max(28, camDist * 2.65)
+                              : focusDist;
       const desiredEffPitch =
         customizerFraming
           ? 0.18
           : takeoffCharging
             ? 0.19
             : takeoffAscending
-              ? 0.19 + (ascEndPitch - 0.19) * ascendEase
+              ? 0.19 + (chasePitch - 0.19) * ascendEase
               : player.diving
                 ? Math.max(camPitch, 0.34 + Math.min(0.45, player.flightAlt * 0.028))
                 : cinemaFraming && opts.cinemaTarget
                   ? opts.cinemaTarget.pitch
-                  : aceChaseFraming
-                    ? 0.25
-                    : overviewMode && !opts.inputLocked
-                      ? overviewPitch
-                      : districtFocus && !opts.inputLocked
-                        ? districtFocus.pitch
-                        : dialogueFraming
-                          ? 0.21
-                          : drawerFraming
-                            ? 0.25
-                            : sittingAtCampfire && !opts.inputLocked
-                              ? (campfireWithCompanions ? 0.37 : 0.26)
-                              : opts.cameraMode === "orbit"
-                                ? Math.max(0.54, camPitch)
-                                : camPitch;
+                  : aceChaseFraming || overviewMode
+                    ? chasePitch
+                    : districtFocus && !opts.inputLocked
+                      ? districtFocus.pitch
+                      : dialogueFraming
+                        ? 0.21
+                        : drawerFraming
+                          ? 0.25
+                          : sittingAtCampfire && !opts.inputLocked
+                            ? (campfireWithCompanions ? 0.37 : 0.26)
+                            : opts.cameraMode === "orbit"
+                              ? Math.max(0.54, camPitch)
+                              : camPitch;
       const modeLerp = opts.reducedMotion
         ? 1
-        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.0 : takeoffAscending ? 7.8 : player.diving ? 6.8 : aceChaseFraming ? 7.5 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
+        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.0 : takeoffAscending ? 7.8 : player.diving ? 6.8 : aceChaseFraming || overviewMode ? 7.5 : cinemaFraming ? 2.2 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
 
-      // 질주(`Shift` 44→49) · 이륙 줌인(`42→50`) · 에이스 추격(`60→68`) · 비행 별똥별 부스트(`50→58`) · 유성 급강하(`54`) 동적 FOV 부드러운 보간
+      // 질주(`Shift` 44→49) · 이륙 줌인(`42→60`) · 에이스 추격(`60→68`) · 링 통과 부스트(+7°) · 유성 급강하(`54`) 동적 FOV 부드러운 보간
+      const ringBurstFov = skyBoostBurstTimer > 0 ? Math.min(1, skyBoostBurstTimer / 0.45) * 7 : 0;
       const desiredFov =
         takeoffCharging
           ? 42
           : takeoffAscending
-            ? 42 + (flightCamMode === "chase" ? 18 : 8) * ascendEase
+            ? 42 + 18 * ascendEase
             : player.diving
               ? 54
               : cinemaFraming
                 ? 42
-                : aceChaseFraming
-                  ? (player.boosting ? 68 : 60)
-                  : overviewMode && !opts.inputLocked
-                    ? (player.boosting ? 58 : 50)
+                : aceChaseFraming || overviewMode
+                  ? (player.sprinting && player.moveSpeed > 2 ? 68 : 60) + ringBurstFov
                   : sittingAtCampfire && !opts.inputLocked
                     ? 42
                     : player.sprinting && player.walking

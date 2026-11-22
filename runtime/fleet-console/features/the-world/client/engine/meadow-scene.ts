@@ -4,6 +4,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DoubleSide,
   DynamicDrawUsage,
@@ -18,6 +19,7 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
+  RingGeometry,
   Scene,
   ShaderMaterial,
   SphereGeometry,
@@ -28,6 +30,7 @@ import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import {
   WORLD_NOTICE_BOARD_POS,
   type WorldDistrictSpec,
+  type WorldVillageBiome,
   type WorldVillageSpec,
   type WorldWeatherMode,
   type WorldZoneSpec,
@@ -87,6 +90,27 @@ export const PARADE_BELL_POS = {
   z: 2.3,
   radius: 1.75,
 } as const;
+
+/** 중앙 길드 광장 앞마당 「함대 우체통 (Fleet Mailbox)」 좌표 및 피킹 반경 (길드 회관·퀘스트 게시판·풍차 비충돌). */
+export const MAILBOX_POS = {
+  x: 2.8,
+  z: -4.2,
+  radius: 1.55,
+} as const;
+
+/** 중앙 광장 동남쪽 정원 「별빛 연못 (Starlight Pond)」 좌표 및 상호작용 반경 (모닥불 벤치·화단·도로·시냇물 비충돌). */
+export const STARLIGHT_POND_POS = {
+  x: 7.8,
+  z: 2.2,
+  radius: 2.3,
+} as const;
+
+export interface VillageBiomeParticleTarget {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly biome: WorldVillageBiome;
+}
 
 const TONE_ROOF_HEX: Readonly<Record<IdentityTone, number>> = {
   crimson: 0xd94854,
@@ -161,6 +185,12 @@ export interface MeadowSceneHandle {
   getNearestForestDist(x: number, z: number): number;
   /** 중앙 광장 함대 소집 종(Parade Bell)을 약 2.2초간 경쾌하게 흔든다. */
   ringParadeBell(): void;
+  /** 중앙 광장 3D 함대 우체통의 미확인 편지 깃발·황금 스파클 알림을 전환한다. */
+  setMailboxUnread(hasUnread: boolean): void;
+  /** 광장 3D 별빛 연못에 방생된 어종 ID 목록(최대 8종)을 동기화한다. */
+  syncPondFish(speciesIds: readonly string[]): void;
+  /** 마을별 바이옴(벚꽃/단풍/설원·성채/초원) 국지 낙화·낙엽·눈송이·민들레 파티클을 동기화한다. */
+  syncVillageBiomeParticles(villages: readonly VillageBiomeParticleTarget[]): void;
   getGroundHeight(x: number, z: number): number;
   isWalkable(x: number, z: number): boolean;
   resolveMovement(curX: number, curZ: number, nextX: number, nextZ: number, actorRadius?: number): { x: number; z: number };
@@ -1107,6 +1137,492 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   root.add(paradeBellMountGroup);
   let paradeBellRingRemaining = 0;
   let paradeBellRingAge = 0;
+
+  // 중앙 광장 「함대 우체통 (Fleet Mailbox)」 동적 회전 빨간 깃발 + 미확인 황금 편지/스파클
+  const mailboxAnimGroup = new Group();
+  const mailboxFlagPivot = new Group();
+  mailboxFlagPivot.position.set(0.28, 1.06, 0.04);
+  const mailboxFlagArmGeo = markSharedGeometry(new BoxGeometry(0.032, 0.34, 0.032));
+  mailboxFlagArmGeo.translate(0, 0.17, 0);
+  const mailboxFlagTabGeo = markSharedGeometry(new BoxGeometry(0.036, 0.12, 0.17));
+  const mailboxEnvelopeGeo = markSharedGeometry(new BoxGeometry(0.32, 0.21, 0.045));
+  const mailboxSealGeo = markSharedGeometry(new SphereGeometry(0.044, 8, 6));
+  const mailboxSparkGeo = markSharedGeometry(new SphereGeometry(0.042, 6, 5));
+  const matMailboxFlag = ownMat(new MeshStandardMaterial({
+    color: 0xe63946,
+    emissive: 0xdc2626,
+    emissiveIntensity: 0.18,
+    roughness: 0.42,
+    metalness: 0.08,
+  }));
+  const matMailboxEnvelope = ownMat(new MeshStandardMaterial({
+    color: 0xfef3c7,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.55,
+    roughness: 0.36,
+    metalness: 0.12,
+  }));
+  const matMailboxSpark = ownMat(new MeshBasicMaterial({
+    color: 0xfde047,
+    transparent: true,
+    opacity: 0.9,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  }));
+  const mailboxFlagArm = new Mesh(mailboxFlagArmGeo, matMailboxFlag);
+  const mailboxFlagTab = new Mesh(mailboxFlagTabGeo, matMailboxFlag);
+  mailboxFlagTab.position.set(0, 0.29, 0.085);
+  mailboxFlagPivot.add(mailboxFlagArm, mailboxFlagTab);
+  mailboxFlagPivot.rotation.x = Math.PI * 0.46;
+  mailboxAnimGroup.add(mailboxFlagPivot);
+
+  const mailboxUnreadGroup = new Group();
+  mailboxUnreadGroup.visible = false;
+  const mailboxEnvelopeMesh = new Mesh(mailboxEnvelopeGeo, matMailboxEnvelope);
+  const mailboxSealMesh = new Mesh(mailboxSealGeo, matMailboxFlag);
+  mailboxSealMesh.position.set(0, 0, 0.026);
+  const mailboxEnvelopeWrap = new Group();
+  mailboxEnvelopeWrap.add(mailboxEnvelopeMesh, mailboxSealMesh);
+  mailboxUnreadGroup.add(mailboxEnvelopeWrap);
+  const mailboxSparks: Mesh[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    const sp = new Mesh(mailboxSparkGeo, matMailboxSpark);
+    mailboxUnreadGroup.add(sp);
+    mailboxSparks.push(sp);
+  }
+  mailboxAnimGroup.add(mailboxUnreadGroup);
+  root.add(mailboxAnimGroup);
+  let mailboxHasUnread = false;
+  let mailboxFlagAngle = Math.PI * 0.46;
+
+  // 중앙 광장 「별빛 연못 (Starlight Pond)」 방생 물고기·해파리·별조개·유리병 0-GC 풀 (최대 8종)
+  const MAX_POND_FISH = 8;
+  const pondFishGroup = new Group();
+  pondFishGroup.visible = false;
+  root.add(pondFishGroup);
+  let pondWaterSurfaceY = 0.24;
+
+  const pondFishBodyGeo = markSharedGeometry(new SphereGeometry(0.11, 10, 8));
+  const pondFishTailGeo = markSharedGeometry(new ConeGeometry(0.068, 0.16, 4));
+  const pondJellyBellGeo = markSharedGeometry(new SphereGeometry(0.125, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.58));
+  const pondJellyTendrilGeo = markSharedGeometry(new CylinderGeometry(0.01, 0.005, 0.22, 5));
+  pondJellyTendrilGeo.translate(0, -0.11, 0);
+  const pondShellGeo = markSharedGeometry(new CylinderGeometry(0.13, 0.05, 0.048, 7));
+  const pondBottleGeo = markSharedGeometry(new CylinderGeometry(0.062, 0.072, 0.22, 8));
+  const pondBottleCorkGeo = markSharedGeometry(new CylinderGeometry(0.032, 0.028, 0.055, 6));
+  const pondRippleGeo = markSharedGeometry(new RingGeometry(0.16, 0.24, 24));
+  pondRippleGeo.rotateX(-Math.PI * 0.5);
+
+  const POND_SPECIES_VISUALS: Readonly<Record<string, { readonly kind: "fish" | "jelly" | "shell" | "bottle"; readonly hex: number; readonly finHex: number; readonly scale: number }>> = {
+    meadow_minnow: { kind: "fish", hex: 0x38bdf8, finHex: 0xe0f2fe, scale: 0.92 },
+    cherry_loach: { kind: "fish", hex: 0xf472b6, finHex: 0xfce7f3, scale: 0.96 },
+    golden_koi: { kind: "fish", hex: 0xfbbf24, finHex: 0xfef08a, scale: 1.18 },
+    starlight_trout: { kind: "fish", hex: 0x60a5fa, finHex: 0xfef08a, scale: 1.06 },
+    rainbow_carp: { kind: "fish", hex: 0x34d399, finHex: 0xfde047, scale: 1.24 },
+    moon_jelly: { kind: "jelly", hex: 0xc084fc, finHex: 0xf5d0fe, scale: 1.0 },
+    star_shell: { kind: "shell", hex: 0xfcd34d, finHex: 0xfffbeb, scale: 1.0 },
+    message_bottle: { kind: "bottle", hex: 0x6ee7b7, finHex: 0xfef3c7, scale: 1.0 },
+  };
+
+  interface PondFishSlot {
+    readonly root: Group;
+    readonly fishWrap: Group;
+    readonly fishTailPivot: Group;
+    readonly fishMat: MeshStandardMaterial;
+    readonly finMat: MeshStandardMaterial;
+    readonly jellyWrap: Group;
+    readonly shellWrap: Group;
+    readonly bottleWrap: Group;
+    kind: "fish" | "jelly" | "shell" | "bottle";
+    isRainbow: boolean;
+    readonly phase: number;
+    readonly speed: number;
+    readonly radiusX: number;
+    readonly radiusZ: number;
+    readonly depthOffset: number;
+  }
+
+  const pondJellyMat = ownMat(new MeshStandardMaterial({
+    color: 0xd8b4fe,
+    emissive: 0x9333ea,
+    emissiveIntensity: 0.72,
+    roughness: 0.22,
+    transparent: true,
+    opacity: 0.78,
+    side: DoubleSide,
+  }));
+  const pondShellMat = ownMat(new MeshStandardMaterial({
+    color: 0xfcd34d,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.42,
+    roughness: 0.28,
+    metalness: 0.24,
+  }));
+  const pondBottleMat = ownMat(new MeshStandardMaterial({
+    color: 0x6ee7b7,
+    emissive: 0x059669,
+    emissiveIntensity: 0.45,
+    roughness: 0.16,
+    transparent: true,
+    opacity: 0.72,
+  }));
+  const pondCorkMat = ownMat(new MeshStandardMaterial({ color: 0xb47843, roughness: 0.84 }));
+  const pondRippleMat = ownMat(new MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.42,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  }));
+
+  const pondSlots: PondFishSlot[] = [];
+  for (let i = 0; i < MAX_POND_FISH; i += 1) {
+    const slotRoot = new Group();
+    slotRoot.visible = false;
+
+    const fishMat = ownMat(new MeshStandardMaterial({
+      color: 0x38bdf8,
+      emissive: 0x0c4a6e,
+      emissiveIntensity: 0.34,
+      roughness: 0.28,
+      metalness: 0.14,
+    }));
+    const finMat = ownMat(new MeshStandardMaterial({
+      color: 0xfef08a,
+      emissive: 0x78350f,
+      emissiveIntensity: 0.24,
+      roughness: 0.34,
+    }));
+
+    const fishWrap = new Group();
+    const fBody = new Mesh(pondFishBodyGeo, fishMat);
+    fBody.scale.set(0.58, 0.74, 1.52);
+    fishWrap.add(fBody);
+    const fDorsal = new Mesh(pondFishTailGeo, finMat);
+    fDorsal.position.set(0, 0.095, -0.02);
+    fDorsal.rotation.x = -0.62;
+    fDorsal.scale.set(0.38, 0.76, 0.9);
+    fishWrap.add(fDorsal);
+    const fishTailPivot = new Group();
+    fishTailPivot.position.set(0, 0, -0.16);
+    const fTail = new Mesh(pondFishTailGeo, finMat);
+    fTail.position.set(0, 0, -0.06);
+    fTail.rotation.x = -Math.PI * 0.5;
+    fTail.scale.set(0.32, 0.95, 0.82);
+    fishTailPivot.add(fTail);
+    fishWrap.add(fishTailPivot);
+    slotRoot.add(fishWrap);
+
+    const jellyWrap = new Group();
+    jellyWrap.visible = false;
+    const jBell = new Mesh(pondJellyBellGeo, pondJellyMat);
+    jellyWrap.add(jBell);
+    for (let t = 0; t < 3; t += 1) {
+      const a = (t / 3) * Math.PI * 2;
+      const jt = new Mesh(pondJellyTendrilGeo, pondJellyMat);
+      jt.position.set(Math.cos(a) * 0.055, -0.01, Math.sin(a) * 0.055);
+      jellyWrap.add(jt);
+    }
+    slotRoot.add(jellyWrap);
+
+    const shellWrap = new Group();
+    shellWrap.visible = false;
+    const shLower = new Mesh(pondShellGeo, pondShellMat);
+    shLower.rotation.x = 0.2;
+    const shUpper = new Mesh(pondShellGeo, pondShellMat);
+    shUpper.position.set(0, 0.055, -0.03);
+    shUpper.rotation.x = -0.78;
+    const shPearl = new Mesh(mailboxSparkGeo, matMailboxEnvelope);
+    shPearl.position.set(0, 0.02, 0.01);
+    shellWrap.add(shLower, shUpper, shPearl);
+    slotRoot.add(shellWrap);
+
+    const bottleWrap = new Group();
+    bottleWrap.visible = false;
+    const bBody = new Mesh(pondBottleGeo, pondBottleMat);
+    const bCork = new Mesh(pondBottleCorkGeo, pondCorkMat);
+    bCork.position.y = 0.13;
+    const bScroll = new Mesh(pondBottleCorkGeo, matMailboxEnvelope);
+    bScroll.scale.set(0.95, 2.2, 0.95);
+    bottleWrap.add(bBody, bCork, bScroll);
+    bottleWrap.rotation.z = 0.72;
+    slotRoot.add(bottleWrap);
+
+    pondFishGroup.add(slotRoot);
+    pondSlots.push({
+      root: slotRoot,
+      fishWrap,
+      fishTailPivot,
+      fishMat,
+      finMat,
+      jellyWrap,
+      shellWrap,
+      bottleWrap,
+      kind: "fish",
+      isRainbow: false,
+      phase: i * 1.17 + 0.35,
+      speed: 0.48 + (i % 4) * 0.11,
+      radiusX: 0.62 + (i % 3) * 0.24,
+      radiusZ: 0.56 + ((i + 1) % 3) * 0.22,
+      depthOffset: -0.035 - (i % 3) * 0.022,
+    });
+  }
+
+  const pondRippleMeshes: Mesh[] = [];
+  for (let i = 0; i < 2; i += 1) {
+    const rm = new Mesh(pondRippleGeo, pondRippleMat);
+    rm.renderOrder = 5;
+    pondFishGroup.add(rm);
+    pondRippleMeshes.push(rm);
+  }
+  let activePondCount = 0;
+  const pondRainbowColorScratch = new Color();
+
+  // 살아있는 초원 생태계 3: 시냇물 오리 가족 (어미 하얀 오리 1 + 노란 아기 오리 3, 0-GC)
+  const duckFamilyGroup = new Group();
+  root.add(duckFamilyGroup);
+  const duckBodyGeo = markSharedGeometry(new SphereGeometry(0.18, 10, 8));
+  const duckHeadGeo = markSharedGeometry(new SphereGeometry(0.115, 9, 7));
+  const duckBeakGeo = markSharedGeometry(new ConeGeometry(0.048, 0.11, 6));
+  duckBeakGeo.rotateX(Math.PI * 0.5);
+  const duckWingGeo = markSharedGeometry(new SphereGeometry(0.11, 8, 6));
+  const duckEyeGeo = markSharedGeometry(new SphereGeometry(0.022, 6, 5));
+  const matDuckWhite = ownMat(new MeshStandardMaterial({ color: 0xfffef8, roughness: 0.55 }));
+  const matDucklingYellow = ownMat(new MeshStandardMaterial({ color: 0xfde047, roughness: 0.52 }));
+  const matDuckBeak = ownMat(new MeshStandardMaterial({ color: 0xf97316, roughness: 0.45 }));
+  const matDuckEye = ownMat(new MeshBasicMaterial({ color: 0x0f172a }));
+  const matDuckWake = ownMat(new MeshBasicMaterial({
+    color: 0xe0f2fe,
+    transparent: true,
+    opacity: 0.44,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  }));
+
+  interface DuckActor {
+    readonly group: Group;
+    readonly headPivot: Group;
+    readonly wakeMesh: Mesh;
+    readonly lagDist: number;
+    readonly bobPhase: number;
+  }
+
+  const duckActors: DuckActor[] = [];
+  const DUCK_SPECS: readonly { readonly scale: number; readonly lagDist: number; readonly isMother: boolean }[] = [
+    { scale: 1.0, lagDist: 0, isMother: true },
+    { scale: 0.56, lagDist: 0.72, isMother: false },
+    { scale: 0.52, lagDist: 1.32, isMother: false },
+    { scale: 0.50, lagDist: 1.90, isMother: false },
+  ];
+  for (let i = 0; i < DUCK_SPECS.length; i += 1) {
+    const spec = DUCK_SPECS[i]!;
+    const matFeather = spec.isMother ? matDuckWhite : matDucklingYellow;
+    const dGroup = new Group();
+    dGroup.scale.setScalar(spec.scale);
+
+    const body = new Mesh(duckBodyGeo, matFeather);
+    body.scale.set(0.86, 0.72, 1.34);
+    body.position.set(0, 0.08, 0);
+    body.castShadow = true;
+    dGroup.add(body);
+
+    const tail = new Mesh(duckBeakGeo, matFeather);
+    tail.position.set(0, 0.16, -0.22);
+    tail.rotation.x = -0.55;
+    tail.scale.set(1.2, 1.0, 1.25);
+    dGroup.add(tail);
+
+    const wingL = new Mesh(duckWingGeo, matFeather);
+    wingL.position.set(-0.14, 0.10, -0.02);
+    wingL.scale.set(0.38, 0.64, 1.25);
+    const wingR = new Mesh(duckWingGeo, matFeather);
+    wingR.position.set(0.14, 0.10, -0.02);
+    wingR.scale.set(0.38, 0.64, 1.25);
+    dGroup.add(wingL, wingR);
+
+    const headPivot = new Group();
+    headPivot.position.set(0, 0.22, 0.15);
+    const head = new Mesh(duckHeadGeo, matFeather);
+    headPivot.add(head);
+    const beak = new Mesh(duckBeakGeo, matDuckBeak);
+    beak.position.set(0, -0.015, 0.13);
+    headPivot.add(beak);
+    const eyeL = new Mesh(duckEyeGeo, matDuckEye);
+    eyeL.position.set(-0.068, 0.032, 0.072);
+    const eyeR = new Mesh(duckEyeGeo, matDuckEye);
+    eyeR.position.set(0.068, 0.032, 0.072);
+    headPivot.add(eyeL, eyeR);
+    dGroup.add(headPivot);
+
+    const wakeMesh = new Mesh(pondRippleGeo, matDuckWake);
+    wakeMesh.position.set(0, 0.02, -0.10);
+    wakeMesh.renderOrder = 5;
+    dGroup.add(wakeMesh);
+
+    duckFamilyGroup.add(dGroup);
+    duckActors.push({
+      group: dGroup,
+      headPivot,
+      wakeMesh,
+      lagDist: spec.lagDist,
+      bobPhase: i * 1.15,
+    });
+  }
+
+  // 살아있는 초원 생태계 4: 하늘 지브리 하얀 철새 떼 (8마리, 유기적 리사주/S곡선 선회, 0-GC)
+  const skyBirdsGroup = new Group();
+  root.add(skyBirdsGroup);
+  const birdBodyGeo = markSharedGeometry(new ConeGeometry(0.11, 0.68, 5));
+  birdBodyGeo.rotateX(Math.PI * 0.5);
+  const birdWingGeo = markSharedGeometry(new BoxGeometry(0.62, 0.028, 0.24));
+  birdWingGeo.translate(0.31, 0, 0);
+  const matSkyBird = ownMat(new MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: 0xe2e8f0,
+    emissiveIntensity: 0.26,
+    roughness: 0.48,
+  }));
+
+  interface SkyBirdActor {
+    readonly group: Group;
+    readonly wingL: Group;
+    readonly wingR: Group;
+    readonly timeLag: number;
+    readonly offsetLat: number;
+    readonly offsetY: number;
+    readonly flapSpeed: number;
+    readonly flapPhase: number;
+    readonly scale: number;
+  }
+
+  const skyBirds: SkyBirdActor[] = [];
+  for (let i = 0; i < 8; i += 1) {
+    const bGroup = new Group();
+    const scale = 0.88 + (i % 3) * 0.14;
+    bGroup.scale.setScalar(scale);
+
+    const body = new Mesh(birdBodyGeo, matSkyBird);
+    bGroup.add(body);
+
+    const wingL = new Group();
+    wingL.position.set(-0.04, 0.02, 0.04);
+    const wMeshL = new Mesh(birdWingGeo, matSkyBird);
+    wMeshL.scale.x = -1;
+    wingL.add(wMeshL);
+
+    const wingR = new Group();
+    wingR.position.set(0.04, 0.02, 0.04);
+    const wMeshR = new Mesh(birdWingGeo, matSkyBird);
+    wingR.add(wMeshR);
+
+    bGroup.add(wingL, wingR);
+    skyBirdsGroup.add(bGroup);
+
+    const rank = Math.ceil(i / 2);
+    const side = i === 0 ? 0 : (i % 2 === 1 ? -1 : 1);
+    skyBirds.push({
+      group: bGroup,
+      wingL,
+      wingR,
+      timeLag: rank * 0.68 + (i % 2) * 0.22,
+      offsetLat: side * (1.85 * rank + 0.45),
+      offsetY: (i % 3 - 1) * 0.95,
+      flapSpeed: 5.4 + (i % 4) * 0.45,
+      flapPhase: i * 0.92,
+      scale,
+    });
+  }
+
+  // 살아있는 초원 생태계 5: 바이옴별 국지 낙화·단풍·눈송이·민들레 단일 InstancedMesh (280개, 1 draw call, 0-GC)
+  const MAX_BIOME_PARTICLES = 280;
+  const biomeParticleGeo = markSharedGeometry(new PlaneGeometry(0.18, 0.13));
+  const biomeParticleMat = ownMat(new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.88,
+    side: DoubleSide,
+    depthWrite: false,
+  }));
+  const biomeParticleInst = new InstancedMesh(biomeParticleGeo, biomeParticleMat, MAX_BIOME_PARTICLES);
+  biomeParticleInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  biomeParticleInst.frustumCulled = false;
+  biomeParticleInst.count = 0;
+  root.add(biomeParticleInst);
+
+  interface BiomeParticleSlot {
+    villageX: number;
+    villageZ: number;
+    villageRadius: number;
+    kind: "sakura" | "autumn" | "snow" | "meadow";
+    readonly angle: number;
+    readonly radFrac: number;
+    readonly phase: number;
+    readonly fallSpeed: number;
+    readonly swayAmp: number;
+    readonly scale: number;
+  }
+
+  const biomeParticleSlots: BiomeParticleSlot[] = Array.from({ length: MAX_BIOME_PARTICLES }, (_, i) => ({
+    villageX: 0,
+    villageZ: 0,
+    villageRadius: 7,
+    kind: "meadow",
+    angle: hash2(i * 1.73, 5.19) * Math.PI * 2,
+    radFrac: 0.18 + Math.sqrt(hash2(i * 3.11, 9.43)) * 0.96,
+    phase: hash2(i * 2.41, 13.7),
+    fallSpeed: 0.11 + hash2(i * 4.27, 2.83) * 0.08,
+    swayAmp: 0.65 + hash2(i * 5.09, 8.17) * 0.85,
+    scale: 0.72 + hash2(i * 6.31, 4.13) * 0.62,
+  }));
+  let activeBiomeParticleCount = 0;
+
+  const BIOME_PARTICLE_PALETTES = {
+    sakura: [0xfbcfe8, 0xf9a8d4, 0xfda4af, 0xfff1f2],
+    autumn: [0xdc2626, 0xea580c, 0xf59e0b, 0xfbbf24],
+    snow: [0xffffff, 0xf0f9ff, 0xe0f2fe, 0xbae6fd],
+    meadow: [0xfef9c3, 0xfde68a, 0xfffbeb, 0xd9f99d],
+  } as const;
+  const biomeParticleColorScratch = new Color();
+
+  function resolveBiomeParticleKind(biome: string): "sakura" | "autumn" | "snow" | "meadow" {
+    if (biome === "sakura" || biome === "blossom") return "sakura";
+    if (biome === "autumn") return "autumn";
+    if (biome === "citadel" || biome === "snow") return "snow";
+    return "meadow";
+  }
+
+  function syncVillageBiomeParticlesInternal(villages: readonly VillageBiomeParticleTarget[]): void {
+    if (villages.length === 0) {
+      activeBiomeParticleCount = 0;
+      biomeParticleInst.count = 0;
+      return;
+    }
+    const perVillage = Math.max(1, Math.floor(MAX_BIOME_PARTICLES / villages.length));
+    let count = 0;
+    for (let vi = 0; vi < villages.length && count < MAX_BIOME_PARTICLES; vi += 1) {
+      const v = villages[vi]!;
+      const kind = resolveBiomeParticleKind(v.biome);
+      const palette = BIOME_PARTICLE_PALETTES[kind];
+      const limit = vi === villages.length - 1
+        ? MAX_BIOME_PARTICLES - count
+        : Math.min(perVillage, MAX_BIOME_PARTICLES - count);
+      for (let k = 0; k < limit; k += 1) {
+        const slot = biomeParticleSlots[count]!;
+        slot.villageX = v.x;
+        slot.villageZ = v.z;
+        slot.villageRadius = Math.max(4.5, v.radius);
+        slot.kind = kind;
+        biomeParticleColorScratch.setHex(palette[(count + k) % palette.length]!);
+        biomeParticleInst.setColorAt(count, biomeParticleColorScratch);
+        count += 1;
+      }
+    }
+    activeBiomeParticleCount = count;
+    biomeParticleInst.count = count;
+    if (biomeParticleInst.instanceColor) biomeParticleInst.instanceColor.needsUpdate = true;
+  }
 
   // 심시티 구역 호버/선택 공유 하이라이트 링 2개
   const highlightGeo = new PlaneGeometry(2, 2);
@@ -2249,6 +2765,90 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addGrassClearZone(pbx, pbz, 1.32);
     addCameraOccluder(pbx, pbz, 0.68, 2.8);
     colliders.push({ x: pbx, z: pbz, r: 0.68 });
+
+    // 7. 중앙 광장 「함대 우체통 (Fleet Mailbox)」 지브리풍 빨간 둥근 지붕 우체통 + 나무 기둥 + 투입구
+    const mbx = MAILBOX_POS.x;
+    const mbz = MAILBOX_POS.z;
+    const mby = getTerrainBaseHeight(mbx, mbz);
+    const mbYaw = Math.atan2(0 - mbx, 1.5 - mbz);
+    b.withFrame(mbx, mby, mbz, mbYaw, 1, () => {
+      // 석조 받침 + 원목 기둥 + 사선 받침대
+      b.addCylinder(matStone, [0, 0.07, 0], [0.58, 0.14, 0.58], undefined, { tapered: true, receiveShadow: true });
+      b.addBox(matTimber, [0, 0.54, 0], [0.15, 0.96, 0.15], undefined, { castShadow: true, receiveShadow: true });
+      b.addBox(matWood, [0, 0.98, 0], [0.54, 0.08, 0.70], undefined, { castShadow: true });
+      b.addBox(matWood, [0, 0.80, 0.15], [0.10, 0.34, 0.10], [0.58, 0, 0]);
+      // 빨간 우체통 하단 몸체 + 둥근 아치 지붕
+      b.addBox(matRoofBase, [0, 1.15, 0], [0.46, 0.28, 0.64], undefined, { color: TONE_ROOF_HEX.crimson, castShadow: true, receiveShadow: true });
+      b.addCylinder(matRoofBase, [0, 1.29, 0], [0.46, 0.64, 0.46], [Math.PI * 0.5, 0, 0], { color: TONE_ROOF_HEX.crimson, castShadow: true });
+      // 정면 투입구 + 황동 손잡이 + 작은 황동 문장
+      b.addBox(matIron, [0, 1.24, 0.325], [0.30, 0.06, 0.03]);
+      b.addSphere(matBrass, [0, 1.13, 0.335], [0.055, 0.055, 0.055]);
+      b.addBox(matBrass, [0, 1.04, 0.325], [0.22, 0.035, 0.025]);
+    });
+    mailboxAnimGroup.position.set(mbx, mby, mbz);
+    mailboxAnimGroup.rotation.y = mbYaw;
+    addContactShadow(b, mbx, mbz, 0.62, 0.62, mbYaw);
+    addGrassClearZone(mbx, mbz, 0.98);
+    addCameraOccluder(mbx, mbz, 0.42, 1.65);
+    colliders.push({ x: mbx, z: mbz, r: 0.55 });
+
+    // 8. 중앙 광장 동남쪽 정원 「별빛 연못 (Starlight Pond)」 돌 테두리 + 반짝이는 수면 + 수련 잎 + 돌 등불
+    const spx = STARLIGHT_POND_POS.x;
+    const spz = STARLIGHT_POND_POS.z;
+    const spy = getTerrainBaseHeight(spx, spz);
+    pondWaterSurfaceY = spy + 0.15;
+    b.withFrame(spx, spy, spz, 0, 1, () => {
+      // 어두운 연못 바닥 + 에메랄드-별빛 물결 수면
+      b.addCylinder(matStoneDark, [0, 0.04, 0], [3.26, 0.08, 3.10], undefined, { receiveShadow: true });
+      b.addCylinder(matWaterTile, [0, 0.13, 0], [3.16, 0.05, 3.00]);
+      // 자연스러운 타원형 이끼 돌 테두리 16개
+      for (let i = 0; i < 16; i += 1) {
+        const a = (i / 16) * Math.PI * 2;
+        const rx = Math.cos(a) * 1.66;
+        const rz = Math.sin(a) * 1.56;
+        const h = 0.24 + (i % 3) * 0.05;
+        b.addDodeca(
+          i % 2 === 0 ? matStone : matStoneDark,
+          [rx, h * 0.48, rz],
+          [0.52 + (i % 2) * 0.08, h, 0.46],
+          [0.12 * (i % 3), a, 0.08],
+          { flat: true, castShadow: true, receiveShadow: true },
+        );
+      }
+      // 수련 잎 3장 + 연분홍 연꽃 1송이
+      const pondPads: readonly [number, number, number, boolean][] = [
+        [-0.78, -0.52, 0.44, true],
+        [-0.36, -0.82, 0.34, false],
+        [0.72, 0.54, 0.40, false],
+      ];
+      for (const [lx, lz, lsz, hasLotus] of pondPads) {
+        b.addCylinder(matPad, [lx, 0.165, lz], [lsz, 0.025, lsz]);
+        if (hasLotus) {
+          for (let p = 0; p < 5; p += 1) {
+            const pa = (p / 5) * Math.PI * 2;
+            b.addSphere(
+              matAccentBase,
+              [lx + Math.cos(pa) * 0.085, 0.21, lz + Math.sin(pa) * 0.085],
+              [0.09, 0.06, 0.09],
+              undefined,
+              { color: 0xf9a8d4 },
+            );
+          }
+          b.addSphere(matAccentBase, [lx, 0.23, lz], [0.065, 0.065, 0.065], undefined, { color: 0xfde047 });
+        }
+      }
+      // 북동쪽 연못가 아담한 정원 돌 등불 (야간 온기 반사)
+      const lx = 1.24;
+      const lz = -1.24;
+      b.addCylinder(matStoneDark, [lx, 0.14, lz], [0.46, 0.28, 0.46], undefined, { tapered: true, castShadow: true });
+      b.addCylinder(matStone, [lx, 0.48, lz], [0.24, 0.42, 0.24], undefined, { castShadow: true });
+      b.addCylinder(matLanternGlass, [lx, 0.80, lz], [0.26, 0.26, 0.26]);
+      b.addCone(matStoneDark, [lx, 1.04, lz], [0.54, 0.24, 0.54], undefined, { castShadow: true });
+      b.addSphere(matBrass, [lx, 1.18, lz], [0.09, 0.09, 0.09]);
+    });
+    addContactShadow(b, spx, spz, 2.05, 1.95);
+    addGrassClearZone(spx, spz, 2.18);
+    colliders.push({ x: spx, z: spz, r: 1.82 });
   }
 
   /** 시냇물 횡단 아치 목교(동/서 2기) + 연못 수련잎/연꽃/갈대 */
@@ -4158,6 +4758,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     applyHighlightMesh(hoverHighlightMesh, hoverHighlightMat, lastHoveredDistrict);
     applyHighlightMesh(selectedHighlightMesh, selectedHighlightMat, lastSelectedDistrict);
 
+    // 마을 바이옴별 국지 낙화·단풍·눈송이·민들레 파티클 자동 동기화
+    syncVillageBiomeParticlesInternal(villages);
+
     // 5. 풀잎(InstancedMesh) & 들꽃(InstancedMesh) 배치 — 도로·수면·마을 석재바닥·건물 회피
     const dummy = new Object3D();
     const grassColors = [
@@ -4580,6 +5183,40 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       paradeBellRingRemaining = 2.25;
       paradeBellRingAge = 0;
     },
+    setMailboxUnread(hasUnread) {
+      mailboxHasUnread = hasUnread;
+      mailboxUnreadGroup.visible = hasUnread;
+    },
+    syncPondFish(speciesIds) {
+      const limit = Math.min(speciesIds.length, MAX_POND_FISH);
+      activePondCount = limit;
+      pondFishGroup.visible = limit > 0;
+      for (let i = 0; i < pondSlots.length; i += 1) {
+        const slot = pondSlots[i]!;
+        if (i >= limit) {
+          slot.root.visible = false;
+          continue;
+        }
+        const speciesId = speciesIds[i]!;
+        const vis = POND_SPECIES_VISUALS[speciesId] ?? POND_SPECIES_VISUALS["meadow_minnow"]!;
+        slot.kind = vis.kind;
+        slot.isRainbow = speciesId === "rainbow_carp";
+        slot.root.visible = true;
+        slot.root.scale.setScalar(vis.scale);
+        slot.fishWrap.visible = vis.kind === "fish";
+        slot.jellyWrap.visible = vis.kind === "jelly";
+        slot.shellWrap.visible = vis.kind === "shell";
+        slot.bottleWrap.visible = vis.kind === "bottle";
+        if (vis.kind === "fish") {
+          slot.fishMat.color.setHex(vis.hex);
+          slot.fishMat.emissive.setHex(vis.hex).multiplyScalar(0.28);
+          slot.finMat.color.setHex(vis.finHex);
+        }
+      }
+    },
+    syncVillageBiomeParticles(villages) {
+      syncVillageBiomeParticlesInternal(villages);
+    },
     getGroundHeight,
     isWalkable,
     resolveMovement,
@@ -4922,6 +5559,167 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         matBronzeBell.emissiveIntensity = 0.24 + nightFactor * 0.40;
       }
 
+      // 중앙 광장 「함대 우체통」 깃발 회전 + 미확인 황금 편지/스파클 부유
+      const targetFlagAngle = mailboxHasUnread
+        ? 0.08 + Math.sin(elapsed * 4.2) * 0.14
+        : Math.PI * 0.46;
+      mailboxFlagAngle += (targetFlagAngle - mailboxFlagAngle) * Math.min(1, dt * 8.5);
+      mailboxFlagPivot.rotation.x = mailboxFlagAngle;
+      matMailboxFlag.emissiveIntensity = mailboxHasUnread ? 0.45 + nightFactor * 0.40 : 0.12;
+      if (mailboxUnreadGroup.visible) {
+        const envBob = Math.sin(elapsed * 3.1) * 0.11;
+        mailboxEnvelopeWrap.position.set(0, 1.88 + envBob, 0);
+        mailboxEnvelopeWrap.rotation.set(0.12 * Math.sin(elapsed * 2.2), elapsed * 1.45, 0.08 * Math.cos(elapsed * 1.9));
+        matMailboxEnvelope.emissiveIntensity = 0.55 + nightFactor * 0.65 + Math.sin(elapsed * 4.2) * 0.18;
+        for (let i = 0; i < mailboxSparks.length; i += 1) {
+          const sp = mailboxSparks[i]!;
+          const ang = elapsed * 2.4 + (i / mailboxSparks.length) * Math.PI * 2;
+          const rad = 0.28 + Math.sin(elapsed * 3.0 + i * 1.7) * 0.05;
+          sp.position.set(Math.cos(ang) * rad, 1.86 + Math.sin(elapsed * 3.6 + i * 2.1) * 0.14, Math.sin(ang) * rad);
+          const sc = 0.72 + Math.sin(elapsed * 5.2 + i * 2.0) * 0.28;
+          sp.scale.setScalar(sc);
+        }
+      }
+
+      // 중앙 광장 「별빛 연못」 방생 물고기·해파리·별조개·유리병 8자/유기적 유영 (0-GC)
+      if (activePondCount > 0) {
+        const pondCx = STARLIGHT_POND_POS.x;
+        const pondCz = STARLIGHT_POND_POS.z;
+        for (let i = 0; i < activePondCount; i += 1) {
+          const slot = pondSlots[i]!;
+          const t = elapsed * slot.speed + slot.phase;
+          const ox = Math.sin(t) * slot.radiusX;
+          const oz = Math.sin(t * 2.0 + 0.35) * slot.radiusZ * 0.68;
+          const vx = Math.cos(t) * slot.radiusX * slot.speed;
+          const vz = Math.cos(t * 2.0 + 0.35) * slot.radiusZ * 1.36 * slot.speed;
+          const yaw = Math.atan2(vx, vz);
+
+          if (slot.kind === "fish") {
+            const wiggle = Math.sin(elapsed * 11.5 + slot.phase * 2.3);
+            slot.root.position.set(pondCx + ox, pondWaterSurfaceY + slot.depthOffset + Math.sin(elapsed * 2.4 + slot.phase) * 0.014, pondCz + oz);
+            slot.root.rotation.set(0, yaw + wiggle * 0.09, wiggle * 0.06);
+            slot.fishTailPivot.rotation.y = wiggle * 0.44;
+            if (slot.isRainbow) {
+              pondRainbowColorScratch.setHSL((elapsed * 0.18 + i * 0.13) % 1, 0.78, 0.62);
+              slot.fishMat.color.copy(pondRainbowColorScratch);
+              slot.fishMat.emissive.copy(pondRainbowColorScratch).multiplyScalar(0.36);
+            }
+          } else if (slot.kind === "jelly") {
+            const jx = Math.cos(t * 0.65) * 0.74;
+            const jz = Math.sin(t * 0.65) * 0.68;
+            const pulse = 1.0 + Math.sin(elapsed * 4.2 + slot.phase) * 0.12;
+            slot.root.position.set(pondCx + jx, pondWaterSurfaceY + 0.02 + Math.sin(elapsed * 2.1 + slot.phase) * 0.04, pondCz + jz);
+            slot.root.rotation.set(0, elapsed * 0.6 + slot.phase, 0);
+            slot.jellyWrap.scale.set(pulse, 1 / Math.sqrt(pulse), pulse);
+          } else if (slot.kind === "shell") {
+            const sx = Math.cos(slot.phase * 1.9) * 0.86;
+            const sz = Math.sin(slot.phase * 1.9) * 0.78;
+            slot.root.position.set(pondCx + sx, pondWaterSurfaceY - 0.045, pondCz + sz);
+            slot.root.rotation.set(0, slot.phase + Math.sin(elapsed * 1.2 + slot.phase) * 0.18, 0);
+          } else {
+            const bx = Math.sin(t * 0.45) * 0.64;
+            const bz = Math.cos(t * 0.38) * 0.56;
+            slot.root.position.set(pondCx + bx, pondWaterSurfaceY + 0.02 + Math.sin(elapsed * 3.1 + slot.phase) * 0.018, pondCz + bz);
+            slot.root.rotation.set(Math.sin(elapsed * 2.2) * 0.12, elapsed * 0.45 + slot.phase, Math.cos(elapsed * 1.9) * 0.10);
+          }
+        }
+        for (let i = 0; i < pondRippleMeshes.length; i += 1) {
+          const rm = pondRippleMeshes[i]!;
+          const rT = (elapsed * 0.34 + i * 0.5) % 1;
+          const sc = 0.85 + rT * 4.4;
+          rm.position.set(pondCx + (i === 0 ? -0.25 : 0.32), pondWaterSurfaceY + 0.015, pondCz + (i === 0 ? 0.18 : -0.22));
+          rm.scale.set(sc, 1, sc);
+        }
+        pondRippleMat.opacity = 0.24 + nightFactor * 0.18;
+      }
+
+      // 살아있는 생태계 3: 시냇물 오리 가족 (어미 + 노란 아기 오리 3마리 일렬 왕복 헤엄, 0-GC)
+      const duckT = elapsed * 0.135;
+      const duckLeadX = -1.5 + Math.sin(duckT) * 7.2;
+      const duckVelSign = Math.cos(duckT) >= 0 ? 1 : -1;
+      for (let i = 0; i < duckActors.length; i += 1) {
+        const d = duckActors[i]!;
+        const dxPos = duckLeadX - duckVelSign * d.lagDist;
+        const clampedX = Math.max(-10.5, Math.min(7.2, dxPos));
+        const bp = brookProfile(clampedX);
+        const bpAhead = brookProfile(clampedX + duckVelSign * 0.25);
+        const lateralWiggle = Math.sin(elapsed * 1.45 + d.bobPhase) * 0.16;
+        const dzPos = bp.centerZ + lateralWiggle;
+        const dzDelta = (bpAhead.centerZ - bp.centerZ);
+        const heading = Math.atan2(duckVelSign * 0.25, dzDelta);
+        const bobY = -0.05 + Math.sin(elapsed * 4.8 + d.bobPhase) * 0.024;
+        d.group.position.set(clampedX, bobY, dzPos);
+        d.group.rotation.set(
+          Math.sin(elapsed * 4.2 + d.bobPhase) * 0.05,
+          heading,
+          Math.cos(elapsed * 3.6 + d.bobPhase) * 0.06,
+        );
+        d.headPivot.rotation.x = Math.sin(elapsed * 3.2 + d.bobPhase) * 0.12;
+        const wakeT = (elapsed * 0.72 + i * 0.27) % 1;
+        const wakeSc = 0.62 + wakeT * 1.35;
+        d.wakeMesh.scale.set(wakeSc, 1, wakeSc);
+      }
+
+      // 살아있는 생태계 4: 하늘 지브리 하얀 철새 떼 8마리 (유기적 리사주/S곡선 선회 + 날갯짓, 0-GC)
+      for (let i = 0; i < skyBirds.length; i += 1) {
+        const b = skyBirds[i]!;
+        const bt = elapsed - b.timeLag;
+        const bx = Math.sin(bt * 0.105) * 46 + Math.cos(bt * 0.068) * 18;
+        const bz = Math.sin(bt * 0.082 + 1.15) * 42 + Math.cos(bt * 0.128) * 14;
+        const by = 27.5 + Math.sin(bt * 0.18 + 0.6) * 4.4 + b.offsetY;
+        const vx = Math.cos(bt * 0.105) * 46 * 0.105 - Math.sin(bt * 0.068) * 18 * 0.068;
+        const vz = Math.cos(bt * 0.082 + 1.15) * 42 * 0.082 - Math.sin(bt * 0.128) * 14 * 0.128;
+        const vLen = Math.max(0.001, Math.hypot(vx, vz));
+        const perpX = -vz / vLen;
+        const perpZ = vx / vLen;
+        const yaw = Math.atan2(vx, vz);
+        const glideCycle = Math.sin(elapsed * 0.55 + b.flapPhase);
+        const flapAmp = glideCycle > -0.25 ? 0.54 : 0.12;
+        const flapAng = Math.sin(elapsed * b.flapSpeed + b.flapPhase) * flapAmp + 0.08;
+        b.group.position.set(bx + perpX * b.offsetLat, by, bz + perpZ * b.offsetLat);
+        b.group.rotation.set(
+          -Math.cos(bt * 0.18 + 0.6) * 0.08,
+          yaw,
+          Math.sin(bt * 0.105) * 0.16,
+        );
+        b.wingL.rotation.z = -flapAng;
+        b.wingR.rotation.z = flapAng;
+      }
+
+      // 살아있는 생태계 5: 바이옴별 국지 낙화·단풍·눈송이·민들레 단일 InstancedMesh (1 draw call, 0-GC)
+      if (activeBiomeParticleCount > 0) {
+        for (let i = 0; i < activeBiomeParticleCount; i += 1) {
+          const p = biomeParticleSlots[i]!;
+          const rawLife = (elapsed * p.fallSpeed + p.phase) % 1;
+          const life = rawLife < 0 ? rawLife + 1 : rawLife;
+          const baseRad = p.villageRadius * p.radFrac;
+          const swirl = elapsed * (p.kind === "snow" ? 0.26 : 0.42) + p.phase * 6.283;
+          const px = p.villageX + Math.cos(p.angle) * baseRad + Math.sin(swirl) * p.swayAmp;
+          const pz = p.villageZ + Math.sin(p.angle) * baseRad + Math.cos(swirl * 0.85) * p.swayAmp;
+          const py = p.kind === "meadow"
+            ? 0.55 + life * 5.2 + Math.sin(elapsed * 1.9 + p.phase * 8) * 0.35
+            : 0.25 + (1 - life) * 7.2;
+          const envelope = Math.sin(life * Math.PI);
+          const sc = p.scale * Math.max(0.01, envelope) * (p.kind === "autumn" ? 1.22 : p.kind === "snow" ? 0.78 : 1.0);
+
+          animPos.set(px, py, pz);
+          if (p.kind === "snow" || p.kind === "meadow") {
+            animEuler.set(elapsed * 0.8 + p.phase * 5, elapsed * 1.1 + p.phase * 4, 0);
+          } else {
+            animEuler.set(
+              elapsed * 2.2 + p.phase * 6.0,
+              elapsed * 1.6 + p.phase * 4.5,
+              Math.sin(elapsed * 3.1 + p.phase * 7.0) * 0.9,
+            );
+          }
+          animQuat.setFromEuler(animEuler);
+          animScale.set(sc, sc * (p.kind === "snow" ? 1.0 : 0.85), sc);
+          animMat.compose(animPos, animQuat, animScale);
+          biomeParticleInst.setMatrixAt(i, animMat);
+        }
+        biomeParticleInst.instanceMatrix.needsUpdate = true;
+      }
+
       // 굴뚝 연기 뭉게 피어오름
       for (const sp of smokePuffs) {
         const life = (elapsed * 0.28 + sp.phase) % 1;
@@ -5046,6 +5844,28 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       bellClapperGeo.dispose();
       bellRopeGeo.dispose();
       bellTasselGeo.dispose();
+      mailboxFlagArmGeo.dispose();
+      mailboxFlagTabGeo.dispose();
+      mailboxEnvelopeGeo.dispose();
+      mailboxSealGeo.dispose();
+      mailboxSparkGeo.dispose();
+      pondFishBodyGeo.dispose();
+      pondFishTailGeo.dispose();
+      pondJellyBellGeo.dispose();
+      pondJellyTendrilGeo.dispose();
+      pondShellGeo.dispose();
+      pondBottleGeo.dispose();
+      pondBottleCorkGeo.dispose();
+      pondRippleGeo.dispose();
+      duckBodyGeo.dispose();
+      duckHeadGeo.dispose();
+      duckBeakGeo.dispose();
+      duckWingGeo.dispose();
+      duckEyeGeo.dispose();
+      birdBodyGeo.dispose();
+      birdWingGeo.dispose();
+      biomeParticleInst.dispose();
+      biomeParticleGeo.dispose();
       smokeGeo.dispose();
       highlightGeo.dispose();
       hoverHighlightMat.dispose();

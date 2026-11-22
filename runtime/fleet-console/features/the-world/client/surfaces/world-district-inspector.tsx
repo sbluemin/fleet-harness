@@ -12,8 +12,19 @@ import type {
 } from "../../shared/world-types.js";
 import { playDistrictHover, playFlagPlant } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
-import { clearDispatchFlag, placeDispatchFlag, setDistrictNote, setVillageBiome } from "../world-store.js";
+import {
+  clearDispatchFlag,
+  placeDispatchFlag,
+  setDistrictNote,
+  setOperationFlag,
+  setVillageBiome,
+  useOperationFlag,
+  type WorldOperationFlag,
+  type WorldOperationFlagDeployInput,
+} from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
+
+export type { WorldOperationFlagDeployInput };
 
 export interface WorldDistrictLinkedObjective {
   readonly id: string;
@@ -41,6 +52,9 @@ export interface WorldDistrictInspectorProps {
   readonly onClearDispatchFlag?: ((districtId: string) => void) | undefined;
   readonly onSelectVillageBiome?: ((commodoreId: string, biome: WorldVillageBiome) => void) | undefined;
   readonly onChangeNote?: ((districtId: string, note: string) => void) | undefined;
+  readonly operationFlag?: WorldOperationFlag | null | undefined;
+  readonly onDeployOperationFlag?: ((input: WorldOperationFlagDeployInput) => void) | undefined;
+  readonly onClearOperationFlag?: (() => void) | undefined;
 }
 
 const VILLAGE_BIOMES: readonly {
@@ -102,8 +116,20 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   onClearDispatchFlag,
   onSelectVillageBiome,
   onChangeNote,
+  operationFlag: operationFlagProp,
+  onDeployOperationFlag,
+  onClearOperationFlag,
 }: WorldDistrictInspectorProps) {
   const t = getWorldT(locale);
+  const isEn = locale === "en";
+  const bi = (ko: string, en: string) => (isEn ? en : ko);
+  const storeOpFlag = useOperationFlag();
+  const activeOpFlag = operationFlagProp !== undefined ? operationFlagProp : storeOpFlag;
+  const isOpFlagHere = Boolean(
+    activeOpFlag
+    && (activeOpFlag.districtId === district.id
+      || (!activeOpFlag.districtId && village && activeOpFlag.villageId === village.id)),
+  );
   const commodoreActorId = commodoreActor?.id ?? `commodore:${district.commodoreId}`;
   const tierName = t(TIER_NAME_KEYS[district.tier]);
   const nextTier = district.tier < 5 ? ((district.tier + 1) as WorldDevelopmentTier) : null;
@@ -114,9 +140,13 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   const isScanning = refreshing || (!district.metricsLoaded && district.status === "available");
   const activeBiome: WorldVillageBiome = village?.biome ?? "meadow";
   const [noteDraft, setNoteDraft] = useState(districtNote);
+  const [opFlagFormOpen, setOpFlagFormOpen] = useState(false);
+  const [opFlagDirective, setOpFlagDirective] = useState("");
 
   useEffect(() => {
     setNoteDraft(districtNote);
+    setOpFlagFormOpen(false);
+    setOpFlagDirective("");
   }, [district.id, districtNote]);
 
   const commitNote = (nextValue: string) => {
@@ -390,6 +420,97 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
             ) : null}
           </div>
         </form>
+
+        {/* 작전 깃발 배치 & 1줄 지시 (활성 시 깃발 회수) */}
+        <div className="the-world-district-opflag-block">
+          {isOpFlagHere && activeOpFlag ? (
+            <div className="the-world-district-opflag-active">
+              <div className="the-world-district-opflag-info">
+                <WorldIcon name="flag" size={13} tone="amber" />
+                <div className="the-world-district-opflag-copy">
+                  <span className="the-world-district-opflag-kicker">
+                    {bi("작전 깃발 활성", "Operation Flag Active")}
+                  </span>
+                  <span className="the-world-district-opflag-text">{activeOpFlag.directive}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="the-world-district-note-btn is-opflag-clear"
+                onClick={() => {
+                  if (onClearOperationFlag) onClearOperationFlag();
+                  else setOperationFlag(null);
+                }}
+              >
+                {bi("깃발 회수", "Clear Flag")}
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`the-world-district-opflag-trigger${opFlagFormOpen ? " is-active" : ""}`}
+                aria-expanded={opFlagFormOpen}
+                onClick={() => setOpFlagFormOpen((prev) => !prev)}
+              >
+                <WorldIcon name="flag" size={13} tone="amber" />
+                <span>{bi("작전 깃발 꽂고 지시", "Plant Flag & Order")}</span>
+              </button>
+              {opFlagFormOpen ? (
+                <form
+                  className="the-world-opflag-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const directive = opFlagDirective.trim();
+                    if (!directive) return;
+                    const payload: WorldOperationFlagDeployInput = {
+                      villageId: village?.id ?? `village:${district.commodoreId}`,
+                      districtId: district.id,
+                      commodoreId: district.commodoreId,
+                      commodoreName: district.commodoreName,
+                      label: district.label,
+                      directive,
+                      x: district.x,
+                      z: district.z,
+                    };
+                    playFlagPlant();
+                    if (onDeployOperationFlag) {
+                      onDeployOperationFlag(payload);
+                    } else {
+                      setOperationFlag({
+                        ...payload,
+                        id: `opflag:${Date.now()}`,
+                        createdAt: Date.now(),
+                      });
+                    }
+                    setOpFlagDirective("");
+                    setOpFlagFormOpen(false);
+                  }}
+                >
+                  <input
+                    type="text"
+                    className="the-world-district-note-input"
+                    value={opFlagDirective}
+                    maxLength={240}
+                    placeholder={bi("깃발 지시 내용을 1줄로 입력...", "Enter 1-line flag directive...")}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Escape") setOpFlagFormOpen(false);
+                    }}
+                    onChange={(e) => setOpFlagDirective(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="the-world-district-note-btn is-save"
+                    disabled={opFlagDirective.trim().length === 0}
+                  >
+                    {bi("배치", "Deploy")}
+                  </button>
+                </form>
+              ) : null}
+            </>
+          )}
+        </div>
 
         {/* 연결된 목표 목록 */}
         <div className="the-world-district-objectives">

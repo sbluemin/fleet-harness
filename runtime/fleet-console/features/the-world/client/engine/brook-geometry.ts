@@ -2,8 +2,8 @@
  * 더 월드 시냇물(Brook) 및 4개 목교의 단일 진실 곡선 기하학.
  *
  * `meadow-scene.ts`(3D 지형·수면·목교), `world-projection.ts`(마을·구역 수로 회피),
- * `world-minimap.tsx`(전략 지도 시냇물/다리 SVG)가 모두 이 모듈을 공유해
- * 지형·물길·다리·미니맵이 100% 일치한다.
+ * `fishing-controller.ts`(시냇가 낚시 좌표 판정)가 모두 이 모듈을 공유해
+ * 지형·물길·다리·낚시 지점이 100% 일치한다.
  */
 
 export const BROOK_SPAN_HALF_X = 86;

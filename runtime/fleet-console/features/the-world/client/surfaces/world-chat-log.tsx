@@ -12,6 +12,8 @@ import {
   openActorDialogue,
   pushActorSpeech,
   requestApproachActor,
+  toggleAmbientChatCollapsed,
+  useAmbientChatCollapsed,
   useWorldStore,
 } from "../world-store.js";
 import { playSend, playWakeChime } from "../engine/world-audio.js";
@@ -305,19 +307,45 @@ const ChatLogLine = memo(function ChatLogLine({
   showTime,
   t,
   onFocusActor,
+  clampLines = false,
+  expanded = false,
+  onToggleExpand,
 }: {
   readonly entry: WorldChatFeedEntry;
   readonly showTime: boolean;
   readonly t: Translate<TheWorldMessageKey>;
   readonly onFocusActor: (actorId: string) => void;
+  readonly clampLines?: boolean | undefined;
+  readonly expanded?: boolean | undefined;
+  readonly onToggleExpand?: ((entryId: string) => void) | undefined;
 }) {
   const timeNode = showTime ? (
     <span className="the-world-chat-time">{formatClock(entry.at)}</span>
   ) : null;
 
+  const canExpand = Boolean(clampLines && onToggleExpand);
+  const clampClass = clampLines ? (expanded ? " is-expanded-line" : " is-clamped") : "";
+  const formatBody = (raw: string, limit: number) => (expanded ? raw : compactLine(raw, limit));
+  const handleLineClick = canExpand
+    ? (e: React.MouseEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      e.stopPropagation();
+      onToggleExpand?.(entry.id);
+    }
+    : undefined;
+  const handleLinePointerDown = canExpand
+    ? (e: React.PointerEvent<HTMLDivElement>) => {
+      e.stopPropagation();
+    }
+    : undefined;
+
   if (entry.kind === "system-wake") {
     return (
-      <div className="the-world-chat-line is-wake">
+      <div
+        className={`the-world-chat-line is-wake${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <span className="the-world-chat-tag-wake">{t("theWorld.chat.tagWatcher")}</span>{" "}
         <button
@@ -330,14 +358,18 @@ const ChatLogLine = memo(function ChatLogLine({
         </button>
         {" — "}
         {entry.badge && entry.badge !== t("theWorld.chat.watcherWakeBadge") ? `${entry.badge} · ` : ""}
-        {compactLine(entry.text, 160)}
+        {formatBody(entry.text, 160)}
       </div>
     );
   }
 
   if (entry.kind === "system-error") {
     return (
-      <div className="the-world-chat-line is-error">
+      <div
+        className={`the-world-chat-line is-error${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <button
           type="button"
@@ -347,14 +379,18 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" · "}
-        {entry.badge ?? t("theWorld.chat.fallbackError")}: {compactLine(entry.text, 160)}
+        {entry.badge ?? t("theWorld.chat.fallbackError")}: {formatBody(entry.text, 160)}
       </div>
     );
   }
 
   if (entry.kind === "system-info") {
     return (
-      <div className="the-world-chat-line is-sysinfo">
+      <div
+        className={`the-world-chat-line is-sysinfo${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <button
           type="button"
@@ -365,14 +401,18 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" "}
-        {entry.badge ?? t("theWorld.chat.fallbackInfo")} · {compactLine(entry.text, 150)}
+        {entry.badge ?? t("theWorld.chat.fallbackInfo")} · {formatBody(entry.text, 150)}
       </div>
     );
   }
 
   if (entry.kind === "action") {
     return (
-      <div className={`the-world-chat-line is-action${entry.failed ? " is-error" : ""}`}>
+      <div
+        className={`the-world-chat-line is-action${entry.failed ? " is-error" : ""}${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <button
           type="button"
@@ -384,7 +424,7 @@ const ChatLogLine = memo(function ChatLogLine({
         </button>
         {" · "}
         <span className="the-world-chat-action-verb">{entry.badge ?? t("theWorld.chat.fallbackTool")}</span>
-        {entry.text && entry.text !== entry.badge ? ` (${compactLine(entry.text, 120)})` : ""}
+        {entry.text && entry.text !== entry.badge ? ` (${formatBody(entry.text, 120)})` : ""}
         {entry.streaming ? " ⋯" : ""}
       </div>
     );
@@ -392,28 +432,36 @@ const ChatLogLine = memo(function ChatLogLine({
 
   if (entry.kind === "player") {
     return (
-      <div className="the-world-chat-line is-player">
+      <div
+        className={`the-world-chat-line is-player${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <span className="the-world-chat-player-name">
           {t("theWorld.chat.admiralSender")}{entry.targetName ? ` → ${entry.targetName}` : ""}
         </span>
         {": "}
         {entry.badge ? `[${entry.badge}] ` : ""}
-        {compactLine(entry.text, 200)}
+        {formatBody(entry.text, 200)}
       </div>
     );
   }
 
   if (entry.kind === "ask") {
     return (
-      <div className="the-world-chat-line is-ask">
+      <div
+        className={`the-world-chat-line is-ask${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <button
           type="button"
           className="the-world-chat-ask-inline"
           onClick={() => onFocusActor(entry.actorId)}
         >
-          {t("theWorld.chat.tagAsk")} {entry.actorName}: {compactLine(entry.text, 160)}
+          {t("theWorld.chat.tagAsk")} {entry.actorName}: {formatBody(entry.text, 160)}
         </button>
       </div>
     );
@@ -421,7 +469,11 @@ const ChatLogLine = memo(function ChatLogLine({
 
   if (entry.kind === "peer") {
     return (
-      <div className="the-world-chat-line is-peer">
+      <div
+        className={`the-world-chat-line is-peer${clampClass}`}
+        onPointerDown={handleLinePointerDown}
+        onClick={handleLineClick}
+      >
         {timeNode}
         <button
           type="button"
@@ -433,13 +485,17 @@ const ChatLogLine = memo(function ChatLogLine({
         </button>
         {entry.targetName ? ` → ${entry.targetName}` : ""}
         {": "}
-        {compactLine(entry.text, 180)}
+        {formatBody(entry.text, 180)}
       </div>
     );
   }
 
   return (
-    <div className={`the-world-chat-line is-speech${entry.streaming ? " is-streaming" : ""}`}>
+    <div
+      className={`the-world-chat-line is-speech${entry.streaming ? " is-streaming" : ""}${clampClass}`}
+      onPointerDown={handleLinePointerDown}
+      onClick={handleLineClick}
+    >
       {timeNode}
       <button
         type="button"
@@ -450,7 +506,7 @@ const ChatLogLine = memo(function ChatLogLine({
         {entry.actorName}
       </button>
       {": "}
-      <span>{compactLine(entry.text, 220)}</span>
+      <span>{formatBody(entry.text, 220)}</span>
       {entry.streaming ? <span className="the-world-chat-cursor">▌</span> : null}
     </div>
   );
@@ -542,10 +598,13 @@ export const WorldChatLog = memo(function WorldChatLog({
   readonly onStatusBanner: (msg: string) => void;
 }) {
   const store = useWorldStore();
+  const ambientCollapsed = useAmbientChatCollapsed();
   const chatActive = store.chatActive && !hidden;
   const subscribedFeed = deps.useWorldChatFeed(actors);
   const feed = feedProp ?? subscribedFeed;
-  const t = getWorldT(deps.commodore.language());
+  const locale = deps.commodore.language();
+  const isEn = locale === "en";
+  const t = getWorldT(locale);
 
   const [prefs, setPrefs] = useState<StoredChatPrefs>(loadPrefs);
   const [channel, setChannel] = useState<WorldChatChannel>("all");
@@ -560,6 +619,11 @@ export const WorldChatLog = memo(function WorldChatLog({
   const [ambientFaded, setAmbientFaded] = useState(false);
   const [ambientHovered, setAmbientHovered] = useState(false);
   const [ambientActivityNonce, setAmbientActivityNonce] = useState(0);
+  const [expandedEntryIds, setExpandedEntryIds] = useState<Readonly<Record<string, boolean>>>({});
+
+  const toggleEntryExpand = useCallback((entryId: string) => {
+    setExpandedEntryIds((prev) => ({ ...prev, [entryId]: !prev[entryId] }));
+  }, []);
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -836,14 +900,14 @@ export const WorldChatLog = memo(function WorldChatLog({
       onPointerDown={chatActive ? (e) => e.stopPropagation() : undefined}
       onWheel={chatActive ? (e) => e.stopPropagation() : undefined}
     >
-      {/* 기본 비활성(앰비언트) 상태: 게임 화면 위 투명 플로팅 최근 5줄(10초 무활동 시 자동 페이드) + Enter 트리거 */}
+      {/* 기본 비활성(앰비언트) 상태: 게임 화면 위 투명 플로팅 최근 5줄(2줄 클램프·클릭 펼침 · 접기/펼치기 지원) + Enter 트리거 */}
       <div
-        className={`the-world-chat-ambient${ambientFaded ? " is-faded" : ""}`}
+        className={`the-world-chat-ambient${ambientFaded ? " is-faded" : ""}${ambientCollapsed ? " is-collapsed" : ""}`}
         aria-hidden={chatActive || hidden}
         onMouseEnter={() => setAmbientHovered(true)}
         onMouseLeave={() => setAmbientHovered(false)}
       >
-        {ambientEntries.length > 0 ? (
+        {!ambientCollapsed && ambientEntries.length > 0 ? (
           <div className={`the-world-chat-ambient-lines${ambientFaded ? " is-faded" : ""}`}>
             {ambientEntries.map((entry) => (
               <ChatLogLine
@@ -852,6 +916,9 @@ export const WorldChatLog = memo(function WorldChatLog({
                 showTime={false}
                 t={t}
                 onFocusActor={handleFocusActor}
+                clampLines
+                expanded={Boolean(expandedEntryIds[entry.id])}
+                onToggleExpand={toggleEntryExpand}
               />
             ))}
           </div>
@@ -869,6 +936,24 @@ export const WorldChatLog = memo(function WorldChatLog({
             <span className="the-world-keycap">Enter</span>
             <span>{t("theWorld.chat.enterHint")}</span>
             {unreadCount > 0 ? <span className="the-world-chat-unread">{unreadCount}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={`the-world-chat-collapse-btn${ambientCollapsed ? " is-collapsed" : ""}`}
+            tabIndex={chatActive || hidden ? -1 : 0}
+            aria-label={t("theWorld.chat.toggleAria")}
+            aria-pressed={ambientCollapsed}
+            title={ambientCollapsed
+              ? (isEn ? "Show recent ambient messages" : "최근 대화 펼치기")
+              : (isEn ? "Hide ambient messages" : "최근 대화 접기")}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => toggleAmbientChatCollapsed()}
+          >
+            <span aria-hidden="true">{ambientCollapsed ? "▴" : "▾"}</span>
+            <span>{ambientCollapsed ? (isEn ? "Show" : "펼치기") : (isEn ? "Hide" : "접기")}</span>
+            {ambientCollapsed && ambientEntries.length > 0 ? (
+              <span className="the-world-chat-collapse-count">{ambientEntries.length}</span>
+            ) : null}
           </button>
         </div>
       </div>

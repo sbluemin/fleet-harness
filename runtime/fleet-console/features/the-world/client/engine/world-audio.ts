@@ -464,37 +464,41 @@ export function playLevelUpFanfare(): void {
   });
 }
 
-/** 작전 깃발 꽂기 시 경쾌한 깃대 착지음 + 크리스탈 차임. */
+/** 3D 작전 깃발(웨이포인트) 배치: 힘찬 바닥 꽂기 + 깃발 펄럭임 + 맑은 3음 상승 차임. */
 export function playFlagPlant(): void {
   const eng = getAudioEngine();
   if (!eng) return;
 
-  // 깃대 땅 꽂힘 툭!
-  scheduleTone(eng.ctx, eng.out, {
-    type: "triangle",
-    freqStart: 195,
-    freqEnd: 92,
-    duration: 0.075,
-    peakGain: 0.42,
-    attack: 0.004,
-  });
-  // 경쾌한 2음 차임 (E5 -> A5)
+  // 단단한 깃대 꽂기 저음
   scheduleTone(eng.ctx, eng.out, {
     type: "sine",
-    freqStart: 659.25,
-    delay: 0.05,
-    duration: 0.18,
-    peakGain: 0.34,
-    attack: 0.008,
+    freqStart: 185,
+    freqEnd: 82,
+    duration: 0.10,
+    peakGain: 0.28,
+    attack: 0.004,
   });
-  scheduleTone(eng.ctx, eng.out, {
-    type: "triangle",
-    freqStart: 880.0,
-    delay: 0.11,
-    duration: 0.28,
-    peakGain: 0.30,
+  // 깃발 펼침 바람 소리
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.03,
+    duration: 0.12,
+    centerFreq: 1450,
+    q: 1.3,
+    peakGain: 0.14,
     attack: 0.01,
   });
+  // 맑고 힘찬 3음 작전 차임 (C5 -> G5 -> C6)
+  const notes = [523.25, 783.99, 1046.5] as const;
+  for (let i = 0; i < notes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i === 2 ? "sine" : "triangle",
+      freqStart: notes[i]!,
+      delay: 0.045 + i * 0.058,
+      duration: i === 2 ? 0.34 : 0.18,
+      peakGain: i === 2 ? 0.26 : 0.24,
+      attack: 0.005,
+    });
+  }
 }
 
 /** 포토 모드 전환·캡처 시 부드러운 카메라 셔터 클릭. */
@@ -1878,4 +1882,176 @@ export function playFishingCatch(rarity: "common" | "rare" | "legendary"): void 
       attack: 0.006,
     });
   }
+}
+
+/** 하늘 순찰 링 연속 통과(콤보 1..8): 음정이 올라가는 따뜻한 5음계 하프 아르페지오 + 가벼운 바람 휙 소리. */
+export function playSkyRingPass(combo: number): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const clamped = Math.max(1, Math.min(8, Math.floor(combo)));
+  const root = SKY_RING_PENTATONIC[clamped - 1]!;
+  const fifth = root * 1.4983;
+  const octave = root * 2.0;
+
+  // 가벼운 공기 가르는 바람 휙 소리
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.16,
+    centerFreq: 980 + clamped * 110,
+    q: 1.4,
+    peakGain: 0.15,
+    attack: 0.02,
+  });
+
+  // 따뜻한 하프 3음 아르페지오
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: root,
+    duration: 0.30,
+    peakGain: 0.30,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: fifth,
+    delay: 0.036,
+    duration: 0.28,
+    peakGain: 0.22,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: octave,
+    delay: 0.072,
+    duration: 0.36,
+    peakGain: 0.18,
+    attack: 0.008,
+  });
+
+  // 풀 콤보(8) 달성 시 은은한 최상음 별빛 화음 보너스
+  if (clamped >= 8) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: octave * 1.25,
+      delay: 0.115,
+      duration: 0.44,
+      peakGain: 0.14,
+      attack: 0.01,
+    });
+  }
+}
+
+/** 목표 완료 지브리풍 3D 불꽃놀이: 부드러운 상승 휘파람 + 포근하게 반짝이는 별빛 차임 축포. */
+export function playFireworkBurst(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 1) 부드러운 상승 휘파람
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 420,
+    freqEnd: 1260,
+    duration: 0.36,
+    peakGain: 0.11,
+    attack: 0.035,
+  });
+
+  // 2) 포근한 저역대 폭죽 팝 (귀를 자극하지 않는 저역 필터)
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.37,
+    duration: 0.22,
+    centerFreq: 460,
+    q: 0.9,
+    peakGain: 0.17,
+    attack: 0.012,
+  });
+
+  // 3) 반짝이며 흩어지는 6음 별빛 첼레스타 차임
+  const sparkleNotes = [1046.5, 1318.51, 1567.98, 1760.0, 2093.0, 1567.98] as const;
+  for (let i = 0; i < sparkleNotes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i % 2 === 0 ? "sine" : "triangle",
+      freqStart: sparkleNotes[i]!,
+      delay: 0.39 + i * 0.055,
+      duration: 0.34,
+      peakGain: 0.13 - i * 0.008,
+      attack: 0.008,
+    });
+  }
+}
+
+/** 광장 함대 우체통 오픈: 경쾌한 덮개 클릭 + 종이 스침 + 포근한 2음 차임. */
+export function playMailboxOpen(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 우체통 덮개 가벼운 딸깍
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.038,
+    centerFreq: 2100,
+    q: 2.6,
+    peakGain: 0.18,
+    attack: 0.003,
+  });
+  // 편지 봉투 사각거림
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.045,
+    duration: 0.095,
+    centerFreq: 3100,
+    q: 1.4,
+    peakGain: 0.10,
+    attack: 0.012,
+  });
+  // 포근한 알림 2음 차임 (E5 -> B5)
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 659.25,
+    delay: 0.055,
+    duration: 0.18,
+    peakGain: 0.22,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 987.77,
+    delay: 0.125,
+    duration: 0.28,
+    peakGain: 0.20,
+    attack: 0.006,
+  });
+}
+
+/** 별빛 연못 어종 방생: 맑은 물방울 퐁당 + 잔잔한 수면 파문. */
+export function playPondSplash(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 메인 물방울 퐁당
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 320,
+    freqEnd: 680,
+    duration: 0.095,
+    peakGain: 0.28,
+    attack: 0.005,
+  });
+  // 잔물결 작은 2차 물방울
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 510,
+    freqEnd: 940,
+    delay: 0.072,
+    duration: 0.09,
+    peakGain: 0.18,
+    attack: 0.005,
+  });
+  // 부드러운 수면 파문 소리
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.015,
+    duration: 0.13,
+    centerFreq: 1320,
+    q: 1.5,
+    peakGain: 0.14,
+    attack: 0.008,
+  });
 }

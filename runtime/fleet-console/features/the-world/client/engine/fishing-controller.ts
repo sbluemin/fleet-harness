@@ -78,6 +78,13 @@ export type FishingReelResult =
       readonly senderName?: string | undefined;
     };
 
+export interface CompanionAnglerPose {
+  readonly id: string;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+}
+
 export interface FishingController {
   isNearWater(px: number, pz: number): boolean;
   startCast(px: number, pz: number, playerYaw: number, groundY?: number): boolean;
@@ -87,6 +94,8 @@ export interface FishingController {
   getUiPhase(): WorldFishingPhase;
   getCastTargetYaw(): number;
   getCastProgress(): number;
+  /** 제독이 낚시 중일 때 최대 3명의 동행 사령관이 강가에서 함께 미니 낚싯대·찌를 드리우도록 동기화한다 (0-GC 풀링). */
+  syncCompanionAnglers(anglers: readonly CompanionAnglerPose[], elapsedSec: number): void;
   update(
     dt: number,
     elapsed: number,
@@ -100,6 +109,8 @@ export interface FishingController {
 }
 
 const LINE_POINTS = 14;
+const COMPANION_LINE_POINTS = 8;
+const MAX_COMPANION_ANGLERS = 3;
 const RIPPLE_COUNT = 3;
 const CAST_DURATION_SEC = 0.58;
 const CAST_BACKSWING_END = 0.22;
@@ -443,6 +454,86 @@ export function createFishingController(scene: Scene): FishingController {
   catchRoot.add(catchShellGroup);
 
   const tipWorldScratch = new Vector3();
+
+  // 6. 동행 사령관 함께 낚시 미니 낚싯대 풀 (최대 3인, 0-GC, 비활성 시 Draw Call 0)
+  const companionRoot = new Group();
+  companionRoot.name = "the-world-companion-fishing-fx";
+  companionRoot.visible = false;
+  scene.add(companionRoot);
+
+  const miniRodGeo = new CylinderGeometry(0.011, 0.028, 1.48, 6);
+  miniRodGeo.translate(0, 0.74, 0);
+
+  interface CompanionAnglerSlot {
+    readonly group: Group;
+    readonly rodGroup: Group;
+    readonly tipMesh: Mesh;
+    readonly linePositions: Float32Array;
+    readonly lineAttr: BufferAttribute;
+    readonly lineGeo: BufferGeometry;
+    readonly bobberGroup: Group;
+    readonly rippleMesh: Mesh;
+    readonly rippleMat: MeshBasicMaterial;
+  }
+
+  const companionSlots: CompanionAnglerSlot[] = [];
+  for (let i = 0; i < MAX_COMPANION_ANGLERS; i += 1) {
+    const slotGroup = new Group();
+    slotGroup.visible = false;
+
+    const cRodGroup = new Group();
+    const cGrip = new Mesh(rodGripGeo, rodGripMat);
+    cGrip.scale.set(0.75, 0.68, 0.75);
+    cRodGroup.add(cGrip);
+    const cShaft = new Mesh(miniRodGeo, rodSegMat);
+    cShaft.position.y = 0.08;
+    cRodGroup.add(cShaft);
+    const cTip = new Mesh(rodTipGeo, rodTipMat);
+    cTip.scale.setScalar(0.75);
+    cTip.position.set(0, 1.56, 0);
+    cRodGroup.add(cTip);
+    slotGroup.add(cRodGroup);
+
+    const cLinePositions = new Float32Array(COMPANION_LINE_POINTS * 3);
+    const cLineAttr = new BufferAttribute(cLinePositions, 3);
+    const cLineGeo = new BufferGeometry();
+    cLineGeo.setAttribute("position", cLineAttr);
+    const cLineObj = new Line(cLineGeo, lineMat);
+    cLineObj.frustumCulled = false;
+    slotGroup.add(cLineObj);
+
+    const cBobber = new Group();
+    cBobber.add(new Mesh(bobberTopGeo, bobberTopMat));
+    cBobber.add(new Mesh(bobberBotGeo, bobberBotMat));
+    cBobber.add(new Mesh(bobberPinGeo, bobberPinMat));
+    cBobber.scale.setScalar(0.78);
+    slotGroup.add(cBobber);
+
+    const cRippleMat = new MeshBasicMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0.36,
+      side: DoubleSide,
+      blending: AdditiveBlending,
+      depthWrite: false,
+    });
+    const cRippleMesh = new Mesh(rippleGeo, cRippleMat);
+    cRippleMesh.renderOrder = 6;
+    slotGroup.add(cRippleMesh);
+
+    companionRoot.add(slotGroup);
+    companionSlots.push({
+      group: slotGroup,
+      rodGroup: cRodGroup,
+      tipMesh: cTip,
+      linePositions: cLinePositions,
+      lineAttr: cLineAttr,
+      lineGeo: cLineGeo,
+      bobberGroup: cBobber,
+      rippleMesh: cRippleMesh,
+      rippleMat: cRippleMat,
+    });
+  }
 
   let phase: FishingInternalPhase = "idle";
   let phaseTimer = 0;
@@ -803,7 +894,95 @@ export function createFishingController(scene: Scene): FishingController {
     return phase;
   }
 
+  function syncCompanionAnglers(
+    anglers: readonly CompanionAnglerPose[],
+    elapsedSec: number,
+  ): void {
+    const count = Math.min(anglers.length, MAX_COMPANION_ANGLERS);
+    if (count === 0) {
+      if (companionRoot.visible) {
+        companionRoot.visible = false;
+        for (let i = 0; i < companionSlots.length; i += 1) {
+          companionSlots[i]!.group.visible = false;
+        }
+      }
+      return;
+    }
+
+    companionRoot.visible = true;
+    for (let i = 0; i < companionSlots.length; i += 1) {
+      const slot = companionSlots[i]!;
+      if (i >= count) {
+        slot.group.visible = false;
+        continue;
+      }
+      const angler = anglers[i]!;
+      slot.group.visible = true;
+
+      const clampedX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, angler.x));
+      const bp = brookProfile(clampedX);
+      const sideOffset = (i - 1) * 0.55;
+      const targetX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, clampedX + sideOffset));
+      const targetZ = brookProfile(targetX).centerZ + (i % 2 === 0 ? -0.22 : 0.22) * Math.min(1, bp.halfWidth * 0.45);
+      const aimYaw = Math.atan2(targetX - angler.x, targetZ - angler.z);
+
+      const dirX = Math.sin(aimYaw);
+      const dirZ = Math.cos(aimYaw);
+      const rightX = Math.cos(aimYaw);
+      const rightZ = -Math.sin(aimYaw);
+
+      const handX = angler.x + rightX * 0.36 + dirX * 0.18;
+      const handY = 0.68;
+      const handZ = angler.z + rightZ * 0.36 + dirZ * 0.18;
+      const phaseSeed = i * 1.93 + 0.5;
+      const rodPitch = 0.72 + Math.sin(elapsedSec * 1.85 + phaseSeed) * 0.045;
+
+      slot.rodGroup.position.set(handX, handY, handZ);
+      slot.rodGroup.rotation.set(0, aimYaw, 0);
+      slot.rodGroup.rotateX(rodPitch);
+      slot.rodGroup.updateMatrixWorld(true);
+      slot.tipMesh.getWorldPosition(tipWorldScratch);
+
+      const tipX = tipWorldScratch.x;
+      const tipY = tipWorldScratch.y;
+      const tipZ = tipWorldScratch.z;
+
+      const bobY = -0.06 + Math.sin(elapsedSec * 2.9 + phaseSeed) * 0.036;
+      slot.bobberGroup.position.set(targetX, bobY, targetZ);
+      slot.bobberGroup.rotation.set(
+        Math.sin(elapsedSec * 2.1 + phaseSeed) * 0.09,
+        elapsedSec * 0.6 + phaseSeed,
+        Math.cos(elapsedSec * 1.7 + phaseSeed) * 0.08,
+      );
+
+      const midX = (tipX + targetX) * 0.5;
+      const midY = (tipY + bobY) * 0.5 - 0.30;
+      const midZ = (tipZ + targetZ) * 0.5;
+      for (let p = 0; p < COMPANION_LINE_POINTS; p += 1) {
+        const t = p / (COMPANION_LINE_POINTS - 1);
+        const inv = 1 - t;
+        slot.linePositions[p * 3] = inv * inv * tipX + 2 * inv * t * midX + t * t * targetX;
+        slot.linePositions[p * 3 + 1] = inv * inv * tipY + 2 * inv * t * midY + t * t * (bobY + 0.11);
+        slot.linePositions[p * 3 + 2] = inv * inv * tipZ + 2 * inv * t * midZ + t * t * targetZ;
+      }
+      slot.lineAttr.needsUpdate = true;
+
+      const rT = (elapsedSec * 0.58 + i * 0.33) % 1;
+      const rScale = 0.55 + rT * 1.95;
+      slot.rippleMesh.position.set(targetX, -0.02, targetZ);
+      slot.rippleMesh.scale.set(rScale, 1, rScale);
+      slot.rippleMat.opacity = (1 - rT) * 0.38;
+    }
+  }
+
   function dispose(): void {
+    miniRodGeo.dispose();
+    for (let i = 0; i < companionSlots.length; i += 1) {
+      const slot = companionSlots[i]!;
+      slot.lineGeo.dispose();
+      slot.rippleMat.dispose();
+    }
+    scene.remove(companionRoot);
     rodGripGeo.dispose();
     rodGripMat.dispose();
     rodSeg1Geo.dispose();
@@ -859,6 +1038,7 @@ export function createFishingController(scene: Scene): FishingController {
     getUiPhase,
     getCastTargetYaw: () => castPlayerYaw,
     getCastProgress,
+    syncCompanionAnglers,
     update,
     dispose,
   };

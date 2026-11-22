@@ -1,10 +1,12 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { memo, useEffect, useState } from "react";
 
-import { playDistrictHover, playDistrictSelect } from "../engine/world-audio.js";
+import { playDistrictHover, playDistrictSelect, playPondSplash } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   COSMETIC_UNLOCK_THRESHOLDS,
+  toggleReleasedFish,
+  useReleasedFishIds,
   WORLD_STAMP_IDS,
   type WorldStampId,
   type WorldUnlockableCosmeticKind,
@@ -35,6 +37,7 @@ export interface WorldStampBookProps {
   readonly initialTab?: WorldStampBookTab | undefined;
   readonly locale: ConsoleLocale | undefined;
   readonly onOpenCustomizer?: (() => void) | undefined;
+  readonly onPondSplash?: (() => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -208,9 +211,13 @@ export const WorldStampBook = memo(function WorldStampBook({
   initialTab = "stamps",
   locale,
   onOpenCustomizer,
+  onPondSplash,
   onClose,
 }: WorldStampBookProps) {
   const t = getWorldT(locale);
+  const isEn = locale === "en";
+  const releasedFishIds = useReleasedFishIds();
+  const releasedSet = new Set(releasedFishIds);
   const [activeTab, setActiveTab] = useState<WorldStampBookTab>(initialTab);
 
   useEffect(() => {
@@ -407,14 +414,24 @@ export const WorldStampBook = memo(function WorldStampBook({
           </div>
         ) : (
           <div className="the-world-panel-body the-world-stamp-body">
-            {/* 어류 도감 진행도 바 */}
+            {/* 어류 도감 진행도 바 + 별빛 연못 방생 카운터 */}
             <div className="the-world-stamp-progress">
               <div className="the-world-stamp-progress-head">
                 <span className="the-world-stamp-progress-label">
                   <WorldIcon name="sparkle" size={13} tone="teal" />
                   <span>{t("theWorld.fishing.progressLabel", { count: discoveredFish, total: totalFish })}</span>
                 </span>
-                <span className="the-world-stamp-progress-pct">{fishProgressPct}%</span>
+                <div className="the-world-pond-head-right">
+                  <span className="the-world-pond-counter">
+                    <WorldIcon name="sparkle" size={11} tone="amber" />
+                    <span>
+                      {isEn
+                        ? `In Pond ${releasedFishIds.length}/${totalFish}`
+                        : `연못 방생 ${releasedFishIds.length}/${totalFish}`}
+                    </span>
+                  </span>
+                  <span className="the-world-stamp-progress-pct">{fishProgressPct}%</span>
+                </div>
               </div>
               <div className="the-world-stamp-progress-track" aria-hidden="true">
                 <div
@@ -430,10 +447,14 @@ export const WorldStampBook = memo(function WorldStampBook({
                 const meta = FISH_META[fishId];
                 const count = caughtFishCounts[fishId] ?? 0;
                 const caught = count > 0;
+                const isReleased = releasedSet.has(fishId);
+                const pondBtnLabel = isReleased
+                  ? (isEn ? "Swimming in Pond ✓" : "연못에서 헤엄치는 중 ✓")
+                  : (isEn ? "Release to Pond" : "별빛 연못 방생");
                 return (
                   <article
                     key={fishId}
-                    className={`the-world-fish-card is-${meta.rarity}${caught ? " is-caught" : " is-locked"}`}
+                    className={`the-world-fish-card is-${meta.rarity}${caught ? " is-caught" : " is-locked"}${isReleased ? " is-released" : ""}`}
                   >
                     <div className="the-world-fish-card-top">
                       <span className="the-world-fish-seal" aria-hidden="true">
@@ -456,6 +477,26 @@ export const WorldStampBook = memo(function WorldStampBook({
                     <p className="the-world-fish-card-desc">
                       {caught ? t(meta.descKey) : t("theWorld.fishing.lockedHint")}
                     </p>
+                    {caught ? (
+                      <button
+                        type="button"
+                        className={`the-world-fish-pond-btn${isReleased ? " is-released" : ""}`}
+                        aria-pressed={isReleased}
+                        aria-label={pondBtnLabel}
+                        onClick={() => {
+                          const releasedNow = toggleReleasedFish(fishId);
+                          if (releasedNow) {
+                            playPondSplash();
+                            onPondSplash?.();
+                          } else {
+                            playDistrictHover();
+                          }
+                        }}
+                      >
+                        <WorldIcon name="sparkle" size={12} tone={isReleased ? "amber" : "teal"} />
+                        <span>{pondBtnLabel}</span>
+                      </button>
+                    ) : null}
                   </article>
                 );
               })}

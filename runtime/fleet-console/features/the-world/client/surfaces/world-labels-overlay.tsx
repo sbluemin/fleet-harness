@@ -32,6 +32,25 @@ import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons
 
 const POS_DEADZONE_PX = 0.5;
 const LOD_EPSILON = 0.02;
+const COLLIDE_X_THRESHOLD_PX = 116;
+const COLLIDE_Y_THRESHOLD_PX = 26;
+const COLLIDE_MAX_SHIFT_PX = 28;
+const COLLIDE_FAR_DISTANCE_M = 18;
+const COLLIDE_FADED_OPACITY = 0.42;
+
+interface DeclutterSlot {
+  key: string;
+  el: HTMLDivElement | null | undefined;
+  x: number;
+  y: number;
+  baseY: number;
+  priority: number;
+  distance: number;
+  distant: boolean;
+  opacity: number;
+  scale: number;
+  speechOffsetY: number;
+}
 
 const SPEECH_BADGES: Readonly<Record<string, { readonly icon: WorldIconName; readonly tone: WorldIconTone }>> = {
   wake: { icon: "systemWake", tone: "amber" },
@@ -151,6 +170,18 @@ export const WorldLabelsOverlay = memo(
       y: Number.NaN,
       visible: false,
     });
+    const declutterPoolRef = useRef<DeclutterSlot[]>([]);
+    const lastActorDistanceRef = useRef<Map<string, number>>(new Map());
+    const priorityActorIdsRef = useRef<Set<string>>(new Set());
+
+    // Keep priority actor lookup fresh for 0-GC frame decluttering without adding hook deps.
+    priorityActorIdsRef.current.clear();
+    for (let i = 0; i < labelMetas.length; i += 1) {
+      const m = labelMetas[i]!;
+      if (m.isSelected || m.isNearPlayer || m.needsAttention) {
+        priorityActorIdsRef.current.add(m.actorId);
+      }
+    }
 
     const getActorAnchorRef = useCallback((actorId: string) => {
       let cb = actorRefCallbacks.current.get(actorId);
@@ -330,15 +361,72 @@ export const WorldLabelsOverlay = memo(
 
     useImperativeHandle(ref, () => ({
       applyFramePositions(positions: WorldFrameOverlayPositions) {
+        const pool = declutterPoolRef.current;
+        const distMap = lastActorDistanceRef.current;
+        const priorityActors = priorityActorIdsRef.current;
+        let slotCount = 0;
+
+        const pushSlot = (
+          key: string,
+          el: HTMLDivElement | null | undefined,
+          x: number,
+          y: number,
+          priority: number,
+          distance: number,
+          distant: boolean,
+          opacity: number,
+          scale: number,
+          speechOffsetY: number,
+        ) => {
+          let slot = pool[slotCount];
+          if (!slot) {
+            slot = {
+              key,
+              el,
+              x,
+              y,
+              baseY: y,
+              priority,
+              distance,
+              distant,
+              opacity,
+              scale,
+              speechOffsetY,
+            };
+            pool[slotCount] = slot;
+          } else {
+            slot.key = key;
+            slot.el = el;
+            slot.x = x;
+            slot.y = y;
+            slot.baseY = y;
+            slot.priority = priority;
+            slot.distance = distance;
+            slot.distant = distant;
+            slot.opacity = opacity;
+            slot.scale = scale;
+            slot.speechOffsetY = speechOffsetY;
+          }
+          slotCount += 1;
+        };
+
         const actorMap = actorAnchorRefs.current;
         for (let i = 0; i < positions.actorCount; i += 1) {
           const p = positions.actors[i]!;
-          applyAnchorPosition(
+          distMap.set(p.actorId, p.distance);
+          const el = actorMap.get(p.actorId);
+          if (!p.visible || !el) {
+            applyAnchorPosition(`actor:${p.actorId}`, el, p.x, p.y, false);
+            continue;
+          }
+          const prio = priorityActors.has(p.actorId) ? 0 : 1;
+          pushSlot(
             `actor:${p.actorId}`,
-            actorMap.get(p.actorId),
+            el,
             p.x,
             p.y,
-            p.visible,
+            prio,
+            p.distance,
             p.isDistant,
             p.opacity ?? 1,
             p.scale ?? 1,
@@ -361,7 +449,12 @@ export const WorldLabelsOverlay = memo(
         const villageMap = villageAnchorRefs.current;
         for (let i = 0; i < positions.villageCount; i += 1) {
           const v = positions.villages[i]!;
-          applyAnchorPosition(`village:${v.villageId}`, villageMap.get(v.villageId), v.x, v.y, v.visible);
+          const el = villageMap.get(v.villageId);
+          if (!v.visible || !el) {
+            applyAnchorPosition(`village:${v.villageId}`, el, v.x, v.y, false);
+            continue;
+          }
+          pushSlot(`village:${v.villageId}`, el, v.x, v.y, 3, v.distance, v.distance > COLLIDE_FAR_DISTANCE_M, 1, 1, 0);
         }
 
         applyAnchorPosition(
@@ -372,29 +465,79 @@ export const WorldLabelsOverlay = memo(
           positions.hoveredDistrict.visible,
         );
 
-        applyAnchorPosition(
-          "notice-board",
-          noticeBoardAnchorRef.current,
-          positions.noticeBoard.x,
-          positions.noticeBoard.y,
-          positions.noticeBoard.visible,
-        );
+        const landmarks: readonly [string, HTMLDivElement | null, number, number, boolean][] = [
+          ["notice-board", noticeBoardAnchorRef.current, positions.noticeBoard.x, positions.noticeBoard.y, positions.noticeBoard.visible],
+          ["guild-hall", guildHallAnchorRef.current, positions.guildHall.x, positions.guildHall.y, positions.guildHall.visible],
+          ["campfire-bench", campfireBenchAnchorRef.current, positions.campfireBench.x, positions.campfireBench.y, positions.campfireBench.visible],
+        ];
+        for (let i = 0; i < landmarks.length; i += 1) {
+          const lm = landmarks[i]!;
+          if (!lm[4] || !lm[1]) {
+            applyAnchorPosition(lm[0], lm[1], lm[2], lm[3], false);
+          } else {
+            pushSlot(lm[0], lm[1], lm[2], lm[3], 2, 12 + i, false, 1, 1, 0);
+          }
+        }
 
-        applyAnchorPosition(
-          "guild-hall",
-          guildHallAnchorRef.current,
-          positions.guildHall.x,
-          positions.guildHall.y,
-          positions.guildHall.visible,
-        );
+        // In-place insertion sort by (priority, distance) — 0 GC allocation.
+        for (let i = 1; i < slotCount; i += 1) {
+          const current = pool[i]!;
+          let j = i - 1;
+          while (j >= 0) {
+            const prev = pool[j]!;
+            if (
+              prev.priority < current.priority
+              || (prev.priority === current.priority && prev.distance <= current.distance)
+            ) {
+              break;
+            }
+            pool[j + 1] = prev;
+            j -= 1;
+          }
+          pool[j + 1] = current;
+        }
 
-        applyAnchorPosition(
-          "campfire-bench",
-          campfireBenchAnchorRef.current,
-          positions.campfireBench.x,
-          positions.campfireBench.y,
-          positions.campfireBench.visible,
-        );
+        // 2D screen-space decluttering pass: shift lower-priority overlapping labels vertically (max 28px),
+        // and gently fade distant labels that remain overlapped.
+        for (let i = 1; i < slotCount; i += 1) {
+          const curr = pool[i]!;
+          let stillColliding = false;
+          for (let j = 0; j < i; j += 1) {
+            const other = pool[j]!;
+            if (Math.abs(curr.x - other.x) >= COLLIDE_X_THRESHOLD_PX) continue;
+            const dy = curr.y - other.y;
+            if (Math.abs(dy) >= COLLIDE_Y_THRESHOLD_PX) continue;
+
+            const needed = COLLIDE_Y_THRESHOLD_PX - Math.abs(dy);
+            const pushDir = dy <= 0 ? -1 : 1;
+            const targetY = curr.y + pushDir * needed;
+            const minY = curr.baseY - COLLIDE_MAX_SHIFT_PX;
+            const maxY = curr.baseY + COLLIDE_MAX_SHIFT_PX;
+            curr.y = targetY < minY ? minY : targetY > maxY ? maxY : targetY;
+
+            if (Math.abs(curr.y - other.y) < COLLIDE_Y_THRESHOLD_PX - 2) {
+              stillColliding = true;
+            }
+          }
+          if (stillColliding && (curr.distant || curr.distance > COLLIDE_FAR_DISTANCE_M || curr.priority >= 3)) {
+            curr.opacity = Math.min(curr.opacity, COLLIDE_FADED_OPACITY);
+          }
+        }
+
+        for (let i = 0; i < slotCount; i += 1) {
+          const slot = pool[i]!;
+          applyAnchorPosition(
+            slot.key,
+            slot.el,
+            slot.x,
+            slot.y,
+            true,
+            slot.distant,
+            slot.opacity,
+            slot.scale,
+            slot.speechOffsetY,
+          );
+        }
       },
       getLastPlayerScreenPoint() {
         return lastPlayerScreenRef.current;
@@ -415,6 +558,19 @@ export const WorldLabelsOverlay = memo(
       && !photoMode
       && hoveredDistrict !== null
       && hoveredDistrict.id !== selectedDistrictId;
+
+    // Enforce single nearest interaction badge (`E 상호작용`) at any time.
+    let singleNearActorId: string | null = null;
+    let bestNearDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < labelMetas.length; i += 1) {
+      const m = labelMetas[i]!;
+      if (!m.isNearPlayer) continue;
+      const dist = lastActorDistanceRef.current.get(m.actorId) ?? i;
+      if (dist < bestNearDistance) {
+        bestNearDistance = dist;
+        singleNearActorId = m.actorId;
+      }
+    }
 
     return (
       <div className="the-world-labels">
@@ -493,7 +649,7 @@ export const WorldLabelsOverlay = memo(
               onClick={onSitAtCampfire}
             >
               <WorldIcon name="fire" size={13} tone="amber" />
-              <span className="the-world-keycap">F</span>
+              <span className="the-world-keycap">E</span>
               <span>{t("theWorld.campfire.sitHint")}</span>
             </button>
           </div>
@@ -568,7 +724,7 @@ export const WorldLabelsOverlay = memo(
                   <span aria-hidden="true">{lbl.role === "commodore" ? "?" : "!"}</span>
                 </button>
               ) : null}
-              {lbl.isNearPlayer && interactionMode === "closed" && !cinemaMode ? (
+              {lbl.isNearPlayer && lbl.actorId === singleNearActorId && interactionMode === "closed" && !cinemaMode ? (
                 <button
                   type="button"
                   className="the-world-interact-prompt"

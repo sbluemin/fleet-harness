@@ -3,10 +3,19 @@ import { memo, useEffect, useRef, useState } from "react";
 
 import type { WorldActorSpec, WorldDistrictSpec, WorldVillageSpec } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
-import { playDistrictSelect, playSend } from "../engine/world-audio.js";
+import { playDistrictSelect, playFlagPlant, playSend } from "../engine/world-audio.js";
 import { getWorldT } from "../i18n/index.js";
-import { pushActorSpeech, type WorldSkyQuickMenu } from "../world-store.js";
+import {
+  pushActorSpeech,
+  setOperationFlag,
+  useOperationFlag,
+  type WorldOperationFlag,
+  type WorldOperationFlagDeployInput,
+  type WorldSkyQuickMenu,
+} from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
+
+export type { WorldOperationFlagDeployInput };
 
 export interface WorldSkyHoverTarget {
   readonly village: WorldVillageSpec;
@@ -29,6 +38,9 @@ export interface WorldSkyCommandProps {
   readonly onDiveToTarget: (x: number, z: number, label: string) => void;
   readonly onOpenNotebook: (actorId: string) => void;
   readonly onStatusBanner: (msg: string) => void;
+  readonly operationFlag?: WorldOperationFlag | null | undefined;
+  readonly onDeployOperationFlag?: ((input: WorldOperationFlagDeployInput) => void) | undefined;
+  readonly onClearOperationFlag?: (() => void) | undefined;
 }
 
 function clampPosition(x: number, y: number, width: number, height: number): { readonly left: number; readonly top: number } {
@@ -65,22 +77,42 @@ export const WorldSkyCommand = memo(function WorldSkyCommand({
   onDiveToTarget,
   onOpenNotebook,
   onStatusBanner,
+  operationFlag: operationFlagProp,
+  onDeployOperationFlag,
+  onClearOperationFlag,
 }: WorldSkyCommandProps) {
   const t = getWorldT(locale);
+  const isEn = locale === "en";
+  const bi = (ko: string, en: string) => (isEn ? en : ko);
+  const storeOperationFlag = useOperationFlag();
+  const activeOperationFlag = operationFlagProp !== undefined ? operationFlagProp : storeOperationFlag;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [flagFormOpen, setFlagFormOpen] = useState(false);
+  const [flagDirective, setFlagDirective] = useState("");
   const popoverRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const flagInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraft("");
     setSending(false);
+    setFlagFormOpen(false);
+    setFlagDirective("");
     if (!quickMenu) return;
     const raf = window.requestAnimationFrame(() => {
       inputRef.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(raf);
   }, [quickMenu]);
+
+  useEffect(() => {
+    if (!flagFormOpen) return;
+    const raf = window.requestAnimationFrame(() => {
+      flagInputRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [flagFormOpen]);
 
   useEffect(() => {
     if (!quickMenu) return;
@@ -288,7 +320,100 @@ export const WorldSkyCommand = memo(function WorldSkyCommand({
               <WorldIcon name="chat" size={13} tone="cerulean" />
               <span>{t("theWorld.skyCmd.openNotebook")}</span>
             </button>
+
+            {activeOperationFlag && activeOperationFlag.villageId === menuVillage.id ? (
+              <button
+                type="button"
+                className="the-world-sky-cmd-btn is-opflag-clear"
+                onClick={() => {
+                  playDistrictSelect();
+                  if (onClearOperationFlag) onClearOperationFlag();
+                  else setOperationFlag(null);
+                  onStatusBanner(bi("작전 깃발을 회수했습니다.", "Operation flag cleared."));
+                  onCloseQuickMenu();
+                }}
+              >
+                <WorldIcon name="flag" size={13} tone="rose" />
+                <span>{bi("깃발 회수", "Clear Flag")}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`the-world-sky-cmd-btn is-opflag${flagFormOpen ? " is-active" : ""}`}
+                onClick={() => {
+                  playDistrictSelect();
+                  if (!flagFormOpen && !flagDirective && draft.trim()) {
+                    setFlagDirective(draft.trim());
+                  }
+                  setFlagFormOpen((prev) => !prev);
+                }}
+              >
+                <WorldIcon name="flag" size={13} tone="amber" />
+                <span>{bi("작전 깃발 꽂고 지시", "Plant Flag & Order")}</span>
+              </button>
+            )}
           </div>
+
+          {flagFormOpen ? (
+            <form
+              className="the-world-opflag-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!menuVillage || sending) return;
+                const directive = flagDirective.trim();
+                if (!directive) return;
+                const targetX = menuDistrict ? menuDistrict.x : menuVillage.x;
+                const targetZ = menuDistrict ? menuDistrict.z : menuVillage.z;
+                const targetLabel = menuDistrict?.label ?? menuVillage.label;
+                const commodoreName = menuActor?.name ?? menuVillage.label;
+                const payload: WorldOperationFlagDeployInput = {
+                  villageId: menuVillage.id,
+                  districtId: menuDistrict?.id,
+                  commodoreId: quickMenu.commodoreId,
+                  commodoreName,
+                  label: targetLabel,
+                  directive,
+                  x: targetX,
+                  z: targetZ,
+                };
+                playFlagPlant();
+                if (onDeployOperationFlag) {
+                  onDeployOperationFlag(payload);
+                } else {
+                  setOperationFlag({
+                    ...payload,
+                    id: `opflag:${Date.now()}`,
+                    createdAt: Date.now(),
+                  });
+                  void deps.sendMessageToCommodore(quickMenu.commodoreId, directive);
+                }
+                setFlagDirective("");
+                setFlagFormOpen(false);
+                onCloseQuickMenu();
+              }}
+            >
+              <input
+                ref={flagInputRef}
+                type="text"
+                className="the-world-sky-cmd-input"
+                value={flagDirective}
+                maxLength={240}
+                placeholder={bi("깃발 지시 내용을 1줄로 입력...", "Enter 1-line flag directive...")}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Escape") setFlagFormOpen(false);
+                }}
+                onChange={(e) => setFlagDirective(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="the-world-sky-cmd-send"
+                disabled={flagDirective.trim().length === 0}
+              >
+                {bi("깃발 배치", "Deploy")}
+              </button>
+            </form>
+          ) : null}
         </section>
       ) : null}
     </>
