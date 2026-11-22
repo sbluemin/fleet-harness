@@ -1800,6 +1800,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               deps={deps}
               districts={selectedActorDistricts}
               onJumpToDistrict={handleJumpToPanelDistrict}
+              onStatusBanner={pushToast}
             />
           ) : null}
         </>

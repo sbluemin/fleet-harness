@@ -7,12 +7,15 @@ import type {
   WorldDistrictSpec,
 } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
+import { playCompanionCall, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorDialogue,
   openActorPanel,
+  setCompanionActorId,
   setInspectedObjectiveId,
+  useWorldStore,
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
@@ -56,6 +59,7 @@ export interface WorldPanelModalProps {
   readonly deps: TheWorldClientDeps;
   readonly districts?: readonly WorldDistrictSpec[] | undefined;
   readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
+  readonly onStatusBanner?: ((msg: string) => void) | undefined;
 }
 
 /**
@@ -71,8 +75,11 @@ export const WorldPanelModal = memo(function WorldPanelModal({
   deps,
   districts,
   onJumpToDistrict,
+  onStatusBanner,
 }: WorldPanelModalProps) {
   const t = getWorldT(deps.commodore.language());
+  const store = useWorldStore();
+  const isCompanion = store.companionActorId === actor.id;
   const [subObjectiveTab, setSubObjectiveTab] = useState<"goal" | "crew">("goal");
 
   const isCommodore = actor.role === "commodore" && Boolean(actor.commodoreId);
@@ -137,6 +144,27 @@ export const WorldPanelModal = memo(function WorldPanelModal({
         </div>
 
         <div className="the-world-drawer-controls">
+          {isCommodore ? (
+            <button
+              type="button"
+              className={`the-world-btn${isCompanion ? " is-active" : ""}`}
+              aria-pressed={isCompanion}
+              onClick={() => {
+                if (isCompanion) {
+                  setCompanionActorId(null);
+                  playDistrictSelect();
+                  onStatusBanner?.(t("theWorld.companion.leftToast", { name: actor.name }));
+                } else {
+                  setCompanionActorId(actor.id);
+                  playCompanionCall();
+                  onStatusBanner?.(t("theWorld.companion.joinedToast", { name: actor.name }));
+                }
+              }}
+            >
+              <WorldIcon name={isCompanion ? "close" : "approach"} size={13} tone={isCompanion ? "amber" : "teal"} />
+              <span>{isCompanion ? t("theWorld.companion.endWalk") : t("theWorld.companion.walkTogether")}</span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="the-world-btn"

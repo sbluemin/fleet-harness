@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldActorSpec, WorldScreenLabel } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
+import { playCompanionCall, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
@@ -10,7 +11,9 @@ import {
   openActorPanel,
   requestActorEmote,
   requestApproachActor,
+  setCompanionActorId,
   triggerWorldChoreography,
+  useWorldStore,
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
@@ -62,6 +65,8 @@ export function WorldRadialMenu({
   readonly onStatusBanner: (msg: string) => void;
 }) {
   const t = getWorldT(deps.commodore.language());
+  const store = useWorldStore();
+  const isCompanion = store.companionActorId === actor.id;
   const [activeIndex, setActiveIndex] = useState(0);
 
   const actions = useMemo<readonly RadialAction[]>(() => {
@@ -85,6 +90,25 @@ export function WorldRadialMenu({
           label: t("theWorld.radial.talk"),
           tone: "primary",
           run: () => openActorDialogue(actor.id),
+        },
+        {
+          id: "companion",
+          icon: isCompanion ? "close" : "approach",
+          iconTone: isCompanion ? "amber" : "teal",
+          label: isCompanion ? t("theWorld.companion.endWalk") : t("theWorld.companion.walkTogether"),
+          tone: isCompanion ? "primary" : "default",
+          run: () => {
+            if (isCompanion) {
+              setCompanionActorId(null);
+              playDistrictSelect();
+              onStatusBanner(t("theWorld.companion.leftToast", { name: actor.name }));
+            } else {
+              setCompanionActorId(actor.id);
+              playCompanionCall();
+              onStatusBanner(t("theWorld.companion.joinedToast", { name: actor.name }));
+            }
+            closeActorInteraction();
+          },
         },
         {
           id: "goals",
@@ -211,7 +235,7 @@ export function WorldRadialMenu({
         }
         : approachAction,
     ];
-  }, [actor, isNear, onStatusBanner, t]);
+  }, [actor, isCompanion, isNear, onStatusBanner, t]);
 
   useEffect(() => {
     setActiveIndex(0);
