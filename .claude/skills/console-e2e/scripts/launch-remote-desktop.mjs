@@ -401,6 +401,14 @@ async function main() {
     }
   };
 
+  function stopInFlightCommands() {
+    for (const child of activeChildren) {
+      // Keep the watchdog connected until primary reclaim finishes. Closing it
+      // first would let both the watchdog and the launcher remove the run.
+      if (child !== control && child !== tunnel) child.kill('SIGKILL');
+    }
+  }
+
   /** Spawn with tracking so shutdown can kill in-flight remote commands first. */
   function tracked(child) {
     activeChildren.add(child);
@@ -577,9 +585,7 @@ async function main() {
       dirGone: remoteDir ? null : 'not-created',
       supervisor: control ? 'control-closed' : 'not-started',
     };
-    for (const child of [...activeChildren]) {
-      try { child.kill('SIGKILL'); } catch { /* already gone */ }
-    }
+    stopInFlightCommands();
     // A launch whose PID reply was lost (signal during the launch call) may
     // still have started: discover owned PIDs instead of trusting the reply.
     if (launchAttempted && remotePid === null) {
@@ -692,11 +698,7 @@ async function main() {
     process.on(signal, () => {
       aborted = true;
       exitSignal = signal;
-      if (!shuttingDown) {
-        for (const child of [...activeChildren]) {
-          try { child.kill('SIGKILL'); } catch { /* already gone */ }
-        }
-      }
+      if (!shuttingDown) stopInFlightCommands();
       if (holding || startedApp || launchAttempted) void shutdown(signal === 'SIGTERM' ? 'sigterm' : 'sigint');
     });
   }
@@ -1086,6 +1088,7 @@ async function main() {
         }
         const { ownLoopback, foreign } = parseLsofOwnership(String(lsofOut), opts.remotePort, remotePid);
         if (foreign.length > 0) {
+          log(`listener-refused ${JSON.stringify({ expectedPid: remotePid, ownLoopback, listeners: foreign.map(({ pid, reason }) => ({ pid, reason })) })}`);
           throw new ToolError(1, foreign[0].reason === 'other-pid' ? 'cdp-listener-owner-mismatch' : 'cdp-listener-not-loopback');
         }
         if (ownLoopback) {
@@ -1149,7 +1152,6 @@ async function main() {
     stage = 'ready';
     const remoteGone = (async () => {
       for (;;) {
-        if (aborted) return 'aborted';
         if (aborted) return 'aborted';
         let out = null;
         try {
