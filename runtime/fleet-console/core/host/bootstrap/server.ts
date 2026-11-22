@@ -871,7 +871,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const objectiveOwned = Boolean(objectiveId && objectiveRecords.get(objectiveId));
       const commodoreOwned = Boolean(commodoreId && !ownership?.isDeleting(commodoreId) && ownership?.entities.dirOf(commodoreId) != null);
       if (!target || !actor || (!objectiveOwned && !commodoreOwned)) {
-        if (target) logComputerCapture({ captureReason: "objectiveRecord_unresolved", objectiveRecordResolved: objectiveOwned, actorResolved: Boolean(actor) });
+        // 사유 이름은 그대로 두고, 사령관 소유 호출이 풀리지 않은 경우만 진단 필드로 가른다.
+        if (target) logComputerCapture({ captureReason: "objectiveRecord_unresolved", objectiveRecordResolved: objectiveOwned, actorResolved: Boolean(actor), ...(commodoreId ? { ownerKind: "commodore", commodoreResolved: commodoreOwned } : {}) });
         computerCaptureTarget = null;
       } else {
         const ownerKind = objectiveOwned ? "objective" : "commodore";
@@ -2434,10 +2435,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const target = computerUse.status().enabled ? computerCaptureTarget : null;
     const unavailableOwner = computerUse.captureUnavailableOwner();
     const unavailableReason = target ? null : computerUse.captureUnavailableReason();
+    const unavailableCommodoreId = unavailableOwner ? computerUseMcp.commodoreIdForOwner(unavailableOwner) : null;
     return {
       target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title } : null,
       unavailableObjectiveId: unavailableOwner ? computerUseMcp.objectiveIdForOwner(unavailableOwner) : null,
-      ...(unavailableOwner && computerUseMcp.commodoreIdForOwner(unavailableOwner) ? { unavailableCommodoreId: computerUseMcp.commodoreIdForOwner(unavailableOwner) } : {}),
+      ...(unavailableCommodoreId ? { unavailableCommodoreId } : {}),
       // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
       ...(unavailableReason ? { unavailableReason } : {}),
     };
