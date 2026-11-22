@@ -2208,7 +2208,9 @@ describe("commodore session", () => {
     expect(options.systemPrompt).toContain("owner UUID t1");
     expect(options.systemPrompt).toContain("The person reads the log in English.");
     expect(options.systemPrompt).not.toContain("Fix remote first.");
-    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"], browser: { scopeId: "commodore:t1" } });
+    expect(options.tools).toMatchObject({ builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"], browser: { scopeId: "commodore:t1" }, computerUse: { resident: true, commodoreId: "t1" } });
+    // 컴퓨터 사용은 사령관 기본 승인 — 사람 허용 칸 없이 항상 허용이고, 켜고 끄는 것은 호스트의 실험 스위치 하나다.
+    expect(options.tools?.computerUse?.enabled()).toBe(true);
     // Theater 들은 추가 폴더로 붙고, 그 프로젝트 스킬과 .mcp.json 서버는 건네지 않는다.
     expect(options.workspace?.additionalDirectories).toEqual([theaterRoot]);
     expect(options.workspace?.mcpServers).toBeUndefined();

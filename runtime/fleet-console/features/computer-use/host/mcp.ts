@@ -205,6 +205,13 @@ export interface ComputerUsePluginConnection {
 export interface ComputerUsePluginOptions {
   readonly enabled: () => boolean;
   readonly language?: () => "en" | "ko" | null;
+  /**
+   * 상주 호출자(사령관)용. 실험 스위치가 꺼진 채 열린 세션에도 서버를 내준다 — 호출은 여전히 호출마다 스위치를 묻고
+   * 거부하므로, 사람이 스위치를 켜는 순간 다시 연결하지 않아도 다음 호출부터 쓴다. 지원하지 않는 플랫폼에는 내주지 않는다.
+   */
+  readonly resident?: boolean;
+  /** 이 연결을 쓰는 사령관. 기기를 잡은 동안 사용 표식(objective-use)이 이 사령관을 말한다. */
+  readonly commodoreId?: string;
 }
 
 /** Console 조회 MCP와 도구·토큰·소유권을 공유하지 않는 기기 조작 서버. */
@@ -215,6 +222,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   // (대상 풀이 중)인 호출까지 끊어야 한다. 소유자 라벨은 잡은 뒤에만 서므로 그것만으로는 모자란다.
   const inFlight = new Map<string, Set<AbortController>>();
   const objectiveRecordOwners = new Map<string, string>();
+  // 사령관 세션의 기기 소유자 → 사령관. Objective 소유자(objectiveRecordOwners)와 겹치지 않는다.
+  const commodoreOwners = new Map<string, string>();
   // 기기를 지금 쓰는(마지막으로 부른) 참가자 — 공유 소유자에서는 루트와 다르다. 캡처 스냅숏의 actor 가 읽는다.
   const ownerActors = new Map<string, string>();
   // 연결마다 공유 묶음을 가진다 — 턴 종료·허용 회수가 모든 연결의 묶음에 닿도록 호스트가 이 고리를 돈다.
@@ -245,6 +254,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
     objectiveIdForOwner: (owner: string) => objectiveRecordOwners.get(owner) ?? null,
     /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Objective 자신이다. */
     actorForOwner: (owner: string) => ownerActors.get(owner) ?? objectiveRecordOwners.get(owner) ?? null,
+    /** 그 소유자의 기기를 쓰는 사령관(사령관 세션의 호출). 목표 세션이면 null. */
+    commodoreIdForOwner: (owner: string) => commodoreOwners.get(owner) ?? null,
     connect(): ComputerUseMcpConnection {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
       const prefix = randomUUID();
@@ -429,8 +440,10 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
      */
     connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null {
       if (disposed) throw new Error("Computer Use MCP host is disposed");
-      if (!deps.service.status().enabled) return null;
+      const status = deps.service.status();
+      if (!(options.resident ? status.supported : status.enabled)) return null;
       const owner = `${randomUUID()}:plugin`;
+      if (options.commodoreId) commodoreOwners.set(owner, options.commodoreId);
       const controller = new AbortController();
       const calls = new Set<AbortController>();
       let closed = false;
@@ -457,7 +470,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           }
         });
       });
-      const includeFeedback = feedbackEnabled();
+      const includeFeedback = deps.feedback !== undefined && (options.resident ? status.supported : feedbackEnabled());
       if (includeFeedback) {
         const { name, description } = computerUseFeedbackTool;
         tools.push(defineTool(name, description, feedbackSchema as unknown as Record<string, unknown>, async (args) => {
@@ -481,6 +494,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           controller.abort();
           revoke();
           deps.service.forgetRecent(owner);
+          commodoreOwners.delete(owner);
           pluginConnections.delete(connection);
         },
       };

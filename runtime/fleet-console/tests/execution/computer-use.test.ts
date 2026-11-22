@@ -140,6 +140,7 @@ describe("Fleet Computer Use", () => {
       expect(await service.readStatus()).toEqual({ supported: false, enabled: false, helperAvailable: false, missingPermissions: null, selfCheckFailed: false });
       expect(host.connect().issueSessionToken({ label: "objective", cwd: process.cwd() })).toEqual([]);
       expect(host.connectPlugin({ enabled: () => true })).toBeNull();
+      expect(host.connectPlugin({ enabled: () => true, resident: true })).toBeNull();
       expect(text(await service.execute("computer_session", { op: "status" }, "objective"))).toContain("computer_use_platform_unsupported");
       expect(spawnProcess).not.toHaveBeenCalled();
     } finally { await host.dispose(); }
@@ -444,6 +445,31 @@ describe("Fleet Computer Use", () => {
       expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
       enabled = true;
       expect((await client.callTool({ name: "computer_apps", arguments: {} })).isError).not.toBe(true);
+    } finally { await client.close(); await host.dispose(); }
+  });
+
+  it("gives a resident caller the tools even when the switch is off, refuses each call until the person turns it on, and names its commodore", async () => {
+    const f = setup();
+    f.enable(false);
+    let experiment = false;
+    const host = createComputerUseMcpHost({ service: f.service, experimentEnabled: () => experiment });
+    expect(host.connectPlugin({ enabled: () => true })).toBeNull();
+    const plugin = host.connectPlugin({ enabled: () => true, resident: true, commodoreId: "commodore-1" })!;
+    const [caller, receiver] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "computer-use-resident", version: "1" });
+    await (plugin.embeddedServer as unknown as { instance: McpServer }).instance.connect(receiver);
+    await client.connect(caller);
+    try {
+      expect((await client.listTools()).tools.map(({ name }) => name)).toEqual(computerUseTools.map(({ name }) => name));
+      expect(JSON.stringify((await client.callTool({ name: "computer_apps", arguments: {} })).content)).toContain("experiment_disabled");
+      expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
+      experiment = true; f.enable(true);
+      expect((await client.callTool({ name: "computer_apps", arguments: {} })).isError).not.toBe(true);
+      const owner = f.service.activeOwner()!;
+      expect(host.commodoreIdForOwner(owner)).toBe("commodore-1");
+      expect(host.objectiveIdForOwner(owner)).toBeNull();
+      await plugin.dispose();
+      expect(host.commodoreIdForOwner(owner)).toBeNull();
     } finally { await client.close(); await host.dispose(); }
   });
 

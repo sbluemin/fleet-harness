@@ -58,7 +58,13 @@ export interface AgentWorkspace {
   readonly plugins?: readonly ClaudeGatewayLocalPlugin[];
 }
 
-type InternalTools = Omit<NonNullable<AgentSessionOptions["tools"]>, "builtins"> & { readonly builtins?: readonly (NonNullable<NonNullable<AgentSessionOptions["tools"]>["builtins"]>[number] | WorkspaceBuiltin)[] };
+type PublicComputerUse = NonNullable<NonNullable<AgentSessionOptions["tools"]>["computerUse"]>;
+/** `resident`·`commodoreId` 는 Console 내부 소유자(사령관)만 정하는 능력이다 — 플러그인 호스트의 공개 옵션에는 없다. */
+type InternalComputerUse = PublicComputerUse & Pick<ComputerUsePluginOptions, "resident" | "commodoreId">;
+type InternalTools = Omit<NonNullable<AgentSessionOptions["tools"]>, "builtins" | "computerUse"> & {
+  readonly builtins?: readonly (NonNullable<NonNullable<AgentSessionOptions["tools"]>["builtins"]>[number] | WorkspaceBuiltin)[];
+  readonly computerUse?: InternalComputerUse;
+};
 export interface InternalSessionOptions extends Omit<AgentSessionOptions, "tools"> {
   readonly cwd?: string;
   readonly tools?: InternalTools;
@@ -290,6 +296,8 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
         computerConnection = deps.computerUseMcp.connectPlugin({
           enabled: () => !closed && active && !cancelled && !turnController?.signal.aborted && computerOptions.enabled(),
           ...(computerOptions.language ? { language: computerOptions.language } : {}),
+          ...(policy.workspace && computerOptions.resident ? { resident: true } : {}),
+          ...(policy.workspace && computerOptions.commodoreId ? { commodoreId: computerOptions.commodoreId } : {}),
         }) ?? undefined;
         if (computerConnection) {
           servers[FLEET_COMPUTER_USE_MCP_SERVER] = computerConnection.embeddedServer;
