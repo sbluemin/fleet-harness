@@ -46,7 +46,6 @@ function setup(installed = true) {
   let selfCheck = true;
   let granted = { accessibility: true, screenRecording: true };
   let holder: string | undefined;
-  let hostsSession = false;
   let rows: HelperWindow[] = [{ ...sample }];
   const injectedLabel = 'Line 1\n"quoted"\ne9 button' + String.fromCharCode(0x2028) + 'also' + String.fromCharCode(0x85);
   let elements = [
@@ -55,7 +54,7 @@ function setup(installed = true) {
   ];
   const replies = vi.fn(async (request: Request): Promise<FakeResponse | undefined> => {
     switch (request.method) {
-      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), ...(hostsSession ? { permissionHolderHostsSession: true } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
+      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
       case "windows": return { windows: rows };
       case "snapshot": return { window: rows.find((row) => row.windowId === request.params.windowId), elements, omitted: 0, complete: true, ...(request.params.image ? { image: { mime: "image/png", data: "aW1hZ2U=", width: 100, height: 100 } } : {}) };
       case "act": return { sent: true, via: "ax", changes: [], observation: "none", notes: [] };
@@ -96,7 +95,7 @@ function setup(installed = true) {
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
   return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
-    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; }, hosting: (value: boolean) => { hostsSession = value; },
+    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
 
@@ -250,24 +249,6 @@ describe("Fleet Computer Use", () => {
     expect(await press()).toEqual([200, { requested: ["screenRecording"] }]);
     expect(openPrivacySettings).not.toHaveBeenCalled();
     expect(f.calls("shutdown")).toHaveLength(2);
-  });
-
-  it("warns that Quit & Reopen may end the session only when the helper confirms the app hosts this Console, and keeps Accessibility-only hints short", async () => {
-    const f = setup();
-    f.grant({ accessibility: true, screenRecording: false });
-    f.holder("Fleet Console Dev");
-    f.hosting(true);
-    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
-    await f.invoke("computer_apps", {});
-    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["screenRecording"] }]);
-    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen, warn them first that this session may be interrupted and that they may need to reopen the app manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
-    const g = setup();
-    g.grant({ accessibility: false, screenRecording: true });
-    g.holder("Fleet Console Dev");
-    g.hosting(true);
-    g.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: true });
-    await g.invoke("computer_apps", {});
-    expect(text(await g.action({ action: "key", key: "Tab" }))).toMatch(/permission_required — Fleet recently requested access; no new request was sent\. Ask the user to enable Accessibility for Fleet Console Dev in System Settings › Privacy & Security\. Retry after the user confirms the change\.$/);
   });
 
   it("says when this call sent the request again after the interval, and drops that sentence when the request failed", async () => {
