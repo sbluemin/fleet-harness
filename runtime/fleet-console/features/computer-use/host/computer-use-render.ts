@@ -30,24 +30,33 @@ const hint: Record<string, string> = {
   clipboard_prepare_failed: "The clipboard could not be prepared.",
 };
 
-// 권한 안내 문구(프롬프트 자문 확정). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은 반복하지 않는다.
-// Fleet이 아는 것은 요청을 보냈는지뿐이라, 이력을 모르면 첫 문장을 뺀다. 앱 이름은 TCC 판정 대상이다.
+// 권한 안내 문구(프롬프트 자문 확정, 결정 "permission_required 문구 v2"). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은
+// 반복하지 않는다. Fleet이 아는 것은 요청을 보냈는지뿐이라, 이력을 모르면 첫 문장을 뺀다. 앱 이름은 TCC 판정 대상이다.
 const PERMISSION_REQUEST_LINE = {
   requested: "Fleet requested access from macOS.",
   recent: "Fleet recently requested access; no new request was sent.",
 } as const;
 const PERMISSION_HOLDER_FALLBACK = "the app that started Fleet";
-const PERMISSION_TOGGLE_AGAIN = "If Screen Recording already shows as on for that app, ask the user to turn that switch off and back on.";
 const PERMISSION_LABELS = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]] as const;
+// 화면 기록이 빠졌을 때만 붙인다. 갈림은 서명 종류가 아니라 사람이 목록에서 보는 상태(없음·이미 켜짐)다.
+// 요청 창이 뜨지 않는 빌드는 목록에 없고, 옛 빌드의 허용은 켜짐으로 남아도 거부된다.
+const SCREEN_RECORDING_LIST = "Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on.";
+// 화면 기록을 켜면 macOS가 종료 후 다시 열기를 권하는데, 실측에서 앱이 다시 열리지 않았다. 그 앱이 이 Console을 띄워 지금 세션을
+// 호스팅한다고 헬퍼가 확인했을 때만 세션이 끊길 수 있다고 먼저 알리게 한다. 자동 복귀·재시도는 약속하지 않는다.
+const SCREEN_RECORDING_REOPEN = "If they choose Quit & Reopen and the app stays closed, have them reopen it manually.";
+const SCREEN_RECORDING_REOPEN_HOSTING = "If they choose Quit & Reopen, warn them first that this session may be interrupted and that they may need to reopen the app manually.";
+// 허용 뒤 첫 캡처에서 macOS(ScreenCaptureKit)가 따로 확인 창을 띄운다. 예고일 뿐 시험 캡처나 재승인 지시가 아니다.
+const SCREEN_RECORDING_NEXT_CAPTURE = "On the next capture, macOS may ask the user to confirm Screen Recording for that app.";
 
 function permissionHint(details: Record<string, unknown> | undefined): string {
   const missing = Array.isArray(details?.missing) ? details.missing : [];
   const names = PERMISSION_LABELS.filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ") || "the required permissions";
-  const holder = permissionHolderName(details?.holder) ?? PERMISSION_HOLDER_FALLBACK;
+  const holder = permissionHolderName(details?.holder);
   const request = details?.request === "requested" || details?.request === "recent" ? `${PERMISSION_REQUEST_LINE[details.request]} ` : "";
-  // 목록에 켜짐으로 남은 옛 빌드의 화면 기록 허용은 macOS가 다시 묻지 않으므로, 사람이 그 스위치를 껐다 켜야 지금 빌드에 맞게 갱신된다.
-  const toggle = missing.includes("screenRecording") ? ` ${PERMISSION_TOGGLE_AGAIN}` : "";
-  return `${request}Ask the user to enable ${names} for ${holder} in System Settings › Privacy & Security.${toggle} Retry after the user confirms the change.`;
+  const ask = `${request}Ask the user to enable ${names} for ${holder ?? PERMISSION_HOLDER_FALLBACK} in System Settings › Privacy & Security.`;
+  if (!missing.includes("screenRecording")) return `${ask} Retry after the user confirms the change.`;
+  const reopen = holder && details?.holderHostsSession === true ? SCREEN_RECORDING_REOPEN_HOSTING : SCREEN_RECORDING_REOPEN;
+  return `${ask} ${SCREEN_RECORDING_LIST} ${reopen} Retry after the user confirms the change. ${SCREEN_RECORDING_NEXT_CAPTURE}`;
 }
 
 function errorHint(error: FleetHelperError): string {

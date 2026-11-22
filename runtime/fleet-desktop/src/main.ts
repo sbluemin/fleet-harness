@@ -50,7 +50,7 @@ import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js
 import { createConsoleRelaunchController, createDisabledNativeUpdateActions, createNoopConsoleRelaunchController, type NativeUpdateActions } from "./update-controller.js";
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
-import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission, requestScreenRecordingPermission } from "./computer-capture.js";
+import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createBrowserSurface, createMainPageHost, type SurfaceControl } from "./browser-surface.js";
 import { createBrowserPasswordPageAgent, type PasswordPrompt } from "./browser-password-page.js";
 import { createBrowserActions } from "./browser-actions.js";
@@ -417,12 +417,6 @@ async function boot(): Promise<void> {
         // Computer Use는 로컬 기계만 조작한다 — 원격 콘솔을 보고 있는 창은 이 기계의 권한 안내를 띄우지 않는다.
         if (policy?.currentConsoleOrigin() === localConsoleOrigin && localConsoleOrigin !== null) requestAccessibilityPermission((message) => logger.info(message));
         else logger.info("computer capture accessibility request ignored: remote console");
-        return;
-      }
-      if (command === "request-screen-recording-permission") {
-        // 화면 기록은 앱 주 프로세스만 macOS 안내와 목록 등록을 받는다. 원격 콘솔을 보고 있는 창은 이 기계의 권한을 묻지 않는다.
-        if (policy?.currentConsoleOrigin() === localConsoleOrigin && localConsoleOrigin !== null) void requestScreenRecordingPermission((message) => logger.info(message));
-        else logger.info("computer capture screen recording request ignored: remote console");
         return;
       }
       if (command === "open-screen-recording-settings") {

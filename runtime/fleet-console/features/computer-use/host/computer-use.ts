@@ -97,8 +97,6 @@ export class ComputerUseService {
     readonly preparePaste?: typeof prepareMacPaste;
     readonly verifyWindow?: typeof verifyMacWindowIdentity;
     readonly readPermissions?: typeof readMacPermissions;
-    /** 화면 기록 요청을 이 Console을 띄운 Desktop(앱 주 프로세스)에 보낸다. 보낼 Desktop이 없으면 false. */
-    readonly requestScreenRecording?: () => boolean;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
@@ -349,17 +347,12 @@ export class ComputerUseService {
   }
 
   /**
-   * 빠진 권한을 macOS에 묻고 실제로 보낸 것을 돌려준다. 손쉬운 사용은 헬퍼가 묻는다(앱 이름으로 요청 창이 뜨고 목록에 오른다).
-   * 화면 기록은 macOS가 앱의 자식 요청에 안내도 목록 등록도 내지 않으므로 Desktop 주 프로세스가 묻는다. Desktop이 없으면
-   * 화면 기록은 보내지 못한 채로 남는다. 보낸 권한만 간격 기록에 넣는다.
+   * 빠진 권한을 헬퍼 한 번의 요청으로 macOS에 묻는다. 헬퍼의 판정 대상(헬퍼를 띄운 앱) 이름으로 요청 창이 뜨고 목록에 오른다.
+   * 헬퍼가 실제로 물은 권한만 간격 기록에 넣는다(그사이 허용된 권한은 묻지 않는다).
    */
-  private async sendPermissionRequests(client: FleetHelperClient | null, due: readonly ComputerUsePermission[], now: number): Promise<ComputerUsePermission[]> {
-    const requested: ComputerUsePermission[] = [];
-    if (client && due.includes("accessibility")) {
-      await client.request("requestPermissions", { permissions: ["accessibility"] });
-      requested.push("accessibility");
-    }
-    if (due.includes("screenRecording") && this.deps.requestScreenRecording?.()) requested.push("screenRecording");
+  private async sendPermissionRequests(client: FleetHelperClient, due: readonly ComputerUsePermission[], now: number): Promise<ComputerUsePermission[]> {
+    const reply = await client.request("requestPermissions", { permissions: [...due] });
+    const requested = due.filter((permission) => reply.requested?.includes(permission));
     for (const permission of requested) this.permissionRequestedAt.set(permission, now);
     return requested;
   }
@@ -380,25 +373,23 @@ export class ComputerUseService {
   }
 
   /**
-   * 설정 화면의 "권한 요청". 간격 안에 이미 물었거나 보낼 길이 없으면(macOS는 거절된 화면 기록을 다시 묻지 않고, 터미널 실행에는
-   * Desktop이 없다) 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
+   * 설정 화면의 "권한 요청". 간격 안에 이미 물었으면 macOS가 창을 다시 띄우지 않을 수 있으므로(한 번 거절된 요청은 다시 묻지 않는다)
+   * 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
    */
   async requestPermissions(openSettings: (missing: readonly ComputerUsePermission[]) => Promise<boolean>): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
     const { supported, helperAvailable, missingPermissions } = await this.readStatus();
     if (!supported || !helperAvailable || !missingPermissions?.length) return null;
     const now = Date.now();
     const due = this.duePermissions(missingPermissions, now);
-    const reachable = due.filter((permission) => permission === "accessibility" || this.deps.requestScreenRecording);
-    if (!reachable.length) return { opened: await openSettings(missingPermissions) };
-    // 헬퍼는 손쉬운 사용을 물을 때만 필요하다. 화면 기록만 남았으면 띄우지 않는다.
+    if (!due.length) return { opened: await openSettings(missingPermissions) };
     const live = this.client?.live ? this.client : null;
-    const client = reachable.includes("accessibility") ? live ?? this.deps.platform.createClient() : null;
+    const client = live ?? this.deps.platform.createClient();
     let requested: ComputerUsePermission[];
     try {
-      if (client && !live) await client.start();
-      requested = await this.sendPermissionRequests(client, reachable, now);
+      if (!live) await client.start();
+      requested = await this.sendPermissionRequests(client, due, now);
     } finally {
-      if (client && !live) await client.stop();
+      if (!live) await client.stop();
     }
     return requested.length ? { requested } : { opened: await openSettings(missingPermissions) };
   }

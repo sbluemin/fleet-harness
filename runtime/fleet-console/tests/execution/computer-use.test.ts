@@ -46,6 +46,7 @@ function setup(installed = true) {
   let selfCheck = true;
   let granted = { accessibility: true, screenRecording: true };
   let holder: string | undefined;
+  let hostsSession = false;
   let rows: HelperWindow[] = [{ ...sample }];
   const injectedLabel = 'Line 1\n"quoted"\ne9 button' + String.fromCharCode(0x2028) + 'also' + String.fromCharCode(0x85);
   let elements = [
@@ -54,12 +55,13 @@ function setup(installed = true) {
   ];
   const replies = vi.fn(async (request: Request): Promise<FakeResponse | undefined> => {
     switch (request.method) {
-      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
+      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), ...(hostsSession ? { permissionHolderHostsSession: true } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
       case "windows": return { windows: rows };
       case "snapshot": return { window: rows.find((row) => row.windowId === request.params.windowId), elements, omitted: 0, complete: true, ...(request.params.image ? { image: { mime: "image/png", data: "aW1hZ2U=", width: 100, height: 100 } } : {}) };
       case "act": return { sent: true, via: "ax", changes: [], observation: "none", notes: [] };
       case "verify": return { status: "satisfied", waitedMs: 0 };
       case "focus": return { editable: true, focusedRef: "e2" };
+      case "requestPermissions": return { requested: (request.params as { permissions: string[] }).permissions.filter((key) => !granted[key as keyof typeof granted]), permissions: { ...granted } };
       default: return {};
     }
   });
@@ -80,17 +82,16 @@ function setup(installed = true) {
   const preparePaste = vi.fn(async () => ({ finish }));
   const diagnostic = vi.fn();
   const readPermissions = vi.fn(async (): Promise<MacPermissions | null> => ({ accessibility: true, screenRecording: true }));
-  const requestScreenRecording = vi.fn(() => true);
   const service = new ComputerUseService({
-    enabled: () => enabled, onCaptureTarget, preparePaste, diagnostic, readPermissions, requestScreenRecording,
+    enabled: () => enabled, onCaptureTarget, preparePaste, diagnostic, readPermissions,
     platform: { supported: () => true, inspectInstallation: async () => installed, createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use") },
   });
   services.push(service);
   const invoke = (tool: DeviceTool, args: unknown, owner = "owner", actor?: string) => service.execute(tool, args, owner, undefined, { actor });
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
-  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions, requestScreenRecording,
-    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; },
+  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
+    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; }, hosting: (value: boolean) => { hostsSession = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
 
@@ -179,19 +180,19 @@ describe("Fleet Computer Use", () => {
     exact = true;
     expect(await request(absent.service)).toEqual([409, { error: "permission_request_unavailable" }]);
     expect(await request(f.service)).toEqual([200, { requested: ["screenRecording"] }]);
-    // 화면 기록은 Desktop 주 프로세스가 묻는다. 헬퍼는 띄우지 않는다.
-    expect(f.requestScreenRecording).toHaveBeenCalledTimes(1);
-    expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
+    // 화면 기록도 헬퍼가 묻는다. 떠 있지 않던 헬퍼는 요청만 하고 내린다.
+    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["screenRecording"] }]);
+    expect(f.calls("shutdown")).toHaveLength(1);
     expect(openPrivacySettings).not.toHaveBeenCalled();
     expect(await request(f.service)).toEqual([200, { opened: true }]);
     expect(openPrivacySettings).toHaveBeenCalledExactlyOnceWith(["screenRecording"]);
-    expect(f.requestScreenRecording).toHaveBeenCalledTimes(1);
+    f.grant({ accessibility: false, screenRecording: true });
     f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: true });
     vi.spyOn(Date, "now").mockReturnValue(Date.now() + 5 * 60_000);
     try {
       expect(await request(f.service)).toEqual([200, { requested: ["accessibility"] }]);
-      expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility"] }]);
-      expect(f.calls("shutdown")).toHaveLength(1);
+      expect(f.calls("requestPermissions")).toEqual([{ permissions: ["screenRecording"] }, { permissions: ["accessibility"] }]);
+      expect(f.calls("shutdown")).toHaveLength(2);
     } finally { vi.restoreAllMocks(); }
     expect(absent.runtime.spawnProcess).not.toHaveBeenCalled();
   });
@@ -202,24 +203,29 @@ describe("Fleet Computer Use", () => {
     f.holder("Fleet Console Dev");
     f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
     await f.invoke("computer_apps", {});
-    // 손쉬운 사용은 헬퍼가, 화면 기록은 Desktop 주 프로세스가 같은 첫 사용에서 묻는다.
-    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility"] }]);
-    expect(f.requestScreenRecording).toHaveBeenCalledTimes(1);
-    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Accessibility and Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. If Screen Recording already shows as on for that app, ask the user to turn that switch off and back on. Retry after the user confirms the change.");
+    // 손쉬운 사용과 화면 기록을 헬퍼 한 번의 요청으로 묻는다. 요청 창과 목록에는 판정 대상 앱이 오른다.
+    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }]);
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Accessibility and Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
     expect(f.calls("requestPermissions")).toHaveLength(1);
-    expect(f.requestScreenRecording).toHaveBeenCalledTimes(1);
     expect(f.calls("act")).toHaveLength(0);
   });
 
-  it("without a Desktop to ask, leaves Screen Recording unrequested and omits the request sentence when nothing was sent", async () => {
+  it("warns that Quit & Reopen may end the session only when the helper confirms the app hosts this Console, and keeps Accessibility-only hints short", async () => {
     const f = setup();
-    f.requestScreenRecording.mockReturnValue(false);
     f.grant({ accessibility: true, screenRecording: false });
-    f.holder("Terminal");
+    f.holder("Fleet Console Dev");
+    f.hosting(true);
     f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
     await f.invoke("computer_apps", {});
-    expect(f.calls("requestPermissions")).toHaveLength(0);
-    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Ask the user to enable Screen Recording for Terminal in System Settings › Privacy & Security. If Screen Recording already shows as on for that app, ask the user to turn that switch off and back on. Retry after the user confirms the change.");
+    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["screenRecording"] }]);
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen, warn them first that this session may be interrupted and that they may need to reopen the app manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
+    const g = setup();
+    g.grant({ accessibility: false, screenRecording: true });
+    g.holder("Fleet Console Dev");
+    g.hosting(true);
+    g.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: true });
+    await g.invoke("computer_apps", {});
+    expect(text(await g.action({ action: "key", key: "Tab" }))).toMatch(/permission_required — Fleet recently requested access; no new request was sent\. Ask the user to enable Accessibility for Fleet Console Dev in System Settings › Privacy & Security\. Retry after the user confirms the change\.$/);
   });
 
   it("says when this call sent the request again after the interval, and drops that sentence when the request failed", async () => {
@@ -252,7 +258,7 @@ describe("Fleet Computer Use", () => {
       ? { error: { code: "permission_required", message: "permission_required", details: { missing: ["screenRecording"], holder: "Fleet Console" } } }
       : base(request));
     await f.invoke("computer_apps", {});
-    expect(text(await f.invoke("computer_state", { window: "w1" }))).toBe("error permission_required: Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console in System Settings › Privacy & Security. If Screen Recording already shows as on for that app, ask the user to turn that switch off and back on. Retry after the user confirms the change.");
+    expect(text(await f.invoke("computer_state", { window: "w1" }))).toBe("error permission_required: Fleet recently requested access; no new request was sent. Ask the user to enable Screen Recording for Fleet Console in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
   });
 
   it("keeps window tools working when the shell cannot verify a kernel start time for capture", async () => {

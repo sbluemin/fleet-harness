@@ -275,10 +275,11 @@ private struct Expectation {
       let version = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion == 0 ? "" : ".\(os.patchVersion)")
       var hello: Object = ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check]
       if let permissionHolder { hello["permissionHolder"] = permissionHolder }
+      if permissionHolderHostsConsole { hello["permissionHolderHostsSession"] = true }
       return hello
     case "requestPermissions":
       try validateKeys(p, allowed: ["permissions"])
-      guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy({ $0 == "accessibility" }) else {
+      guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy(HelperPermissions.names.contains) else {
         throw HelperError("invalid_params", "permissions")
       }
       return ["requested": HelperPermissions.request(Set(wanted)), "permissions": HelperPermissions().json]

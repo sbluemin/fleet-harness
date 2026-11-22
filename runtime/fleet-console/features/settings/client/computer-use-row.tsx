@@ -65,8 +65,11 @@ export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { 
       // 권한은 헬퍼를 띄운 앱의 이름으로 판정된다(설치본 Fleet Console, pnpm dev Fleet Console Dev). 읽지 못하면 Fleet Console로 둔다.
       ? renderMessage(t(`settings.computerUse.${key}`), { app: status.permissionHolder ?? "Fleet Console" })
       : t(`settings.computerUse.${key}`)}
-    {/* 목록에 켜짐으로 남은 옛 빌드의 화면 기록 허용은 macOS가 다시 묻지 않는다. 화면 기록이 빠졌을 때만 껐다 켜기를 안내한다. */}
-    {typeof status === "object" && status.missingPermissions?.includes("screenRecording") && <> {t("settings.computerUse.permissionToggleAgain")}</>}
+    {/* 화면 기록이 빠졌을 때만: 목록에 없으면 + 추가(요청 창이 뜨지 않는 빌드), 옛 빌드 허용이 켜짐으로 남았으면 껐다 켜기,
+        켠 뒤 macOS의 종료 후 다시 열기에서 앱이 다시 열리지 않는 경우, 첫 캡처의 macOS 확인 창(실측 근거는 임무 4 기록). */}
+    {typeof status === "object" && status.missingPermissions?.includes("screenRecording") && <>
+      {" "}{t("settings.computerUse.permissionScreenRecordingList")} {t("settings.computerUse.permissionScreenRecordingReopen")} {t("settings.computerUse.permissionScreenRecordingConfirm")}
+    </>}
     {permissionMissing && <> <button type="button" className={actionClass} disabled={requesting} onClick={(event) => { event.stopPropagation(); void requestPermissions(); }}>{t("settings.computerUse.requestPermissions")}</button>{requestFailed && <> {t("settings.computerUse.requestPermissionsFailed")}</>}</>}
     {status === "failed" && <> <button type="button" className={actionClass} onClick={(event) => { event.stopPropagation(); retry(); }}>{t("settings.computerUse.retry")}</button></>}
   </> : null;

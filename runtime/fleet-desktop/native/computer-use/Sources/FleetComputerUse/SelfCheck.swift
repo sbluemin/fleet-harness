@@ -4,15 +4,33 @@ import ApplicationServices
 /// TCC는 이 헬퍼가 아니라 헬퍼를 띄운 앱(책임 프로세스)의 이름으로 권한을 판정한다. 설치본은 Fleet Console,
 /// pnpm dev는 Fleet Console Dev, 터미널에서 띄운 Console은 그 터미널이다. 안내가 그 이름을 가리키도록 읽어 둔다.
 /// 비공개 함수라 없거나 앱이 아니면 nil이고, 그때 안내는 이름 없이 나간다.
-let permissionHolder: String? = {
+private let permissionHolderApp: (pid: pid_t, name: String)? = {
   typealias Responsible = @convention(c) (pid_t) -> pid_t
   guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid") else { return nil }
   let pid = unsafeBitCast(symbol, to: Responsible.self)(getpid())
   guard pid > 0, let name = NSRunningApplication(processIdentifier: pid)?.localizedName, !name.isEmpty else { return nil }
-  return name
+  return (pid, name)
+}()
+let permissionHolder = permissionHolderApp?.name
+
+/// 판정 대상 앱이 이 헬퍼를 띄운 Console의 조상인지. 그렇다면 화면 기록을 켠 뒤 macOS가 권하는 "종료 후 다시 열기"가
+/// 그 Console과 지금 세션을 함께 끝낸다. 부모를 따라 올라가 확인하고, 확인하지 못하면 false다.
+let permissionHolderHostsConsole: Bool = {
+  guard let holder = permissionHolderApp?.pid else { return false }
+  var pid = getppid()
+  for _ in 0..<32 {
+    if pid == holder { return true }
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard pid > 1, sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
+    pid = info.kp_eproc.e_ppid
+  }
+  return false
 }()
 
 struct HelperPermissions {
+  static let names = ["accessibility", "screenRecording"]
   let accessibility = AXIsProcessTrusted()
   let screenRecording = CGPreflightScreenCaptureAccess()
   var missing: [String] { [("accessibility", accessibility), ("screenRecording", screenRecording)].compactMap { $0.1 ? nil : $0.0 } }
@@ -21,17 +39,27 @@ struct HelperPermissions {
   var error: HelperError {
     var details: Object = ["missing": missing]
     if let permissionHolder { details["holder"] = permissionHolder }
+    if permissionHolderHostsConsole { details["holderHostsSession"] = true }
     return HelperError("permission_required", details: details)
   }
   var json: Object { ["accessibility": accessibility, "screenRecording": screenRecording] }
 
-  /// 빠진 손쉬운 사용을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
-  /// 화면 기록은 여기서 묻지 않는다. macOS는 앱의 자식이 낸 화면 기록 요청에 안내도 목록 등록도 내지 않아(CGRequestScreenCaptureAccess·
-  /// ScreenCaptureKit 모두 실측) Desktop 주 프로세스가 묻는다. 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
+  /// 빠진 권한을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
+  /// 팀 ID로 서명한 앱에서는 화면 기록도 이 요청으로 "화면 기록" 창이 뜨고 목록에 오른다(macOS 26.5 실측). adhoc 서명 앱에서는
+  /// 창도 목록 등록도 없었으므로 안내가 + 추가를 함께 말한다. tccd의 "does not allow prompting" 기록은 창이 떠도 남는다.
+  /// 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
   static func request(_ wanted: Set<String>) -> [String] {
-    guard wanted.contains("accessibility"), !AXIsProcessTrusted() else { return [] }
-    _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-    return ["accessibility"]
+    let now = HelperPermissions()
+    var requested: [String] = []
+    if wanted.contains("accessibility") && !now.accessibility {
+      _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+      requested.append("accessibility")
+    }
+    if wanted.contains("screenRecording") && !now.screenRecording {
+      _ = CGRequestScreenCaptureAccess()
+      requested.append("screenRecording")
+    }
+    return requested
   }
 }
 

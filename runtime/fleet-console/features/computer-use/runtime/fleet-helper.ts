@@ -33,6 +33,8 @@ export interface HelperHello {
   selfCheck: { ok: boolean; reason?: string; ms: number };
   /** TCC가 권한을 판정하는 앱의 표시 이름. 헬퍼 자신이 아니라 헬퍼를 띄운 앱이다. */
   permissionHolder?: string;
+  /** 그 앱이 이 Console의 조상이라 종료하면 지금 세션도 끝나는지. 헬퍼가 확인했을 때만 true다. */
+  permissionHolderHostsSession?: boolean;
 }
 export interface HelperPermissionRequest { requested?: ("accessibility" | "screenRecording")[]; permissions?: { accessibility: boolean; screenRecording: boolean } }
 export interface HelperFocus { editable: boolean; focusedRef?: string; role?: string }
@@ -92,9 +94,9 @@ export class FleetHelperClient {
   async start(): Promise<HelperHello> {
     const hello = await this.send("hello", {});
     if (hello.protocol !== 1 || typeof hello.selfCheck?.ok !== "boolean" || typeof hello.permissions?.accessibility !== "boolean" || typeof hello.permissions?.screenRecording !== "boolean") throw new FleetHelperError("internal");
-    const { permissionHolder, ...rest } = hello;
+    const { permissionHolder, permissionHolderHostsSession, ...rest } = hello;
     const holder = permissionHolderName(permissionHolder);
-    return this.hello = holder ? { ...rest, permissionHolder: holder } : rest;
+    return this.hello = { ...rest, ...(holder ? { permissionHolder: holder } : {}), ...(holder && permissionHolderHostsSession === true ? { permissionHolderHostsSession: true } : {}) };
   }
 
   request<K extends Exclude<keyof Replies, "shutdown" | "hello">>(method: K, params: object): Promise<Replies[K]> {
@@ -107,7 +109,7 @@ export class FleetHelperClient {
   assertInputAllowed(): void {
     if (!this.hello) throw new FleetHelperError("internal");
     const missing = (["accessibility", "screenRecording"] as const).filter((key) => !this.hello!.permissions[key]);
-    if (missing.length) throw new FleetHelperError("permission_required", false, { missing, ...(this.hello.permissionHolder ? { holder: this.hello.permissionHolder } : {}) });
+    if (missing.length) throw new FleetHelperError("permission_required", false, { missing, ...(this.hello.permissionHolder ? { holder: this.hello.permissionHolder } : {}), ...(this.hello.permissionHolderHostsSession ? { holderHostsSession: true } : {}) });
     if (!this.hello.selfCheck.ok) throw new FleetHelperError("self_check_failed");
   }
 

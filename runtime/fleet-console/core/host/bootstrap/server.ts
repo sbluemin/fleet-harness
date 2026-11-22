@@ -878,13 +878,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       watchComputerCapture();
     },
     platform: computerUsePlatform,
-    // 화면 기록은 헬퍼(앱의 자식)가 물으면 macOS가 안내 없이 거절하므로, 이 기계의 Desktop 주 프로세스에 묻게 한다.
-    // 이 Console을 띄운 Desktop이 붙어 있지 않으면(터미널 실행 등) 보내지 못했다고 돌려준다.
-    requestScreenRecording: () => {
-      if (![...desktopWindowCommandSseSubscribers.values()].includes("local")) return false;
-      publishDesktopWindowCommand("local", "request-screen-recording-permission");
-      return true;
-    },
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
@@ -1497,8 +1490,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         logComputerCapture({ captureReason: "accessibility_request", admitted });
         if (!admitted) return;
       }
-      // 화면 기록 요청은 Console이 컴퓨터유즈 첫 사용에서만 직접 보낸다. 렌더러가 보낸 같은 명령은 버린다.
-      if (command === "request-screen-recording-permission") return;
       // 설정 열기도 사람이 누른 명령이 이 기계에 닿을 때만, Desktop이 보고한 화면 기록 사유가 있을 때만 보낸다.
       if (command === "open-screen-recording-settings") {
         const admitted = owner === "local" && screenRecordingPermissionReason === "screen_recording_permission_required";

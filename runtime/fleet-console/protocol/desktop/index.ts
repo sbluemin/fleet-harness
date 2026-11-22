@@ -619,9 +619,6 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  * TCC는 Console 자식(osascript)을 띄운 앱 — 창을 든 Desktop — 을 기준으로 판정하므로 그 앱이 묻는다.
  * `open-screen-recording-settings`는 화면 기록 권한이 없어 공유가 실패했을 때 사람이 누른 요청이다.
  * Desktop은 고정된 화면 기록 설정 주소만 열고, OS 권한 안내를 새로 띄우지 않는다. 모르는 옛 셸은 프레임을 버린다.
- * `request-screen-recording-permission`은 Console이 컴퓨터유즈에 화면 기록이 처음 필요해졌을 때 보내는 요청이다. macOS는 앱이 띄운
- * 자식(헬퍼)의 화면 기록 요청에는 안내도 목록 등록도 내지 않으므로, 앱 주 프로세스인 Desktop이 묻는다. Console만 보내고, 렌더러가
- * 보낸 같은 명령은 버린다. 모르는 옛 셸은 프레임을 버린다.
  *
  * `console-ready`는 명령이라기보다 알림이다 — 막 적재된 화면이 첫 데이터를 반영해 한 번 그렸다는 사실. 호스트를 갈아타는 셸은
  * 그때까지 옛 화면을 붙잡아 두었다가 걷는다. 걸어 두지 않는 채널이라 셸은 적재 *전에* 새 콘솔의 이 스트림을 연다.
@@ -633,7 +630,7 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  * `select-browser-space`는 좌측 사이드바에서 사령관·지휘관을 골랐을 때 플릿 브라우저를 그 스페이스(`spaceId`)로 옮겨 달라는 요청이다.
  * 열려 있으면 곧바로 옮기고, 닫혀 있으면 열지 않은 채 기억했다가 다음에 열 때 그 스페이스로 연다. 모르는 옛 셸은 프레임을 버린다.
  */
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "request-screen-recording-permission", "console-ready", "toggle-browser-viewer", "select-browser-space"] as const;
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready", "toggle-browser-viewer", "select-browser-space"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
 export interface DesktopWindowCommandSnapshot {
   readonly command: DesktopWindowCommand | null;
