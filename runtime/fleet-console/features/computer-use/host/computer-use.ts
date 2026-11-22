@@ -77,6 +77,8 @@ export class ComputerUseService {
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
+  /** `stop()`이 불릴 때마다 오른다. 요청 도중에 멈췄으면 그 요청의 헬퍼를 넘겨받지 않는다. */
+  private stops = 0;
   private clipboardCleanup: Promise<ClipboardRestoration | undefined> | null = null;
   private windowSequence = 0;
   private viewSequence = 0;
@@ -168,6 +170,7 @@ export class ComputerUseService {
 
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
+    this.stops++;
     this.state = "stopping";
     this.lifetime?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
@@ -387,7 +390,8 @@ export class ComputerUseService {
 
   /**
    * 설정 화면의 "권한 요청". 간격 안에 이미 물었으면 macOS가 창을 다시 띄우지 않을 수 있으므로(한 번 거절된 요청은 다시 묻지 않는다)
-   * 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
+   * 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 새로 띄워 요청한다. 화면 기록을 미뤘으면 그 헬퍼를 에이전트 헬퍼로
+   * 넘겨 감시가 살아 있게 하고, 아니면 바로 내린다.
    */
   async requestPermissions(): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
     const { supported, helperAvailable, missingPermissions } = await this.readStatus();
@@ -397,15 +401,34 @@ export class ComputerUseService {
     if (!due.length) return { opened: await this.deps.platform.openPrivacySettings(missingPermissions) };
     const live = this.client?.live ? this.client : null;
     const client = live ?? this.deps.platform.createClient();
+    const stops = this.stops;
     let requested: ComputerUsePermission[];
+    let kept = false;
     try {
       if (!live) await client.start();
-      // 잠깐 띄운 헬퍼는 곧 내려가므로 미룬 화면 기록 요청도 함께 끝난다. 기록하지 않으니 손쉬운 사용을 켠 뒤 다시 누르면 묻는다.
-      ({ requested } = await this.sendPermissionRequests(client, due, now));
+      let deferred: ComputerUsePermission[];
+      ({ requested, deferred } = await this.sendPermissionRequests(client, due, now));
+      kept = !live && deferred.length > 0 && stops === this.stops && this.keepPermissionHelper(client);
     } finally {
-      if (!live) await client.stop();
+      if (!live && !kept) await client.stop();
     }
     return requested.length ? { requested } : { opened: await this.deps.platform.openPrivacySettings(missingPermissions) };
+  }
+
+  /**
+   * 화면 기록을 미룬 요청 헬퍼를 에이전트 헬퍼 자리에 둔다. 그 헬퍼의 감시가 손쉬운 사용이 켜지는 즉시 화면 기록을 묻는다(에이전트 첫
+   * 사용과 같다). 소유자 없이 유휴 타이머만 걸므로, 에이전트가 쓰지 않으면 감시 기한(5분)과 같은 때 `stop()`으로 내려간다. 그사이
+   * 에이전트가 시작하면 이 헬퍼를 이어 쓰고, 다시 누르면 새 헬퍼를 띄우지 않고 이 헬퍼로 묻는다. 에이전트 호출이 진행 중이거나
+   * 자리에 다른 헬퍼(내려가는 중 포함)가 있거나 정지 중이면 넘기지 않는다. 요청 도중 멈췄으면 호출자가 넘기지 않는다. 넘기지 않으면
+   * 호출자가 내리고, 예전처럼 다음 누름이 다시 묻는다.
+   */
+  private keepPermissionHelper(client: FleetHelperClient): boolean {
+    if (this.client || this.busy || this.stopping || !client.live) return false;
+    this.client = client;
+    if (this.idleTimer) clearTimeout(this.idleTimer);
+    this.idleTimer = setTimeout(() => this.stopDetached(), IDLE_TIMEOUT_MS);
+    this.idleTimer.unref();
+    return true;
   }
 
   private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
