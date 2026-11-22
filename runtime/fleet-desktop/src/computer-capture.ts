@@ -80,6 +80,28 @@ export function requestAccessibilityPermission(log: (message: string) => void, n
   log(`computer capture accessibility requested trusted=${trusted}`);
 }
 
+/** 같은 요청이 겹쳐 와도 화면 목록을 거듭 읽지 않는 간격. 첫 사용 요청의 간격은 Console이 정한다. */
+const SCREEN_RECORDING_REQUEST_INTERVAL_MS = 5_000;
+let lastScreenRecordingRequestAt = 0;
+
+/**
+ * 컴퓨터유즈에 필요한 화면 기록 권한을 이 앱 이름으로 묻는다. macOS는 앱이 띄운 자식(헬퍼·osascript)의 화면 기록 요청에는
+ * 안내도 시스템 설정 목록 등록도 내지 않는다(tccd: "does not allow prompting"). 그래서 앱 주 프로세스가 화면 목록을 한 번 읽어
+ * macOS가 이 앱을 목록에 올리고 안내하게 한다. 이미 허용됐으면 아무것도 하지 않는다. 결과는 읽어 기록만 하고 쓰지 않는다.
+ */
+export async function requestScreenRecordingPermission(log: (message: string) => void, now = Date.now()): Promise<void> {
+  if (process.platform !== "darwin") { log("computer capture screen recording request ignored: platform"); return; }
+  if (now - lastScreenRecordingRequestAt < SCREEN_RECORDING_REQUEST_INTERVAL_MS) { log("computer capture screen recording request ignored: repeated"); return; }
+  lastScreenRecordingRequestAt = now;
+  if (screenAccess() === "granted") { log("computer capture screen recording request skipped: granted"); return; }
+  try {
+    await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } });
+    log(`computer capture screen recording requested status=${screenAccess()}`);
+  } catch (error) {
+    log(`computer capture screen recording request failed: ${error instanceof Error ? error.message : "unknown"}`);
+  }
+}
+
 /** Console가 관찰 시 확보한 창 ID와 프로세스 수명을 검증한다. 제목으로 다른 창을 찾지 않는다. */
 export function installComputerCapture(contents: WebContents, localOrigin: () => string | null, log: (message: string) => void): void {
   contents.session.setDisplayMediaRequestHandler((request, callback) => {

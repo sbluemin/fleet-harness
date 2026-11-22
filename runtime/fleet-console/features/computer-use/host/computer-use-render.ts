@@ -37,6 +37,7 @@ const PERMISSION_REQUEST_LINE = {
   recent: "Fleet recently requested access; no new request was sent.",
 } as const;
 const PERMISSION_HOLDER_FALLBACK = "the app that started Fleet";
+const PERMISSION_TOGGLE_AGAIN = "If Screen Recording already shows as on for that app, ask the user to turn that switch off and back on.";
 const PERMISSION_LABELS = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]] as const;
 
 function permissionHint(details: Record<string, unknown> | undefined): string {
@@ -44,7 +45,9 @@ function permissionHint(details: Record<string, unknown> | undefined): string {
   const names = PERMISSION_LABELS.filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ") || "the required permissions";
   const holder = permissionHolderName(details?.holder) ?? PERMISSION_HOLDER_FALLBACK;
   const request = details?.request === "requested" || details?.request === "recent" ? `${PERMISSION_REQUEST_LINE[details.request]} ` : "";
-  return `${request}Ask the user to enable ${names} for ${holder} in System Settings › Privacy & Security. Retry after the user grants access.`;
+  // 목록에 켜짐으로 남은 옛 빌드의 화면 기록 허용은 macOS가 다시 묻지 않으므로, 사람이 그 스위치를 껐다 켜야 지금 빌드에 맞게 갱신된다.
+  const toggle = missing.includes("screenRecording") ? ` ${PERMISSION_TOGGLE_AGAIN}` : "";
+  return `${request}Ask the user to enable ${names} for ${holder} in System Settings › Privacy & Security.${toggle} Retry after the user confirms the change.`;
 }
 
 function errorHint(error: FleetHelperError): string {

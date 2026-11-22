@@ -44,9 +44,13 @@ it("names only the missing permission and keeps the toggle usable while requesti
   expect(view.fetch.mock.calls.at(-1)).toMatchObject(["/api/v1/computer-use/permission-request", { method: "POST" }]);
 });
 
-it("names the app macOS judges, such as Fleet Console Dev in a dev run", async () => {
+it("names the app macOS judges, such as Fleet Console Dev in a dev run, and asks to toggle Screen Recording only when it is missing", async () => {
   const view = await mount({ ...ready, missingPermissions: ["accessibility", "screenRecording"], permissionHolder: "Fleet Console Dev" });
-  expect(view.node.querySelector('[role="status"]')?.textContent).toContain("Fleet Console Dev needs Accessibility and Screen Recording permission.");
+  const notice = view.node.querySelector('[role="status"]')?.textContent;
+  expect(notice).toContain("Fleet Console Dev needs Accessibility and Screen Recording permission.");
+  expect(notice).toContain("If it already looks on, turn it off and on again.");
+  const accessibilityOnly = await mount({ ...ready, missingPermissions: ["accessibility"], permissionHolder: "Fleet Console Dev" });
+  expect(accessibilityOnly.node.querySelector('[role="status"]')?.textContent).not.toContain("turn it off and on again");
 });
 
 it("keeps the toggle on when startup self-check pauses control and has no notice in normal use", async () => {

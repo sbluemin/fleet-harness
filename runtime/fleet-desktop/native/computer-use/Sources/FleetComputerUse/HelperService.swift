@@ -278,7 +278,7 @@ private struct Expectation {
       return hello
     case "requestPermissions":
       try validateKeys(p, allowed: ["permissions"])
-      guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy(HelperPermissions.names.contains) else {
+      guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy({ $0 == "accessibility" }) else {
         throw HelperError("invalid_params", "permissions")
       }
       return ["requested": HelperPermissions.request(Set(wanted)), "permissions": HelperPermissions().json]

@@ -13,7 +13,6 @@ let permissionHolder: String? = {
 }()
 
 struct HelperPermissions {
-  static let names = ["accessibility", "screenRecording"]
   let accessibility = AXIsProcessTrusted()
   let screenRecording = CGPreflightScreenCaptureAccess()
   var missing: [String] { [("accessibility", accessibility), ("screenRecording", screenRecording)].compactMap { $0.1 ? nil : $0.0 } }
@@ -26,20 +25,13 @@ struct HelperPermissions {
   }
   var json: Object { ["accessibility": accessibility, "screenRecording": screenRecording] }
 
-  /// 빠진 권한만 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
-  /// 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
+  /// 빠진 손쉬운 사용을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
+  /// 화면 기록은 여기서 묻지 않는다. macOS는 앱의 자식이 낸 화면 기록 요청에 안내도 목록 등록도 내지 않아(CGRequestScreenCaptureAccess·
+  /// ScreenCaptureKit 모두 실측) Desktop 주 프로세스가 묻는다. 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
   static func request(_ wanted: Set<String>) -> [String] {
-    let now = HelperPermissions()
-    var requested: [String] = []
-    if wanted.contains("accessibility") && !now.accessibility {
-      _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
-      requested.append("accessibility")
-    }
-    if wanted.contains("screenRecording") && !now.screenRecording {
-      _ = CGRequestScreenCaptureAccess()
-      requested.append("screenRecording")
-    }
-    return requested
+    guard wanted.contains("accessibility"), !AXIsProcessTrusted() else { return [] }
+    _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+    return ["accessibility"]
   }
 }
 

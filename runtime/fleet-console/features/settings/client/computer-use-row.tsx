@@ -65,6 +65,8 @@ export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { 
       // 권한은 헬퍼를 띄운 앱의 이름으로 판정된다(설치본 Fleet Console, pnpm dev Fleet Console Dev). 읽지 못하면 Fleet Console로 둔다.
       ? renderMessage(t(`settings.computerUse.${key}`), { app: status.permissionHolder ?? "Fleet Console" })
       : t(`settings.computerUse.${key}`)}
+    {/* 목록에 켜짐으로 남은 옛 빌드의 화면 기록 허용은 macOS가 다시 묻지 않는다. 화면 기록이 빠졌을 때만 껐다 켜기를 안내한다. */}
+    {typeof status === "object" && status.missingPermissions?.includes("screenRecording") && <> {t("settings.computerUse.permissionToggleAgain")}</>}
     {permissionMissing && <> <button type="button" className={actionClass} disabled={requesting} onClick={(event) => { event.stopPropagation(); void requestPermissions(); }}>{t("settings.computerUse.requestPermissions")}</button>{requestFailed && <> {t("settings.computerUse.requestPermissionsFailed")}</>}</>}
     {status === "failed" && <> <button type="button" className={actionClass} onClick={(event) => { event.stopPropagation(); retry(); }}>{t("settings.computerUse.retry")}</button></>}
   </> : null;

@@ -97,6 +97,8 @@ export class ComputerUseService {
     readonly preparePaste?: typeof prepareMacPaste;
     readonly verifyWindow?: typeof verifyMacWindowIdentity;
     readonly readPermissions?: typeof readMacPermissions;
+    /** 화면 기록 요청을 이 Console을 띄운 Desktop(앱 주 프로세스)에 보낸다. 보낼 Desktop이 없으면 false. */
+    readonly requestScreenRecording?: () => boolean;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
@@ -347,9 +349,24 @@ export class ComputerUseService {
   }
 
   /**
-   * 컴퓨터유즈가 처음 필요해질 때 빠진 권한 전부를 macOS 요청 창으로 한 번에 묻는다. 창과 시스템 설정 목록에는
-   * 헬퍼를 띄운 앱(TCC 판정 대상)이 올라가므로 사람이 + 로 앱을 찾아 넣지 않아도 된다. 허용은 사람이 하고,
-   * 허용 뒤 다음 호출에서 permissionsGrantedSince가 헬퍼를 새로 띄운다.
+   * 빠진 권한을 macOS에 묻고 실제로 보낸 것을 돌려준다. 손쉬운 사용은 헬퍼가 묻는다(앱 이름으로 요청 창이 뜨고 목록에 오른다).
+   * 화면 기록은 macOS가 앱의 자식 요청에 안내도 목록 등록도 내지 않으므로 Desktop 주 프로세스가 묻는다. Desktop이 없으면
+   * 화면 기록은 보내지 못한 채로 남는다. 보낸 권한만 간격 기록에 넣는다.
+   */
+  private async sendPermissionRequests(client: FleetHelperClient | null, due: readonly ComputerUsePermission[], now: number): Promise<ComputerUsePermission[]> {
+    const requested: ComputerUsePermission[] = [];
+    if (client && due.includes("accessibility")) {
+      await client.request("requestPermissions", { permissions: ["accessibility"] });
+      requested.push("accessibility");
+    }
+    if (due.includes("screenRecording") && this.deps.requestScreenRecording?.()) requested.push("screenRecording");
+    for (const permission of requested) this.permissionRequestedAt.set(permission, now);
+    return requested;
+  }
+
+  /**
+   * 컴퓨터유즈가 처음 필요해질 때 빠진 권한 전부를 한 번에 묻는다. 요청 창과 시스템 설정 목록에는 헬퍼를 띄운 앱(TCC 판정 대상)이
+   * 올라가므로 사람이 + 로 앱을 찾아 넣지 않아도 된다. 허용은 사람이 하고, 허용 뒤 다음 호출에서 permissionsGrantedSince가 헬퍼를 새로 띄운다.
    */
   private async requestMissingPermissions(client: FleetHelperClient, now = Date.now()): Promise<PermissionRequestOutcome | undefined> {
     const granted = client.hello?.permissions;
@@ -358,32 +375,32 @@ export class ComputerUseService {
     if (!missing.length) return undefined;
     const due = this.duePermissions(missing, now);
     if (!due.length) return "recent";
-    try { await client.request("requestPermissions", { permissions: due }); }
+    try { return (await this.sendPermissionRequests(client, due, now)).length ? "requested" : undefined; }
     catch (error) { this.reportFailure("computer_use_permission_request_failed", error); return undefined; }
-    for (const permission of due) this.permissionRequestedAt.set(permission, now);
-    return "requested";
   }
 
   /**
-   * 설정 화면의 "권한 요청". 간격 안에 이미 물었으면 macOS가 창을 다시 띄우지 않을 수 있으므로(거절한 화면 기록은
-   * 다시 묻지 않는다) 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
+   * 설정 화면의 "권한 요청". 간격 안에 이미 물었거나 보낼 길이 없으면(macOS는 거절된 화면 기록을 다시 묻지 않고, 터미널 실행에는
+   * Desktop이 없다) 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
    */
   async requestPermissions(openSettings: (missing: readonly ComputerUsePermission[]) => Promise<boolean>): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
     const { supported, helperAvailable, missingPermissions } = await this.readStatus();
     if (!supported || !helperAvailable || !missingPermissions?.length) return null;
     const now = Date.now();
     const due = this.duePermissions(missingPermissions, now);
-    if (!due.length) return { opened: await openSettings(missingPermissions) };
+    const reachable = due.filter((permission) => permission === "accessibility" || this.deps.requestScreenRecording);
+    if (!reachable.length) return { opened: await openSettings(missingPermissions) };
+    // 헬퍼는 손쉬운 사용을 물을 때만 필요하다. 화면 기록만 남았으면 띄우지 않는다.
     const live = this.client?.live ? this.client : null;
-    const client = live ?? this.deps.platform.createClient();
+    const client = reachable.includes("accessibility") ? live ?? this.deps.platform.createClient() : null;
+    let requested: ComputerUsePermission[];
     try {
-      if (!live) await client.start();
-      await client.request("requestPermissions", { permissions: due });
+      if (client && !live) await client.start();
+      requested = await this.sendPermissionRequests(client, reachable, now);
     } finally {
-      if (!live) await client.stop();
+      if (client && !live) await client.stop();
     }
-    for (const permission of due) this.permissionRequestedAt.set(permission, now);
-    return { requested: due };
+    return requested.length ? { requested } : { opened: await openSettings(missingPermissions) };
   }
 
   private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
