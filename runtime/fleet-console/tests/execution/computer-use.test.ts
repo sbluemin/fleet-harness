@@ -42,7 +42,6 @@ afterEach(async () => {
 
 function setup(installed = true) {
   let enabled = true;
-  let local = true;
   let selfCheck = true;
   let granted = { accessibility: true, screenRecording: true };
   let rows: HelperWindow[] = [{ ...sample }];
@@ -80,7 +79,7 @@ function setup(installed = true) {
   const diagnostic = vi.fn();
   const readPermissions = vi.fn(async () => ({ accessibility: true, screenRecording: true }));
   const service = new ComputerUseService({
-    enabled: () => enabled, localControl: () => local, onCaptureTarget, preparePaste, diagnostic, readPermissions,
+    enabled: () => enabled, onCaptureTarget, preparePaste, diagnostic, readPermissions,
     platform: { supported: () => true, inspectInstallation: async () => installed, createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use") },
   });
   services.push(service);
@@ -88,7 +87,7 @@ function setup(installed = true) {
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
   return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
-    enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; },
+    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
 
@@ -108,15 +107,13 @@ const objective = (id: string, computerUse?: ObjectiveRecord["computerUse"]): Ob
 const allowed = { enabled: true, language: "en" } as const;
 
 describe("Fleet Computer Use", () => {
-  it("does not start the helper for status, disabled use, or a remote session; reports capture identity and releases on end", async () => {
+  it("does not start the helper for status or disabled use; reports capture identity and releases on end", async () => {
     const f = setup();
     expect(text(await f.invoke("computer_session", { op: "status" }))).toContain("helper not started");
     f.enable(false);
     expect(text(await f.invoke("computer_apps", {}))).toContain("computer_use_disabled");
-    f.enable(true); f.local(false);
-    expect(text(await f.invoke("computer_apps", {}))).toContain("computer_use_local_only");
     expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
-    f.local(true);
+    f.enable(true);
     expect(text(await f.invoke("computer_apps", {}))).toContain('w1 "Test window"');
     expect(f.runtime.spawnProcess).toHaveBeenCalledWith({ command: "/signed/fleet-computer-use", args: [], env: {} });
     expect(text(await f.invoke("computer_session", { op: "status" }))).toBe("status: enabled · helper ready · permissions ok · idle");
@@ -133,7 +130,7 @@ describe("Fleet Computer Use", () => {
 
   it.each(["win32", "linux"] as const)("keeps a saved opt-in but exposes no Computer Use MCP on %s", async (platform) => {
     const spawnProcess = vi.fn(() => { throw new Error("must not spawn"); });
-    const service = new ComputerUseService({ enabled: () => true, localControl: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, "/not/used", platform) });
+    const service = new ComputerUseService({ enabled: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, "/not/used", platform) });
     services.push(service);
     const host = createComputerUseMcpHost({ service, experimentEnabled: () => true });
     try {

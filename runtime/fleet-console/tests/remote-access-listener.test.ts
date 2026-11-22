@@ -1,9 +1,10 @@
+import { ChildProcess } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
 import http2 from "node:http2";
-import type { Readable } from "node:stream";
+import { PassThrough, Writable, type Readable } from "node:stream";
 import tls from "node:tls";
 import os from "node:os";
 import path from "node:path";
@@ -19,6 +20,8 @@ import { normalizeFingerprint } from "../features/remote-access/host/remote-iden
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
 import type { ConsoleRemoteAccessSettings } from "../features/settings/host/settings-domain.js";
+import * as computerUseMcp from "../features/computer-use/host/mcp.js";
+import * as fleetHelper from "../features/computer-use/runtime/fleet-helper.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -78,6 +81,91 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 
     expect(normalizeFingerprint(parsed.fingerprint)).toBe(normalizeFingerprint(presented));
     expect(parsed.origin).toBe(`https://${BIND_HOST}:${fixture.remotePort}`);
+  });
+
+  it("runs approved Computer Use across full and monitoring joins without widening remote writes", async () => {
+    const mcpFactory = vi.spyOn(computerUseMcp, "createComputerUseMcpHost");
+    // Hold one native response on demand; exercise the real service, Objective MCP, approval, and TLS listeners.
+    let hold: { entered: () => void; release: Promise<void> } | undefined;
+    const spawnHelper = vi.fn(() => {
+      const child = new ChildProcess();
+      const stdout = new PassThrough();
+      const reply = async ({ id, method }: { id: number; method: string }) => {
+        if (method === "windows" && hold) {
+          const waiting = hold;
+          hold = undefined;
+          waiting.entered();
+          await waiting.release;
+        }
+        const result = method === "hello" ? { protocol: 1, permissions: { accessibility: true, screenRecording: true }, selfCheck: { ok: true } }
+          : method === "windows" ? { windows: [] } : {};
+        stdout.write(`${JSON.stringify({ id, ok: true, result })}\n`);
+        if (method === "shutdown") child.emit("close", 0, null);
+      };
+      Object.assign(child, { stdout, stdin: new Writable({ write(chunk, _encoding, callback) {
+        void reply(JSON.parse(String(chunk)));
+        callback();
+      } }) });
+      return child;
+    });
+    vi.spyOn(fleetHelper, "createFleetComputerUsePlatform").mockReturnValue({
+      supported: () => true,
+      inspectInstallation: async () => true,
+      createClient: () => new fleetHelper.FleetHelperClient({ childEnv: () => ({}), spawnProcess: spawnHelper }, process.execPath),
+    });
+    const fixture = await startFixture({ remote: true });
+    const origin = new URL(fixture.loopbackEndpoint).origin;
+    const local = (route: string, method: string, body: unknown) => fetch(`${origin}/api/v1/${route}`, {
+      method, headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const { experiments } = await (await fetch(`${origin}/api/v1/settings/global`)).json();
+    expect((await local("settings/global", "PUT", { experiments: { ...experiments, computerUse: true } })).status).toBe(200);
+    const { commodoreId } = await (await local("commodore/create", "POST", { alias: "Computer Use fixture" })).json();
+    const { folderGrantId } = await (await local("theaters/folder-grants", "POST", { path: fixture.dir })).json();
+    const added = await local("commodore/theaters/add", "POST", { commodoreId, folderGrantId });
+    expect(added.status).toBe(200);
+    const { theaterId } = await added.json();
+    const record = await local("objectives/records", "POST", { commodoreId, theaterId, title: "Computer Use fixture" });
+    expect(record.status).toBe(201);
+    const { objectiveRecord } = await record.json();
+    const connection = mcpFactory.mock.results[0]!.value.connect();
+    const { servers: endpoints } = await connection.getEndpoint();
+    const [{ token }] = connection.issueSessionToken({ label: objectiveRecord.id, cwd: fixture.dir });
+    const call = () => fetch(endpoints[0]!.url, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "computer_apps", arguments: {} } }),
+    }).then(async (res) => (await res.json()).result);
+    const monitor = await joinAs(fixture, "monitoring", "Read-only device");
+    const initial = call();
+    const monitorEvents = await openRemoteEvents(fixture, monitor);
+    const { requests } = await monitorEvents.waitFor("objective-use:state", (data) => data.requests?.length === 1);
+    const answer = JSON.stringify({ id: requests[0].id, decision: "always" });
+    const headers = { origin: `https://${BIND_HOST}:${fixture.remotePort}` };
+    expect(spawnHelper).not.toHaveBeenCalled();
+    expect((await remoteRequest(fixture, "POST", "/api/v1/approvals/answer", answer, monitor, headers)).status).toBe(401);
+    expect((await remoteRequest(fixture, "POST", "/api/v1/commodore/message", JSON.stringify({ commodoreId, text: "test" }), monitor, headers)).status).toBe(401);
+    monitorEvents.close();
+    const full = await joinAs(fixture, "full", "Full-access device");
+    expect((await remoteRequest(fixture, "POST", "/api/v1/approvals/answer", answer, full, headers)).status).toBe(200);
+    const success = { content: [{ type: "text", text: "No matching apps or windows." }] };
+    await expect(initial).resolves.toMatchObject(success);
+    for (const [method, route] of [["GET", "/api/v1/computer-use"], ["POST", "/api/v1/computer-use/stop"], ["POST", "/api/v1/computer-use/privacy-settings"], ["GET", "/api/v1/desktop/computer-capture"]] as const) {
+      expect((await remoteRequest(fixture, method, route, undefined, full, headers)).status).toBe(404);
+    }
+    expect((await remoteRequest(fixture, "PUT", "/api/v1/settings/global", JSON.stringify({ experiments: { ...experiments, computerUse: false } }), full, headers)).status).toBe(403);
+    for (const access of ["monitoring", "full"]) {
+      const entered = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      hold = { entered: entered.resolve, release: release.promise };
+      const inFlight = call();
+      try {
+        await Promise.race([entered.promise, inFlight.then(() => { throw new Error("Computer Use returned before reaching the helper"); })]);
+        await joinAs(fixture, access, `Joining ${access} device`);
+      } finally { release.resolve(); }
+      await expect(inFlight).resolves.toMatchObject(success);
+      await expect(call()).resolves.toMatchObject(success);
+    }
+    expect(spawnHelper).toHaveBeenCalledTimes(1);
   });
 
   it("refuses every remote request that carries no session", async () => {
