@@ -39,7 +39,15 @@ function noticeFor(status: ReadStatus) {
   return status.selfCheckFailed ? "selfCheckFailed" : null;
 }
 
-export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { readonly enabled: boolean; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly mobile?: boolean }) {
+export function ComputerUseRow({ enabled, saving, onChange, remotePreview, onRemotePreviewChange, mobile = false }: {
+  readonly enabled: boolean;
+  readonly saving: boolean;
+  readonly onChange: (enabled: boolean) => void;
+  /** 원격 기기와 창 미리보기 공유(결정 8cd1a62d). 컴퓨터 사용이 켜져 있을 때만 줄이 선다. */
+  readonly remotePreview: boolean;
+  readonly onRemotePreviewChange: (enabled: boolean) => void;
+  readonly mobile?: boolean;
+}) {
   const t = useT();
   const { status, retry } = useComputerUseStatus(enabled);
   const [requesting, setRequesting] = useState(false);
@@ -73,7 +81,15 @@ export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { 
     {permissionMissing && <> <button type="button" className={actionClass} disabled={requesting} onClick={(event) => { event.stopPropagation(); void requestPermissions(); }}>{t("settings.computerUse.requestPermissions")}</button>{requestFailed && <> {t("settings.computerUse.requestPermissionsFailed")}</>}</>}
     {status === "failed" && <> <button type="button" className={actionClass} onClick={(event) => { event.stopPropagation(); retry(); }}>{t("settings.computerUse.retry")}</button></>}
   </> : null;
-  if (mobile) return <SettingsRow label={title} hint={t("settings.computerUse.help")} helpTip={notice && <span className="fc-settings-row__hint" role="status">{notice}</span>} icon={<MobileIcon name="layout" />} disabled={locked}>{switchControl}</SettingsRow>;
+  // 원격 화면에서는 바꿀 수 없다 — 사유는 위 줄의 기존 「원격 클라이언트에서는 관리할 수 없어요.」가 말한다.
+  const remotePreviewTitle = t("settings.computerUse.remotePreview");
+  const remotePreviewLocked = status === "remote";
+  const remotePreviewControl = <SettingsToggle checked={remotePreview} busy={saving} disabled={saving || remotePreviewLocked} ariaLabel={remotePreviewTitle} onChange={onRemotePreviewChange} />;
+  const showRemotePreview = enabled && key !== "unsupported";
+  if (mobile) return <>
+    <SettingsRow label={title} hint={t("settings.computerUse.help")} helpTip={notice && <span className="fc-settings-row__hint" role="status">{notice}</span>} icon={<MobileIcon name="layout" />} disabled={locked}>{switchControl}</SettingsRow>
+    {showRemotePreview ? <SettingsRow label={remotePreviewTitle} hint={t("settings.computerUse.remotePreviewHelp")} icon={<MobileIcon name="layout" />} disabled={remotePreviewLocked}>{remotePreviewControl}</SettingsRow> : null}
+  </>;
   return <>
     <div className="global-settings-row experiments-row">
       <div className="global-settings-row-text">
@@ -82,5 +98,11 @@ export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { 
       <div className="experiments-row-controls computer-use-controls">{switchControl}</div>
     </div>
     {notice && <p className="global-settings-help" role="status">{notice}</p>}
+    {showRemotePreview ? <div className="global-settings-row experiments-row computer-use-remote-preview-row">
+      <div className="global-settings-row-text">
+        <p className="global-settings-resp-title">{remotePreviewTitle}<SettingsHelp title={remotePreviewTitle}><p>{t("settings.computerUse.remotePreviewHelp")}</p></SettingsHelp></p>
+      </div>
+      <div className="experiments-row-controls">{remotePreviewControl}</div>
+    </div> : null}
   </>;
 }

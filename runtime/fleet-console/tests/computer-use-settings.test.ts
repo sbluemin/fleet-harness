@@ -10,16 +10,18 @@ const ready: ComputerUseSettingsStatus = { enabled: true, supported: true, helpe
 const mounted: (() => void)[] = [];
 afterEach(() => { for (const cleanup of mounted.splice(0)) cleanup(); vi.unstubAllGlobals(); });
 
-async function mount(status: ComputerUseSettingsStatus, mobile = false, stored = true) {
-  const fetch = vi.fn(async (path: string) => new Response(JSON.stringify(path.endsWith("permission-request") ? { requested: ["accessibility"] } : status)));
+async function mount(status: ComputerUseSettingsStatus | "remote", mobile = false, stored = true, remotePreview = true) {
+  // 원격 화면에서는 상태 경로가 404다(루프백 전용).
+  const fetch = vi.fn(async (path: string) => status === "remote" ? new Response(JSON.stringify({ error: "not_found" }), { status: 404 }) : new Response(JSON.stringify(path.endsWith("permission-request") ? { requested: ["accessibility"] } : status)));
   vi.stubGlobal("fetch", fetch);
   const node = document.createElement("div");
   document.body.append(node);
   const root = createRoot(node);
   mounted.push(() => { act(() => root.unmount()); node.remove(); });
-  const row = createElement(ComputerUseRow, { enabled: stored, saving: false, onChange: vi.fn(), mobile });
+  const onRemotePreviewChange = vi.fn();
+  const row = createElement(ComputerUseRow, { enabled: stored, saving: false, onChange: vi.fn(), remotePreview, onRemotePreviewChange, mobile });
   await act(async () => { root.render(mobile ? createElement(MobileSettingsHostContext.Provider, { value: { moreLabel: "More", openChoice: () => {} } }, row) : row); });
-  return { node, fetch, toggle: node.querySelector<HTMLInputElement>('input[aria-label="Computer Use"]')! };
+  return { node, fetch, onRemotePreviewChange, toggle: node.querySelector<HTMLInputElement>('input[aria-label="Computer Use"]')!, remotePreviewToggle: node.querySelector<HTMLInputElement>('input[aria-label="Share window previews with remote devices"]') };
 }
 
 it("locks a missing helper but preserves its saved opt-in; other platforms are effectively off", async () => {
@@ -51,4 +53,25 @@ it("keeps the toggle on when startup self-check pauses control and has no notice
   expect(paused.toggle.disabled).toBe(false);
   const normal = await mount(ready);
   expect(normal.node.querySelector('[role="status"]')).toBeNull();
+});
+
+it("shows the remote preview share switch only while Computer Use is on, on by default and changeable on the host", async () => {
+  const on = await mount(ready);
+  expect(on.remotePreviewToggle?.checked).toBe(true);
+  expect(on.remotePreviewToggle?.disabled).toBe(false);
+  await act(async () => { on.remotePreviewToggle!.click(); });
+  expect(on.onRemotePreviewChange).toHaveBeenCalledWith(false);
+  const stored = await mount(ready, false, true, false);
+  expect(stored.remotePreviewToggle?.checked).toBe(false);
+  const off = await mount({ ...ready, enabled: false }, false, false);
+  expect(off.remotePreviewToggle).toBeNull();
+  const phone = await mount(ready, true);
+  expect(phone.remotePreviewToggle?.checked).toBe(true);
+});
+
+it("locks the remote preview share switch on a remote client and keeps the existing remote reason", async () => {
+  const remote = await mount("remote");
+  expect(remote.node.textContent).toContain("Remote clients cannot manage this feature.");
+  expect(remote.remotePreviewToggle?.disabled).toBe(true);
+  expect(remote.toggle.disabled).toBe(true);
 });
