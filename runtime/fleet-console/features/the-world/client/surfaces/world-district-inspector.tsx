@@ -50,8 +50,9 @@ const VILLAGE_BIOMES: readonly {
   readonly tone: WorldIconTone;
 }[] = [
   { id: "meadow", key: "theWorld.biome.meadow", icon: "leaf", tone: "moss" },
-  { id: "sakura", key: "theWorld.biome.sakura", icon: "sparkle", tone: "rose" },
+  { id: "sakura", key: "theWorld.biome.sakura", icon: "sakura", tone: "rose" },
   { id: "citadel", key: "theWorld.biome.citadel", icon: "crown", tone: "cerulean" },
+  { id: "autumn", key: "theWorld.biome.autumn", icon: "fire", tone: "amber" },
 ];
 
 const TIER_NAME_KEYS: Readonly<Record<WorldDevelopmentTier, TheWorldMessageKey>> = {
@@ -250,12 +251,12 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           <WorldIcon name="approach" size={13} tone="cerulean" />
         </button>
 
-        {/* 마을 분위기(바이옴) 테마 선택 필 */}
+        {/* 마을 분위기(바이옴) 4종 테마 선택 필 */}
         {village ? (
           <div className="the-world-district-biome-block">
-            <span className="the-world-district-section-label">{t("theWorld.biome.label")}</span>
+            <span className="the-world-district-section-label">{t("theWorld.biome.pickerLabel")}</span>
             <div
-              className="the-world-district-biome-pills"
+              className="the-world-district-biome-pills the-world-biome-picker"
               role="group"
               aria-label={t("theWorld.biome.groupAria")}
             >

@@ -1684,3 +1684,191 @@ export function playStampUnlock(): void {
     attack: 0.01,
   });
 }
+
+// --- Sprint 22: 함대 소집 종 · 시냇가 낚시 프로시저럴 SFX 4종 ---
+
+/** 중앙 광장 함대 소집 종(Parade Bell) 울림: 맑고 울림 있는 청동 종 기본음 + 배음 2개 감쇠. */
+export function playParadeBell(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 타종 망치 어택
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 2450,
+    freqEnd: 1180,
+    duration: 0.032,
+    peakGain: 0.28,
+    attack: 0.002,
+  });
+  // 청동 종 기본음 (F#5 ≈ 740Hz) + 비정수 배음 2개 (1486Hz, 2218Hz) + 2차 여운 타종
+  const strike = (delay: number, gainScale: number) => {
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 739.99,
+      duration: 1.35,
+      delay,
+      peakGain: 0.36 * gainScale,
+      attack: 0.004,
+    });
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 1486.0,
+      duration: 0.92,
+      delay: delay + 0.002,
+      peakGain: 0.19 * gainScale,
+      attack: 0.004,
+    });
+    scheduleTone(eng.ctx, eng.out, {
+      type: "triangle",
+      freqStart: 2218.0,
+      duration: 0.58,
+      delay: delay + 0.004,
+      peakGain: 0.10 * gainScale,
+      attack: 0.003,
+    });
+  };
+  strike(0.0, 1.0);
+  strike(0.36, 0.72);
+}
+
+/** 시냇가 낚시 캐스팅: 경쾌한 낚싯대 휘두름 + 수면 풍덩 물방울 소리. */
+export function playFishingCast(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 낚싯대 휙 스윙
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.16,
+    centerFreq: 1650,
+    q: 1.8,
+    peakGain: 0.24,
+    attack: 0.025,
+  });
+  // 수면 찌 풍덩 (0.20s 후)
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 410,
+    freqEnd: 245,
+    delay: 0.19,
+    duration: 0.085,
+    peakGain: 0.28,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 280,
+    freqEnd: 590,
+    delay: 0.255,
+    duration: 0.11,
+    peakGain: 0.22,
+    attack: 0.006,
+  });
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.20,
+    duration: 0.095,
+    centerFreq: 1250,
+    q: 1.4,
+    peakGain: 0.18,
+    attack: 0.008,
+  });
+}
+
+/** 시냇가 낚시 입질: 톡톡 물보라 + 맑은 입질 알림 딩동. */
+export function playFishingBite(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // 찌가 수면을 톡톡 두드리는 물보라
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.055,
+    centerFreq: 1550,
+    q: 1.6,
+    peakGain: 0.24,
+    attack: 0.004,
+  });
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    delay: 0.09,
+    duration: 0.065,
+    centerFreq: 1850,
+    q: 1.8,
+    peakGain: 0.22,
+    attack: 0.004,
+  });
+  // 즉각 반응 유도 2음 딩동 (A5 -> D6)
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 880.0,
+    duration: 0.16,
+    delay: 0.02,
+    peakGain: 0.34,
+    attack: 0.005,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 1174.66,
+    duration: 0.24,
+    delay: 0.105,
+    peakGain: 0.36,
+    attack: 0.005,
+  });
+}
+
+/** 시냇가 낚시 성공 시 희귀도별 상승 화음 팡파르 (`common` / `rare` / `legendary`). */
+export function playFishingCatch(rarity: "common" | "rare" | "legendary"): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  if (rarity === "legendary") {
+    const notes = [523.25, 659.25, 783.99, 987.77, 1046.5, 1567.98] as const;
+    for (let i = 0; i < notes.length; i += 1) {
+      const isLast = i === notes.length - 1;
+      scheduleTone(eng.ctx, eng.out, {
+        type: i % 2 === 0 ? "triangle" : "sine",
+        freqStart: notes[i]!,
+        delay: i * 0.062,
+        duration: isLast ? 0.56 : 0.24,
+        peakGain: isLast ? 0.36 : 0.28,
+        attack: 0.006,
+      });
+    }
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 2093.0,
+      delay: 0.32,
+      duration: 0.48,
+      peakGain: 0.16,
+      attack: 0.01,
+    });
+    return;
+  }
+
+  if (rarity === "rare") {
+    const notes = [587.33, 739.99, 880.0, 1174.66] as const; // D5 -> F#5 -> A5 -> D6
+    for (let i = 0; i < notes.length; i += 1) {
+      const isLast = i === notes.length - 1;
+      scheduleTone(eng.ctx, eng.out, {
+        type: i % 2 === 0 ? "sine" : "triangle",
+        freqStart: notes[i]!,
+        delay: i * 0.068,
+        duration: isLast ? 0.42 : 0.20,
+        peakGain: isLast ? 0.34 : 0.26,
+        attack: 0.006,
+      });
+    }
+    return;
+  }
+
+  // common: 경쾌한 3음 상승 화음 (C5 -> E5 -> G5)
+  const notes = [523.25, 659.25, 783.99] as const;
+  for (let i = 0; i < notes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: "triangle",
+      freqStart: notes[i]!,
+      delay: i * 0.065,
+      duration: i === 2 ? 0.32 : 0.18,
+      peakGain: 0.28,
+      attack: 0.006,
+    });
+  }
+}

@@ -172,6 +172,8 @@ interface ActorPatrolState {
   rallying: boolean;
   rallyArrived: boolean;
   rallyHoldTimer: number;
+  rallySpeech: string | null;
+  rallyEmote: "cheer" | "wave";
   workingCommute: boolean;
   lastWorkDistrictId: string | null;
 }
@@ -260,6 +262,8 @@ export interface ChoreographyDirector {
   celebrateObjectiveDone(x: number, z: number, colorHex?: number): void;
   /** 전 사령관 긴급 소집 — 목교·정문을 거쳐 중앙 길드 광장 앞 반원 대형으로 신속 집결(4.2 m/s). */
   rallyAllToPlaza(): void;
+  /** 함대 소집 종 집합 — 초원 전역의 대기 중 사령관 전원이 광장 반원으로 달려와 14초간 환호·인사한다. */
+  triggerParadeBellRally(bellX: number, bellZ: number, speech: string): number;
   /** 제독 감정표현(손흔들기·환호·점프)에 반경 9.5m 내 사령관들이 돌아보고 따라 반응한다. */
   reactToPlayerEmote(emote: WorldPlayerEmote, playerPos: Vector3): void;
   /** 유성 급강하 착지 시 반경 16m 이내 사령관들이 놀람(`surprised`) → 환호(`cheer`) + 축포 환영. */
@@ -307,6 +311,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
   const villagePatrolPlans = new Map<string, VillagePatrolPlan>();
   const patrolStates = new Map<string, ActorPatrolState>();
   const animStates = new Map<string, ActorAnimState>();
+  const huddleActivityTracker = new Map<string, { activity: string; calloutCooldown: number }>();
+  const huddleGroupsScratch = new Map<string, LiveActorMotion[]>();
+  const huddleSlotScratch = new Map<string, { x: number; z: number; hubX: number; hubZ: number }>();
   const projectiles: FlyingProjectile[] = [];
   const particles: BurstParticle[] = [];
   const pendingTimers = new Set<number>();
@@ -947,6 +954,8 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         rallying: false,
         rallyArrived: false,
         rallyHoldTimer: 0,
+        rallySpeech: null,
+        rallyEmote: "cheer",
         workingCommute: false,
         lastWorkDistrictId: null,
       };
@@ -987,6 +996,8 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       ps.rallying = true;
       ps.rallyArrived = false;
       ps.rallyHoldTimer = 9.0;
+      ps.rallySpeech = null;
+      ps.rallyEmote = "cheer";
       ps.awayFromHome = true;
       ps.stuckTimer = 0;
 
@@ -1013,6 +1024,103 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         m.speech = "[rally] 긴급 소집! 중앙 광장으로 집결합니다!";
         m.speechTimer = 3.2;
       }
+    }
+  }
+
+  function triggerParadeBellRally(bellX: number, bellZ: number, speech: string): number {
+    const idleCommodores = motionList.filter(
+      (m) =>
+        m.spec.role === "commodore"
+        && m.spec.state !== "running"
+        && m.spec.activity === null
+        && !m.spec.needsAttention,
+    );
+    if (idleCommodores.length === 0) return 0;
+
+    const count = idleCommodores.length;
+    const centerX = 0.0;
+    const centerZ = -0.6;
+    const arcRadius = Math.min(5.2, 3.2 + count * 0.24);
+
+    spawnBurst(bellX, 2.35, bellZ, 0xfde047, 26);
+
+    for (let i = 0; i < count; i += 1) {
+      const m = idleCommodores[i]!;
+      const t = count === 1 ? 0.5 : i / (count - 1);
+      // 중앙 길드 회관 앞 남쪽 반원 대형으로 정렬해 제독과 종루를 바라본다
+      const ang = -0.22 + t * (Math.PI + 0.44);
+      const slotX = centerX + Math.cos(ang) * arcRadius;
+      const slotZ = centerZ + Math.sin(ang) * (arcRadius * 0.84);
+      const slotWp: PatrolWaypoint = {
+        x: slotX,
+        z: slotZ,
+        faceX: bellX,
+        faceZ: bellZ,
+      };
+
+      // 88m 외곽 마을에서 달려오는 사령관도 빠르게 집결하도록 38m 초과 시 반짝이며 광장 외곽으로 합류
+      const distToPlaza = Math.hypot(m.x - centerX, m.z - centerZ);
+      if (distToPlaza > 38.0) {
+        const dirX = (m.x - centerX) / distToPlaza;
+        const dirZ = (m.z - centerZ) / distToPlaza;
+        m.x = centerX + dirX * 15.0;
+        m.z = centerZ + dirZ * 15.0;
+        spawnBurst(m.x, 1.4, m.z, 0xfde047, 8);
+      }
+
+      const plan = m.spec.commodoreId ? villagePatrolPlans.get(m.spec.commodoreId) : undefined;
+      const ps = getOrCreatePatrolState(m);
+      ps.chatPauseTimer = 0;
+      ps.workingCommute = false;
+      ps.rallying = true;
+      ps.rallyArrived = false;
+      ps.rallyHoldTimer = 14.0;
+      ps.rallySpeech = speech;
+      ps.rallyEmote = i % 2 === 0 ? "cheer" : "wave";
+      ps.awayFromHome = true;
+      ps.stuckTimer = 0;
+
+      if (plan) {
+        const route = buildWorldRoute(m.x, m.z, slotWp, plan, null);
+        const firstHop = route.shift();
+        if (firstHop) {
+          m.tx = firstHop.x;
+          m.tz = firstHop.z;
+          ps.faceX = firstHop.faceX;
+          ps.faceZ = firstHop.faceZ;
+          ps.route = route;
+        }
+      } else {
+        m.tx = slotX;
+        m.tz = slotZ;
+        ps.faceX = bellX;
+        ps.faceZ = bellZ;
+        ps.route = [];
+      }
+
+      m.hopBoost = Math.max(m.hopBoost, 1.35);
+    }
+
+    director.celebratingTimer = Math.max(director.celebratingTimer, 2.8);
+    return count;
+  }
+
+  function resolveFieldActivityCallout(activity: string | null): string {
+    switch (activity) {
+      case "think":
+        return "[think] 설계와 전략을 정리 중이에요!";
+      case "read":
+        return "[read] 관련 코드를 꼼꼼히 분석 중이에요!";
+      case "edit":
+        return "[edit] 핵심 구현을 다듬고 있어요!";
+      case "run":
+        return "[run] 테스트 검증을 실행 중이에요!";
+      case "fetch":
+        return "[fetch] 최신 자료를 확인하고 있어요!";
+      case "delegate":
+        return "[delegate] 팀원들과 작전을 조율 중이에요!";
+      default:
+        return "[work] 작전 목표를 진행 중이에요!";
     }
   }
 
@@ -1297,6 +1405,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           motions.delete(id);
           patrolStates.delete(id);
           animStates.delete(id);
+          huddleActivityTracker.delete(id);
           const compIdx = companionActorIds.indexOf(id);
           if (compIdx >= 0) {
             companionActorIds.splice(compIdx, 1);
@@ -1386,6 +1495,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     spawnLevelUpCelebration,
     celebrateObjectiveDone,
     rallyAllToPlaza,
+    triggerParadeBellRally,
     reactToPlayerEmote,
     reactToMeteorLanding,
     reactToStarTakeoff,
@@ -1524,6 +1634,55 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       const isNight = nightFactor > 0.72;
       let nearestId: string | null = null;
       let nearestDist = 4.6;
+
+      // 라이브 Objective 팀 회의 허들 계산 (같은 rootObjectiveId의 작업 중 지휘관+멤버가 마을 광장 홀로그램 테이블 둘레 r≈1.85m 집결)
+      huddleGroupsScratch.clear();
+      huddleSlotScratch.clear();
+      for (let hi = 0; hi < motionList.length; hi += 1) {
+        const hm = motionList[hi]!;
+        if (hm.spec.role === "commodore") continue;
+        const rootId = hm.spec.rootObjectiveId ?? hm.spec.objectiveId;
+        if (!rootId) continue;
+        let grp = huddleGroupsScratch.get(rootId);
+        if (!grp) {
+          grp = [];
+          huddleGroupsScratch.set(rootId, grp);
+        }
+        grp.push(hm);
+      }
+      for (const grp of huddleGroupsScratch.values()) {
+        if (grp.length < 2) continue;
+        let hasActive = false;
+        let hubX = grp[0]!.spec.homeX;
+        let hubZ = grp[0]!.spec.homeZ;
+        let foundVillageHub = false;
+        for (let gi = 0; gi < grp.length; gi += 1) {
+          const gm = grp[gi]!;
+          if (gm.spec.state === "running" || gm.spec.activity !== null) {
+            hasActive = true;
+          }
+          if (!foundVillageHub && gm.spec.commodoreId) {
+            const vp = villagePatrolPlans.get(gm.spec.commodoreId);
+            if (vp) {
+              hubX = vp.centerX;
+              hubZ = vp.centerZ;
+              foundVillageHub = true;
+            }
+          }
+        }
+        if (!hasActive) continue;
+        const huddleRadius = 1.85;
+        for (let gi = 0; gi < grp.length; gi += 1) {
+          const gm = grp[gi]!;
+          const ang = (gi / grp.length) * Math.PI * 2 + 0.35;
+          huddleSlotScratch.set(gm.spec.id, {
+            x: hubX + Math.cos(ang) * huddleRadius,
+            z: hubZ + Math.sin(ang) * huddleRadius,
+            hubX,
+            hubZ,
+          });
+        }
+      }
 
       for (let idx = 0; idx < motionList.length; idx += 1) {
         const m = motionList[idx]!;
@@ -2034,20 +2193,23 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
               if (!ps.rallyArrived) {
                 ps.rallyArrived = true;
                 m.hopBoost = Math.max(m.hopBoost, 1.68);
-                triggerActorEmote(m.spec.id, "cheer", 2.2);
+                triggerActorEmote(m.spec.id, ps.rallyEmote, 2.4);
                 if (m.speechTimer < 900) {
-                  m.speech = "[cheer] 집결 완료! 명령을 기다립니다!";
-                  m.speechTimer = 3.5;
+                  m.speech = ps.rallySpeech
+                    ? `[cheer] ${ps.rallySpeech}`
+                    : "[cheer] 집결 완료! 명령을 기다립니다!";
+                  m.speechTimer = ps.rallySpeech ? 5.2 : 3.5;
                 }
                 spawnBurst(m.x, 1.5, m.z, 0xfbbf24, 10);
               }
               ps.rallyHoldTimer -= dt;
               if (ps.rallyHoldTimer <= 0) {
                 ps.rallying = false;
+                ps.rallySpeech = null;
                 ps.waitTimer = 1.6 + Math.random() * 2.0;
               }
             }
-            moveSpeed = 4.2;
+            moveSpeed = ps.rallySpeech ? 5.0 : 4.2;
           } else if (ps.chatPauseTimer > 0) {
             // 길 위 사령관 수다 / 제독 감정표현 반응 중: 2.5초간 상대를 마주 보고 멈춰 서서 대화
             ps.chatPauseTimer = Math.max(0, ps.chatPauseTimer - dt);
@@ -2265,6 +2427,34 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           // 상호작용 중인 대상은 제자리에 멈춰 서서 제독을 바라본다
           m.tx = m.x;
           m.tz = m.z;
+        } else if (!m.carrying && huddleSlotScratch.has(m.spec.id)) {
+          // 라이브 Objective 팀 회의 허들: 같은 목표의 지휘관·구성원이 마을 광장(r=1.85m)을 둘러싸고 마주 보며 협업 + 현장 중계!
+          const hSlot = huddleSlotScratch.get(m.spec.id)!;
+          m.tx = hSlot.x;
+          m.tz = hSlot.z;
+          patrolFaceX = hSlot.hubX;
+          patrolFaceZ = hSlot.hubZ;
+          moveSpeed = 3.2;
+
+          if (m.spec.state === "running" || m.spec.activity !== null) {
+            const actKey = m.spec.activity ?? "work";
+            let tr = huddleActivityTracker.get(m.spec.id);
+            if (!tr) {
+              tr = { activity: actKey, calloutCooldown: 2.5 + (idx % 4) * 2.2 };
+              huddleActivityTracker.set(m.spec.id, tr);
+            }
+            tr.calloutCooldown = Math.max(0, tr.calloutCooldown - dt);
+            const changed = tr.activity !== actKey;
+            if (changed) {
+              tr.activity = actKey;
+              tr.calloutCooldown = Math.min(tr.calloutCooldown, 0.8);
+            }
+            if (tr.calloutCooldown <= 0 && m.speechTimer <= 0) {
+              m.speech = resolveFieldActivityCallout(m.spec.activity);
+              m.speechTimer = 3.8;
+              tr.calloutCooldown = 12.0 + Math.random() * 6.0;
+            }
+          }
         } else if (m.spec.state === "idle" && isNight && Math.hypot(m.spec.homeX - 2.8, m.spec.homeZ - 1.0) < 36) {
           // 밤이 되면 광장 인근의 유휴(idle) 에이전트들이 모닥불(2.8, 1.0) 둘레에 여유 있는 간격으로 둘러앉음
           const seatAngle = idx * 0.95 + 0.4;
@@ -2627,6 +2817,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       villagePatrolPlans.clear();
       patrolStates.clear();
       animStates.clear();
+      huddleActivityTracker.clear();
+      huddleGroupsScratch.clear();
+      huddleSlotScratch.clear();
       companionActorIds.length = 0;
       companionStates.clear();
       welcomeBriefing = null;

@@ -26,6 +26,7 @@ import {
   setWeatherMode,
   setWorldCameraMode,
   setWorldTimeMode,
+  toggleAuroraEnabled,
   toggleBgm,
   toggleCinemaMode,
   toggleEmoteWheel,
@@ -554,8 +555,21 @@ export const WorldHud = memo(function WorldHud({
                     <WorldIcon name="music" size={13} tone={store.bgmEnabled ? "amber" : "teal"} />
                     <span>{store.bgmEnabled ? t("theWorld.hud.bgmToggleOn") : t("theWorld.hud.bgmToggleOff")}</span>
                   </button>
-                  <span className="the-world-bgm-hint">{t("theWorld.hud.bgmHint")}</span>
+                  <button
+                    type="button"
+                    className={`the-world-debug-pill${store.auroraEnabled ? " is-active" : ""}`}
+                    aria-label={t("theWorld.hud.auroraAria")}
+                    aria-pressed={store.auroraEnabled}
+                    onClick={() => {
+                      playDistrictHover();
+                      toggleAuroraEnabled();
+                    }}
+                  >
+                    <WorldIcon name="rainbow" size={13} tone={store.auroraEnabled ? "amber" : "teal"} />
+                    <span>{t("theWorld.hud.auroraToggle")}</span>
+                  </button>
                 </div>
+                <span className="the-world-bgm-hint">{t("theWorld.hud.bgmHint")}</span>
               </div>
             </div>
           </section>

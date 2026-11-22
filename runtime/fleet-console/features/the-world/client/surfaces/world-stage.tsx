@@ -42,6 +42,7 @@ import {
   addCompanionActorId,
   clearCompanionActorIds,
   clearDispatchFlag,
+  clearLastFishCatch,
   clearPhotoSnapshotPreview,
   closeActorInteraction,
   closeAdmiralCustomizer,
@@ -63,6 +64,7 @@ import {
   openWarRoom,
   placeDispatchFlag,
   pushActorSpeech,
+  recordFishCatch,
   removeCompanionActorId,
   requestApproachActor,
   requestChatMention,
@@ -77,6 +79,7 @@ import {
   setCommodoreGift,
   setDistrictNote,
   setEmoteWheelOpen,
+  setFishingState,
   setHoveredDistrict,
   setNearWorldActor,
   setOverviewMode,
@@ -88,6 +91,7 @@ import {
   setWorldTimeMode,
   toggleBgm,
   toggleCinemaMode,
+  toggleFlightCamMode,
   toggleOverviewMode,
   unlockStamp,
   useWorldStore,
@@ -115,8 +119,9 @@ import { WorldPanelModal } from "./world-panel-modal.js";
 import { WorldPhotoStudio } from "./world-photo-studio.js";
 import { WorldQuestBoardModal } from "./world-quest-board.js";
 import { WorldRadialMenu } from "./world-radial-menu.js";
+import type { WorldFishId, WorldFishRarity } from "../engine/fishing-controller.js";
 import { WorldSkyCommand, type WorldSkyHoverTarget } from "./world-sky-command.js";
-import { WorldStampBook } from "./world-stamp-book.js";
+import { WorldStampBook, type WorldStampBookTab } from "./world-stamp-book.js";
 import { WorldWarRoom } from "./world-war-room.js";
 
 const TOAST_DURATION_MS = 2_800;
@@ -150,6 +155,41 @@ const STAMP_TITLE_KEYS: Readonly<Record<WorldStampId, TheWorldMessageKey>> = {
   sky_ring_combo: "theWorld.stamps.item.sky_ring_combo.title",
   tier5_citadel: "theWorld.stamps.item.tier5_citadel.title",
   objective_celebration: "theWorld.stamps.item.objective_celebration.title",
+};
+
+const BIOME_LABEL_KEYS: Readonly<Record<WorldVillageBiome, TheWorldMessageKey>> = {
+  meadow: "theWorld.biome.meadow",
+  sakura: "theWorld.biome.sakura",
+  citadel: "theWorld.biome.citadel",
+  autumn: "theWorld.biome.autumn",
+};
+
+const FISH_TITLE_KEYS: Readonly<Record<WorldFishId, TheWorldMessageKey>> = {
+  meadow_minnow: "theWorld.fishing.fish.meadow_minnow.title",
+  golden_koi: "theWorld.fishing.fish.golden_koi.title",
+  starlight_trout: "theWorld.fishing.fish.starlight_trout.title",
+  cherry_loach: "theWorld.fishing.fish.cherry_loach.title",
+  moon_jelly: "theWorld.fishing.fish.moon_jelly.title",
+  rainbow_carp: "theWorld.fishing.fish.rainbow_carp.title",
+  star_shell: "theWorld.fishing.fish.star_shell.title",
+  message_bottle: "theWorld.fishing.fish.message_bottle.title",
+};
+
+const FISH_DESC_KEYS: Readonly<Record<WorldFishId, TheWorldMessageKey>> = {
+  meadow_minnow: "theWorld.fishing.fish.meadow_minnow.desc",
+  golden_koi: "theWorld.fishing.fish.golden_koi.desc",
+  starlight_trout: "theWorld.fishing.fish.starlight_trout.desc",
+  cherry_loach: "theWorld.fishing.fish.cherry_loach.desc",
+  moon_jelly: "theWorld.fishing.fish.moon_jelly.desc",
+  rainbow_carp: "theWorld.fishing.fish.rainbow_carp.desc",
+  star_shell: "theWorld.fishing.fish.star_shell.desc",
+  message_bottle: "theWorld.fishing.fish.message_bottle.desc",
+};
+
+const FISH_RARITY_KEYS: Readonly<Record<WorldFishRarity, TheWorldMessageKey>> = {
+  common: "theWorld.fishing.rarityCommon",
+  rare: "theWorld.fishing.rarityRare",
+  legendary: "theWorld.fishing.rarityLegendary",
 };
 
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
@@ -198,7 +238,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [playerHovered, setPlayerHovered] = useState(false);
   const [skyHoverTarget, setSkyHoverTarget] = useState<WorldSkyHoverTarget | null>(null);
   const [companionRosterOpen, setCompanionRosterOpen] = useState(false);
+  const [nearParadeBell, setNearParadeBell] = useState(false);
+  const [nearFishingWater, setNearFishingWater] = useState(false);
+  const [stampBookInitialTab, setStampBookInitialTab] = useState<WorldStampBookTab>("stamps");
   const companionShellRef = useRef<HTMLDivElement | null>(null);
+  const nearParadeBellRef = useRef(nearParadeBell);
+  nearParadeBellRef.current = nearParadeBell;
+  const nearFishingWaterRef = useRef(nearFishingWater);
+  nearFishingWaterRef.current = nearFishingWater;
+  const fishCatchTimerRef = useRef<number | null>(null);
   const [overviewDragLink, setOverviewDragLink] = useState<{
     readonly fromVillage: WorldVillageSpec;
     readonly startX: number;
@@ -310,6 +358,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     setBgmEnabled(false);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current);
+    if (fishCatchTimerRef.current !== null) window.clearTimeout(fishCatchTimerRef.current);
   }, []);
 
   // 월드에 표시되는 모든 사령관 기록과 활성 Objective 타임라인을 미리 구독한다.
@@ -356,6 +405,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
           triggerStamp("sky_ring_combo");
         }
       },
+      onNearParadeBellChange: setNearParadeBell,
+      onNearFishingWaterChange: setNearFishingWater,
+      onFishingPhaseChange: (phase) => setFishingState(phase),
+      onFishingMissed: () => {
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(tNow("theWorld.fishing.missed"));
+      },
       onLabelsStructureChanged: setLabelMetas,
       onFramePositions: handleFramePositions,
     });
@@ -365,6 +421,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtime.setCommodoreGifts(initial.commodoreGifts);
     runtime.setCinemaMode(initial.cinemaMode);
     runtime.setCompanionActors(initial.companionActorIds);
+    runtime.setAuroraEnabled(initial.auroraEnabled);
+    runtime.setFlightCamMode(initial.flightCamMode);
     runtimeRef.current = runtime;
     return () => {
       runtime.dispose();
@@ -478,6 +536,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   useEffect(() => {
     runtimeRef.current?.setCompanionActors(store.companionActorIds);
   }, [store.companionActorIds]);
+
+  useEffect(() => {
+    runtimeRef.current?.setAuroraEnabled(store.auroraEnabled);
+  }, [store.auroraEnabled]);
+
+  useEffect(() => {
+    runtimeRef.current?.setFlightCamMode(store.flightCamMode);
+  }, [store.flightCamMode]);
 
   useEffect(() => {
     runtimeRef.current?.setWeather(store.weatherMode);
@@ -709,15 +775,71 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     pushToast(tNow("theWorld.urgent.focusedToast", { name: target.name }));
   }, [deps, handleOpenUrgentActor, pushToast]);
 
+  const handleToggleFlightCam = useCallback(() => {
+    const prev = getWorldStoreSnapshot().flightCamMode;
+    const next = prev === "overview" ? "chase" : "overview";
+    toggleFlightCamMode();
+    playDistrictHover();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(
+      tNow("theWorld.flight.camSwitchedToast", {
+        mode: tNow(next === "chase" ? "theWorld.flight.camChase" : "theWorld.flight.camOverview"),
+      }),
+    );
+  }, [deps, pushToast]);
+
+  const handleRingParadeBell = useCallback(() => {
+    const tNow = getWorldT(deps.commodore.language());
+    runtimeRef.current?.ringParadeBell(tNow("theWorld.bell.rallySpeech"));
+    pushCelebrationToast(tNow("theWorld.bell.rallyToast"));
+  }, [deps, pushCelebrationToast]);
+
+  const handleStartFishing = useCallback(() => {
+    runtimeRef.current?.startFishing();
+  }, []);
+
+  const handleReelFishing = useCallback(() => {
+    const names = actorsRef.current
+      .filter((a) => a.role === "commodore")
+      .map((a) => a.name);
+    const res = runtimeRef.current?.reelFishing(names);
+    if (!res) return;
+    if (res.outcome === "caught") {
+      recordFishCatch(res.fish.id, {
+        rarity: res.fish.rarity,
+        ...(res.senderName ? { senderName: res.senderName } : {}),
+      });
+      if (fishCatchTimerRef.current !== null) window.clearTimeout(fishCatchTimerRef.current);
+      fishCatchTimerRef.current = window.setTimeout(() => {
+        fishCatchTimerRef.current = null;
+        clearLastFishCatch();
+      }, 3_800);
+    } else if (res.outcome === "missed") {
+      const tNow = getWorldT(deps.commodore.language());
+      pushToast(tNow("theWorld.fishing.missed"));
+    }
+  }, [deps, pushToast]);
+
+  const handleCancelFishing = useCallback(() => {
+    runtimeRef.current?.cancelFishing();
+  }, []);
+
   // 전역 키보드 단축키 (`use-world-shortcuts.ts`)
   useWorldShortcuts({
     rootRef,
     lastPlayerPoseRef: lastMinimapPoseRef,
     controlsGuideOpenRef,
+    nearParadeBellRef,
+    nearFishingWaterRef,
     onToggleControlsGuide: handleToggleControlsGuide,
     onCloseControlsGuide: handleCloseControlsGuide,
     onToggleDebugPanel: handleToggleDebugPanel,
     onFocusNextUrgentActor: handleFocusNextUrgentActor,
+    onToggleFlightCam: handleToggleFlightCam,
+    onRingParadeBell: handleRingParadeBell,
+    onStartFishing: handleStartFishing,
+    onReelFishing: handleReelFishing,
+    onCancelFishing: handleCancelFishing,
     isReducedMotion: deps.isReducedMotion,
   });
 
@@ -1102,10 +1224,19 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleCloseStampBook = useCallback(() => {
     setStampBookOpen(false);
+    setStampBookInitialTab("stamps");
+  }, []);
+
+  const handleOpenFishBook = useCallback(() => {
+    clearLastFishCatch();
+    setStampBookInitialTab("fish");
+    setStampBookOpen(true);
+    playDistrictSelect();
   }, []);
 
   const handleOpenStampBookFromCustomizer = useCallback(() => {
     closeAdmiralCustomizer();
+    setStampBookInitialTab("stamps");
     setStampBookOpen(true);
   }, []);
 
@@ -1371,7 +1502,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleSelectVillageBiome = useCallback((commodoreId: string, biome: WorldVillageBiome) => {
     setVillageBiome(commodoreId, biome);
-  }, []);
+    const village = villagesRef.current.find((v) => v.commodoreId === commodoreId);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(
+      tNow("theWorld.biome.changedToast", {
+        name: village?.label ?? "",
+        biome: tNow(BIOME_LABEL_KEYS[biome]),
+      }),
+    );
+  }, [deps, pushToast]);
 
   const handleInspectFromQuickMenu = useCallback((districtId: string) => {
     playDistrictSelect();
@@ -1785,15 +1924,44 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             );
           })() : null}
           {store.overviewMode && store.interactionMode === "closed" && !anyModalOpen && !store.photoMode && !store.cinemaMode && !toastMessage && !celebrationToast ? (
-            <button
-              type="button"
-              className="the-world-overview-banner"
-              aria-label={t("theWorld.hud.overviewAria")}
-              onClick={handleMinimapToggleOverview}
+            <div
+              style={{
+                position: "absolute",
+                top: "58px",
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 8,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "8px",
+                pointerEvents: "none",
+              }}
             >
-              <WorldIcon name="sparkle" size={14} tone="amber" />
-              <span>{t("theWorld.flight.banner")}</span>
-            </button>
+              <button
+                type="button"
+                className="the-world-overview-banner"
+                style={{ position: "static", transform: "none" }}
+                aria-label={t("theWorld.hud.overviewAria")}
+                onClick={handleMinimapToggleOverview}
+              >
+                <WorldIcon name="sparkle" size={14} tone="amber" />
+                <span>{t("theWorld.flight.banner")}</span>
+              </button>
+              <button
+                type="button"
+                className={`the-world-flight-cam-btn${store.flightCamMode === "chase" ? " is-chase" : ""}`}
+                aria-pressed={store.flightCamMode === "chase"}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleToggleFlightCam}
+              >
+                <WorldIcon name={store.flightCamMode === "chase" ? "cameraFollow" : "cameraOrbit"} size={13} tone="amber" />
+                <span>
+                  {store.flightCamMode === "chase"
+                    ? t("theWorld.flight.camChase")
+                    : t("theWorld.flight.camOverview")}
+                </span>
+              </button>
+            </div>
           ) : null}
           {companionActors.length > 0 && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode ? (
             <div
@@ -2005,6 +2173,120 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               </button>
             </div>
           ) : null}
+          {nearParadeBell && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" && store.fishingPhase === "idle" ? (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: "108px",
+                transform: "translateX(-50%)",
+                zIndex: 9,
+                pointerEvents: "none",
+              }}
+            >
+              <button
+                type="button"
+                className="the-world-field-review-chip is-ask"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleRingParadeBell}
+              >
+                <WorldIcon name="bell" size={12} tone="amber" />
+                <span>{t("theWorld.bell.prompt")}</span>
+              </button>
+            </div>
+          ) : null}
+          {nearFishingWater && store.fishingPhase === "idle" && !store.sittingAtCampfire && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" ? (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: "76px",
+                transform: "translateX(-50%)",
+                zIndex: 9,
+                pointerEvents: "none",
+              }}
+            >
+              <button
+                type="button"
+                className="the-world-field-review-chip is-review"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleStartFishing}
+              >
+                <WorldIcon name="sparkle" size={12} tone="teal" />
+                <span>{t("theWorld.fishing.castPrompt")}</span>
+              </button>
+            </div>
+          ) : null}
+          {(store.fishingPhase === "waiting" || store.fishingPhase === "bite") && !store.photoMode && !store.cinemaMode && !anyModalOpen ? (
+            <div
+              className={`the-world-fishing-hud${store.fishingPhase === "bite" ? " the-world-fishing-bite" : ""}`}
+              role="status"
+              aria-live="polite"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={store.fishingPhase === "bite" ? handleReelFishing : undefined}
+            >
+              <WorldIcon name={store.fishingPhase === "bite" ? "bell" : "sparkle"} size={14} tone="amber" />
+              <span>
+                {store.fishingPhase === "bite"
+                  ? t("theWorld.fishing.bite")
+                  : t("theWorld.fishing.waiting")}
+              </span>
+              <button
+                type="button"
+                className="the-world-fishing-hud-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCancelFishing();
+                }}
+              >
+                {t("theWorld.fishing.cancel")}
+              </button>
+            </div>
+          ) : null}
+          {store.lastFishCatch && !store.photoMode && !store.cinemaMode ? (
+            <section
+              className="the-world-fish-catch-card"
+              role="status"
+              aria-live="polite"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="the-world-fish-catch-head">
+                <span className="the-world-fish-catch-kicker">
+                  <WorldIcon name="sparkle" size={13} tone="amber" />
+                  <span>{t("theWorld.fishing.caughtTitle")}</span>
+                  {store.lastFishCatch.isNew ? (
+                    <span className="the-world-fish-catch-new">{t("theWorld.fishing.newDiscovery")}</span>
+                  ) : null}
+                </span>
+                <span className={`the-world-fish-rarity is-${store.lastFishCatch.rarity}`}>
+                  {t(FISH_RARITY_KEYS[store.lastFishCatch.rarity])}
+                </span>
+              </div>
+              <h4 className="the-world-fish-catch-name">
+                {t(FISH_TITLE_KEYS[store.lastFishCatch.fishId])}
+              </h4>
+              <p className="the-world-fish-catch-desc">
+                {store.lastFishCatch.fishId === "message_bottle" && store.lastFishCatch.senderName
+                  ? t("theWorld.fishing.bottleMessage", { name: store.lastFishCatch.senderName })
+                  : t(FISH_DESC_KEYS[store.lastFishCatch.fishId])}
+              </p>
+              <div>
+                <button
+                  type="button"
+                  className="the-world-fishing-hud-btn"
+                  onClick={handleOpenFishBook}
+                >
+                  <WorldIcon name="trophy" size={11} tone="amber" />
+                  <span>
+                    {t("theWorld.fishing.tabFish", {
+                      count: Object.keys(store.caughtFishCounts).filter((k) => (store.caughtFishCounts[k] ?? 0) > 0).length,
+                      total: 8,
+                    })}
+                  </span>
+                </button>
+              </div>
+            </section>
+          ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (
             <button
               type="button"
@@ -2140,6 +2422,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             <WorldStampBook
               open
               unlockedStamps={store.unlockedStamps}
+              caughtFishCounts={store.caughtFishCounts}
+              initialTab={stampBookInitialTab}
               locale={locale}
               onOpenCustomizer={handleOpenAdmiralCustomizer}
               onClose={handleCloseStampBook}

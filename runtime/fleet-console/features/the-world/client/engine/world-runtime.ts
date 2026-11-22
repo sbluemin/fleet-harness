@@ -57,8 +57,13 @@ import {
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import { PLUSH_VIVID_TONES } from "../../../workspace/shared/mongle-3d-glsl.js";
 import { createChoreographyDirector } from "./choreography-director.js";
+import {
+  createFishingController,
+  type FishingReelResult,
+  type WorldFishingPhase,
+} from "./fishing-controller.js";
 import { createLivingWorkflowFx } from "./living-workflow-fx.js";
-import { createMeadowScene } from "./meadow-scene.js";
+import { createMeadowScene, PARADE_BELL_POS } from "./meadow-scene.js";
 import {
   createMongleActorRig,
   type MongleActorRig,
@@ -70,17 +75,22 @@ import {
   type CameraFocusFraming,
   type CameraOccluder,
   type CinemaCameraTarget,
+  type FlightCamMode,
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
   playBarrelRoll,
   playEmoteSparkle,
+  playFishingBite,
+  playFishingCast,
+  playFishingCatch,
   playFootstep,
   playJump,
   playLevelUpFanfare,
   playMeteorDive,
   playMeteorImpact,
   playMongleChirp,
+  playParadeBell,
   playRallyHorn,
   playSkyRingChime,
   playStarBoost,
@@ -198,6 +208,14 @@ export interface WorldRuntimeConfig {
   readonly onSkyRingPass?: ((combo: number) => void) | undefined;
   /** 별똥별 유성 급강하로 지면에 착지한 순간 호출된다. */
   readonly onMeteorLanded?: (() => void) | undefined;
+  /** 중앙 광장 함대 소집 종 근접 여부가 바뀔 때 호출된다(edge-triggered). */
+  readonly onNearParadeBellChange?: ((near: boolean) => void) | undefined;
+  /** 시냇가 낚시 가능 수변 근접 여부가 바뀔 때 호출된다(edge-triggered). */
+  readonly onNearFishingWaterChange?: ((near: boolean) => void) | undefined;
+  /** 힐링 낚시 단계가 바뀔 때 호출된다. */
+  readonly onFishingPhaseChange?: ((phase: WorldFishingPhase) => void) | undefined;
+  /** 입질 윈도우를 놓쳐 물고기가 도망쳤을 때 호출된다. */
+  readonly onFishingMissed?: (() => void) | undefined;
   /** 액터 라벨의 구조적 변화(목록·말풍선·근접·선택·주의 상태)가 있을 때만 호출된다(평시 0Hz). */
   readonly onLabelsStructureChanged: (labels: readonly WorldActorLabelMeta[]) => void;
   /** 매 프레임 DOM `style.transform` 직접 갱신용 스크래치 좌표 콜백(React 리렌더 0). */
@@ -214,6 +232,8 @@ export interface WorldRuntimeHandle {
     readonly selectedActorId: string | null;
   }): void;
   setOverviewMode(enabled: boolean): void;
+  setFlightCamMode(mode: FlightCamMode): void;
+  setAuroraEnabled(enabled: boolean): void;
   setCinemaMode(enabled: boolean): void;
   setWeather(mode: WorldWeatherMode): void;
   triggerRainbow(durationSec?: number): void;
@@ -235,6 +255,10 @@ export interface WorldRuntimeHandle {
   triggerAdmiralEmote(emote: "cheer" | "wave" | "clap" | "twirl" | "stardust" | "sit"): void;
   captureSnapshotDataUrl(): string | null;
   rallyAllToPlaza(): void;
+  ringParadeBell(rallySpeech: string): number;
+  startFishing(): boolean;
+  reelFishing(commodoreNames: readonly string[]): FishingReelResult;
+  cancelFishing(): void;
   playPlayerEmote(emote: WorldPlayerEmote): void;
   setDistrictHighlight(hovered: WorldDistrictSpec | null, selected: WorldDistrictSpec | null): void;
   setDispatchFlags(flags: readonly { readonly x: number; readonly z: number; readonly tone: IdentityTone }[]): void;
@@ -516,6 +540,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const playerCtrl = createPlayerAndCameraController();
   const director = createChoreographyDirector(scene);
   const livingWorkflowFx = createLivingWorkflowFx(scene, meadow.getGroundHeight);
+  const fishing = createFishingController(scene);
 
   // 플레이어 + 모든 액터 발밑 배치 Soft AO 접촉 그림자 (단일 InstancedMesh 1 draw call, 점프 높이 반응)
   const aoBlobGeo = new CircleGeometry(0.86, 24);
@@ -771,6 +796,20 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let disposed = false;
   let elapsed = 0;
   let workshopFxAccum = 0;
+  let prevNearParadeBell = false;
+  let prevNearFishingWater = false;
+  let lastNotifiedFishingPhase: WorldFishingPhase = "idle";
+  const notifyFishingPhase = (next: WorldFishingPhase): void => {
+    if (next === lastNotifiedFishingPhase) return;
+    lastNotifiedFishingPhase = next;
+    config.onFishingPhaseChange?.(next);
+  };
+  const cancelFishingInternal = (): void => {
+    if (fishing.getPhase() !== "idle") {
+      fishing.cancel();
+    }
+    notifyFishingPhase("idle");
+  };
   let spatialAmbienceAccum = 0;
   const spatialAmbienceScratch = {
     brookDist: 999,
@@ -983,12 +1022,28 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
       meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
 
+    if (
+      fishing.getPhase() !== "idle"
+      && (
+        interacting
+        || customizerOpen
+        || cinemaActiveNow
+        || playerCtrl.isOverviewMode()
+        || playerCtrl.player.flying
+        || playerCtrl.player.diving
+        || currentLifecycle !== "open"
+      )
+    ) {
+      cancelFishingInternal();
+    }
+    const isFishingActive = fishing.getPhase() !== "idle";
+
     playerCtrl.update({
       dt,
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
-      inputLocked: interacting || customizerOpen || cinemaActiveNow,
+      inputLocked: interacting || customizerOpen || cinemaActiveNow || isFishingActive,
       focusActorPos: focusedMotion ? { x: focusedMotion.x, z: focusedMotion.z } : null,
       focusFraming,
       cinemaTarget: activeCinemaTarget,
@@ -1331,6 +1386,45 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     config.onNearActorChanged(nearId);
 
     // 리빙 워크플로우 3D 비주얼 FX (긴급 비콘 기둥 · 별빛 전령 구슬 · 마을 목표 진행 크리스탈 · 하늘 별빛 링 · 합동 아치 · 정문 결재 비콘)
+    const prevFishingPhase = fishing.getPhase();
+    const nextFishingPhase = fishing.update(
+      dt,
+      elapsed,
+      playerCtrl.player.x,
+      playerCtrl.player.y,
+      playerCtrl.player.z,
+      playerCtrl.player.yaw,
+    );
+    if (nextFishingPhase !== prevFishingPhase) {
+      if (nextFishingPhase === "bite") {
+        playFishingBite();
+      } else if (prevFishingPhase === "bite" && nextFishingPhase === "idle") {
+        config.onFishingMissed?.();
+      }
+      notifyFishingPhase(nextFishingPhase);
+    }
+
+    const onGroundOpen =
+      currentLifecycle === "open"
+      && !playerCtrl.isOverviewMode()
+      && !playerCtrl.player.flying
+      && !playerCtrl.player.diving;
+    const nearBellNow =
+      onGroundOpen
+      && Math.hypot(playerCtrl.player.x - PARADE_BELL_POS.x, playerCtrl.player.z - PARADE_BELL_POS.z) <= 3.1;
+    if (nearBellNow !== prevNearParadeBell) {
+      prevNearParadeBell = nearBellNow;
+      config.onNearParadeBellChange?.(nearBellNow);
+    }
+    const nearWaterNow =
+      onGroundOpen
+      && !playerCtrl.isSittingAtCampfire()
+      && fishing.isNearWater(playerCtrl.player.x, playerCtrl.player.z);
+    if (nearWaterNow !== prevNearFishingWater) {
+      prevNearFishingWater = nearWaterNow;
+      config.onNearFishingWaterChange?.(nearWaterNow);
+    }
+
     livingWorkflowFx.setSkyRingsVisible(playerCtrl.isOverviewMode());
     if (playerCtrl.player.flying) {
       const ringHit = livingWorkflowFx.checkSkyRingPass(
@@ -2303,7 +2397,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       prevSelectedActorId = opts.selectedActorId;
     },
     setOverviewMode(enabled) {
+      if (enabled) cancelFishingInternal();
       playerCtrl.setOverviewMode(enabled);
+    },
+    setFlightCamMode(mode) {
+      playerCtrl.setFlightCamMode(mode);
+    },
+    setAuroraEnabled(enabled) {
+      skyLighting.setAuroraEnabled(enabled);
     },
     setCinemaMode(enabled) {
       if (enabled === cinemaMode) return;
@@ -2400,6 +2501,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
     },
     setCampfireSit(sitting) {
+      if (sitting) cancelFishingInternal();
       playerCtrl.setCampfireSit(sitting);
     },
     setCompanionActors(actorIds) {
@@ -2410,6 +2512,49 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex) {
       livingWorkflowFx.spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex);
+    },
+    ringParadeBell(rallySpeech) {
+      meadow.ringParadeBell();
+      playParadeBell();
+      director.spawnBurst(PARADE_BELL_POS.x, 2.35, PARADE_BELL_POS.z, 0xfde047, 22);
+      return director.triggerParadeBellRally(PARADE_BELL_POS.x, PARADE_BELL_POS.z, rallySpeech);
+    },
+    startFishing() {
+      if (
+        currentLifecycle !== "open"
+        || playerCtrl.isOverviewMode()
+        || playerCtrl.player.flying
+        || playerCtrl.player.diving
+        || playerCtrl.isSittingAtCampfire()
+      ) {
+        return false;
+      }
+      const gy = Math.max(0.05, meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z));
+      const started = fishing.startCast(playerCtrl.player.x, playerCtrl.player.z, playerCtrl.player.yaw, gy);
+      if (started) {
+        playFishingCast();
+        notifyFishingPhase("waiting");
+      }
+      return started;
+    },
+    reelFishing(commodoreNames) {
+      const res = fishing.reelIn(skyLighting.getNightFactor() > 0.45, commodoreNames);
+      if (res.outcome === "caught") {
+        playFishingCatch(res.fish.rarity);
+        playerEmoteKind = "cheer";
+        playerEmoteTimer = 1.65;
+        playerEmotePhase = 0;
+        playerEmoteHop = 0.72;
+        playerHatVel -= 1.25;
+        director.spawnBurst(playerCtrl.player.x, playerCtrl.player.y + 1.35, playerCtrl.player.z, res.fish.colorHex, 16);
+        notifyFishingPhase("caught");
+      } else if (res.outcome === "missed") {
+        notifyFishingPhase("idle");
+      }
+      return res;
+    },
+    cancelFishing() {
+      cancelFishingInternal();
     },
     triggerPhotoGroupPose() {
       director.triggerPhotoGroupPose(camera.position.x, camera.position.z);
@@ -2864,6 +3009,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       groundRingMat.dispose();
       scene.remove(groundRingMesh);
       playerRig.dispose();
+      fishing.dispose();
       livingWorkflowFx.dispose();
       director.dispose();
       playerCtrl.dispose();

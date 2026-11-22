@@ -153,7 +153,7 @@ export interface WorldDistrictSpec {
 }
 
 /** 사령관 마을 분위기(바이옴) 테마. */
-export type WorldVillageBiome = "meadow" | "sakura" | "citadel";
+export type WorldVillageBiome = "meadow" | "sakura" | "citadel" | "autumn";
 
 /** Theater 구역에 꽂는 제독 작전 깃발. */
 export interface WorldDispatchFlag {

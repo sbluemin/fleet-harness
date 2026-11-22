@@ -81,6 +81,13 @@ import {
 
 export const WORLD_PLAY_RADIUS = 88;
 
+/** 중앙 길드 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 좌표 및 피킹 반경 (우물·이정표·길드 홀 비충돌, 스폰 정면 시인성 확보). */
+export const PARADE_BELL_POS = {
+  x: -3.2,
+  z: 2.8,
+  radius: 1.75,
+} as const;
+
 const TONE_ROOF_HEX: Readonly<Record<IdentityTone, number>> = {
   crimson: 0xd94854,
   amber: 0xe58e1a,
@@ -152,6 +159,8 @@ export interface MeadowSceneHandle {
   getNearestBrookDist(x: number, z: number): number;
   /** 좌표에서 가장 가까운 숲 군락까지의 거리(m, 공간 음향용)를 반환한다. */
   getNearestForestDist(x: number, z: number): number;
+  /** 중앙 광장 함대 소집 종(Parade Bell)을 약 2.2초간 경쾌하게 흔든다. */
+  ringParadeBell(): void;
   getGroundHeight(x: number, z: number): number;
   isWalkable(x: number, z: number): boolean;
   resolveMovement(curX: number, curZ: number, nextX: number, nextZ: number, actorRadius?: number): { x: number; z: number };
@@ -1062,6 +1071,36 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   let questBoardUrgentCount = 0;
   let questBoardBaseY = 0.36;
 
+  // 중앙 광장 「함대 소집 종 (Parade Bell)」 동적 회전 청동 종 (공유 지오메트리 + 부드러운 진자 감쇠)
+  const paradeBellMountGroup = new Group();
+  const paradeBellSwingPivot = new Group();
+  const bellCrownGeo = markSharedGeometry(new SphereGeometry(0.18, 12, 8));
+  const bellBodyGeo = markSharedGeometry(new CylinderGeometry(0.15, 0.34, 0.42, 16));
+  const bellRimGeo = markSharedGeometry(new CylinderGeometry(0.36, 0.38, 0.08, 16));
+  const bellClapperGeo = markSharedGeometry(new SphereGeometry(0.085, 8, 6));
+  const matBronzeBell = ownMat(new MeshStandardMaterial({
+    color: 0xf5c542,
+    emissive: 0xd97706,
+    emissiveIntensity: 0.24,
+    roughness: 0.24,
+    metalness: 0.78,
+  }));
+  const bellCrown = new Mesh(bellCrownGeo, matBronzeBell);
+  bellCrown.position.y = -0.06;
+  bellCrown.castShadow = true;
+  const bellBody = new Mesh(bellBodyGeo, matBronzeBell);
+  bellBody.position.y = -0.28;
+  bellBody.castShadow = true;
+  const bellRim = new Mesh(bellRimGeo, matBrass);
+  bellRim.position.y = -0.49;
+  const bellClapper = new Mesh(bellClapperGeo, matIron);
+  bellClapper.position.y = -0.54;
+  paradeBellSwingPivot.add(bellCrown, bellBody, bellRim, bellClapper);
+  paradeBellMountGroup.add(paradeBellSwingPivot);
+  root.add(paradeBellMountGroup);
+  let paradeBellRingRemaining = 0;
+  let paradeBellRingAge = 0;
+
   // 심시티 구역 호버/선택 공유 하이라이트 링 2개
   const highlightGeo = new PlaneGeometry(2, 2);
   highlightGeo.rotateX(-Math.PI * 0.5);
@@ -1664,13 +1703,20 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     });
   }
 
-  function addTree(b: InstancedBucketBuilder, _parent: Group, tx: number, tz: number, scale: number, kind: "oak" | "pine" | "blossom", addCollider = true): void {
+  function addTree(b: InstancedBucketBuilder, _parent: Group, tx: number, tz: number, scale: number, kind: "oak" | "pine" | "blossom" | "autumn", addCollider = true): void {
     const gy = getTerrainBaseHeight(tx, tz);
     if (gy < 0.08) return;
     const rotY = hash2(tx, tz) * Math.PI * 2;
-    const slot: WorldModelSlot = kind === "pine" ? "tree-pine" : kind === "blossom" ? "tree-blossom" : "tree-oak";
+    const slot: WorldModelSlot | null =
+      kind === "autumn"
+        ? null
+        : kind === "pine"
+          ? "tree-pine"
+          : kind === "blossom"
+            ? "tree-blossom"
+            : "tree-oak";
 
-    if (assetRegistry.hasCustomModel(slot)) {
+    if (slot && assetRegistry.hasCustomModel(slot)) {
       queueInstancedSlot(slot, { x: tx, y: gy, z: tz, rotationY: rotY, scale });
     } else {
       b.withFrame(tx, gy, tz, rotY, scale, () => {
@@ -1696,9 +1742,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           b.addCylinder(matBark, [0.26, 1.22, 0.08], [0.19, 0.72, 0.19], [0, 0, -0.68], { tapered: true });
           b.addCylinder(matBark, [-0.24, 1.15, -0.10], [0.18, 0.62, 0.18], [0, 0, 0.62], { tapered: true });
 
-          const baseHex = kind === "blossom" ? 0xfba9cd : 0x3e9e4c;
-          const midHex = kind === "blossom" ? 0xfba9cd : 0x5cc458;
-          const topHex = kind === "blossom" ? 0xffcce2 : 0x79d464;
+          const baseHex = kind === "autumn" ? 0xcf4528 : kind === "blossom" ? 0xfba9cd : 0x3e9e4c;
+          const midHex = kind === "autumn" ? 0xe87b22 : kind === "blossom" ? 0xfba9cd : 0x5cc458;
+          const topHex = kind === "autumn" ? 0xf5ba32 : kind === "blossom" ? 0xffcce2 : 0x79d464;
           const puffs: readonly [number, number, number, number, number][] = [
             [0.0, 2.12, 0.0, 1.84, topHex],
             [0.36, 1.94, 0.28, 1.36, topHex],
@@ -2154,6 +2200,43 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addGrassClearZone(nbx, nbz, 1.55);
     addCameraOccluder(nbx, nbz, 0.95, 2.7);
     colliders.push({ x: nbx, z: nbz, r: 0.92 });
+
+    // 6. 중앙 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 목재 종루 + 황금 청동 종
+    const pbx = PARADE_BELL_POS.x;
+    const pbz = PARADE_BELL_POS.z;
+    const pby = getTerrainBaseHeight(pbx, pbz);
+    const pbYaw = Math.atan2(0 - pbx, -1.5 - pbz);
+    b.withFrame(pbx, pby, pbz, pbYaw, 1, () => {
+      // 석조 받침대
+      b.addBox(matStone, [0, 0.10, 0], [1.46, 0.20, 0.96], undefined, { receiveShadow: true });
+      b.addBox(matStoneDark, [0, 0.24, 0], [1.22, 0.10, 0.74], undefined, { receiveShadow: true });
+      // 아담한 목재 종루 양기둥 + 버팀목 + 상단 횡목
+      for (const px of [-0.52, 0.52]) {
+        b.addBox(matTimber, [px, 1.18, 0], [0.15, 1.90, 0.15], undefined, { castShadow: true, receiveShadow: true });
+        b.addBox(matWood, [px, 0.42, 0], [0.22, 0.24, 0.44]);
+        b.addBox(matWood, [px * 0.74, 1.78, 0], [0.34, 0.08, 0.10], [0, 0, px > 0 ? 0.65 : -0.65]);
+      }
+      b.addBox(matTimber, [0, 2.02, 0], [1.34, 0.16, 0.18], undefined, { castShadow: true });
+      b.addCylinder(matBrass, [0, 1.92, 0], [0.09, 0.16, 0.09]);
+      // 종루 미니 박공 지붕 + 상단 황금 장식
+      b.addPitchedRoof(matRoofBase, matPlasterWarm, matTimber, {
+        y: 2.12,
+        width: 1.62,
+        height: 0.58,
+        depth: 1.08,
+        roofColor: TONE_ROOF_HEX.crimson,
+        includeGableWall: false,
+        castShadow: true,
+        receiveShadow: true,
+      });
+      b.addSphere(matBrass, [0, 2.74, 0], [0.15, 0.15, 0.15]);
+    });
+    paradeBellMountGroup.position.set(pbx, pby + 1.90, pbz);
+    paradeBellMountGroup.rotation.y = pbYaw;
+    addContactShadow(b, pbx, pbz, 0.96, 0.76, pbYaw);
+    addGrassClearZone(pbx, pbz, 1.32);
+    addCameraOccluder(pbx, pbz, 0.68, 2.8);
+    colliders.push({ x: pbx, z: pbz, r: 0.68 });
   }
 
   /** 시냇물 횡단 아치 목교(동/서 2기) + 연못 수련잎/연꽃/갈대 */
@@ -2644,6 +2727,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const biome = v.biome ?? "meadow";
     const isCitadelBiome = biome === "citadel";
     const isSakuraBiome = biome === "sakura";
+    const isAutumnBiome = biome === "autumn";
     const toneHex = TONE_ROOF_HEX[v.tone];
     const gateCos = Math.cos(v.gateAngle);
     const gateSin = Math.sin(v.gateAngle);
@@ -2788,14 +2872,14 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       addGrassClearZone(signX, signZ, 1.12);
     }
 
-    // 입구 가로등 1기 (성채 바이옴이면 입구 양쪽 + 내부 추가 가로등으로 웅장한 야경 연출)
+    // 입구 가로등 1기 (성채·가을 단풍 바이옴이면 입구 양쪽 따뜻한 랜턴 연출)
     const lampX = gx - perpX * (gateHalfW + 0.85) + gateCos * 0.55;
     const lampZ = gz - perpZ * (gateHalfW + 0.85) + gateSin * 0.55;
     addHangingStreetlamp(b, lampX, lampZ, gateFaceYaw + Math.PI * 0.5, true);
-    if (isCitadelBiome) {
+    if (isCitadelBiome || isAutumnBiome) {
       const rightLampX = gx + perpX * (gateHalfW + 0.85) - gateCos * 0.85;
       const rightLampZ = gz + perpZ * (gateHalfW + 0.85) - gateSin * 0.85;
-      addHangingStreetlamp(b, rightLampX, rightLampZ, gateFaceYaw - Math.PI * 0.5, false);
+      addHangingStreetlamp(b, rightLampX, rightLampZ, gateFaceYaw - Math.PI * 0.5, isAutumnBiome);
     }
 
     // 3a. 마을 내부 코블스톤 디딤돌 패스 (정문 ↔ 마을 중앙 광장 ↔ 각 구역 입구, 추가 draw call 0)
@@ -2819,7 +2903,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         if (sy < 0.05) continue;
         const stoneMat = isCitadelBiome
           ? (si % 2 === 0 ? matMarble : matStone)
-          : isSakuraBiome
+          : isSakuraBiome || isAutumnBiome
             ? (si % 2 === 0 ? matPlasterWarm : matStone)
             : (si % 2 === 0 ? matStone : matStoneDark);
         const diam = 0.62 + hash2(sx * 2.1, sz * 1.9) * 0.24;
@@ -2995,26 +3079,40 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     }
 
-    // 마을 외곽 장식 나무 (바이옴별 수종 차별화: sakura → 벚나무 풍성 배치, citadel → 침엽수/참나무)
+    // 마을 외곽 장식 나무 (바이옴별 수종 차별화: autumn → 단풍나무, sakura → 벚나무, citadel → 침엽수)
     for (const side of [-1, 1]) {
       const tAng = v.gateAngle + Math.PI + side * 0.92;
       const tx = v.x + Math.cos(tAng) * (v.radius + 1.85);
       const tz = v.z + Math.sin(tAng) * (v.radius + 1.85);
-      const kind = isSakuraBiome
-        ? "blossom"
-        : isCitadelBiome
-          ? "pine"
-          : (v.tone === "rose" || v.tone === "plum" ? "blossom" : side > 0 ? "oak" : "pine");
-      addTree(b, parent, tx, tz, isSakuraBiome ? 1.06 : 0.96, kind, true);
+      const kind = isAutumnBiome
+        ? "autumn"
+        : isSakuraBiome
+          ? "blossom"
+          : isCitadelBiome
+            ? "pine"
+            : (v.tone === "rose" || v.tone === "plum" ? "blossom" : side > 0 ? "oak" : "pine");
+      addTree(b, parent, tx, tz, isSakuraBiome || isAutumnBiome ? 1.08 : 0.96, kind, true);
     }
-    if (isSakuraBiome) {
-      // 벚꽃 정원 바이옴: 마을 입구 좌우에 화사한 분홍 벚나무 2그루 추가 (루틴 풍차 회피)
+    if (isSakuraBiome || isAutumnBiome) {
+      // 벚꽃/가을 단풍 바이옴: 마을 입구 좌우에 테마 수종 2그루 + 가을 단풍 덤불 추가 (루틴 풍차 회피)
       for (const side of [-1, 1]) {
         if (side < 0 && v.routineCount > 0) continue;
         const eAng = v.gateAngle + side * 0.62;
         const tx = v.x + Math.cos(eAng) * (v.radius + 1.65);
         const tz = v.z + Math.sin(eAng) * (v.radius + 1.65);
-        addTree(b, parent, tx, tz, 1.04, "blossom", true);
+        addTree(b, parent, tx, tz, 1.05, isAutumnBiome ? "autumn" : "blossom", true);
+        if (isAutumnBiome) {
+          const bAng = v.gateAngle + Math.PI + side * 0.42;
+          const bx = v.x + Math.cos(bAng) * (v.radius + 1.35);
+          const bz = v.z + Math.sin(bAng) * (v.radius + 1.35);
+          const by = getTerrainBaseHeight(bx, bz);
+          if (by >= 0.08) {
+            b.addDodeca(matFoliageBase, [bx, by + 0.28, bz], [1.05, 0.72, 0.96], undefined, { color: 0xe87b22, receiveShadow: true });
+            b.addDodeca(matFoliageBase, [bx + 0.32, by + 0.22, bz + 0.16], [0.68, 0.58, 0.68], undefined, { color: 0xf5ba32, receiveShadow: true });
+            addContactShadow(b, bx, bz, 0.85, 0.78);
+            addGrassClearZone(bx, bz, 0.95);
+          }
+        }
       }
     }
   }
@@ -3461,6 +3559,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const cCourtyard = new Color(0xd6dee8);
     const cSakuraFloor = new Color(0xe8d5dd);
     const cCitadelFloor = new Color(0xcfd9e6);
+    const cAutumnFloor = new Color(0xe8cfa8);
     const cBank = new Color(0xe2cda2);
     const cMountain = new Color(0x568d7a);
     const tmpCol = new Color();
@@ -3495,14 +3594,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
             const floorColor =
               v.biome === "citadel" ? cCitadelFloor
                 : v.biome === "sakura" ? cSakuraFloor
-                  : v.overallTier >= 4 ? cCourtyard
-                    : v.overallTier === 3 ? cCobble
-                      : v.overallTier === 2 ? cGravel
-                        : cPath;
+                  : v.biome === "autumn" ? cAutumnFloor
+                    : v.overallTier >= 4 ? cCourtyard
+                      : v.overallTier === 3 ? cCobble
+                        : v.overallTier === 2 ? cGravel
+                          : cPath;
             const strength =
               v.biome === "citadel" ? 0.88
-                : v.biome === "sakura" ? 0.78
-                  : v.overallTier >= 4 ? 0.88 : v.overallTier === 3 ? 0.80 : v.overallTier === 2 ? 0.72 : 0.62;
+                : v.biome === "autumn" ? 0.82
+                  : v.biome === "sakura" ? 0.78
+                    : v.overallTier >= 4 ? 0.88 : v.overallTier === 3 ? 0.80 : v.overallTier === 2 ? 0.72 : 0.62;
             tmpCol.lerp(floorColor, vw * strength);
             break;
           }
@@ -4412,7 +4513,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (rd.dist < rd.halfWidth + 0.35) return "stone";
       for (const v of currentVillages) {
         if (
-          (v.overallTier >= 2 || v.biome === "citadel" || v.biome === "sakura")
+          (v.overallTier >= 2 || v.biome === "citadel" || v.biome === "sakura" || v.biome === "autumn")
           && Math.hypot(x - v.x, z - v.z) < v.radius
         ) {
           return "stone";
@@ -4440,6 +4541,10 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         if (d2 < minDist2) minDist2 = d2;
       }
       return Math.max(0, Math.sqrt(minDist2) - 4.5);
+    },
+    ringParadeBell() {
+      paradeBellRingRemaining = 2.25;
+      paradeBellRingAge = 0;
     },
     getGroundHeight,
     isWalkable,
@@ -4769,6 +4874,20 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         matQuestAlertCrystal.emissiveIntensity = 1.25 + nightFactor * 0.95 + Math.sin(elapsed * 4.8) * 0.25;
       }
 
+      // 중앙 광장 「함대 소집 종 (Parade Bell)」 타종 진자 애니메이션 (2.25초 자연 감쇠)
+      if (paradeBellRingRemaining > 0) {
+        paradeBellRingAge += dt;
+        paradeBellRingRemaining = Math.max(0, paradeBellRingRemaining - dt);
+        const decay = Math.exp(-paradeBellRingAge * 1.25) * Math.min(1, paradeBellRingRemaining / 0.35);
+        paradeBellSwingPivot.rotation.z = Math.sin(paradeBellRingAge * 13.5) * 0.54 * decay;
+        matBronzeBell.emissiveIntensity = 0.24 + nightFactor * 0.40 + decay * 0.65;
+      } else if (paradeBellSwingPivot.rotation.z !== 0) {
+        paradeBellSwingPivot.rotation.z = 0;
+        matBronzeBell.emissiveIntensity = 0.24 + nightFactor * 0.40;
+      } else {
+        matBronzeBell.emissiveIntensity = 0.24 + nightFactor * 0.40;
+      }
+
       // 굴뚝 연기 뭉게 피어오름
       for (const sp of smokePuffs) {
         const life = (elapsed * 0.28 + sp.phase) % 1;
@@ -4887,6 +5006,10 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       bladeSparGeo.dispose();
       bladeSailGeo.dispose();
       bladeRibGeo.dispose();
+      bellCrownGeo.dispose();
+      bellBodyGeo.dispose();
+      bellRimGeo.dispose();
+      bellClapperGeo.dispose();
       smokeGeo.dispose();
       highlightGeo.dispose();
       hoverHighlightMat.dispose();

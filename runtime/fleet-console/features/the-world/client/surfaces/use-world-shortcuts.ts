@@ -55,10 +55,17 @@ export interface UseWorldShortcutsOptions {
   readonly rootRef: RefObject<HTMLDivElement | null>;
   readonly lastPlayerPoseRef: RefObject<{ readonly x: number; readonly z: number }>;
   readonly controlsGuideOpenRef: RefObject<boolean>;
+  readonly nearParadeBellRef: RefObject<boolean>;
+  readonly nearFishingWaterRef: RefObject<boolean>;
   readonly onToggleControlsGuide: () => void;
   readonly onCloseControlsGuide: () => void;
   readonly onToggleDebugPanel: () => void;
   readonly onFocusNextUrgentActor: () => void;
+  readonly onToggleFlightCam: () => void;
+  readonly onRingParadeBell: () => void;
+  readonly onStartFishing: () => void;
+  readonly onReelFishing: () => void;
+  readonly onCancelFishing: () => void;
   readonly isReducedMotion: () => boolean;
 }
 
@@ -66,10 +73,17 @@ export function useWorldShortcuts({
   rootRef,
   lastPlayerPoseRef,
   controlsGuideOpenRef,
+  nearParadeBellRef,
+  nearFishingWaterRef,
   onToggleControlsGuide,
   onCloseControlsGuide,
   onToggleDebugPanel,
   onFocusNextUrgentActor,
+  onToggleFlightCam,
+  onRingParadeBell,
+  onStartFishing,
+  onReelFishing,
+  onCancelFishing,
   isReducedMotion,
 }: UseWorldShortcutsOptions): void {
   useEffect(() => {
@@ -268,6 +282,37 @@ export function useWorldShortcuts({
         }
       }
 
+      // Space: 낚시 대기/입질 중 즉시 릴 감기
+      if (
+        event.code === "Space"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+      ) {
+        if (snap.fishingPhase === "waiting" || snap.fishingPhase === "bite") {
+          event.preventDefault();
+          onReelFishing();
+          return;
+        }
+      }
+
+      // V: 하늘 비행 중 에이스 추격 / 전략 조망 시점 전환
+      if (
+        event.code === "KeyV"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.shiftKey
+      ) {
+        if (snap.overviewMode && snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
+          event.preventDefault();
+          onToggleFlightCam();
+          return;
+        }
+      }
+
       if (event.code === "KeyM" && !event.metaKey && !event.ctrlKey && !event.altKey) {
         if (snap.interactionMode === "closed" && !anyModalOpen && !snap.cinemaMode) {
           event.preventDefault();
@@ -278,7 +323,7 @@ export function useWorldShortcuts({
       }
 
       if (event.code === "KeyF" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode && !snap.overviewMode) {
           if (snap.sittingAtCampfire) {
             event.preventDefault();
             setSittingAtCampfire(false);
@@ -287,10 +332,21 @@ export function useWorldShortcuts({
           const pose = lastPlayerPoseRef.current;
           const px = Number.isNaN(pose.x) ? 0.4 : pose.x;
           const pz = Number.isNaN(pose.z) ? 2.2 : pose.z;
-          if (Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z) <= 10.5) {
+          const distCampfire = Math.hypot(px - WORLD_CAMPFIRE_BENCH_POS.x, pz - WORLD_CAMPFIRE_BENCH_POS.z);
+          if (nearFishingWaterRef.current && distCampfire > 5.2 && snap.fishingPhase === "idle") {
+            event.preventDefault();
+            onStartFishing();
+            return;
+          }
+          if (distCampfire <= 10.5) {
             event.preventDefault();
             playDistrictSelect();
             setSittingAtCampfire(true);
+            return;
+          }
+          if (nearFishingWaterRef.current && snap.fishingPhase === "idle") {
+            event.preventDefault();
+            onStartFishing();
             return;
           }
         }
@@ -317,6 +373,11 @@ export function useWorldShortcuts({
           closeActorInteraction();
           return;
         }
+        if (snap.interactionMode === "closed" && nearParadeBellRef.current && !snap.nearActorId) {
+          event.preventDefault();
+          onRingParadeBell();
+          return;
+        }
         if (snap.interactionMode === "closed" && snap.nearActorId) {
           event.preventDefault();
           playMongleChirp();
@@ -331,6 +392,10 @@ export function useWorldShortcuts({
           .some((el) => !rootRef.current?.contains(el));
         if (hasExternalModal) return;
         event.preventDefault();
+        if (snap.fishingPhase !== "idle") {
+          onCancelFishing();
+          return;
+        }
         if (snap.photoMode) {
           playPhotoShutter();
           setPhotoMode(false);
@@ -404,10 +469,17 @@ export function useWorldShortcuts({
     controlsGuideOpenRef,
     isReducedMotion,
     lastPlayerPoseRef,
+    nearFishingWaterRef,
+    nearParadeBellRef,
+    onCancelFishing,
     onCloseControlsGuide,
     onFocusNextUrgentActor,
+    onReelFishing,
+    onRingParadeBell,
+    onStartFishing,
     onToggleControlsGuide,
     onToggleDebugPanel,
+    onToggleFlightCam,
     rootRef,
   ]);
 }

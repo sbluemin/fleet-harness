@@ -19,6 +19,25 @@ import type {
   WorldVillageBiome,
   WorldWeatherMode,
 } from "../shared/world-types.js";
+import {
+  WORLD_FISH_IDS,
+  WORLD_FISH_SPECS,
+  type WorldFishId,
+  type WorldFishingPhase,
+  type WorldFishRarity,
+} from "./engine/fishing-controller.js";
+
+export type { WorldFishId, WorldFishingPhase, WorldFishRarity };
+export type WorldFlightCamMode = "overview" | "chase";
+
+export interface WorldFishCatchRecord {
+  readonly fishId: WorldFishId;
+  readonly rarity: WorldFishRarity;
+  readonly isNew: boolean;
+  readonly count: number;
+  readonly senderName?: string | undefined;
+  readonly caughtAt: number;
+}
 
 /**
  * 「더 월드」 전환 상태 머신 및 UI 선호·상호작용 스토어.
@@ -38,6 +57,8 @@ const ADMIRAL_STYLE_STORAGE_KEY = "fleet.theWorld.admiralStyle.v2";
 const COMMODORE_GIFTS_STORAGE_KEY = "fleet.theWorld.commodoreGifts.v1";
 const DISTRICT_NOTES_STORAGE_KEY = "fleet.theWorld.districtNotes.v1";
 const UNLOCKED_STAMPS_STORAGE_KEY = "fleet.theWorld.unlockedStamps.v1";
+const AURORA_ENABLED_STORAGE_KEY = "fleet.theWorld.auroraEnabled.v1";
+const CAUGHT_FISH_STORAGE_KEY = "fleet.theWorld.caughtFishCounts.v1";
 const MAX_DISTRICT_NOTE_LEN = 240;
 
 export const WORLD_STAMP_IDS = [
@@ -85,7 +106,7 @@ const DEFAULT_ADMIRAL_STYLE: WorldAdmiralStyle = {
 };
 
 function isVillageBiome(value: unknown): value is WorldVillageBiome {
-  return value === "meadow" || value === "sakura" || value === "citadel";
+  return value === "meadow" || value === "sakura" || value === "citadel" || value === "autumn";
 }
 
 function isWeatherMode(value: unknown): value is WorldWeatherMode {
@@ -139,6 +160,54 @@ function persistUnlockedStamps(stamps: readonly WorldStampId[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(UNLOCKED_STAMPS_STORAGE_KEY, JSON.stringify(stamps));
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+function readInitialAuroraEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(AURORA_ENABLED_STORAGE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function persistAuroraEnabled(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AURORA_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+const WORLD_FISH_ID_SET: ReadonlySet<string> = new Set(WORLD_FISH_IDS);
+
+function readInitialCaughtFishCounts(): Readonly<Record<string, number>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(CAUGHT_FISH_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const sanitized: Record<string, number> = {};
+    for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
+      if (WORLD_FISH_ID_SET.has(key) && typeof val === "number" && Number.isFinite(val) && val > 0) {
+        sanitized[key] = Math.floor(val);
+      }
+    }
+    return sanitized;
+  } catch {
+    return {};
+  }
+}
+
+function persistCaughtFishCounts(counts: Readonly<Record<string, number>>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CAUGHT_FISH_STORAGE_KEY, JSON.stringify(counts));
   } catch {
     // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
   }
@@ -370,6 +439,11 @@ export interface WorldStoreSnapshot {
   readonly rallyNonce: number;
   readonly playerEmoteCommand: { readonly nonce: number; readonly emote: WorldPlayerEmote } | null;
   readonly overviewMode: boolean;
+  readonly flightCamMode: WorldFlightCamMode;
+  readonly auroraEnabled: boolean;
+  readonly fishingPhase: WorldFishingPhase;
+  readonly lastFishCatch: WorldFishCatchRecord | null;
+  readonly caughtFishCounts: Readonly<Record<string, number>>;
   readonly soundMuted: boolean;
   readonly timeMode: WorldTimeMode;
   readonly cameraMode: WorldCameraMode;
@@ -415,6 +489,11 @@ let state: WorldStoreSnapshot = {
   rallyNonce: 0,
   playerEmoteCommand: null,
   overviewMode: false,
+  flightCamMode: "overview",
+  auroraEnabled: readInitialAuroraEnabled(),
+  fishingPhase: "idle",
+  lastFishCatch: null,
+  caughtFishCounts: readInitialCaughtFishCounts(),
   soundMuted: readInitialSoundMuted(),
   timeMode: "day",
   cameraMode: "follow",
@@ -499,6 +578,9 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     photoMode: false,
     sittingAtCampfire: false,
     overviewMode: false,
+    flightCamMode: "overview",
+    fishingPhase: "idle",
+    lastFishCatch: null,
   };
   emit();
   if (typeof window !== "undefined") {
@@ -539,6 +621,9 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     photoMode: false,
     sittingAtCampfire: false,
     overviewMode: false,
+    flightCamMode: "overview",
+    fishingPhase: "idle",
+    lastFishCatch: null,
   };
   emit();
   if (typeof window !== "undefined") {
@@ -569,6 +654,9 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         photoMode: false,
         sittingAtCampfire: false,
         overviewMode: false,
+        flightCamMode: "overview",
+        fishingPhase: "idle",
+        lastFishCatch: null,
       };
       emit();
       options?.onExited?.();
@@ -1291,6 +1379,78 @@ export function setOverviewMode(enabled: boolean): void {
 
 export function toggleOverviewMode(): void {
   setOverviewMode(!state.overviewMode);
+}
+
+export function setFlightCamMode(mode: WorldFlightCamMode): void {
+  if (state.flightCamMode === mode) return;
+  state = { ...state, flightCamMode: mode };
+  emit();
+}
+
+export function toggleFlightCamMode(): void {
+  setFlightCamMode(state.flightCamMode === "overview" ? "chase" : "overview");
+}
+
+export function setAuroraEnabled(enabled: boolean): void {
+  if (state.auroraEnabled === enabled) return;
+  persistAuroraEnabled(enabled);
+  state = { ...state, auroraEnabled: enabled };
+  emit();
+}
+
+export function toggleAuroraEnabled(): void {
+  setAuroraEnabled(!state.auroraEnabled);
+}
+
+export function setFishingState(
+  phase: WorldFishingPhase,
+  lastCatch?: WorldFishCatchRecord | null,
+): void {
+  const nextCatch = lastCatch === undefined ? state.lastFishCatch : lastCatch;
+  if (state.fishingPhase === phase && state.lastFishCatch === nextCatch) return;
+  state = {
+    ...state,
+    fishingPhase: phase,
+    lastFishCatch: nextCatch,
+  };
+  emit();
+}
+
+export function recordFishCatch(
+  fishId: WorldFishId,
+  options?: { readonly rarity?: WorldFishRarity; readonly senderName?: string },
+): WorldFishCatchRecord {
+  const spec = WORLD_FISH_SPECS.find((s) => s.id === fishId);
+  const rarity: WorldFishRarity = options?.rarity ?? spec?.rarity ?? "common";
+  const prevCount = state.caughtFishCounts[fishId] ?? 0;
+  const nextCount = prevCount + 1;
+  const nextCounts: Readonly<Record<string, number>> = {
+    ...state.caughtFishCounts,
+    [fishId]: nextCount,
+  };
+  persistCaughtFishCounts(nextCounts);
+  const record: WorldFishCatchRecord = {
+    fishId,
+    rarity,
+    isNew: prevCount === 0,
+    count: nextCount,
+    ...(options?.senderName ? { senderName: options.senderName } : {}),
+    caughtAt: Date.now(),
+  };
+  state = {
+    ...state,
+    fishingPhase: "caught",
+    lastFishCatch: record,
+    caughtFishCounts: nextCounts,
+  };
+  emit();
+  return record;
+}
+
+export function clearLastFishCatch(): void {
+  if (state.lastFishCatch === null) return;
+  state = { ...state, lastFishCatch: null };
+  emit();
 }
 
 export function setSoundMuted(muted: boolean): void {

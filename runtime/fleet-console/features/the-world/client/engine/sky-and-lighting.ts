@@ -4,6 +4,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  CylinderGeometry,
   DirectionalLight,
   DoubleSide,
   DynamicDrawUsage,
@@ -326,6 +327,60 @@ void main() {
 }
 `;
 
+const AURORA_VERTEX = /* glsl */ `
+out vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const AURORA_FRAGMENT = /* glsl */ `
+in vec2 vUv;
+out vec4 fragColor;
+
+uniform float uTime;
+uniform float uAlpha;
+
+void main() {
+  float u = vUv.x;
+  float v = vUv.y;
+
+  // 2중 물결치는 오로라 커튼 수직 광선 + 수평 파동
+  float wave1 = sin(u * 9.5 + uTime * 0.34) * 0.085 + cos(u * 17.0 - uTime * 0.24) * 0.045;
+  float wave2 = sin(u * 14.0 - uTime * 0.42 + 1.7) * 0.070 + cos(u * 23.0 + uTime * 0.28) * 0.032;
+
+  float y1 = clamp(v + wave1, 0.0, 1.0);
+  float y2 = clamp(v + wave2 - 0.10, 0.0, 1.0);
+
+  float rays1 = 0.55 + 0.45 * sin(u * 44.0 + sin(u * 11.0 + uTime * 0.48) * 2.8 + uTime * 0.65);
+  float rays2 = 0.50 + 0.50 * sin(u * 68.0 - sin(u * 15.0 - uTime * 0.38) * 2.4 - uTime * 0.52);
+  float fineStreaks = 0.72 + 0.28 * sin(u * 125.0 + uTime * 0.9);
+
+  float band1 = smoothstep(0.04, 0.22, y1) * smoothstep(0.96, 0.24, y1) * pow(rays1, 1.35);
+  float band2 = smoothstep(0.06, 0.26, y2) * smoothstep(0.94, 0.30, y2) * pow(rays2, 1.55) * 0.72;
+  float edgeFade = smoothstep(0.0, 0.16, u) * smoothstep(1.0, 0.84, u);
+
+  float intensity = (band1 + band2) * fineStreaks * edgeFade;
+  float alpha = intensity * uAlpha * 0.58;
+  if (alpha < 0.004) discard;
+
+  // 에메랄드 그린(하단 발광) → 루미너스 시안(중단) → 보라/라벤더(상단 너울)
+  vec3 cEmerald = vec3(0.14, 0.96, 0.58);
+  vec3 cCyan = vec3(0.18, 0.82, 0.98);
+  vec3 cViolet = vec3(0.64, 0.30, 0.96);
+  vec3 col1 = mix(cEmerald, cCyan, smoothstep(0.12, 0.52, y1));
+  col1 = mix(col1, cViolet, smoothstep(0.46, 0.88, y1));
+  vec3 col2 = mix(cCyan, cViolet, smoothstep(0.16, 0.82, y2));
+  vec3 col = mix(col1, col2, band2 / max(0.001, band1 + band2));
+  // 하단 커튼 엣지 밝은 에메랄드-골드 코어 리프트
+  float lowerCore = smoothstep(0.28, 0.08, y1) * smoothstep(0.03, 0.14, y1) * rays1;
+  col += vec3(0.32, 0.98, 0.72) * lowerCore * 0.45;
+
+  fragColor = vec4(col * 1.25, clamp(alpha, 0.0, 0.85));
+}
+`;
+
 export interface SkyAndLightingRig {
   readonly group: Group;
   readonly sunDir: Vector3;
@@ -333,6 +388,8 @@ export interface SkyAndLightingRig {
   nightFactor: number;
   /** 현재 밤 가중치(`0` 한낮 .. `1` 깊은 별밤)를 반환한다. */
   getNightFactor(): number;
+  /** 밤하늘 GLSL3 오로라 커튼 표시 여부를 전환한다 (기본 true, 주간 Draw Call 0). */
+  setAuroraEnabled(enabled: boolean): void;
   /** 그림자 카메라·야간 가로등 풀 중심을 플레이어/주시점으로 텍셀 스냅 추적한다. */
   updateShadowFocus(x: number, z: number): void;
   /** 날씨 파티클 모드(`clear` / `sakura` / `rain` / `snow`) 전환. `clear` 시 draw call 0. */
@@ -667,6 +724,32 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   let rainbowAge = 0;
   let rainbowDuration = 0;
 
+  // 밤하늘 북쪽 상공(y = 68..154m, 반경 238m) 물결치는 GLSL3 오로라 커튼 (1 draw call, 주간/OFF 시 visible=false)
+  const auroraGeo = new CylinderGeometry(232, 246, 86, 72, 6, true, Math.PI * 0.56, Math.PI * 0.88);
+  const auroraMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    side: DoubleSide,
+    blending: AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uAlpha: { value: 0 },
+    },
+    vertexShader: AURORA_VERTEX,
+    fragmentShader: AURORA_FRAGMENT,
+  });
+  const auroraMesh = new Mesh(auroraGeo, auroraMat);
+  auroraMesh.position.set(0, 111, 0);
+  auroraMesh.frustumCulled = false;
+  auroraMesh.renderOrder = 1;
+  auroraMesh.visible = false;
+  group.add(auroraMesh);
+
+  let auroraEnabled = true;
+  let auroraStrength = 0;
+
   scene.add(group);
 
   let shadowFocusX = 0;
@@ -750,6 +833,9 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     nightFactor: 0,
     getNightFactor() {
       return rig.nightFactor;
+    },
+    setAuroraEnabled(enabled) {
+      auroraEnabled = enabled;
     },
     updateShadowFocus(x, z) {
       shadowFocusX = Math.round(x / SHADOW_SNAP_STEP) * SHADOW_SNAP_STEP;
@@ -872,6 +958,17 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
         fireflyMat.uniforms["uFade"]!.value = fireflyFade;
       }
 
+      // 밤하늘 오로라 커튼 갱신 (night > 0.35 && auroraEnabled, 주간·비활성 시 visible=false → Draw Call +0)
+      const targetAurora = auroraEnabled && night > 0.35
+        ? smoothstep01((night - 0.35) / 0.38)
+        : 0;
+      auroraStrength += (targetAurora - auroraStrength) * Math.min(1, dt * 2.4);
+      auroraMesh.visible = auroraStrength > 0.008;
+      if (auroraMesh.visible) {
+        auroraMat.uniforms["uTime"]!.value = elapsed;
+        auroraMat.uniforms["uAlpha"]!.value = auroraStrength;
+      }
+
       // 배경 밤하늘 유성우 (밤 시간대 10~18초 간격, 3기 풀링 0-GC)
       if (night > 0.35) {
         nextMeteorCooldown -= dt;
@@ -989,6 +1086,8 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
       weatherMat.dispose();
       rainbowGeo.dispose();
       rainbowMat.dispose();
+      auroraGeo.dispose();
+      auroraMat.dispose();
       scene.remove(group);
     },
   };

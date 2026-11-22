@@ -1,7 +1,7 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo, useEffect } from "react";
+import { memo, useEffect, useState } from "react";
 
-import { playDistrictSelect } from "../engine/world-audio.js";
+import { playDistrictHover, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   COSMETIC_UNLOCK_THRESHOLDS,
@@ -11,9 +11,28 @@ import {
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
+export const WORLD_FISH_IDS = [
+  "meadow_minnow",
+  "golden_koi",
+  "starlight_trout",
+  "cherry_loach",
+  "moon_jelly",
+  "rainbow_carp",
+  "star_shell",
+  "message_bottle",
+] as const;
+
+export type WorldFishId = (typeof WORLD_FISH_IDS)[number];
+
+export type WorldFishRarity = "common" | "rare" | "legendary";
+
+export type WorldStampBookTab = "stamps" | "fish";
+
 export interface WorldStampBookProps {
   readonly open: boolean;
   readonly unlockedStamps: readonly WorldStampId[];
+  readonly caughtFishCounts?: Readonly<Record<string, number>> | undefined;
+  readonly initialTab?: WorldStampBookTab | undefined;
   readonly locale: ConsoleLocale | undefined;
   readonly onOpenCustomizer?: (() => void) | undefined;
   readonly onClose: () => void;
@@ -75,6 +94,77 @@ const STAMP_META: Readonly<Record<WorldStampId, {
   },
 };
 
+const FISH_META: Readonly<Record<WorldFishId, {
+  readonly titleKey: TheWorldMessageKey;
+  readonly descKey: TheWorldMessageKey;
+  readonly rarity: WorldFishRarity;
+  readonly icon: WorldIconName;
+  readonly tone: WorldIconTone;
+}>> = {
+  meadow_minnow: {
+    titleKey: "theWorld.fishing.fish.meadow_minnow.title",
+    descKey: "theWorld.fishing.fish.meadow_minnow.desc",
+    rarity: "common",
+    icon: "leaf",
+    tone: "cerulean",
+  },
+  golden_koi: {
+    titleKey: "theWorld.fishing.fish.golden_koi.title",
+    descKey: "theWorld.fishing.fish.golden_koi.desc",
+    rarity: "rare",
+    icon: "crown",
+    tone: "amber",
+  },
+  starlight_trout: {
+    titleKey: "theWorld.fishing.fish.starlight_trout.title",
+    descKey: "theWorld.fishing.fish.starlight_trout.desc",
+    rarity: "rare",
+    icon: "sparkle",
+    tone: "indigo",
+  },
+  cherry_loach: {
+    titleKey: "theWorld.fishing.fish.cherry_loach.title",
+    descKey: "theWorld.fishing.fish.cherry_loach.desc",
+    rarity: "common",
+    icon: "sakura",
+    tone: "rose",
+  },
+  moon_jelly: {
+    titleKey: "theWorld.fishing.fish.moon_jelly.title",
+    descKey: "theWorld.fishing.fish.moon_jelly.desc",
+    rarity: "rare",
+    icon: "moon",
+    tone: "teal",
+  },
+  rainbow_carp: {
+    titleKey: "theWorld.fishing.fish.rainbow_carp.title",
+    descKey: "theWorld.fishing.fish.rainbow_carp.desc",
+    rarity: "legendary",
+    icon: "rainbow",
+    tone: "amber",
+  },
+  star_shell: {
+    titleKey: "theWorld.fishing.fish.star_shell.title",
+    descKey: "theWorld.fishing.fish.star_shell.desc",
+    rarity: "common",
+    icon: "compass",
+    tone: "cerulean",
+  },
+  message_bottle: {
+    titleKey: "theWorld.fishing.fish.message_bottle.title",
+    descKey: "theWorld.fishing.fish.message_bottle.desc",
+    rarity: "legendary",
+    icon: "mail",
+    tone: "amber",
+  },
+};
+
+const RARITY_LABEL_KEY: Readonly<Record<WorldFishRarity, TheWorldMessageKey>> = {
+  common: "theWorld.fishing.rarityCommon",
+  rare: "theWorld.fishing.rarityRare",
+  legendary: "theWorld.fishing.rarityLegendary",
+};
+
 const REWARD_MILESTONES: readonly {
   readonly kind: WorldUnlockableCosmeticKind;
   readonly threshold: number;
@@ -106,19 +196,28 @@ const REWARD_MILESTONES: readonly {
 ];
 
 /**
- * 「별빛 항해 수첩」 스탬프 수집 & 외형 보상 모달.
+ * 「별빛 항해 수첩」 2탭 모달 (`항해 스탬프` | `초원 어류 도감`).
  *
- * - 상단 진행도 바(`N / 8 스탬프 수집`) + 3단계 외형 보상 로드맵(`들꽃 화관` · `오로라 망토` · `무지개 별똥별 꼬리`)
- * - 2×4 스탬프 그리드: 해금된 스탬프는 황금 글로우 배지, 미해금은 프로스트 실루엣 + 획득 힌트 표시
+ * - 탭 1: 스탬프 진행도 바(`N / 8`) · 3단계 외형 보상 로드맵 · 2×4 스탬프 그리드
+ * - 탭 2: 초원 어류 도감 진행도 바(`M / 8`) · 2×4 어류 카드(희귀도 배지 · 마리 수 · 미발견 실루엣)
  */
 export const WorldStampBook = memo(function WorldStampBook({
   open,
   unlockedStamps,
+  caughtFishCounts = {},
+  initialTab = "stamps",
   locale,
   onOpenCustomizer,
   onClose,
 }: WorldStampBookProps) {
   const t = getWorldT(locale);
+  const [activeTab, setActiveTab] = useState<WorldStampBookTab>(initialTab);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -136,9 +235,16 @@ export const WorldStampBook = memo(function WorldStampBook({
   if (!open) return null;
 
   const unlockedSet = new Set<WorldStampId>(unlockedStamps);
-  const totalCount = WORLD_STAMP_IDS.length;
-  const collectedCount = unlockedSet.size;
-  const progressPct = totalCount > 0 ? Math.min(100, Math.round((collectedCount / totalCount) * 100)) : 0;
+  const totalStamps = WORLD_STAMP_IDS.length;
+  const collectedStamps = unlockedSet.size;
+  const stampProgressPct = totalStamps > 0 ? Math.min(100, Math.round((collectedStamps / totalStamps) * 100)) : 0;
+
+  const totalFish = WORLD_FISH_IDS.length;
+  let discoveredFish = 0;
+  for (const fishId of WORLD_FISH_IDS) {
+    if ((caughtFishCounts[fishId] ?? 0) > 0) discoveredFish += 1;
+  }
+  const fishProgressPct = totalFish > 0 ? Math.min(100, Math.round((discoveredFish / totalFish) * 100)) : 0;
 
   return (
     <div
@@ -162,7 +268,7 @@ export const WorldStampBook = memo(function WorldStampBook({
         <header className="the-world-panel-head">
           <div className="the-world-dialogue-speaker">
             <span className="the-world-qb-emblem" aria-hidden="true">
-              <WorldIcon name="trophy" size={18} tone="amber" />
+              <WorldIcon name={activeTab === "fish" ? "sparkle" : "trophy"} size={18} tone="amber" />
             </span>
             <div>
               <h2 className="the-world-dialogue-name">{t("theWorld.stamps.title")}</h2>
@@ -180,94 +286,182 @@ export const WorldStampBook = memo(function WorldStampBook({
           </button>
         </header>
 
-        <div className="the-world-panel-body the-world-stamp-body">
-          {/* 상단 진행도 바 */}
-          <div className="the-world-stamp-progress">
-            <div className="the-world-stamp-progress-head">
-              <span className="the-world-stamp-progress-label">
-                <WorldIcon name="sparkle" size={13} tone="amber" />
-                <span>{t("theWorld.stamps.progressLabel", { count: collectedCount, total: totalCount })}</span>
-              </span>
-              <span className="the-world-stamp-progress-pct">{progressPct}%</span>
-            </div>
-            <div className="the-world-stamp-progress-track" aria-hidden="true">
-              <div
-                className="the-world-stamp-progress-fill"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
-          </div>
+        {/* 상단 세그먼트 탭: 항해 스탬프 | 초원 어류 도감 */}
+        <div className="the-world-stamp-tabs" role="tablist" aria-label={t("theWorld.fishing.tabsAria")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "stamps"}
+            className={`the-world-stamp-tab${activeTab === "stamps" ? " is-active" : ""}`}
+            onClick={() => {
+              playDistrictHover();
+              setActiveTab("stamps");
+            }}
+          >
+            <WorldIcon name="trophy" size={13} tone={activeTab === "stamps" ? "amber" : "cerulean"} />
+            <span>{t("theWorld.fishing.tabStamps", { count: collectedStamps, total: totalStamps })}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "fish"}
+            className={`the-world-stamp-tab${activeTab === "fish" ? " is-active" : ""}`}
+            onClick={() => {
+              playDistrictHover();
+              setActiveTab("fish");
+            }}
+          >
+            <WorldIcon name="sparkle" size={13} tone={activeTab === "fish" ? "amber" : "teal"} />
+            <span>{t("theWorld.fishing.tabFish", { count: discoveredFish, total: totalFish })}</span>
+          </button>
+        </div>
 
-          {/* 3단계 해금 보상 로드맵 */}
-          <section className="the-world-stamp-rewards" aria-label={t("theWorld.stamps.rewardsHeading")}>
-            <div className="the-world-stamp-rewards-head">
-              <h3 className="the-world-qb-section-title">{t("theWorld.stamps.rewardsHeading")}</h3>
-              {onOpenCustomizer ? (
-                <button
-                  type="button"
-                  className="the-world-stamp-customizer-btn"
-                  onClick={() => {
-                    playDistrictSelect();
-                    onClose();
-                    onOpenCustomizer();
-                  }}
-                >
-                  <WorldIcon name="hat" size={13} tone="amber" />
-                  <span>{t("theWorld.stamps.openCustomizer")}</span>
-                </button>
-              ) : null}
+        {activeTab === "stamps" ? (
+          <div className="the-world-panel-body the-world-stamp-body">
+            {/* 상단 진행도 바 */}
+            <div className="the-world-stamp-progress">
+              <div className="the-world-stamp-progress-head">
+                <span className="the-world-stamp-progress-label">
+                  <WorldIcon name="sparkle" size={13} tone="amber" />
+                  <span>{t("theWorld.stamps.progressLabel", { count: collectedStamps, total: totalStamps })}</span>
+                </span>
+                <span className="the-world-stamp-progress-pct">{stampProgressPct}%</span>
+              </div>
+              <div className="the-world-stamp-progress-track" aria-hidden="true">
+                <div
+                  className="the-world-stamp-progress-fill"
+                  style={{ width: `${stampProgressPct}%` }}
+                />
+              </div>
             </div>
 
-            <div className="the-world-stamp-rewards-grid">
-              {REWARD_MILESTONES.map((reward) => {
-                const unlocked = collectedCount >= reward.threshold;
-                return (
-                  <div
-                    key={reward.kind}
-                    className={`the-world-stamp-reward-card${unlocked ? " is-unlocked" : " is-locked"}`}
+            {/* 3단계 해금 보상 로드맵 */}
+            <section className="the-world-stamp-rewards" aria-label={t("theWorld.stamps.rewardsHeading")}>
+              <div className="the-world-stamp-rewards-head">
+                <h3 className="the-world-qb-section-title">{t("theWorld.stamps.rewardsHeading")}</h3>
+                {onOpenCustomizer ? (
+                  <button
+                    type="button"
+                    className="the-world-stamp-customizer-btn"
+                    onClick={() => {
+                      playDistrictSelect();
+                      onClose();
+                      onOpenCustomizer();
+                    }}
                   >
-                    <span className="the-world-stamp-reward-icon" aria-hidden="true">
-                      <WorldIcon name={reward.icon} size={16} tone={unlocked ? "amber" : reward.tone} />
-                    </span>
-                    <div className="the-world-stamp-reward-copy">
-                      <span className="the-world-stamp-reward-name">{t(reward.labelKey)}</span>
-                      <span className="the-world-stamp-reward-req">
-                        {unlocked
-                          ? t("theWorld.stamps.unlockedBadge")
-                          : t("theWorld.stamps.unlockReq", { count: reward.threshold })}
+                    <WorldIcon name="hat" size={13} tone="amber" />
+                    <span>{t("theWorld.stamps.openCustomizer")}</span>
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="the-world-stamp-rewards-grid">
+                {REWARD_MILESTONES.map((reward) => {
+                  const unlocked = collectedStamps >= reward.threshold;
+                  return (
+                    <div
+                      key={reward.kind}
+                      className={`the-world-stamp-reward-card${unlocked ? " is-unlocked" : " is-locked"}`}
+                    >
+                      <span className="the-world-stamp-reward-icon" aria-hidden="true">
+                        <WorldIcon name={reward.icon} size={16} tone={unlocked ? "amber" : reward.tone} />
+                      </span>
+                      <div className="the-world-stamp-reward-copy">
+                        <span className="the-world-stamp-reward-name">{t(reward.labelKey)}</span>
+                        <span className="the-world-stamp-reward-req">
+                          {unlocked
+                            ? t("theWorld.stamps.unlockedBadge")
+                            : t("theWorld.stamps.unlockReq", { count: reward.threshold })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* 2×4 항해 스탬프 그리드 */}
+            <div className="the-world-stamp-grid">
+              {WORLD_STAMP_IDS.map((stampId) => {
+                const meta = STAMP_META[stampId];
+                const unlocked = unlockedSet.has(stampId);
+                return (
+                  <article
+                    key={stampId}
+                    className={`the-world-stamp-card${unlocked ? " is-unlocked" : " is-locked"}`}
+                  >
+                    <div className="the-world-stamp-card-top">
+                      <span className="the-world-stamp-seal" aria-hidden="true">
+                        <WorldIcon name={meta.icon} size={18} tone={unlocked ? "amber" : meta.tone} />
+                      </span>
+                      <span className={`the-world-stamp-card-badge${unlocked ? " is-unlocked" : ""}`}>
+                        {unlocked ? t("theWorld.stamps.unlockedBadge") : t("theWorld.stamps.lockedBadge")}
                       </span>
                     </div>
-                  </div>
+                    <h4 className="the-world-stamp-card-title">{t(meta.titleKey)}</h4>
+                    <p className="the-world-stamp-card-desc">{t(meta.descKey)}</p>
+                  </article>
                 );
               })}
             </div>
-          </section>
-
-          {/* 2×4 항해 스탬프 그리드 */}
-          <div className="the-world-stamp-grid">
-            {WORLD_STAMP_IDS.map((stampId) => {
-              const meta = STAMP_META[stampId];
-              const unlocked = unlockedSet.has(stampId);
-              return (
-                <article
-                  key={stampId}
-                  className={`the-world-stamp-card${unlocked ? " is-unlocked" : " is-locked"}`}
-                >
-                  <div className="the-world-stamp-card-top">
-                    <span className="the-world-stamp-seal" aria-hidden="true">
-                      <WorldIcon name={meta.icon} size={18} tone={unlocked ? "amber" : meta.tone} />
-                    </span>
-                    <span className={`the-world-stamp-card-badge${unlocked ? " is-unlocked" : ""}`}>
-                      {unlocked ? t("theWorld.stamps.unlockedBadge") : t("theWorld.stamps.lockedBadge")}
-                    </span>
-                  </div>
-                  <h4 className="the-world-stamp-card-title">{t(meta.titleKey)}</h4>
-                  <p className="the-world-stamp-card-desc">{t(meta.descKey)}</p>
-                </article>
-              );
-            })}
           </div>
-        </div>
+        ) : (
+          <div className="the-world-panel-body the-world-stamp-body">
+            {/* 어류 도감 진행도 바 */}
+            <div className="the-world-stamp-progress">
+              <div className="the-world-stamp-progress-head">
+                <span className="the-world-stamp-progress-label">
+                  <WorldIcon name="sparkle" size={13} tone="teal" />
+                  <span>{t("theWorld.fishing.progressLabel", { count: discoveredFish, total: totalFish })}</span>
+                </span>
+                <span className="the-world-stamp-progress-pct">{fishProgressPct}%</span>
+              </div>
+              <div className="the-world-stamp-progress-track" aria-hidden="true">
+                <div
+                  className="the-world-stamp-progress-fill"
+                  style={{ width: `${fishProgressPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2×4 초원 어류 도감 그리드 */}
+            <div className="the-world-fish-grid">
+              {WORLD_FISH_IDS.map((fishId) => {
+                const meta = FISH_META[fishId];
+                const count = caughtFishCounts[fishId] ?? 0;
+                const caught = count > 0;
+                return (
+                  <article
+                    key={fishId}
+                    className={`the-world-fish-card is-${meta.rarity}${caught ? " is-caught" : " is-locked"}`}
+                  >
+                    <div className="the-world-fish-card-top">
+                      <span className="the-world-fish-seal" aria-hidden="true">
+                        <WorldIcon name={meta.icon} size={18} tone={caught ? meta.tone : "inherit"} />
+                      </span>
+                      <div className="the-world-fish-badges">
+                        <span className={`the-world-fish-rarity is-${meta.rarity}`}>
+                          {t(RARITY_LABEL_KEY[meta.rarity])}
+                        </span>
+                        {caught ? (
+                          <span className="the-world-fish-count">
+                            {t("theWorld.fishing.caughtCount", { count })}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <h4 className="the-world-fish-card-title">
+                      {caught ? t(meta.titleKey) : "???"}
+                    </h4>
+                    <p className="the-world-fish-card-desc">
+                      {caught ? t(meta.descKey) : t("theWorld.fishing.lockedHint")}
+                    </p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
