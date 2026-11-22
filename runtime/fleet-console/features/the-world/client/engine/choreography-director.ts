@@ -204,7 +204,7 @@ const MEADOW_EXCURSION_SPOTS: readonly PatrolWaypoint[] = [
   { x: -0.4, z: -0.9, faceX: 0, faceZ: -5.2 },
   { x: 1.6, z: -1.4, faceX: 0, faceZ: -5.2 },
   // 제독 퀘스트 게시판 구경
-  { x: 3.4, z: -2.1, faceX: 4.8, faceZ: -3.4 },
+  { x: 3.8, z: -1.8, faceX: 5.5, faceZ: -2.9 },
   // 중앙 모닥불 둘레
   { x: 1.1, z: 1.5, faceX: 2.8, faceZ: 1.0 },
   { x: 4.4, z: 1.6, faceX: 2.8, faceZ: 1.0 },
@@ -310,6 +310,116 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
   let motionList: LiveActorMotion[] = [];
   const villagePatrolPlans = new Map<string, VillagePatrolPlan>();
   const patrolStates = new Map<string, ActorPatrolState>();
+  const navSteerStates = new Map<string, { detourSign: 1 | -1; detourTimer: number; stuckTimer: number }>();
+  const steerOutScratch = { x: 0, z: 0, moved: 0, yaw: 0 };
+  const STEER_PROBE_ANGLES: readonly number[] = [0.92, -0.92, 1.54, -1.54, 2.16, -2.16];
+
+  /** 장애물 충돌 시 직진으로 끼이지 않고 접선 우회 각도(±52°/±88°/±124°)로 부드럽게 돌아가는 0-GC 이동 헬퍼. */
+  function stepWithObstacleSteering(
+    actorId: string,
+    curX: number,
+    curZ: number,
+    targetX: number,
+    targetZ: number,
+    step: number,
+    radius: number,
+    dt: number,
+    resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, actorRadius?: number) => { x: number; z: number },
+  ): { x: number; z: number; moved: number; yaw: number } {
+    const dx = targetX - curX;
+    const dz = targetZ - curZ;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.0001 || step <= 0.0001) {
+      steerOutScratch.x = curX;
+      steerOutScratch.z = curZ;
+      steerOutScratch.moved = 0;
+      steerOutScratch.yaw = 0;
+      return steerOutScratch;
+    }
+
+    let nav = navSteerStates.get(actorId);
+    if (!nav) {
+      nav = { detourSign: (actorId.length % 2 === 0 ? 1 : -1), detourTimer: 0, stuckTimer: 0 };
+      navSteerStates.set(actorId, nav);
+    }
+    if (nav.detourTimer > 0) nav.detourTimer = Math.max(0, nav.detourTimer - dt);
+
+    const baseDirX = dx / dist;
+    const baseDirZ = dz / dist;
+    const directRes = resolveMovement(curX, curZ, curX + baseDirX * step, curZ + baseDirZ * step, radius);
+    const directMoved = Math.hypot(directRes.x - curX, directRes.z - curZ);
+    const directForward = ((directRes.x - curX) * baseDirX + (directRes.z - curZ) * baseDirZ);
+
+    // 직진 경로가 충분히 열려 있고 우회 유지 중이 아니면 그대로 직진
+    if (nav.detourTimer <= 0 && directMoved >= step * 0.58 && directForward >= step * 0.45) {
+      nav.stuckTimer = 0;
+      steerOutScratch.x = directRes.x;
+      steerOutScratch.z = directRes.z;
+      steerOutScratch.moved = directMoved;
+      steerOutScratch.yaw = Math.atan2(directRes.x - curX, directRes.z - curZ);
+      return steerOutScratch;
+    }
+
+    // 직진이 막혔거나 코너 우회 유지 중이면 접선 우회 후보를 0-GC로 탐색
+    let bestX = directRes.x;
+    let bestZ = directRes.z;
+    let bestMoved = directMoved;
+    let bestScore = directMoved >= step * 0.58 ? directForward + directMoved * 0.35 : -1;
+    let bestSign: 1 | -1 = nav.detourSign;
+
+    // 우회 유지 중에는 직진이 완전히 열리면 우회 해제
+    if (nav.detourTimer > 0 && directMoved >= step * 0.85 && directForward >= step * 0.78) {
+      nav.detourTimer = 0;
+      nav.stuckTimer = 0;
+      steerOutScratch.x = directRes.x;
+      steerOutScratch.z = directRes.z;
+      steerOutScratch.moved = directMoved;
+      steerOutScratch.yaw = Math.atan2(directRes.x - curX, directRes.z - curZ);
+      return steerOutScratch;
+    }
+
+    for (let i = 0; i < STEER_PROBE_ANGLES.length; i += 1) {
+      const ang = STEER_PROBE_ANGLES[i]! * nav.detourSign;
+      const cosA = Math.cos(ang);
+      const sinA = Math.sin(ang);
+      const vx = baseDirX * cosA - baseDirZ * sinA;
+      const vz = baseDirX * sinA + baseDirZ * cosA;
+      const cand = resolveMovement(curX, curZ, curX + vx * step, curZ + vz * step, radius);
+      const candMoved = Math.hypot(cand.x - curX, cand.z - curZ);
+      if (candMoved < step * 0.32) continue;
+      // 진행 거리 + 목표 근접 기여 + 기존 회전 방향 일관성 보너스(좌우 진동 방지)
+      const candSign: 1 | -1 = ang >= 0 ? 1 : -1;
+      const forwardDot = ((cand.x - curX) * baseDirX + (cand.z - curZ) * baseDirZ);
+      const consistencyBonus = candSign === nav.detourSign ? step * 0.22 : 0;
+      const score = candMoved * 0.85 + forwardDot * 0.55 + consistencyBonus;
+      if (score > bestScore) {
+        bestScore = score;
+        bestX = cand.x;
+        bestZ = cand.z;
+        bestMoved = candMoved;
+        bestSign = candSign;
+      }
+    }
+
+    if (bestMoved >= step * 0.32) {
+      nav.detourSign = bestSign;
+      nav.detourTimer = Math.max(nav.detourTimer, 0.42);
+      nav.stuckTimer = 0;
+    } else {
+      nav.stuckTimer += dt;
+      if (nav.stuckTimer > 0.65) {
+        nav.detourSign = nav.detourSign === 1 ? -1 : 1;
+        nav.detourTimer = 0.55;
+        nav.stuckTimer = 0;
+      }
+    }
+
+    steerOutScratch.x = bestX;
+    steerOutScratch.z = bestZ;
+    steerOutScratch.moved = bestMoved;
+    steerOutScratch.yaw = bestMoved > 0.002 ? Math.atan2(bestX - curX, bestZ - curZ) : Math.atan2(dx, dz);
+    return steerOutScratch;
+  }
   const animStates = new Map<string, ActorAnimState>();
   const huddleActivityTracker = new Map<string, { activity: string; calloutCooldown: number }>();
   const huddleGroupsScratch = new Map<string, LiveActorMotion[]>();
@@ -1404,6 +1514,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         if (!nextIds.has(id)) {
           motions.delete(id);
           patrolStates.delete(id);
+          navSteerStates.delete(id);
           animStates.delete(id);
           huddleActivityTracker.delete(id);
           const compIdx = companionActorIds.indexOf(id);
@@ -2022,13 +2133,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
               const spd = followDist > 5.0 ? 5.8 : followDist > 2.6 ? 4.1 : 2.9;
               const step = Math.min(followDist - 0.55, spd * dt);
               if (step > 0.001) {
-                const nx = m.x + ((followX - m.x) / followDist) * step;
-                const nz = m.z + ((followZ - m.z) / followDist) * step;
-                const resolved = resolveMovement(m.x, m.z, nx, nz, 0.45);
-                const moved = Math.hypot(resolved.x - m.x, resolved.z - m.z);
-                m.x = resolved.x;
-                m.z = resolved.z;
-                m.yaw = Math.atan2(followX - m.x, followZ - m.z);
+                const steered = stepWithObstacleSteering(m.spec.id, m.x, m.z, followX, followZ, step, 0.45, dt, resolveMovement);
+                const moved = steered.moved;
+                m.x = steered.x;
+                m.z = steered.z;
+                m.yaw = steered.yaw;
                 m.moving = moved > 0.002;
                 companionActualSpd = dt > 0.0001 ? moved / dt : 0;
               } else {
@@ -2096,15 +2205,23 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
               const bDist = Math.hypot(welcomeBriefing.targetX - m.x, welcomeBriefing.targetZ - m.z);
               if (!welcomeBriefing.arrived && bDist > 0.55) {
                 const step = Math.min(bDist, 4.9 * dt);
-                const nx = m.x + ((welcomeBriefing.targetX - m.x) / bDist) * step;
-                const nz = m.z + ((welcomeBriefing.targetZ - m.z) / bDist) * step;
-                const resolved = resolveMovement(m.x, m.z, nx, nz, 0.46);
-                const moved = Math.hypot(resolved.x - m.x, resolved.z - m.z);
-                m.x = resolved.x;
-                m.z = resolved.z;
+                const steered = stepWithObstacleSteering(
+                  m.spec.id,
+                  m.x,
+                  m.z,
+                  welcomeBriefing.targetX,
+                  welcomeBriefing.targetZ,
+                  step,
+                  0.46,
+                  dt,
+                  resolveMovement,
+                );
+                const moved = steered.moved;
+                m.x = steered.x;
+                m.z = steered.z;
                 m.tx = welcomeBriefing.targetX;
                 m.tz = welcomeBriefing.targetZ;
-                m.yaw = Math.atan2(welcomeBriefing.targetX - m.x, welcomeBriefing.targetZ - m.z);
+                m.yaw = steered.yaw;
                 m.moving = moved > 0.002;
                 m.moveSpeed = dt > 0.0001 ? moved / dt : 0;
                 m.worldAnim = m.moveSpeed > 3.5 ? "sprint" : "walk";
@@ -2479,13 +2596,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         let actualSpeed = 0;
         if (moveSpeed > 0.01 && dist > 0.08) {
           const step = Math.min(dist, moveSpeed * dt);
-          const nx = m.x + (dx / dist) * step;
-          const nz = m.z + (dz / dist) * step;
-          const resolved = resolveMovement(m.x, m.z, nx, nz, 0.46);
-          const moved = Math.hypot(resolved.x - m.x, resolved.z - m.z);
-          m.x = resolved.x;
-          m.z = resolved.z;
-          m.yaw = Math.atan2(dx, dz);
+          const steered = stepWithObstacleSteering(m.spec.id, m.x, m.z, m.tx, m.tz, step, 0.46, dt, resolveMovement);
+          const moved = steered.moved;
+          m.x = steered.x;
+          m.z = steered.z;
+          m.yaw = steered.yaw;
           m.moving = moved > 0.002;
           actualSpeed = dt > 0.0001 ? moved / dt : 0;
 
@@ -2816,6 +2931,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       pendingTimers.clear();
       villagePatrolPlans.clear();
       patrolStates.clear();
+      navSteerStates.clear();
       animStates.clear();
       huddleActivityTracker.clear();
       huddleGroupsScratch.clear();

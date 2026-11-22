@@ -200,10 +200,10 @@ export interface WorldMissionItem {
   readonly active: boolean;
 }
 
-/** 중앙 길드 광장 북동쪽(가로등 옆, 풍차 비충돌) 3D 퀘스트 게시판 좌표 및 피킹 반경. */
+/** 중앙 길드 광장 북동쪽(길드 회관·풍차와 2.2m+ 개방 통로 확보) 3D 퀘스트 게시판 좌표 및 피킹 반경. */
 export const WORLD_NOTICE_BOARD_POS = {
-  x: 4.8,
-  z: -3.4,
+  x: 5.5,
+  z: -2.9,
   radius: 1.8,
 } as const;
 

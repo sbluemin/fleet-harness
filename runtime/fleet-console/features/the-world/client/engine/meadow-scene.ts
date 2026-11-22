@@ -91,9 +91,9 @@ export const PARADE_BELL_POS = {
   radius: 1.75,
 } as const;
 
-/** 중앙 길드 광장 앞마당 「함대 우체통 (Fleet Mailbox)」 좌표 및 피킹 반경 (길드 회관·퀘스트 게시판·풍차 비충돌). */
+/** 중앙 길드 광장 좌측 앞마당 「함대 우체통 (Fleet Mailbox)」 좌표 및 피킹 반경 (길드 회관·우물·화단과 1.3m+ 개방 통로 확보). */
 export const MAILBOX_POS = {
-  x: 2.8,
+  x: -4.1,
   z: -4.2,
   radius: 1.55,
 } as const;
@@ -2100,21 +2100,26 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       rz *= s;
     }
 
-    // 2. 건물·나무·우물·모닥불 원형 슬라이딩 충돌 해소
-    for (const col of colliders) {
-      const minR = col.r + actorRadius;
-      const dx = rx - col.x;
-      const dz = rz - col.z;
-      const d = Math.hypot(dx, dz);
-      if (d < minR) {
-        if (d > 0.0001) {
-          rx = col.x + (dx / d) * minR;
-          rz = col.z + (dz / d) * minR;
-        } else {
-          rx = curX;
-          rz = curZ;
+    // 2. 건물·나무·우물·모닥불 원형 슬라이딩 충돌 해소 (2패스 반복으로 인접 콜라이더 간 끼임·관통 방지)
+    for (let pass = 0; pass < 2; pass += 1) {
+      let pushed = false;
+      for (const col of colliders) {
+        const minR = col.r + actorRadius;
+        const dx = rx - col.x;
+        const dz = rz - col.z;
+        const d = Math.hypot(dx, dz);
+        if (d < minR) {
+          if (d > 0.0001) {
+            rx = col.x + (dx / d) * minR;
+            rz = col.z + (dz / d) * minR;
+          } else {
+            rx = curX;
+            rz = curZ;
+          }
+          pushed = true;
         }
       }
+      if (!pushed) break;
     }
 
     // 3. 시냇물 침수 방지 (양쪽 목교 난간 슬라이딩 + 강변 슬라이딩)
@@ -2519,9 +2524,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addCameraOccluder(hx, hz + 0.15, 2.85, 5.4);
     colliders.push({ x: hx, z: hz + 0.15, r: 2.95 });
 
-    // 우측 풍차 시계탑 (길드 회관 우측 처마 +2.82m와 날개 반경 2.11m 완전 분리)
-    const mx = 5.25;
-    const mz = -6.7;
+    // 우측 풍차 시계탑 (길드 회관·퀘스트 게시판과 1.7~2.2m+ 개방 통로 확보)
+    const mx = 6.2;
+    const mz = -7.5;
     const mgy = getTerrainBaseHeight(mx, mz);
     const hasCustomWindmill = assetRegistry.hasCustomModel("windmill");
     windmillBlades.visible = !hasCustomWindmill;
@@ -2722,7 +2727,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addContactShadow(b, nbx, nbz, 1.25, 0.78, nbYaw);
     addGrassClearZone(nbx, nbz, 1.55);
     addCameraOccluder(nbx, nbz, 0.95, 2.7);
-    colliders.push({ x: nbx, z: nbz, r: 0.92 });
+    colliders.push({ x: nbx, z: nbz, r: 0.88 });
 
     // 6. 중앙 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 목재 종루 + 황금 청동 종
     const pbx = PARADE_BELL_POS.x;
@@ -2790,7 +2795,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addContactShadow(b, mbx, mbz, 0.62, 0.62, mbYaw);
     addGrassClearZone(mbx, mbz, 0.98);
     addCameraOccluder(mbx, mbz, 0.42, 1.65);
-    colliders.push({ x: mbx, z: mbz, r: 0.55 });
+    colliders.push({ x: mbx, z: mbz, r: 0.48 });
 
     // 8. 중앙 광장 동남쪽 정원 「별빛 연못 (Starlight Pond)」 돌 테두리 + 반짝이는 수면 + 수련 잎 + 돌 등불
     const spx = STARLIGHT_POND_POS.x;
@@ -4289,7 +4294,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     // 4. 광장 및 초원 외곽 풍경림 · 울타리 · 길가 가로등 · 갈림길 이정표 · 초원 쉼터 배치
     addHangingStreetlamp(bucketBuilder, -2.9, -3.5, 0.4, true);
-    addHangingStreetlamp(bucketBuilder, 3.1, -3.4, -0.4, true);
+    addHangingStreetlamp(bucketBuilder, 3.5, -4.4, -0.4, true);
     addHangingStreetlamp(bucketBuilder, 5.4, 5.6, -0.8, true);
 
     // 4a-1. 34~60m 장거리 마을 간 오솔길 양옆 길가 가로등 + 낮은 시골 울타리 + 정문 앞 디딤돌 (0 추가 draw call)
@@ -4696,8 +4701,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     // 중앙 길드 광장 장식 화단 4기 (flowerbed.glb)
     if (assetRegistry.hasCustomModel("flowerbed")) {
       const plazaFlowerbeds: readonly [number, number, number][] = [
-        [-4.9, -4.6, 0.96],
-        [6.6, -4.5, 0.94],
+        [-6.1, -5.0, 0.96],
+        [7.8, -5.1, 0.94],
         [-4.8, 1.5, 0.92],
         [4.8, 3.6, 0.92],
       ];
