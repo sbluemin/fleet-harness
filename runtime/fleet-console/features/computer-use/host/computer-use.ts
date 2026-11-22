@@ -77,6 +77,8 @@ export class ComputerUseService {
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
+  /** `stop()`이 불릴 때마다 오른다. 요청 도중에 멈췄으면 그 요청의 헬퍼를 넘겨받지 않는다. */
+  private stops = 0;
   private clipboardCleanup: Promise<ClipboardRestoration | undefined> | null = null;
   private windowSequence = 0;
   private viewSequence = 0;
@@ -168,6 +170,7 @@ export class ComputerUseService {
 
   stop(): Promise<void> {
     if (this.stopping) return this.stopping;
+    this.stops++;
     this.state = "stopping";
     this.lifetime?.abort();
     if (this.idleTimer) clearTimeout(this.idleTimer);
@@ -398,13 +401,14 @@ export class ComputerUseService {
     if (!due.length) return { opened: await this.deps.platform.openPrivacySettings(missingPermissions) };
     const live = this.client?.live ? this.client : null;
     const client = live ?? this.deps.platform.createClient();
+    const stops = this.stops;
     let requested: ComputerUsePermission[];
     let kept = false;
     try {
       if (!live) await client.start();
       let deferred: ComputerUsePermission[];
       ({ requested, deferred } = await this.sendPermissionRequests(client, due, now));
-      kept = !live && deferred.length > 0 && this.keepPermissionHelper(client);
+      kept = !live && deferred.length > 0 && stops === this.stops && this.keepPermissionHelper(client);
     } finally {
       if (!live && !kept) await client.stop();
     }
@@ -415,7 +419,8 @@ export class ComputerUseService {
    * 화면 기록을 미룬 요청 헬퍼를 에이전트 헬퍼 자리에 둔다. 그 헬퍼의 감시가 손쉬운 사용이 켜지는 즉시 화면 기록을 묻는다(에이전트 첫
    * 사용과 같다). 소유자 없이 유휴 타이머만 걸므로, 에이전트가 쓰지 않으면 감시 기한(5분)과 같은 때 `stop()`으로 내려간다. 그사이
    * 에이전트가 시작하면 이 헬퍼를 이어 쓰고, 다시 누르면 새 헬퍼를 띄우지 않고 이 헬퍼로 묻는다. 에이전트 호출이 진행 중이거나
-   * 자리에 다른 헬퍼(내려가는 중 포함)가 있거나 정지 중이면 넘기지 않는다. 그때는 호출자가 내려 예전처럼 다음 누름이 다시 묻는다.
+   * 자리에 다른 헬퍼(내려가는 중 포함)가 있거나 정지 중이면 넘기지 않는다. 요청 도중 멈췄으면 호출자가 넘기지 않는다. 넘기지 않으면
+   * 호출자가 내리고, 예전처럼 다음 누름이 다시 묻는다.
    */
   private keepPermissionHelper(client: FleetHelperClient): boolean {
     if (this.client || this.busy || this.stopping || !client.live) return false;

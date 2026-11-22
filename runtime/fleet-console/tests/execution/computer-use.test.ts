@@ -295,6 +295,32 @@ describe("Fleet Computer Use", () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it("does not keep the settings helper when Computer Use is stopped while the request is in flight", async () => {
+    const f = setup();
+    f.grant({ accessibility: false, screenRecording: false });
+    f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
+    const base = f.replies.getMockImplementation()!;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let asked!: () => void;
+    const askedNow = new Promise<void>((resolve) => { asked = resolve; });
+    f.replies.mockImplementation(async (request) => {
+      if (request.method === "requestPermissions") { asked(); await held; }
+      return base(request);
+    });
+    const writeJson = vi.fn();
+    const router = createComputerUseRouter({ computerUse: f.service, writeJson, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
+    const pressing = router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
+    // 요청이 헬퍼에 가 있는 동안 설정에서 끄거나 멈추면, 그 뒤에 온 응답의 헬퍼를 넘겨받지 않고 바로 내린다.
+    await askedNow;
+    await f.service.stop();
+    release();
+    await pressing;
+    expect(writeJson.mock.calls[0]?.slice(1)).toEqual([200, { requested: ["accessibility"] }]);
+    expect(f.calls("shutdown")).toHaveLength(1);
+    expect(f.service.helperInfo()).toBeNull();
+  });
+
   it("says when this call sent the request again after the interval, and drops that sentence when the request failed", async () => {
     const now = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
