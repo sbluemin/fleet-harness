@@ -256,22 +256,43 @@ describe("Fleet Computer Use", () => {
     expect(f.calls("shutdown")).toHaveLength(1);
   });
 
-  it("from the settings button with a short-lived helper, asks for Accessibility and leaves Screen Recording for the next press", async () => {
-    const f = setup();
-    f.grant({ accessibility: false, screenRecording: false });
-    f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
-    const press = async () => {
-      const writeJson = vi.fn();
-      const router = createComputerUseRouter({ computerUse: f.service, writeJson, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
-      await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
-      return writeJson.mock.calls[0]?.slice(1);
-    };
-    expect(await press()).toEqual([200, { requested: ["accessibility"] }]);
-    f.grant({ accessibility: true, screenRecording: false });
-    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
-    expect(await press()).toEqual([200, { requested: ["screenRecording"] }]);
-    expect(f.openPrivacySettings).not.toHaveBeenCalled();
-    expect(f.calls("shutdown")).toHaveLength(2);
+  it("from the settings button, keeps the helper that deferred Screen Recording as the agent helper until it idles out", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const f = setup();
+      f.grant({ accessibility: false, screenRecording: false });
+      f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
+      const press = async () => {
+        const writeJson = vi.fn();
+        const router = createComputerUseRouter({ computerUse: f.service, writeJson, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
+        await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
+        return writeJson.mock.calls[0]?.slice(1);
+      };
+      // 손쉬운 사용만 묻고, 손쉬운 사용이 켜지면 화면 기록을 이어 물을 헬퍼는 내리지 않는다. 소유자는 생기지 않는다.
+      expect(await press()).toEqual([200, { requested: ["accessibility"] }]);
+      expect(f.calls("shutdown")).toHaveLength(0);
+      expect(f.service.activeOwner()).toBeNull();
+      // 설정 화면의 상태 읽기는 요청을 더하지 않는다. 다시 누르면 같은 헬퍼로 미룬 화면 기록만 다시 걸고(에이전트 경로처럼 미룬 요청은
+      // 간격에 기록하지 않는다) 시스템 설정을 연다. 헬퍼는 하나뿐이다.
+      await f.service.readStatus();
+      expect(f.calls("requestPermissions")).toHaveLength(1);
+      expect(await press()).toEqual([200, { opened: true }]);
+      expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }, { permissions: ["screenRecording"] }]);
+      expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(1);
+      // 아무도 쓰지 않으면 유휴 타이머(5분)에 내려가고, 캡처·소유자 표시는 빈 채로 남는다.
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      await f.service.waitForRelease();
+      expect(f.calls("shutdown")).toHaveLength(1);
+      expect(f.onCaptureTarget.mock.calls.every(([target]) => target === null)).toBe(true);
+      expect(f.service.activeOwner()).toBeNull();
+      // 넘겨받은 헬퍼가 있는 동안 에이전트가 시작하면 새로 띄우지 않고 그 헬퍼를 이어 쓴다.
+      expect(await press()).toEqual([200, { opened: true }]);
+      expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(2);
+      await f.invoke("computer_apps", {});
+      expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(2);
+      expect(f.calls("hello")).toHaveLength(2);
+      expect(f.calls("shutdown")).toHaveLength(1);
+    } finally { vi.useRealTimers(); }
   });
 
   it("says when this call sent the request again after the interval, and drops that sentence when the request failed", async () => {
