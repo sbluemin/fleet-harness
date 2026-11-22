@@ -83,6 +83,8 @@ export interface CompanionAnglerPose {
   readonly x: number;
   readonly z: number;
   readonly yaw: number;
+  /** 선택적 지면 높이(m). 미지정 시 강변 기본 높이(0.28m)를 사용한다. */
+  readonly y?: number | undefined;
 }
 
 export interface FishingController {
@@ -919,26 +921,30 @@ export function createFishingController(scene: Scene): FishingController {
       const angler = anglers[i]!;
       slot.group.visible = true;
 
-      const clampedX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, angler.x));
-      const bp = brookProfile(clampedX);
-      const sideOffset = (i - 1) * 0.55;
-      const targetX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, clampedX + sideOffset));
-      const targetZ = brookProfile(targetX).centerZ + (i % 2 === 0 ? -0.22 : 0.22) * Math.min(1, bp.halfWidth * 0.45);
-      const aimYaw = Math.atan2(targetX - angler.x, targetZ - angler.z);
+      // 동행 사령관의 실제 시선(`angler.yaw`) 기준으로 몸통 옆/오른팔 높이(`y + 0.64`, `right * 0.36 + forward * 0.22`)에 그립 밀착
+      const baseY = angler.y ?? 0.28;
+      const bodyDirX = Math.sin(angler.yaw);
+      const bodyDirZ = Math.cos(angler.yaw);
+      const bodyRightX = Math.cos(angler.yaw);
+      const bodyRightZ = -Math.sin(angler.yaw);
 
-      const dirX = Math.sin(aimYaw);
-      const dirZ = Math.cos(aimYaw);
-      const rightX = Math.cos(aimYaw);
-      const rightZ = -Math.sin(aimYaw);
+      const handX = angler.x + bodyRightX * 0.36 + bodyDirX * 0.22;
+      const handY = baseY + 0.64;
+      const handZ = angler.z + bodyRightZ * 0.36 + bodyDirZ * 0.22;
 
-      const handX = angler.x + rightX * 0.36 + dirX * 0.18;
-      const handY = 0.68;
-      const handZ = angler.z + rightZ * 0.36 + dirZ * 0.18;
+      // 사령관이 바라보는 시냇물 방향(`angler.yaw`) 전방 수면에 찌가 자연스럽게 놓이도록 투영
+      const castAheadX = angler.x + bodyDirX * 3.4 + (i - 1) * 0.28;
+      const targetX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, castAheadX));
+      const bp = brookProfile(targetX);
+      const lateralOffset = (i % 2 === 0 ? -0.18 : 0.18) * Math.min(1, bp.halfWidth * 0.42);
+      const targetZ = bp.centerZ + lateralOffset;
+      const rodYaw = Math.atan2(targetX - handX, targetZ - handZ);
+
       const phaseSeed = i * 1.93 + 0.5;
-      const rodPitch = 0.72 + Math.sin(elapsedSec * 1.85 + phaseSeed) * 0.045;
+      const rodPitch = 0.68 + Math.sin(elapsedSec * 1.85 + phaseSeed) * 0.04;
 
       slot.rodGroup.position.set(handX, handY, handZ);
-      slot.rodGroup.rotation.set(0, aimYaw, 0);
+      slot.rodGroup.rotation.set(0, rodYaw, 0);
       slot.rodGroup.rotateX(rodPitch);
       slot.rodGroup.updateMatrixWorld(true);
       slot.tipMesh.getWorldPosition(tipWorldScratch);

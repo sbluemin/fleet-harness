@@ -67,6 +67,7 @@ import {
 import {
   createLivingWorkflowFx,
   type OperationFlagFxInput,
+  type SkyRingPositionOut,
   type WorkingVillageFxInput,
 } from "./living-workflow-fx.js";
 import { createMeadowScene, MAILBOX_POS, PARADE_BELL_POS } from "./meadow-scene.js";
@@ -172,6 +173,16 @@ export interface WorldFramePointPosition {
   visible: boolean;
 }
 
+export interface WorldFrameRingGuide {
+  visible: boolean;
+  xPx: number;
+  yPx: number;
+  xPct: number;
+  yPct: number;
+  angleRad: number;
+  distM: number;
+}
+
 export interface WorldFrameOverlayPositions {
   readonly actors: readonly WorldFrameActorPosition[];
   readonly actorCount: number;
@@ -185,6 +196,7 @@ export interface WorldFrameOverlayPositions {
   readonly noticeBoard: WorldFramePointPosition;
   readonly guildHall: WorldFramePointPosition;
   readonly campfireBench: WorldFramePointPosition;
+  readonly ringGuide: WorldFrameRingGuide;
 }
 
 export interface WorldRuntimeConfig {
@@ -913,14 +925,16 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const villagePosPool: WorldFrameVillagePosition[] = [];
   const topVillageIdx = new Int32Array(MAX_OVERVIEW_VILLAGE_SIGNS);
   const topVillageDist = new Float64Array(MAX_OVERVIEW_VILLAGE_SIGNS);
-  const companionAnglerPool: { id: string; x: number; z: number; yaw: number }[] = [
-    { id: "", x: 0, z: 0, yaw: 0 },
-    { id: "", x: 0, z: 0, yaw: 0 },
-    { id: "", x: 0, z: 0, yaw: 0 },
+  const companionAnglerPool: { id: string; x: number; y: number; z: number; yaw: number }[] = [
+    { id: "", x: 0, y: 0.28, z: 0, yaw: 0 },
+    { id: "", x: 0, y: 0.28, z: 0, yaw: 0 },
+    { id: "", x: 0, y: 0.28, z: 0, yaw: 0 },
   ];
   const companionAnglersOut: CompanionAnglerPose[] = [];
   const activeCoFishingIds = new Set<string>();
   let companionAnglersSyncedNonEmpty = false;
+  const nearestRingOut: SkyRingPositionOut = { x: 0, y: 0, z: 0, distM: 0 };
+  const ringCamScratch = new Vector3();
   const framePositions: {
     actors: WorldFrameActorPosition[];
     actorCount: number;
@@ -934,6 +948,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     noticeBoard: WorldFramePointPosition;
     guildHall: WorldFramePointPosition;
     campfireBench: WorldFramePointPosition;
+    ringGuide: WorldFrameRingGuide;
   } = {
     actors: actorPosPool,
     actorCount: 0,
@@ -947,6 +962,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     noticeBoard: { x: 0, y: 0, visible: false },
     guildHall: { x: 0, y: 0, visible: false },
     campfireBench: { x: 0, y: 0, visible: false },
+    ringGuide: { visible: false, xPx: 0, yPx: 0, xPct: 50, yPct: 50, angleRad: 0, distM: 0 },
   };
 
   let lastStructSig = "";
@@ -1174,7 +1190,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const py = playerCtrl.player.y;
     const pz = playerCtrl.player.z;
     const surface = resolveSurface(px, pz);
-    playFootstep(surface);
+    playFootstep(false, meadow.getSurfaceMaterial(px, pz));
     if (surface === "water") {
       director.spawnBurst(px, py + 0.10, pz, 0x7dd3fc, 8);
     } else {
@@ -1545,7 +1561,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         && speed > 0.45
         && speed < 24
       ) {
-        playFootstep(resolveSurface(playerCtrl.player.x, playerCtrl.player.z));
+        playFootstep(playerCtrl.isSprinting(), meadow.getSurfaceMaterial(playerCtrl.player.x, playerCtrl.player.z));
       }
     }
     prevPlayerX = playerCtrl.player.x;
@@ -1633,6 +1649,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           const pose = companionAnglerPool[slotIdx]!;
           pose.id = m.spec.id;
           pose.x = m.x;
+          pose.y = meadow.getGroundHeight(m.x, m.z);
           pose.z = m.z;
           pose.yaw = m.yaw;
           companionAnglersOut.push(pose);
@@ -2588,6 +2605,53 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       framePositions.noticeBoard.visible = false;
       framePositions.guildHall.visible = false;
       framePositions.campfireBench.visible = false;
+    }
+
+    // 비행 중 가장 가까운 다음 하늘 순찰 링 오프스크린 방향 가이드 (0-GC Direct-DOM, 화면 정면 안이면 자동 숨김)
+    const rg = framePositions.ringGuide;
+    if (
+      isOpen
+      && inOverview
+      && p.flying
+      && p.takeoffPhase === "none"
+      && livingWorkflowFx.getNearestReadySkyRing(p.x, p.y, p.z, nearestRingOut)
+    ) {
+      tempPos.set(nearestRingOut.x, nearestRingOut.y, nearestRingOut.z);
+      const projOk = projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop);
+      const onScreen = projOk
+        && projTop.x >= cssWidth * 0.06
+        && projTop.x <= cssWidth * 0.94
+        && projTop.y >= cssHeight * 0.12
+        && projTop.y <= cssHeight * 0.88;
+      if (onScreen) {
+        rg.visible = false;
+      } else {
+        ringCamScratch.set(nearestRingOut.x, nearestRingOut.y, nearestRingOut.z).applyMatrix4(camera.matrixWorldInverse);
+        let dirX = ringCamScratch.x * camera.projectionMatrix.elements[0]!;
+        let dirY = -ringCamScratch.y * camera.projectionMatrix.elements[5]!;
+        const dirLen = Math.hypot(dirX, dirY);
+        if (dirLen < 1e-4) {
+          dirX = 0;
+          dirY = 1;
+        } else {
+          dirX /= dirLen;
+          dirY /= dirLen;
+        }
+        const scaleX = Math.abs(dirX) > 1e-4 ? 44 / Math.abs(dirX) : Infinity;
+        const scaleY = Math.abs(dirY) > 1e-4 ? 38 / Math.abs(dirY) : Infinity;
+        const s = Math.min(scaleX, scaleY);
+        const xPct = Math.max(6, Math.min(94, 50 + dirX * s));
+        const yPct = Math.max(12, Math.min(88, 50 + dirY * s));
+        rg.visible = true;
+        rg.xPct = xPct;
+        rg.yPct = yPct;
+        rg.xPx = (xPct / 100) * cssWidth;
+        rg.yPx = (yPct / 100) * cssHeight;
+        rg.angleRad = Math.atan2(dirY, dirX);
+        rg.distM = nearestRingOut.distM;
+      }
+    } else {
+      rg.visible = false;
     }
 
     renderer.info.reset();

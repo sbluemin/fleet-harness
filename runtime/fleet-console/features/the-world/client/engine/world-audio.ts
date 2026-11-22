@@ -533,53 +533,73 @@ export function playPhotoShutter(): void {
 
 export type WorldFootstepSurface = "grass" | "stone" | "wood" | "water";
 
-/** 플레이어 이동 발소리 (지면 재질별: 돌길·풀밭·나무다리·물가, 280ms 쿨다운 초저음량). */
-export function playFootstep(surface: WorldFootstepSurface | boolean = "grass"): void {
+/** 플레이어 이동 발소리 (지면 재질별: 목교 `wood` · 석판 `stone` · 초원 `grass` · 물가 `water`, 질주 시 템포·음량 보정). */
+export function playFootstep(surface?: WorldFootstepSurface): void;
+export function playFootstep(running?: boolean, surface?: WorldFootstepSurface): void;
+export function playFootstep(
+  runningOrSurface: WorldFootstepSurface | boolean = "grass",
+  surfaceArg?: WorldFootstepSurface,
+): void {
+  const running = typeof runningOrSurface === "boolean" ? runningOrSurface : false;
+  const kind: WorldFootstepSurface =
+    typeof runningOrSurface === "boolean"
+      ? (surfaceArg ?? "grass")
+      : runningOrSurface;
+
   const now = performance.now();
-  if (now - lastFootstepAt < FOOTSTEP_COOLDOWN_MS) return;
+  const minGap = running ? FOOTSTEP_COOLDOWN_MS * 0.72 : FOOTSTEP_COOLDOWN_MS;
+  if (now - lastFootstepAt < minGap) return;
   const eng = getAudioEngine();
   if (!eng) return;
   lastFootstepAt = now;
 
-  const kind: WorldFootstepSurface =
-    typeof surface === "boolean" ? (surface ? "wood" : "grass") : surface;
   const jitter = 0.92 + Math.random() * 0.16;
+  const gainBoost = running ? 1.18 : 1.0;
 
   if (kind === "wood") {
-    // 목교 판자: 따뜻하고 울리는 나무 쿵쿵
+    // 목교 위 통통거리는 따뜻한 빈 나무판자 발소리 (260~420Hz 목재 공진 톡)
     scheduleTone(eng.ctx, eng.out, {
       type: "triangle",
-      freqStart: 228 * jitter,
-      freqEnd: 118 * jitter,
-      duration: 0.052,
-      peakGain: 0.16,
+      freqStart: 350 * jitter,
+      freqEnd: 265 * jitter,
+      duration: 0.050,
+      peakGain: 0.16 * gainBoost,
       attack: 0.003,
     });
+    scheduleTone(eng.ctx, eng.out, {
+      type: "sine",
+      freqStart: 300 * jitter,
+      freqEnd: 170 * jitter,
+      delay: 0.006,
+      duration: 0.056,
+      peakGain: 0.11 * gainBoost,
+      attack: 0.004,
+    });
     scheduleFilteredNoise(eng.ctx, eng.out, {
-      duration: 0.034,
-      centerFreq: 780 * jitter,
+      duration: 0.032,
+      centerFreq: 860 * jitter,
       q: 2.4,
-      peakGain: 0.085,
+      peakGain: 0.08 * gainBoost,
       attack: 0.002,
     });
     return;
   }
 
   if (kind === "stone") {
-    // 광장/돌길: 맑고 경쾌한 또각또각
+    // 광장·마을 석판 위 가볍고 맑은 돌길 발소리 (950~1500Hz 짧은 탭)
     scheduleTone(eng.ctx, eng.out, {
       type: "triangle",
-      freqStart: 540 * jitter,
-      freqEnd: 280 * jitter,
-      duration: 0.030,
-      peakGain: 0.11,
+      freqStart: 1120 * jitter,
+      freqEnd: 680 * jitter,
+      duration: 0.026,
+      peakGain: 0.095 * gainBoost,
       attack: 0.002,
     });
     scheduleFilteredNoise(eng.ctx, eng.out, {
-      duration: 0.024,
-      centerFreq: 2050 * jitter,
-      q: 3.0,
-      peakGain: 0.095,
+      duration: 0.022,
+      centerFreq: 1260 * jitter,
+      q: 3.1,
+      peakGain: 0.105 * gainBoost,
       attack: 0.002,
     });
     return;
@@ -591,7 +611,7 @@ export function playFootstep(surface: WorldFootstepSurface | boolean = "grass"):
       duration: 0.068,
       centerFreq: 1480 * jitter,
       q: 1.5,
-      peakGain: 0.13,
+      peakGain: 0.13 * gainBoost,
       attack: 0.004,
     });
     scheduleTone(eng.ctx, eng.out, {
@@ -600,7 +620,7 @@ export function playFootstep(surface: WorldFootstepSurface | boolean = "grass"):
       freqEnd: 640 * jitter,
       delay: 0.012,
       duration: 0.055,
-      peakGain: 0.10,
+      peakGain: 0.10 * gainBoost,
       attack: 0.005,
     });
     return;
@@ -611,7 +631,7 @@ export function playFootstep(surface: WorldFootstepSurface | boolean = "grass"):
     duration: 0.052,
     centerFreq: 960 * jitter,
     q: 1.4,
-    peakGain: 0.09,
+    peakGain: 0.09 * gainBoost,
     attack: 0.006,
   });
   scheduleTone(eng.ctx, eng.out, {
@@ -619,7 +639,7 @@ export function playFootstep(surface: WorldFootstepSurface | boolean = "grass"):
     freqStart: 128 * jitter,
     freqEnd: 78 * jitter,
     duration: 0.042,
-    peakGain: 0.07,
+    peakGain: 0.07 * gainBoost,
     attack: 0.005,
   });
 }

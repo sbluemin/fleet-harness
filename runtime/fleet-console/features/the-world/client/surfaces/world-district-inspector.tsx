@@ -172,15 +172,44 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
     }
   };
 
-  const handleToggleFlag = () => {
+  const hasFlagHere = isOpFlagHere || hasDispatchFlag;
+
+  const handleDeployUnifiedFlag = (rawDirective: string) => {
+    const directive = rawDirective.trim();
+    const payload: WorldOperationFlagDeployInput = {
+      villageId: village?.id ?? `village:${district.commodoreId}`,
+      districtId: district.id,
+      commodoreId: district.commodoreId,
+      commodoreName: district.commodoreName,
+      label: district.label,
+      directive,
+      x: district.x,
+      z: district.z,
+    };
+    playFlagPlant();
+    if (onDeployOperationFlag) {
+      onDeployOperationFlag(payload);
+    } else {
+      setOperationFlag({
+        ...payload,
+        id: `opflag:${Date.now()}`,
+        createdAt: Date.now(),
+      });
+    }
+    if (onPlantDispatchFlag) onPlantDispatchFlag(district);
+    else placeDispatchFlag(district.id, directive || district.label);
+    setOpFlagDirective("");
+    setOpFlagFormOpen(false);
+  };
+
+  const handleClearUnifiedFlag = () => {
+    if (isOpFlagHere) {
+      if (onClearOperationFlag) onClearOperationFlag();
+      else setOperationFlag(null);
+    }
     if (hasDispatchFlag) {
       if (onClearDispatchFlag) onClearDispatchFlag(district.id);
       else clearDispatchFlag(district.id);
-    } else if (onPlantDispatchFlag) {
-      onPlantDispatchFlag(district);
-    } else {
-      playFlagPlant();
-      placeDispatchFlag(district.id, district.label);
     }
   };
 
@@ -213,7 +242,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
               <span>{statusLabel}</span>
             </span>
             <span className="the-world-district-tier-name">{tierName}</span>
-            {hasDispatchFlag ? (
+            {hasFlagHere ? (
               <span className="the-world-district-flag-chip">
                 <WorldIcon name="flag" size={10} tone="amber" />
                 <span>{t("theWorld.district.flagActive")}</span>
@@ -421,9 +450,9 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           </div>
         </form>
 
-        {/* 작전 깃발 배치 & 1줄 지시 (활성 시 깃발 회수) */}
+        {/* 통합 작전 깃발 블록: 1줄 지시 배치 · 즉시 깃발 꽂기 · 활성 시 깃발 회수 */}
         <div className="the-world-district-opflag-block">
-          {isOpFlagHere && activeOpFlag ? (
+          {hasFlagHere ? (
             <div className="the-world-district-opflag-active">
               <div className="the-world-district-opflag-info">
                 <WorldIcon name="flag" size={13} tone="amber" />
@@ -431,60 +460,47 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                   <span className="the-world-district-opflag-kicker">
                     {bi("작전 깃발 활성", "Operation Flag Active")}
                   </span>
-                  <span className="the-world-district-opflag-text">{activeOpFlag.directive}</span>
+                  <span className="the-world-district-opflag-text">
+                    {activeOpFlag?.directive || district.label}
+                  </span>
                 </div>
               </div>
               <button
                 type="button"
                 className="the-world-district-note-btn is-opflag-clear"
-                onClick={() => {
-                  if (onClearOperationFlag) onClearOperationFlag();
-                  else setOperationFlag(null);
-                }}
+                onClick={handleClearUnifiedFlag}
               >
                 {bi("깃발 회수", "Clear Flag")}
               </button>
             </div>
           ) : (
             <>
-              <button
-                type="button"
-                className={`the-world-district-opflag-trigger${opFlagFormOpen ? " is-active" : ""}`}
-                aria-expanded={opFlagFormOpen}
-                onClick={() => setOpFlagFormOpen((prev) => !prev)}
-              >
-                <WorldIcon name="flag" size={13} tone="amber" />
-                <span>{bi("작전 깃발 꽂고 지시", "Plant Flag & Order")}</span>
-              </button>
+              <div className="the-world-district-opflag-row">
+                <button
+                  type="button"
+                  className={`the-world-district-opflag-trigger${opFlagFormOpen ? " is-active" : ""}`}
+                  aria-label={t("theWorld.district.plantFlagAria", { name: district.label })}
+                  aria-expanded={opFlagFormOpen}
+                  onClick={() => setOpFlagFormOpen((prev) => !prev)}
+                >
+                  <WorldIcon name="flag" size={13} tone="amber" />
+                  <span>{bi("작전 깃발 꽂고 지시", "Plant Flag & Order")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="the-world-district-note-btn is-save"
+                  aria-label={t("theWorld.district.plantFlagAria", { name: district.label })}
+                  onClick={() => handleDeployUnifiedFlag("")}
+                >
+                  {bi("바로 꽂기", "Plant")}
+                </button>
+              </div>
               {opFlagFormOpen ? (
                 <form
                   className="the-world-opflag-form"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    const directive = opFlagDirective.trim();
-                    if (!directive) return;
-                    const payload: WorldOperationFlagDeployInput = {
-                      villageId: village?.id ?? `village:${district.commodoreId}`,
-                      districtId: district.id,
-                      commodoreId: district.commodoreId,
-                      commodoreName: district.commodoreName,
-                      label: district.label,
-                      directive,
-                      x: district.x,
-                      z: district.z,
-                    };
-                    playFlagPlant();
-                    if (onDeployOperationFlag) {
-                      onDeployOperationFlag(payload);
-                    } else {
-                      setOperationFlag({
-                        ...payload,
-                        id: `opflag:${Date.now()}`,
-                        createdAt: Date.now(),
-                      });
-                    }
-                    setOpFlagDirective("");
-                    setOpFlagFormOpen(false);
+                    handleDeployUnifiedFlag(opFlagDirective);
                   }}
                 >
                   <input
@@ -492,7 +508,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                     className="the-world-district-note-input"
                     value={opFlagDirective}
                     maxLength={240}
-                    placeholder={bi("깃발 지시 내용을 1줄로 입력...", "Enter 1-line flag directive...")}
+                    placeholder={bi("1줄 지시 입력 (비워두고 바로 배치 가능)...", "1-line directive (optional)...")}
                     onKeyDown={(e) => {
                       e.stopPropagation();
                       if (e.key === "Escape") setOpFlagFormOpen(false);
@@ -502,7 +518,6 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                   <button
                     type="submit"
                     className="the-world-district-note-btn is-save"
-                    disabled={opFlagDirective.trim().length === 0}
                   >
                     {bi("배치", "Deploy")}
                   </button>
@@ -541,7 +556,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
         </div>
       </div>
 
-      {/* 하단 액션 바: @멘션 바로 지시 · 작전 깃발 · 구역 이동 · 대화창 */}
+      {/* 하단 액션 바: @멘션 바로 지시 · 구역 이동 · 대화창 */}
       <footer className="the-world-district-actions">
         <button
           type="button"
@@ -552,17 +567,6 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
         >
           <WorldIcon name="chat" size={13} tone="amber" />
           <span>{t("theWorld.district.actionMention", { name: district.commodoreName })}</span>
-        </button>
-
-        <button
-          type="button"
-          className={`the-world-district-action${hasDispatchFlag ? " is-active" : ""}`}
-          aria-label={t("theWorld.district.plantFlagAria", { name: district.label })}
-          aria-pressed={hasDispatchFlag}
-          onClick={handleToggleFlag}
-        >
-          <WorldIcon name="flag" size={13} tone="amber" />
-          <span>{hasDispatchFlag ? t("theWorld.district.clearFlag") : t("theWorld.district.plantFlag")}</span>
         </button>
 
         <button

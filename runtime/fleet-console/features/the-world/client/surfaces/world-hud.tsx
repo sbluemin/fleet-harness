@@ -7,6 +7,7 @@ import type {
   WorldPlayerEmote,
   WorldSnapshot,
   WorldTimeMode,
+  WorldVillageSpec,
   WorldWeatherMode,
 } from "../../shared/world-types.js";
 import {
@@ -15,6 +16,7 @@ import {
   playOverviewToggle,
   playParadeBell,
   playPhotoShutter,
+  playWarp,
   setWorldAudioMuted,
 } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
@@ -26,6 +28,8 @@ import {
   openWarRoom,
   requestPlayerEmote,
   requestRallyAll,
+  requestWorldTeleport,
+  resetWorldProgressData,
   setWeatherMode,
   setWorldCameraMode,
   setWorldTimeMode,
@@ -106,6 +110,11 @@ export interface WorldHudProps {
   readonly unreadMailCount?: number | undefined;
   readonly onOpenMailbox?: (() => void) | undefined;
   readonly onRingParadeBell?: (() => void) | undefined;
+  readonly villages?: readonly WorldVillageSpec[] | undefined;
+  readonly onWarpTo?: ((x: number, z: number, label: string) => void) | undefined;
+  readonly fastTravelOpen?: boolean | undefined;
+  readonly onToggleFastTravel?: (() => void) | undefined;
+  readonly onResetWorldLocalData?: (() => void) | undefined;
   readonly debugPanelVisible?: boolean | undefined;
 }
 
@@ -144,10 +153,17 @@ export const WorldHud = memo(function WorldHud({
   unreadMailCount = 0,
   onOpenMailbox,
   onRingParadeBell,
+  villages: villagesProp,
+  onWarpTo,
+  fastTravelOpen: fastTravelOpenProp,
+  onToggleFastTravel,
+  onResetWorldLocalData,
   debugPanelVisible = false,
 }: WorldHudProps) {
   const store = useWorldStore();
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [internalFastTravelOpen, setInternalFastTravelOpen] = useState(false);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [envOpen, setEnvOpen] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
   const hudTopRef = useRef<HTMLDivElement | null>(null);
@@ -156,6 +172,8 @@ export const WorldHud = memo(function WorldHud({
   const bi = (ko: string, en: string) => (isEn ? en : ko);
   const effectiveUrgentCount = urgentQuestCount ?? snapshot.attentionCount;
   const effectiveUnreadMail = Math.max(0, unreadMailCount);
+  const effectiveVillages = villagesProp ?? snapshot.villages;
+  const isFastTravelOpen = fastTravelOpenProp !== undefined ? fastTravelOpenProp : internalFastTravelOpen;
   const attentionActor = snapshot.actors.find((a) => a.needsAttention) ?? null;
 
   const activeWeather = weatherModeProp ?? store.weatherMode;
@@ -169,7 +187,21 @@ export const WorldHud = memo(function WorldHud({
   }, [debugOpen, debugPanelVisible]);
 
   useEffect(() => {
-    if (!toolsOpen && !envOpen && !debugOpen) return;
+    if (!toolsOpen && resetConfirmOpen) {
+      setResetConfirmOpen(false);
+    }
+  }, [resetConfirmOpen, toolsOpen]);
+
+  useEffect(() => {
+    if (isFastTravelOpen) {
+      setToolsOpen(false);
+      setEnvOpen(false);
+      setDebugOpen(false);
+    }
+  }, [isFastTravelOpen]);
+
+  useEffect(() => {
+    if (!toolsOpen && !envOpen && !debugOpen && !isFastTravelOpen) return;
     const onPointerDown = (event: PointerEvent) => {
       if (
         hudTopRef.current
@@ -181,12 +213,20 @@ export const WorldHud = memo(function WorldHud({
       setToolsOpen(false);
       setEnvOpen(false);
       setDebugOpen(false);
+      if (isFastTravelOpen) {
+        if (onToggleFastTravel) onToggleFastTravel();
+        else setInternalFastTravelOpen(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setToolsOpen(false);
         setEnvOpen(false);
         setDebugOpen(false);
+        if (isFastTravelOpen) {
+          if (onToggleFastTravel) onToggleFastTravel();
+          else setInternalFastTravelOpen(false);
+        }
       }
     };
     window.addEventListener("pointerdown", onPointerDown, true);
@@ -195,12 +235,50 @@ export const WorldHud = memo(function WorldHud({
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [toolsOpen, envOpen, debugOpen]);
+  }, [toolsOpen, envOpen, debugOpen, isFastTravelOpen, onToggleFastTravel]);
 
   const closeAllPopovers = () => {
     setToolsOpen(false);
     setEnvOpen(false);
     setDebugOpen(false);
+    if (isFastTravelOpen) {
+      if (onToggleFastTravel) onToggleFastTravel();
+      else setInternalFastTravelOpen(false);
+    }
+  };
+
+  const handleToggleFastTravel = () => {
+    setToolsOpen(false);
+    setEnvOpen(false);
+    setDebugOpen(false);
+    playDistrictHover();
+    if (onToggleFastTravel) onToggleFastTravel();
+    else setInternalFastTravelOpen((prev) => !prev);
+  };
+
+  const handleWarpDestination = (x: number, z: number, label: string, toastText?: string) => {
+    closeAllPopovers();
+    playWarp();
+    if (onWarpTo) {
+      onWarpTo(x, z, label);
+    } else {
+      requestWorldTeleport(x, z);
+      onStatusBanner(toastText ?? t("theWorld.stage.warpVillageToast", { name: label }));
+    }
+  };
+
+  const handleConfirmResetProgress = () => {
+    resetWorldProgressData();
+    onResetWorldLocalData?.();
+    setResetConfirmOpen(false);
+    closeAllPopovers();
+    playDistrictSelect();
+    onStatusBanner(
+      bi(
+        "초원 진행 기록(스탬프 · 도감 · 메모 · 외형)을 초기화했습니다.",
+        "Meadow progress (stamps, fish, notes, look) has been reset.",
+      ),
+    );
   };
 
   const handleOpenMailbox = () => {
@@ -254,6 +332,13 @@ export const WorldHud = memo(function WorldHud({
   const soundLabel = store.soundMuted ? bi("음향 꺼짐", "Sound Off") : bi("음향 켜짐", "Sound On");
   const guideShortLabel = bi("조작 가이드", "Controls");
   const recruitShortLabel = bi("사령관 영입", "Recruit");
+  const fastTravelLabel = bi("빠른 이동", "Fast Travel");
+  const fastTravelAria = bi("빠른 마을 이동 목록 열기 (G)", "Open fast travel village list (G)");
+  const plazaLabel = t("theWorld.projection.plazaLabel");
+  const resetBtnLabel = bi("초원 기록 초기화", "Reset Meadow Progress");
+  const resetConfirmQuestion = bi("정말 초기화할까요?", "Reset all local progress?");
+  const resetConfirmCta = bi("초기화 실행", "Reset");
+  const resetCancelCta = bi("취소", "Cancel");
 
   return (
     <>
@@ -371,6 +456,18 @@ export const WorldHud = memo(function WorldHud({
               </button>
             ) : null}
 
+            {/* 빠른 마을 이동 (G) 콤팩트 나침반 버튼 */}
+            <button
+              type="button"
+              className={`the-world-btn is-icon-only${isFastTravelOpen ? " is-active" : ""}`}
+              aria-label={fastTravelAria}
+              aria-expanded={isFastTravelOpen}
+              title={fastTravelAria}
+              onClick={handleToggleFastTravel}
+            >
+              <WorldIcon name="compass" size={14} tone={isFastTravelOpen ? "amber" : "cerulean"} />
+            </button>
+
             {/* 통합 도구 드롭다운 버튼 */}
             <button
               type="button"
@@ -381,6 +478,10 @@ export const WorldHud = memo(function WorldHud({
               onClick={() => {
                 setEnvOpen(false);
                 setDebugOpen(false);
+                if (isFastTravelOpen) {
+                  if (onToggleFastTravel) onToggleFastTravel();
+                  else setInternalFastTravelOpen(false);
+                }
                 playDistrictHover();
                 setToolsOpen((prev) => !prev);
               }}
@@ -420,6 +521,97 @@ export const WorldHud = memo(function WorldHud({
           </div>
         </div>
 
+        {/* 빠른 이동 (G) Starlight Glass 팝오버 */}
+        {isFastTravelOpen ? (
+          <section
+            className="the-world-debug-popover the-world-fast-travel-popover"
+            role="dialog"
+            aria-label={fastTravelAria}
+            onPointerDown={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+          >
+            <div className="the-world-crest" aria-hidden="true" />
+            <header className="the-world-debug-head">
+              <span className="the-world-debug-title">
+                <WorldIcon name="compass" size={13} tone="amber" />
+                <span>{fastTravelLabel}</span>
+                <kbd className="the-world-keycap">G</kbd>
+              </span>
+              <button
+                type="button"
+                className="the-world-chat-icon-btn"
+                aria-label={t("theWorld.panel.closeAria")}
+                onClick={handleToggleFastTravel}
+              >
+                <WorldIcon name="close" size={14} />
+              </button>
+            </header>
+
+            <div className="the-world-fast-travel-list" role="menu" aria-label={fastTravelAria}>
+              <button
+                type="button"
+                role="menuitem"
+                className="the-world-fast-travel-item is-plaza"
+                onClick={() => handleWarpDestination(0, -1.5, plazaLabel, t("theWorld.stage.warpPlazaToast"))}
+              >
+                <span className="the-world-fast-travel-icon" aria-hidden="true">
+                  <WorldIcon name="warRoom" size={13} tone="amber" />
+                </span>
+                <span className="the-world-fast-travel-main">
+                  <span className="the-world-fast-travel-name">{plazaLabel}</span>
+                  <span className="the-world-fast-travel-sub">
+                    {bi("길드 회관 · 우체통 · 별빛 연못", "Guild Hall · Mailbox · Starlight Pond")}
+                  </span>
+                </span>
+                <span className="the-world-fast-travel-badge">HQ</span>
+              </button>
+
+              {effectiveVillages.map((village) => {
+                const warpX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
+                const warpZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
+                const statusKind = village.hasError
+                  ? "error"
+                  : village.needsAttention || village.openAsksCount > 0
+                    ? "attention"
+                    : village.workStep
+                      ? "working"
+                      : "idle";
+                const statusLabel = statusKind === "error"
+                  ? bi("오류", "Error")
+                  : statusKind === "attention"
+                    ? bi("확인 필요", "Needs input")
+                    : statusKind === "working"
+                      ? bi("작업 중", "Working")
+                      : bi("여유", "Idle");
+                return (
+                  <button
+                    key={village.id}
+                    type="button"
+                    role="menuitem"
+                    className="the-world-fast-travel-item"
+                    onClick={() => handleWarpDestination(warpX, warpZ, village.label)}
+                  >
+                    <span className="the-world-tone-dot" data-tone={village.tone} />
+                    <span className="the-world-fast-travel-main">
+                      <span className="the-world-fast-travel-name">{village.label}</span>
+                      <span className="the-world-fast-travel-sub">
+                        {t("theWorld.village.signSubtitle", {
+                          tier: village.overallTier,
+                          count: village.districts.length,
+                        })}
+                      </span>
+                    </span>
+                    <span className={`the-world-fast-travel-status is-${statusKind}`}>
+                      {statusLabel}
+                    </span>
+                    <span className="the-world-fast-travel-badge">T{village.overallTier}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+
         {/* 통합 도구 2열 콤팩트 드롭다운 팝오버 (Starlight Glass) */}
         {toolsOpen ? (
           <section
@@ -446,6 +638,17 @@ export const WorldHud = memo(function WorldHud({
             </header>
 
             <div className="the-world-tools-grid">
+              <button
+                type="button"
+                className={`the-world-tools-item is-full-row${isFastTravelOpen ? " is-active" : ""}`}
+                aria-label={fastTravelAria}
+                onClick={handleToggleFastTravel}
+              >
+                <WorldIcon name="compass" size={14} tone="cerulean" />
+                <span className="the-world-tools-item-label">{fastTravelLabel}</span>
+                <kbd className="the-world-keycap">G</kbd>
+              </button>
+
               <button
                 type="button"
                 className={`the-world-tools-item${store.mailboxOpen ? " is-active" : ""}${effectiveUnreadMail > 0 ? " is-attention" : ""}`}
@@ -620,6 +823,44 @@ export const WorldHud = memo(function WorldHud({
                 <span className="the-world-tools-item-label">{guideShortLabel}</span>
                 <kbd className="the-world-keycap">?</kbd>
               </button>
+            </div>
+
+            {/* 2단계 안전 확인: 초원 진행 기록 초기화 */}
+            <div className="the-world-tools-footer">
+              {resetConfirmOpen ? (
+                <div className="the-world-tools-reset-confirm" role="alert">
+                  <span className="the-world-tools-reset-question">{resetConfirmQuestion}</span>
+                  <div className="the-world-tools-reset-actions">
+                    <button
+                      type="button"
+                      className="the-world-tools-reset-btn is-danger"
+                      onClick={handleConfirmResetProgress}
+                    >
+                      {resetConfirmCta}
+                    </button>
+                    <button
+                      type="button"
+                      className="the-world-tools-reset-btn"
+                      onClick={() => setResetConfirmOpen(false)}
+                    >
+                      {resetCancelCta}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="the-world-tools-reset-trigger"
+                  aria-label={resetBtnLabel}
+                  onClick={() => {
+                    playDistrictHover();
+                    setResetConfirmOpen(true);
+                  }}
+                >
+                  <WorldIcon name="retry" size={12} tone="rose" />
+                  <span>{resetBtnLabel}</span>
+                </button>
+              )}
             </div>
           </section>
         ) : null}

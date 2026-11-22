@@ -49,6 +49,13 @@ export interface SkyRingPassResult {
   readonly boostTrigger: boolean;
 }
 
+export interface SkyRingPositionOut {
+  x: number;
+  y: number;
+  z: number;
+  distM: number;
+}
+
 export interface WorkingVillageFxInput {
   readonly id: string;
   readonly x: number;
@@ -75,6 +82,8 @@ export interface LivingWorkflowFx {
   checkSkyRingPass(px: number, py: number, pz: number, isFlying: boolean): SkyRingPassResult | null;
   /** 하늘 순찰 링 연속 통과 콤보를 초기화한다 (착지 시 리셋용). */
   resetSkyRingCombo(): void;
+  /** 쿨다운이 아닌 가장 가까운 다음 하늘 순찰 링의 3D 좌표와 거리를 0-GC로 조회한다. */
+  getNearestReadySkyRing(px: number, py: number, pz: number, out: SkyRingPositionOut): boolean;
   /** 현재 작업 중인 사령관 마을 상공의 별빛 설계도 홀로그램 링 + 공방 불꽃을 동기화한다. */
   syncWorkingVillages(villages: readonly WorkingVillageFxInput[]): void;
   /** 목표 완료 시 지브리풍 황금 유성 상승 + 파스텔/황금 별빛 꽃불 3D 축포를 발사한다 (최대 3발 동시 풀링). */
@@ -1004,6 +1013,36 @@ export function createLivingWorkflowFx(
   function resetSkyRingCombo(): void {
     skyRingCombo = 0;
     skyRingComboTimer = 0;
+  }
+
+  function getNearestReadySkyRing(
+    px: number,
+    py: number,
+    pz: number,
+    out: SkyRingPositionOut,
+  ): boolean {
+    if (!skyRingsVisible) return false;
+    let bestIdx = -1;
+    let bestDistSq = Infinity;
+    for (let i = 0; i < SKY_RING_COUNT; i += 1) {
+      const ring = skyRings[i]!;
+      if (ring.cooldown > 0) continue;
+      const dx = ring.x - px;
+      const dy = ring.y - py;
+      const dz = ring.z - pz;
+      const dSq = dx * dx + dy * dy + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx < 0) return false;
+    const best = skyRings[bestIdx]!;
+    out.x = best.x;
+    out.y = best.y;
+    out.z = best.z;
+    out.distM = Math.sqrt(bestDistSq);
+    return true;
   }
 
   function checkSkyRingPass(
@@ -2003,6 +2042,7 @@ export function createLivingWorkflowFx(
     setSkyRingsVisible,
     checkSkyRingPass,
     resetSkyRingCombo,
+    getNearestReadySkyRing,
     syncWorkingVillages,
     triggerVillageFirework,
     setOperationFlag,

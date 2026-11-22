@@ -199,8 +199,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   const ORBIT_CLAMP = 80;
   const FLIGHT_CLAMP = 84;
   const FLIGHT_TARGET_ALT = 18.0;
+  const FLIGHT_MIN_GROUND_CLEARANCE = 3.2;
+  const FLIGHT_MAX_WORLD_ALT = 36.0;
   const TAKEOFF_CHARGE_SEC = 0.52;
-  const TAKEOFF_ASCEND_SEC = 0.66;
+  const TAKEOFF_ASCEND_SEC = 0.78;
   const HERO_LAND_SEC = 0.56;
   const BARREL_ROLL_SEC = 0.55;
   let districtFocus: {
@@ -215,7 +217,18 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let chaseManualOrbitTimer = 0;
   let chaseDist = 11.4;
   let chasePitch = 0.25;
+  let flightCruiseAlt = FLIGHT_TARGET_ALT;
   let skyBoostBurstTimer = 0;
+  let mediaReducedMotion = false;
+  let reducedMotionMq: MediaQueryList | null = null;
+  const onReducedMotionChange = (ev: MediaQueryListEvent) => {
+    mediaReducedMotion = ev.matches;
+  };
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    reducedMotionMq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    mediaReducedMotion = reducedMotionMq.matches;
+    reducedMotionMq.addEventListener("change", onReducedMotionChange);
+  }
 
   // 유성 급강하 착지 아크 상태 & 2단계 이륙 시퀀스 · 배럴롤 상태
   interface MeteorDiveState {
@@ -455,6 +468,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         chaseManualOrbitTimer = 0;
         chaseDist = 11.4;
         chasePitch = 0.25;
+        flightCruiseAlt = FLIGHT_TARGET_ALT;
         player.diving = false;
         player.flying = true;
         player.boosting = false;
@@ -610,6 +624,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         skyBoostBurstTimer = Math.max(0, skyBoostBurstTimer - opts.dt);
       }
 
+      const reduceMotion = opts.reducedMotion || mediaReducedMotion;
+
       if (diveState) {
         // 별똥별 유성 급강하 포물선 아크 (~0.72초)
         diveState.elapsed += opts.dt;
@@ -677,9 +693,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.flightPitch = 0;
         prevBoostActive = false;
 
-        if (opts.reducedMotion) {
+        if (reduceMotion) {
           player.takeoffPhase = "none";
           player.takeoffProgress = 0;
+          flightCruiseAlt = FLIGHT_TARGET_ALT;
           player.flightAlt = FLIGHT_TARGET_ALT;
           player.y = gyNow + FLIGHT_TARGET_ALT;
           player.playerJumpY = FLIGHT_TARGET_ALT;
@@ -707,16 +724,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             pendingAscendCue = true;
           }
         } else {
-          // 2단계 `ascend`: 0 -> 18.0m 회오리 급상승 + 카메라 줌아웃 복귀
+          // 2단계 `ascend`: 0 -> 18.0m 빙글빙글 회오리 급상승 (로켓 초기 점프를 부드럽게 완화해 전 구간 선명하게 추적)
           takeoffElapsed += opts.dt;
           const t = Math.min(1, takeoffElapsed / TAKEOFF_ASCEND_SEC);
           player.takeoffProgress = t;
           const prevAlt = player.flightAlt;
-          const altEase = 1 - Math.pow(1 - t, 2.5);
+          const altEase = 1 - Math.pow(1 - t, 2.2);
           player.flightAlt = FLIGHT_TARGET_ALT * altEase;
           player.y = gyNow + player.flightAlt;
           player.playerJumpY = player.flightAlt;
-          player.jumpVel = opts.dt > 0.0005 ? (player.flightAlt - prevAlt) / opts.dt : 24;
+          player.jumpVel = opts.dt > 0.0005 ? (player.flightAlt - prevAlt) / opts.dt : 22;
           player.onGround = false;
 
           let yawBack = takeoffStartCamYaw - camYaw;
@@ -727,6 +744,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           if (t >= 1) {
             player.takeoffPhase = "none";
             player.takeoffProgress = 0;
+            flightCruiseAlt = FLIGHT_TARGET_ALT;
             player.flightAlt = FLIGHT_TARGET_ALT;
             flightClock = 0;
           }
@@ -837,18 +855,37 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             opts.onFlightSpin?.();
           }
 
-          const bob = opts.reducedMotion ? 0 : Math.sin(flightClock * 2.2) * 0.42;
-          const spinLift = Math.sin(flightSpinWave * Math.PI) * 1.15;
-          const desiredAlt = FLIGHT_TARGET_ALT + bob + spinLift;
-          const prevAlt = player.flightAlt;
-          const altLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 5.2);
-          player.flightAlt += (desiredAlt - player.flightAlt) * altLerp;
           const gyUnder = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
+          const minRelAlt = FLIGHT_MIN_GROUND_CLEARANCE;
+          const maxRelAlt = Math.max(minRelAlt, FLIGHT_MAX_WORLD_ALT - gyUnder);
+
+          // (#5) 에이스 비행 자유 고도 조절: E 상승 / Q 하강 최우선 + 전진 비행 중 카메라 피치에 따른 부드러운 고도 연동
+          const altInput = (keys.has("KeyE") ? 1 : 0) - (keys.has("KeyQ") ? 1 : 0);
+          if (altInput !== 0) {
+            const altRate = player.sprinting ? 14.5 : 10.5;
+            flightCruiseAlt += altInput * altRate * opts.dt;
+          } else if (ix !== 0 || iz !== 0) {
+            const pitchDelta = 0.25 - chasePitch;
+            const excess = Math.sign(pitchDelta) * Math.max(0, Math.abs(pitchDelta) - 0.07);
+            if (excess !== 0) {
+              flightCruiseAlt += excess * 11.0 * Math.min(1.6, speedMag / 24.0) * opts.dt;
+            }
+          }
+          flightCruiseAlt = Math.max(minRelAlt, Math.min(maxRelAlt, flightCruiseAlt));
+
+          // (#10) 저모션 모드에서는 비행 바빙·배럴롤 상승·롤 흔들림 진폭을 25% 수준으로 부드럽게 완화
+          const motionScale = reduceMotion ? 0.25 : 1.0;
+          const bob = Math.sin(flightClock * 2.2) * 0.42 * motionScale;
+          const spinLift = Math.sin(flightSpinWave * Math.PI) * 1.15 * motionScale;
+          const desiredAlt = Math.max(minRelAlt, Math.min(maxRelAlt, flightCruiseAlt + bob + spinLift));
+          const prevAlt = player.flightAlt;
+          const altLerp = 1 - Math.exp(-opts.dt * (altInput !== 0 ? 7.8 : 5.2));
+          player.flightAlt += (desiredAlt - player.flightAlt) * altLerp;
           player.y = gyUnder + player.flightAlt;
           player.playerJumpY = player.flightAlt;
           player.jumpVel = opts.dt > 0.0005 ? (player.flightAlt - prevAlt) / opts.dt : 0;
 
-          bankRollSmoothed += (targetBankRoll - bankRollSmoothed) * Math.min(1, opts.dt * 8.5);
+          bankRollSmoothed += (targetBankRoll * motionScale - bankRollSmoothed) * Math.min(1, opts.dt * 8.5);
           let barrelAdd = 0;
           if (player.barrelRollTimer > 0) {
             const rollT = 1 - player.barrelRollTimer / BARREL_ROLL_SEC;
@@ -856,7 +893,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             barrelAdd = barrelRollDir * rollEase * Math.PI * 2;
           }
           player.flightRoll = bankRollSmoothed + barrelAdd;
-          const targetPitch = Math.min(0.48, (speedMag / 44.0) * 0.42 + (boostNow ? 0.08 : 0));
+          const climbPitchBias = Math.max(-0.24, Math.min(0.24, -player.jumpVel * 0.018));
+          const targetPitch = Math.max(
+            -0.28,
+            Math.min(0.56, (speedMag / 44.0) * 0.42 + (boostNow ? 0.08 : 0) + climbPitchBias),
+          );
           player.flightPitch += (targetPitch - player.flightPitch) * Math.min(1, opts.dt * 8.0);
         } else if (opts.cameraMode === "orbit") {
           // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±80m) 위로 부드럽게 패닝!
@@ -1047,17 +1088,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetY = player.y + 0.72;
         desiredTargetZ = player.z - Math.sin(camYaw) * 0.95;
       } else if (takeoffCharging) {
-        // 1단계 이륙 충전(`0~0.52s`): 제독 정면 클로즈업으로 귀여운 화이팅 자세를 한가득 포착
+        // 1단계 이륙 충전(`0~0.52s`): 제독 정면 클로즈업으로 귀여운 화이팅 자세를 1:1 중심 고정 포착
         desiredTargetX = player.x;
-        desiredTargetY = gy + 0.78;
+        desiredTargetY = player.y + 0.55;
         desiredTargetZ = player.z;
       } else if (takeoffAscending) {
-        // 2단계 회오리 급상승(`0.52~1.18s`): 솟구치는 별 제독 → 에이스 추격 시점으로 부드럽게 전환
+        // 2단계 회오리 급상승: 실제 별 제독 높이(`player.y + 0.55`)를 1:1 실시간 추적하며 정점에서 에이스 추격 시점으로 수평 전환
         const ascTargetX = player.x + Math.sin(player.yaw) * 0.9;
-        const ascTargetY = player.y + 0.55;
         const ascTargetZ = player.z + Math.cos(player.yaw) * 0.9;
         desiredTargetX = player.x + (ascTargetX - player.x) * ascendEase;
-        desiredTargetY = (gy + 0.8 + player.flightAlt * 0.45) * (1 - ascendEase) + ascTargetY * ascendEase;
+        desiredTargetY = player.y + 0.55;
         desiredTargetZ = player.z + (ascTargetZ - player.z) * ascendEase;
       } else if (player.diving) {
         // 별똥별 유성 급강하: 낙하 중인 별 제독을 극적으로 추적하며 착지점으로 급강하
@@ -1107,25 +1147,35 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
       }
       const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming;
-      const targetLerp = opts.reducedMotion
+      const targetLerp = reduceMotion
         ? 1
-        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.5 : takeoffAscending ? 8.5 : player.diving ? 10.5 : aceChaseFraming ? 11.5 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
+        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 15.0 : takeoffAscending ? 16.0 : player.diving ? 10.5 : aceChaseFraming ? 12.5 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
       cameraTarget.x += (desiredTargetX - cameraTarget.x) * targetLerp;
-      cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
+      // 이륙 상승 구간에는 타깃 Y를 1:1 직접 동기화해 빙글빙글 오르는 제독이 절대 화면 아래로 밀리지 않도록 보장
+      if (takeoffAscending) {
+        cameraTarget.y = desiredTargetY;
+      } else {
+        cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
+      }
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
       // 줌 거리 및 추적↔조망↔2단계 이륙↔에이스 추격↔하늘 비행↔유성 급강하↔구역 포커스↔RPG/드로어/드레스업/시네마↔불멍 전환 보간
-      const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
+      const zoomLerp = reduceMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
+
+      // 상승 구간 로우앵글 곡선: 약간 아래-뒤쪽에서 올려다보며 동반 상승 → 정점에서 에이스 추격 수평 시점으로 자연 합류
+      const ascendLowAngleWave = takeoffAscending
+        ? Math.sin(Math.min(1, player.takeoffProgress / 0.86) * Math.PI)
+        : 0;
 
       const focusDist = interactingClose ? Math.min(camDist, 7.6) : camDist;
       const desiredEffDist =
         customizerFraming
           ? 4.35
           : takeoffCharging
-            ? 4.8
+            ? 4.9
             : takeoffAscending
-              ? 4.8 + (chaseDist - 4.8) * ascendEase
+              ? 4.9 + (chaseDist - 4.9) * ascendEase
               : player.diving
                 ? Math.max(camDist, 12.5 + player.flightAlt * 0.95)
                 : cinemaFraming && opts.cinemaTarget
@@ -1147,9 +1197,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         customizerFraming
           ? 0.18
           : takeoffCharging
-            ? 0.19
+            ? 0.14
             : takeoffAscending
-              ? 0.19 + (chasePitch - 0.19) * ascendEase
+              ? (0.14 + (chasePitch - 0.14) * ascendEase) - ascendLowAngleWave * 0.30
               : player.diving
                 ? Math.max(camPitch, 0.34 + Math.min(0.45, player.flightAlt * 0.028))
                 : cinemaFraming && opts.cinemaTarget
@@ -1167,15 +1217,15 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                             : opts.cameraMode === "orbit"
                               ? Math.max(0.54, camPitch)
                               : camPitch;
-      const modeLerp = opts.reducedMotion
+      const modeLerp = reduceMotion
         ? 1
-        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.0 : takeoffAscending ? 7.8 : player.diving ? 6.8 : aceChaseFraming || overviewMode ? 7.5 : cinemaFraming ? 2.2 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
+        : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.5 : takeoffAscending ? 13.5 : player.diving ? 6.8 : aceChaseFraming || overviewMode ? 7.5 : cinemaFraming ? 2.2 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
 
       // 질주(`Shift` 44→49) · 이륙 줌인(`42→60`) · 에이스 추격(`60→68`) · 링 통과 부스트(+7°) · 유성 급강하(`54`) 동적 FOV 부드러운 보간
       const ringBurstFov = skyBoostBurstTimer > 0 ? Math.min(1, skyBoostBurstTimer / 0.45) * 7 : 0;
-      const desiredFov =
+      const rawDesiredFov =
         takeoffCharging
           ? 42
           : takeoffAscending
@@ -1191,7 +1241,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                     : player.sprinting && player.walking
                       ? 49
                       : 44;
-      const fovLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 7.5);
+      // (#10) 저모션 모드에서는 급격한 FOV 변화폭을 25% 수준으로 부드럽게 완화
+      const desiredFov = reduceMotion ? 44 + (rawDesiredFov - 44) * 0.25 : rawDesiredFov;
+      const fovLerp = 1 - Math.exp(-opts.dt * (reduceMotion ? 4.5 : 7.5));
       smoothedFov += (desiredFov - smoothedFov) * fovLerp;
 
       let effDist = smoothedEffDist;
@@ -1199,7 +1251,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       let effYaw = camYaw;
       let effFov = smoothedFov;
 
-      if (!opts.reducedMotion) {
+      // 배럴롤 시 가벼운 카메라 흔들림/기울임 피드백 (저모션 모드에서는 25%로 완화)
+      let barrelCamJitterY = 0;
+      if (player.barrelRollTimer > 0 && aceChaseFraming) {
+        const rollPhase = 1 - player.barrelRollTimer / BARREL_ROLL_SEC;
+        const rollScale = reduceMotion ? 0.25 : 1.0;
+        barrelCamJitterY = Math.sin(rollPhase * Math.PI * 2) * 0.22 * rollScale;
+        effYaw += Math.sin(rollPhase * Math.PI) * 0.045 * barrelRollDir * rollScale;
+      }
+
+      if (!reduceMotion) {
         if (opts.lifecycle === "diving") {
           const ease = 1 - Math.pow(1 - cineProgress, 3);
           effDist = 52 + (effDist - 52) * ease;
@@ -1262,7 +1323,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           }
         }
 
-        const armLerp = opts.reducedMotion
+        const armLerp = reduceMotion
           ? 1
           : 1 - Math.exp(-opts.dt * (minAllowedDist < springArmDist ? 18.0 : 5.2));
         springArmDist += (minAllowedDist - springArmDist) * armLerp;
@@ -1274,7 +1335,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const cxPos = cameraTarget.x + Math.sin(effYaw) * Math.cos(effPitch) * finalDist;
       const czPos = cameraTarget.z + Math.cos(effYaw) * Math.cos(effPitch) * finalDist;
       const groundUnderCam = opts.getGroundHeight(cxPos, czPos);
-      const cyPos = Math.max(groundUnderCam + 0.85, cameraTarget.y + Math.sin(effPitch) * finalDist);
+      const cyPos = Math.max(groundUnderCam + 0.85, cameraTarget.y + Math.sin(effPitch) * finalDist + barrelCamJitterY);
 
       opts.camera.position.set(cxPos, cyPos, czPos);
       opts.camera.lookAt(cameraTarget);
@@ -1283,6 +1344,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
+      if (reducedMotionMq) {
+        reducedMotionMq.removeEventListener("change", onReducedMotionChange);
+        reducedMotionMq = null;
+      }
     },
   };
 }

@@ -142,6 +142,8 @@ export interface CircleCollider {
 
 export type MeadowSurfaceType = "grass" | "stone" | "wood" | "water";
 
+export type MeadowFootstepSurface = "wood" | "stone" | "grass";
+
 export interface CameraOccluder {
   readonly x: number;
   readonly z: number;
@@ -175,6 +177,8 @@ export interface MeadowSceneHandle {
   isOnBridge(x: number, z: number): boolean;
   /** 좌표의 지면 재질을 판별한다 (돌길·광장=`stone`, 목교=`wood`, 시냇물=`water`, 초원=`grass`). */
   getSurfaceType(x: number, z: number): MeadowSurfaceType;
+  /** 발소리 SFX용 지면 재질을 판별한다 (4개 목교=`"wood"`, 중앙 광장 석판·돌길·마을 석조 광장=`"stone"`, 초원=`"grass"`). */
+  getSurfaceMaterial(x: number, z: number): MeadowFootstepSurface;
   /** 카메라 스프링-암 가림 방지용 경량 수직 실린더 목록(가로등·나무·건물·문주)을 반환한다. */
   getCameraOccluders(): readonly CameraOccluder[];
   /** 실시간 작업/경보/질문 상태인 마을·구역의 3D 공방 FX 에미터 좌표를 반환한다. */
@@ -2067,6 +2071,130 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     return h;
   }
+
+  // 외곽 지평선 원경 수목 띠 (r = 95..128m, ~156그루, 충돌체 0, 공유 InstancedMesh 2 draw calls, 0-GC)
+  function createHorizonCanopyGeometry(): BufferGeometry {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const indices: number[] = [];
+    let vertCursor = 0;
+
+    const pushConeTier = (baseY: number, tipY: number, baseR: number, segs: number) => {
+      const h = tipY - baseY;
+      const slopeLen = Math.hypot(baseR, h);
+      const ny = baseR / slopeLen;
+      const nr = h / slopeLen;
+      const tipIdx = vertCursor;
+      positions.push(0, tipY, 0);
+      normals.push(0, 1, 0);
+      vertCursor += 1;
+
+      const ringStart = vertCursor;
+      for (let i = 0; i <= segs; i += 1) {
+        const a = (i / segs) * Math.PI * 2;
+        const c = Math.cos(a);
+        const s = Math.sin(a);
+        positions.push(c * baseR, baseY, s * baseR);
+        normals.push(c * nr, ny, s * nr);
+        vertCursor += 1;
+      }
+      for (let i = 0; i < segs; i += 1) {
+        indices.push(tipIdx, ringStart + i + 1, ringStart + i);
+      }
+    };
+
+    // 지브리 알프스 2단 침엽/활엽 실루엣 (1개 지오메트리에 2단 수관 병합 → 1 draw call)
+    pushConeTier(0.0, 1.72, 1.04, 7);
+    pushConeTier(0.92, 2.86, 0.72, 7);
+
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(new Float32Array(positions), 3));
+    geo.setAttribute("normal", new BufferAttribute(new Float32Array(normals), 3));
+    geo.setIndex(indices);
+    geo.computeBoundingSphere();
+    return geo;
+  }
+
+  const HORIZON_TREE_COUNT = 156;
+  const horizonTrunkGeo = new CylinderGeometry(0.22, 0.42, 1.0, 5);
+  horizonTrunkGeo.translate(0, 0.5, 0);
+  const horizonCanopyGeo = createHorizonCanopyGeometry();
+
+  const horizonTrunkDayTint = new Color(0x6b5140);
+  const horizonTrunkNightTint = new Color(0x273245);
+  const horizonCanopyDayTint = new Color(0xffffff);
+  const horizonCanopyNightTint = new Color(0x476186);
+
+  const horizonTrunkMat = ownMat(new MeshStandardMaterial({
+    color: horizonTrunkDayTint.clone(),
+    roughness: 0.94,
+    metalness: 0.0,
+  }));
+  const horizonCanopyMat = ownMat(new MeshStandardMaterial({
+    color: horizonCanopyDayTint.clone(),
+    roughness: 0.90,
+    metalness: 0.0,
+    flatShading: true,
+  }));
+
+  const horizonTrunkInst = new InstancedMesh(horizonTrunkGeo, horizonTrunkMat, HORIZON_TREE_COUNT);
+  const horizonCanopyInst = new InstancedMesh(horizonCanopyGeo, horizonCanopyMat, HORIZON_TREE_COUNT);
+  horizonTrunkInst.frustumCulled = false;
+  horizonCanopyInst.frustumCulled = false;
+
+  const horizonPaletteNear = [0x3d7b56, 0x4c8a62, 0x59936a, 0x346f4e] as const;
+  const horizonPaletteFar = [0x4c8276, 0x578d84, 0x457870, 0x62968d] as const;
+  const horizonColorScratch = new Color();
+  const horizonDummy = new Object3D();
+
+  let horizonPlanted = 0;
+  for (let i = 0; i < HORIZON_TREE_COUNT; i += 1) {
+    const baseAngle = (i / HORIZON_TREE_COUNT) * Math.PI * 2;
+    const angleJitter = (hash2(i * 1.91, 3.73) - 0.5) * 0.065;
+    // 알프스 능선 군락 느낌을 위해 약간의 군집 파동 + 거리 분포(95..128m)
+    const groveWave = Math.sin(baseAngle * 7.0 + 0.6) * 4.5 + Math.cos(baseAngle * 13.0) * 2.8;
+    const rawR = 95.5 + hash2(i * 4.37, 11.29) * 32.0 + groveWave * 0.32;
+    const distR = Math.max(95.0, Math.min(128.0, rawR));
+    const ang = baseAngle + angleJitter;
+    const tx = Math.cos(ang) * distR;
+    const tz = Math.sin(ang) * distR;
+    const groundY = getTerrainBaseHeight(tx, tz);
+    if (groundY < 0.2) continue;
+
+    const isBroad = hash2(i * 7.13, 2.17) > 0.68;
+    const distFrac = (distR - 95.0) / 33.0;
+    const sizeBoost = 0.86 + distFrac * 0.44 + hash2(i * 3.19, 8.41) * 0.42;
+    const trunkH = (isBroad ? 1.85 : 2.35) * sizeBoost;
+    const trunkR = (isBroad ? 0.68 : 0.54) * sizeBoost;
+    const yaw = hash2(tx * 0.3, tz * 0.3) * Math.PI * 2;
+    const tiltX = (hash2(i * 5.1, 1.3) - 0.5) * 0.07;
+    const tiltZ = (hash2(i * 2.7, 9.1) - 0.5) * 0.07;
+
+    horizonDummy.position.set(tx, groundY - 0.48, tz);
+    horizonDummy.rotation.set(tiltX, yaw, tiltZ);
+    horizonDummy.scale.set(trunkR, trunkH, trunkR);
+    horizonDummy.updateMatrix();
+    horizonTrunkInst.setMatrixAt(horizonPlanted, horizonDummy.matrix);
+
+    const canopyW = (isBroad ? 2.65 : 1.95) * sizeBoost;
+    const canopyH = (isBroad ? 1.95 : 2.85) * sizeBoost;
+    horizonDummy.position.set(tx, groundY - 0.48 + trunkH * 0.72, tz);
+    horizonDummy.rotation.set(tiltX, yaw, tiltZ);
+    horizonDummy.scale.set(canopyW, canopyH, canopyW);
+    horizonDummy.updateMatrix();
+    horizonCanopyInst.setMatrixAt(horizonPlanted, horizonDummy.matrix);
+
+    const pal = distFrac > 0.48 ? horizonPaletteFar : horizonPaletteNear;
+    horizonColorScratch.setHex(pal[i % pal.length]!);
+    horizonCanopyInst.setColorAt(horizonPlanted, horizonColorScratch);
+    horizonPlanted += 1;
+  }
+  horizonTrunkInst.count = horizonPlanted;
+  horizonCanopyInst.count = horizonPlanted;
+  horizonTrunkInst.instanceMatrix.needsUpdate = true;
+  horizonCanopyInst.instanceMatrix.needsUpdate = true;
+  if (horizonCanopyInst.instanceColor) horizonCanopyInst.instanceColor.needsUpdate = true;
+  root.add(horizonTrunkInst, horizonCanopyInst);
 
   function getGroundHeight(x: number, z: number): number {
     const bridgeY = getBridgeDeckHeight(x, z);
@@ -5163,6 +5291,19 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
       return "grass";
     },
+    getSurfaceMaterial(x, z) {
+      if (getBridgeDeckHeight(x, z) !== null) return "wood";
+      if (Math.hypot(x, z + 1.6) <= 6.2) return "stone";
+      const rd = minRoadDistance(x, z);
+      if (rd.dist < rd.halfWidth + 0.35) return "stone";
+      for (let i = 0; i < currentVillages.length; i += 1) {
+        const v = currentVillages[i]!;
+        if (Math.hypot(x - v.x, z - v.z) <= v.radius) {
+          return "stone";
+        }
+      }
+      return "grass";
+    },
     getCameraOccluders() {
       return cameraOccluders;
     },
@@ -5229,6 +5370,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       windTimeUniform.value = elapsed;
       meadowNightUniform.value = nightFactor;
       terrainMat.color.copy(terrainDayTint).lerp(terrainNightTint, nightFactor * 0.72);
+      horizonCanopyMat.color.copy(horizonCanopyDayTint).lerp(horizonCanopyNightTint, nightFactor * 0.78);
+      horizonTrunkMat.color.copy(horizonTrunkDayTint).lerp(horizonTrunkNightTint, nightFactor * 0.78);
       contactShadowMat.opacity = 0.86 - nightFactor * 0.30;
       windmillBlades.rotation.z = -elapsed * 0.95;
       for (const pivot of customBladePivots) {
@@ -5871,6 +6014,10 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       birdWingGeo.dispose();
       biomeParticleInst.dispose();
       biomeParticleGeo.dispose();
+      horizonTrunkInst.dispose();
+      horizonTrunkGeo.dispose();
+      horizonCanopyInst.dispose();
+      horizonCanopyGeo.dispose();
       smokeGeo.dispose();
       highlightGeo.dispose();
       hoverHighlightMat.dispose();

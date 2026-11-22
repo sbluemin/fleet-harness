@@ -34,7 +34,10 @@ const POS_DEADZONE_PX = 0.5;
 const LOD_EPSILON = 0.02;
 const COLLIDE_X_THRESHOLD_PX = 116;
 const COLLIDE_Y_THRESHOLD_PX = 26;
+const SPEECH_EXTRA_HEIGHT_PX = 40;
+const SPEECH_BOX_WIDTH_PX = 176;
 const COLLIDE_MAX_SHIFT_PX = 28;
+const COLLIDE_SPEECH_MAX_SHIFT_PX = 68;
 const COLLIDE_FAR_DISTANCE_M = 18;
 const COLLIDE_FADED_OPACITY = 0.42;
 
@@ -44,6 +47,9 @@ interface DeclutterSlot {
   x: number;
   y: number;
   baseY: number;
+  boxWidth: number;
+  boxHeight: number;
+  maxShift: number;
   priority: number;
   distance: number;
   distant: boolean;
@@ -122,6 +128,8 @@ export interface WorldLabelsOverlayProps {
   readonly onOpenQuestBoard: () => void;
   readonly onInteractActor: (actorId: string) => void;
   readonly onOpenUrgentActor?: ((actorId: string) => void) | undefined;
+  /** 낚시 중 등 액터 `[E] 상호작용` 배지 노출을 일시 억제할 때 `true`. */
+  readonly suppressInteractPrompts?: boolean | undefined;
 }
 
 export const WorldLabelsOverlay = memo(
@@ -150,6 +158,7 @@ export const WorldLabelsOverlay = memo(
       onOpenQuestBoard,
       onInteractActor,
       onOpenUrgentActor,
+      suppressInteractPrompts = false,
     },
     ref,
   ) {
@@ -173,13 +182,18 @@ export const WorldLabelsOverlay = memo(
     const declutterPoolRef = useRef<DeclutterSlot[]>([]);
     const lastActorDistanceRef = useRef<Map<string, number>>(new Map());
     const priorityActorIdsRef = useRef<Set<string>>(new Set());
+    const speechActorIdsRef = useRef<Set<string>>(new Set());
 
-    // Keep priority actor lookup fresh for 0-GC frame decluttering without adding hook deps.
+    // Keep priority & active-speech actor lookups fresh for 0-GC frame decluttering without adding hook deps.
     priorityActorIdsRef.current.clear();
+    speechActorIdsRef.current.clear();
     for (let i = 0; i < labelMetas.length; i += 1) {
       const m = labelMetas[i]!;
       if (m.isSelected || m.isNearPlayer || m.needsAttention) {
         priorityActorIdsRef.current.add(m.actorId);
+      }
+      if (m.speech && m.speech.length > 0) {
+        speechActorIdsRef.current.add(m.actorId);
       }
     }
 
@@ -364,6 +378,7 @@ export const WorldLabelsOverlay = memo(
         const pool = declutterPoolRef.current;
         const distMap = lastActorDistanceRef.current;
         const priorityActors = priorityActorIdsRef.current;
+        const speechActors = speechActorIdsRef.current;
         let slotCount = 0;
 
         const pushSlot = (
@@ -371,6 +386,9 @@ export const WorldLabelsOverlay = memo(
           el: HTMLDivElement | null | undefined,
           x: number,
           y: number,
+          boxWidth: number,
+          boxHeight: number,
+          maxShift: number,
           priority: number,
           distance: number,
           distant: boolean,
@@ -386,6 +404,9 @@ export const WorldLabelsOverlay = memo(
               x,
               y,
               baseY: y,
+              boxWidth,
+              boxHeight,
+              maxShift,
               priority,
               distance,
               distant,
@@ -400,6 +421,9 @@ export const WorldLabelsOverlay = memo(
             slot.x = x;
             slot.y = y;
             slot.baseY = y;
+            slot.boxWidth = boxWidth;
+            slot.boxHeight = boxHeight;
+            slot.maxShift = maxShift;
             slot.priority = priority;
             slot.distance = distance;
             slot.distant = distant;
@@ -419,12 +443,16 @@ export const WorldLabelsOverlay = memo(
             applyAnchorPosition(`actor:${p.actorId}`, el, p.x, p.y, false);
             continue;
           }
+          const hasSpeech = speechActors.has(p.actorId);
           const prio = priorityActors.has(p.actorId) ? 0 : 1;
           pushSlot(
             `actor:${p.actorId}`,
             el,
             p.x,
             p.y,
+            hasSpeech ? SPEECH_BOX_WIDTH_PX : COLLIDE_X_THRESHOLD_PX,
+            hasSpeech ? COLLIDE_Y_THRESHOLD_PX + SPEECH_EXTRA_HEIGHT_PX : COLLIDE_Y_THRESHOLD_PX,
+            hasSpeech ? COLLIDE_SPEECH_MAX_SHIFT_PX : COLLIDE_MAX_SHIFT_PX,
             prio,
             p.distance,
             p.isDistant,
@@ -454,7 +482,21 @@ export const WorldLabelsOverlay = memo(
             applyAnchorPosition(`village:${v.villageId}`, el, v.x, v.y, false);
             continue;
           }
-          pushSlot(`village:${v.villageId}`, el, v.x, v.y, 3, v.distance, v.distance > COLLIDE_FAR_DISTANCE_M, 1, 1, 0);
+          pushSlot(
+            `village:${v.villageId}`,
+            el,
+            v.x,
+            v.y,
+            COLLIDE_X_THRESHOLD_PX,
+            COLLIDE_Y_THRESHOLD_PX,
+            COLLIDE_MAX_SHIFT_PX,
+            3,
+            v.distance,
+            v.distance > COLLIDE_FAR_DISTANCE_M,
+            1,
+            1,
+            0,
+          );
         }
 
         applyAnchorPosition(
@@ -475,7 +517,21 @@ export const WorldLabelsOverlay = memo(
           if (!lm[4] || !lm[1]) {
             applyAnchorPosition(lm[0], lm[1], lm[2], lm[3], false);
           } else {
-            pushSlot(lm[0], lm[1], lm[2], lm[3], 2, 12 + i, false, 1, 1, 0);
+            pushSlot(
+              lm[0],
+              lm[1],
+              lm[2],
+              lm[3],
+              COLLIDE_X_THRESHOLD_PX,
+              COLLIDE_Y_THRESHOLD_PX,
+              COLLIDE_MAX_SHIFT_PX,
+              2,
+              12 + i,
+              false,
+              1,
+              1,
+              0,
+            );
           }
         }
 
@@ -497,25 +553,36 @@ export const WorldLabelsOverlay = memo(
           pool[j + 1] = current;
         }
 
-        // 2D screen-space decluttering pass: shift lower-priority overlapping labels vertically (max 28px),
-        // and gently fade distant labels that remain overlapped.
+        // 2D screen-space decluttering pass (speech-bubble height aware):
+        // Anchor transforms use translate(-50%, -100%), so each box spans [y - boxHeight, y].
         for (let i = 1; i < slotCount; i += 1) {
           const curr = pool[i]!;
           let stillColliding = false;
           for (let j = 0; j < i; j += 1) {
             const other = pool[j]!;
-            if (Math.abs(curr.x - other.x) >= COLLIDE_X_THRESHOLD_PX) continue;
-            const dy = curr.y - other.y;
-            if (Math.abs(dy) >= COLLIDE_Y_THRESHOLD_PX) continue;
+            const halfW = (curr.boxWidth + other.boxWidth) * 0.5;
+            if (Math.abs(curr.x - other.x) >= halfW) continue;
 
-            const needed = COLLIDE_Y_THRESHOLD_PX - Math.abs(dy);
-            const pushDir = dy <= 0 ? -1 : 1;
-            const targetY = curr.y + pushDir * needed;
-            const minY = curr.baseY - COLLIDE_MAX_SHIFT_PX;
-            const maxY = curr.baseY + COLLIDE_MAX_SHIFT_PX;
+            const currTop = curr.y - curr.boxHeight;
+            const currBottom = curr.y;
+            const otherTop = other.y - other.boxHeight;
+            const otherBottom = other.y;
+            if (currTop >= otherBottom || otherTop >= currBottom) continue;
+
+            // Prefer pushing upward to avoid covering character bodies below, unless downward shift is much smaller.
+            const pushUp = otherTop - currBottom; // negative
+            const pushDown = otherBottom - currTop; // positive
+            const shift = curr.y <= other.y || Math.abs(pushUp) <= Math.abs(pushDown) + 10
+              ? pushUp
+              : pushDown;
+            const targetY = curr.y + shift;
+            const minY = curr.baseY - curr.maxShift;
+            const maxY = curr.baseY + curr.maxShift;
             curr.y = targetY < minY ? minY : targetY > maxY ? maxY : targetY;
 
-            if (Math.abs(curr.y - other.y) < COLLIDE_Y_THRESHOLD_PX - 2) {
+            const nextTop = curr.y - curr.boxHeight;
+            const nextBottom = curr.y;
+            if (nextTop < otherBottom - 2 && otherTop < nextBottom - 2) {
               stillColliding = true;
             }
           }
@@ -724,7 +791,7 @@ export const WorldLabelsOverlay = memo(
                   <span aria-hidden="true">{lbl.role === "commodore" ? "?" : "!"}</span>
                 </button>
               ) : null}
-              {lbl.isNearPlayer && lbl.actorId === singleNearActorId && interactionMode === "closed" && !cinemaMode ? (
+              {!suppressInteractPrompts && lbl.isNearPlayer && lbl.actorId === singleNearActorId && interactionMode === "closed" && !cinemaMode ? (
                 <button
                   type="button"
                   className="the-world-interact-prompt"

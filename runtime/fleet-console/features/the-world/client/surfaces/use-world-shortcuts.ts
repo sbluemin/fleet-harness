@@ -20,7 +20,6 @@ import {
   exitTheWorld,
   getWorldStoreSnapshot,
   openActorRadialMenu,
-  openGazette,
   requestPlayerEmote,
   setCinemaMode,
   setEmoteWheelOpen,
@@ -39,16 +38,16 @@ import {
  *
  * - `Enter`: 채팅창 활성화
  * - `Tab`: 확인 필요(`needsAttention`) 사령관에게 즉시 이동 · 대화창 오픈 (순환)
- * - `E`: 통합 상호작용 키 (불멍 기상 · 우체통 · 소집 종 · 사령관 대화 · 모닥불 착석 · 시냇가 낚시)
- * - `F`: 별빛 상공 자유 비행 이륙/착지 토글 (에이스 추격 시점 단일화)
+ * - `E`: 통합 상호작용 키 (불멍 기상 · 우체통 · 소집 종 · 사령관 대화 · 모닥불 착석 · 시냇가 낚시, 비행 중에는 고도 상승에 양보)
+ * - `F`: 별빛 상공 자유 비행 이륙/착지 토글 (에이스 추격 시점 단일화, 비행 중 `Q`/`E` 고도 하강/상승)
  * - `C`: 시네마 관전(작업 동반자) 모드 토글
- * - `G`: 오늘의 초원 일보 모달 토글
+ * - `G`: 빠른 마을 이동 팝오버 토글
  * - `P`: 포토 모드(UI 숨김) 토글
  * - `B`: 별 제독 이모트 휠 토글
  * - `1` / `2` / `3`: 제독 퀵 감정표현(`wave` / `cheer` / `jump`)
  * - `?` / `H`: 조작 가이드 모달 토글
  * - `Shift+D`: 디버그 패널 노출 토글
- * - `Escape`: 낚시 → 포토 → 시네마 → 모달 → 불멍 → 채팅 → 상호작용 → 별빛 비행 → 월드 탈출 우선순위 해제
+ * - `Escape`: 낚시 → 포토 → 시네마 → 빠른 이동 → 모달 → 불멍 → 채팅 → 상호작용 → 별빛 비행 → 월드 탈출 우선순위 해제
  */
 
 /** 모닥불 벤치 `E` 키 우선 판정 반경 (`world-stage.tsx` 근접 칩과 단일 기준 공유). */
@@ -57,12 +56,15 @@ export const CAMPFIRE_F_PRIORITY_RADIUS = 3.2;
 export interface UseWorldShortcutsOptions {
   readonly rootRef: RefObject<HTMLDivElement | null>;
   readonly controlsGuideOpenRef: RefObject<boolean>;
+  readonly fastTravelOpenRef: RefObject<boolean>;
   readonly nearMailboxRef: RefObject<boolean>;
   readonly nearParadeBellRef: RefObject<boolean>;
   readonly nearCampfireRef: RefObject<boolean>;
   readonly nearFishingWaterRef: RefObject<boolean>;
   readonly onToggleControlsGuide: () => void;
   readonly onCloseControlsGuide: () => void;
+  readonly onToggleFastTravel: () => void;
+  readonly onCloseFastTravel: () => void;
   readonly onToggleDebugPanel: () => void;
   readonly onFocusNextUrgentActor: () => void;
   readonly onOpenMailbox: () => void;
@@ -76,12 +78,15 @@ export interface UseWorldShortcutsOptions {
 export function useWorldShortcuts({
   rootRef,
   controlsGuideOpenRef,
+  fastTravelOpenRef,
   nearMailboxRef,
   nearParadeBellRef,
   nearCampfireRef,
   nearFishingWaterRef,
   onToggleControlsGuide,
   onCloseControlsGuide,
+  onToggleFastTravel,
+  onCloseFastTravel,
   onToggleDebugPanel,
   onFocusNextUrgentActor,
   onOpenMailbox,
@@ -102,6 +107,8 @@ export function useWorldShortcuts({
             const current = getWorldStoreSnapshot();
             if (current.skyQuickMenu) {
               closeSkyQuickMenu();
+            } else if (fastTravelOpenRef.current) {
+              onCloseFastTravel();
             } else if (current.chatActive) {
               deactivateChat();
             } else if (controlsGuideOpenRef.current) {
@@ -190,7 +197,7 @@ export function useWorldShortcuts({
         }
       }
 
-      // G: 오늘의 초원 일보 모달 토글
+      // G: 빠른 마을 이동 팝오버 토글 (열릴 때 진행 중인 낚시 자동 취소)
       if (
         event.code === "KeyG"
         && !event.isComposing
@@ -199,15 +206,18 @@ export function useWorldShortcuts({
         && !event.altKey
         && !event.shiftKey
       ) {
-        if (snap.gazetteOpen) {
+        if (fastTravelOpenRef.current) {
           event.preventDefault();
-          closeGazette();
+          onCloseFastTravel();
           return;
         }
         if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
           event.preventDefault();
+          if (snap.fishingPhase !== "idle") {
+            onCancelFishing();
+          }
           playDistrictSelect();
-          openGazette();
+          onToggleFastTravel();
           return;
         }
       }
@@ -348,6 +358,7 @@ export function useWorldShortcuts({
       }
 
       // E: 통합 상호작용 키 (방사형 닫기 → 불멍 기상 → 우체통 → 소집 종 → 사령관 대화 → 모닥불 착석 → 시냇가 낚시)
+      // 주의: 비행 중(`snap.overviewMode === true`)에는 `player-controller.ts`가 `KeyE`(상승)/`KeyQ`(하강)를 소유하므로 지상 상호작용 완전 차단.
       if (
         event.code === "KeyE"
         && !event.isComposing
@@ -381,10 +392,14 @@ export function useWorldShortcuts({
             onRingParadeBell();
             return;
           }
-          if (snap.nearActorId) {
+          const nearNonCompanionActorId =
+            snap.nearActorId && !snap.companionActorIds.includes(snap.nearActorId)
+              ? snap.nearActorId
+              : null;
+          if (nearNonCompanionActorId) {
             event.preventDefault();
             playMongleChirp();
-            openActorRadialMenu(snap.nearActorId);
+            openActorRadialMenu(nearNonCompanionActorId);
             return;
           }
           if (snap.fishingPhase === "idle" && nearCampfireRef.current) {
@@ -396,6 +411,12 @@ export function useWorldShortcuts({
           if (snap.fishingPhase === "idle" && nearFishingWaterRef.current) {
             event.preventDefault();
             onStartFishing();
+            return;
+          }
+          if (snap.nearActorId) {
+            event.preventDefault();
+            playMongleChirp();
+            openActorRadialMenu(snap.nearActorId);
             return;
           }
         }
@@ -423,6 +444,10 @@ export function useWorldShortcuts({
         }
         if (guideOpen) {
           onCloseControlsGuide();
+          return;
+        }
+        if (fastTravelOpenRef.current) {
+          onCloseFastTravel();
           return;
         }
         if (snap.sittingAtCampfire) {
@@ -486,6 +511,7 @@ export function useWorldShortcuts({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     controlsGuideOpenRef,
+    fastTravelOpenRef,
     isReducedMotion,
     nearCampfireRef,
     nearFishingWaterRef,
@@ -493,6 +519,7 @@ export function useWorldShortcuts({
     nearParadeBellRef,
     onCancelFishing,
     onCloseControlsGuide,
+    onCloseFastTravel,
     onFocusNextUrgentActor,
     onOpenMailbox,
     onReelFishing,
@@ -500,6 +527,7 @@ export function useWorldShortcuts({
     onStartFishing,
     onToggleControlsGuide,
     onToggleDebugPanel,
+    onToggleFastTravel,
     rootRef,
   ]);
 }

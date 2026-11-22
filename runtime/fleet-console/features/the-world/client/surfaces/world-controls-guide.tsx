@@ -32,6 +32,7 @@ const GUIDE_GROUPS: readonly {
       { keys: "Shift", descKey: "theWorld.guide.sprintDesc", icon: "approach", tone: "teal" },
       { keys: "Space", descKey: "theWorld.guide.jumpDesc", icon: "sparkle", tone: "amber" },
       { keys: "F", descKey: "theWorld.guide.overviewDesc", icon: "mapOverview", tone: "moss" },
+      { keysKey: "theWorld.controls.flightAltKeys", descKey: "theWorld.controls.flightAltDesc", icon: "compass", tone: "teal" },
       { keysKey: "theWorld.controls.barrelRollKeys", descKey: "theWorld.controls.barrelRollDesc", icon: "spin", tone: "amber" },
       { keysKey: "theWorld.controls.skyDiveKeys", descKey: "theWorld.controls.skyDiveDesc", icon: "sparkle", tone: "cerulean" },
     ],
@@ -53,9 +54,9 @@ const GUIDE_GROUPS: readonly {
     id: "view",
     titleKey: "theWorld.guide.groupView",
     items: [
+      { keys: "G", descKey: "theWorld.controls.fastTravelDesc", icon: "compass", tone: "cerulean" },
       { keys: "P", descKey: "theWorld.controls.photoStudioDesc", icon: "camera", tone: "cerulean" },
       { keys: "C", descKey: "theWorld.guide.cinemaDesc", icon: "cinema", tone: "teal" },
-      { keys: "G", descKey: "theWorld.guide.gazetteDesc", icon: "gazette", tone: "amber" },
       { keysKey: "theWorld.controls.stampBookKeys", descKey: "theWorld.controls.stampBookDesc", icon: "trophy", tone: "amber" },
       { keys: "Enter", descKey: "theWorld.guide.chatDesc", icon: "chat", tone: "teal" },
       { keys: "? / H", descKey: "theWorld.guide.guideDesc", icon: "question", tone: "amber" },

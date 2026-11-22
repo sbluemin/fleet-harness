@@ -1934,3 +1934,46 @@ export function setOperationFlag(flag: WorldOperationFlag | null): void {
   };
   emit();
 }
+
+const PROGRESS_RESET_STORAGE_KEYS: readonly string[] = [
+  UNLOCKED_STAMPS_STORAGE_KEY,
+  CAUGHT_FISH_STORAGE_KEY,
+  RELEASED_FISH_STORAGE_KEY,
+  MAILBOX_READ_KEYS_STORAGE_KEY,
+  DISTRICT_NOTES_STORAGE_KEY,
+  VILLAGE_BIOMES_STORAGE_KEY,
+  ADMIRAL_STYLE_STORAGE_KEY,
+  COMMODORE_GIFTS_STORAGE_KEY,
+];
+
+/**
+ * 초원 진행 데이터(항해 스탬프 · 포획/방생 어류 · 우체통 읽음 · 구역 메모 · 바이옴 · 제독 외형 · 사령관 선물)를
+ * 기본값으로 복원하고 관련 `localStorage` 키를 안전하게 정리한다.
+ * 음소거·BGM 등 오디오 환경 설정은 그대로 유지한다.
+ */
+export function resetWorldProgressData(): void {
+  if (typeof window !== "undefined") {
+    for (const key of PROGRESS_RESET_STORAGE_KEYS) {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+        // 저장소 접근 불가 환경에서는 메모리 상태만 초기화한다.
+      }
+    }
+  }
+  state = {
+    ...state,
+    unlockedStamps: [],
+    caughtFishCounts: {},
+    releasedFishIds: [],
+    lastFishCatch: null,
+    mailboxReadKeys: [],
+    districtNotes: {},
+    villageBiomes: {},
+    admiralStyle: DEFAULT_ADMIRAL_STYLE,
+    commodoreGifts: {},
+    dispatchFlags: {},
+    operationFlag: null,
+  };
+  emit();
+}
