@@ -634,7 +634,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.computerUse.permissionsBoth": "{app}에 손쉬운 사용·화면 기록 권한이 필요해요.",
   "settings.computerUse.requestPermissions": "권한 요청",
   "settings.computerUse.permissionScreenRecordingList": "'화면 및 시스템 오디오 녹음' 목록에 없으면 + 로 추가하고, 이미 켜져 있다면 껐다가 다시 켜 주세요.",
-  "settings.computerUse.permissionScreenRecordingReopen": "'종료 후 다시 열기'를 누른 뒤 앱이 다시 열리지 않으면 직접 열어 주세요.",
+  "settings.computerUse.permissionScreenRecordingReopen": "'종료 및 다시 열기'를 누른 뒤 앱이 다시 열리지 않으면 직접 열어 주세요.",
   "settings.computerUse.permissionScreenRecordingConfirm": "다음 화면 캡처 때 macOS가 한 번 더 확인을 물을 수 있어요.",
   "settings.computerUse.requestPermissionsFailed": "권한을 요청하지 못했어요.",
   "settings.computerUse.selfCheckFailed": "이 macOS 버전에서 자가 점검을 통과하지 못해 앱 조작을 멈췄어요.",

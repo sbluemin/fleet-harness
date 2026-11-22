@@ -13,7 +13,7 @@ private let permissionHolderApp: (pid: pid_t, name: String)? = {
 }()
 let permissionHolder = permissionHolderApp?.name
 
-/// 판정 대상 앱이 이 헬퍼를 띄운 Console의 조상인지. 그렇다면 화면 기록을 켠 뒤 macOS가 권하는 "종료 후 다시 열기"가
+/// 판정 대상 앱이 이 헬퍼를 띄운 Console의 조상인지. 그렇다면 화면 기록을 켠 뒤 macOS가 권하는 "종료 및 다시 열기"가
 /// 그 Console과 지금 세션을 함께 끝낸다. 부모를 따라 올라가 확인하고, 확인하지 못하면 false다.
 let permissionHolderHostsConsole: Bool = {
   guard let holder = permissionHolderApp?.pid else { return false }

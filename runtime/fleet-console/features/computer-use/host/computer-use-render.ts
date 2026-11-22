@@ -41,7 +41,7 @@ const PERMISSION_LABELS = [["accessibility", "Accessibility"], ["screenRecording
 // 화면 기록이 빠졌을 때만 붙인다. 갈림은 서명 종류가 아니라 사람이 목록에서 보는 상태(없음·이미 켜짐)다.
 // 요청 창이 뜨지 않는 빌드는 목록에 없고, 옛 빌드의 허용은 켜짐으로 남아도 거부된다.
 const SCREEN_RECORDING_LIST = "Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on.";
-// 화면 기록을 켜면 macOS가 종료 후 다시 열기를 권하는데, 실측에서 앱이 다시 열리지 않았다. 그 앱이 이 Console을 띄워 지금 세션을
+// 화면 기록을 켜면 macOS가 종료 및 다시 열기를 권하는데, 실측에서 앱이 다시 열리지 않았다. 그 앱이 이 Console을 띄워 지금 세션을
 // 호스팅한다고 헬퍼가 확인했을 때만 세션이 끊길 수 있다고 먼저 알리게 한다. 자동 복귀·재시도는 약속하지 않는다.
 const SCREEN_RECORDING_REOPEN = "If they choose Quit & Reopen and the app stays closed, have them reopen it manually.";
 const SCREEN_RECORDING_REOPEN_HOSTING = "If they choose Quit & Reopen, warn them first that this session may be interrupted and that they may need to reopen the app manually.";
