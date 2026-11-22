@@ -16,8 +16,8 @@ export function parseCodesignIdentities(output) {
 
 /**
  * 개발 실행의 서명 ID를 고른다: 환경 변수 → 유효한 Apple Development ID → adhoc.
- * 팀 ID가 있는 서명이어야 macOS가 화면 기록 요청 창을 띄우고 목록에 올리며(adhoc은 창도 목록 등록도 없었다, macOS 26.5 실측),
- * TCC 허용이 cdhash가 아니라 팀·식별자에 묶여 Electron이 바뀌어도 유지된다.
+ * 팀 서명은 지정 요구 조건이 식별자와 인증서에 묶여 TCC 허용이 Electron 갱신 뒤에도 유지된다. adhoc으로 물러나면 래퍼는
+ * 식별자 고정 요구 조건으로 서명한다(designatedRequirementArgs).
  */
 export function selectDevCodesignIdentity(identities, requested) {
   if (requested === "-") return { ...ADHOC, reason: "requested" };
@@ -46,29 +46,52 @@ export async function resolveDevCodesignIdentity(env = process.env, run = execFi
   return selectDevCodesignIdentity(identities, requested);
 }
 
-/** 개발자에게 보여 줄 한 줄. adhoc이면 macOS가 화면 기록을 묻지 않으니 + 로 추가해야 한다고 알린다. */
-export function describeDevCodesignIdentity(subject, choice, failed = false, advice = true) {
-  const tail = advice ? " macOS will not ask for Screen Recording, so add the app with + in System Settings › Privacy & Security." : "";
-  if (failed) return `${subject}: signing with "${choice.label}" failed; using an ad hoc signature.${tail}`;
+/**
+ * adhoc 래퍼에 넣는 지정 요구 조건. 기본(암묵) 요구 조건은 cdhash라 Electron 갱신이나 래퍼 재생성 때 TCC 허용이 무효가 되고,
+ * 시스템 설정 목록에는 켜짐으로 남는다. 식별자로 고정하면 재빌드 뒤에도 허용이 남는다(macOS 26.5 실측). 대가로 같은 Mac에서
+ * 같은 식별자로 adhoc 서명한 다른 코드도 이 조건을 만족하므로, 인증서 서명이 없을 때만 쓴다.
+ */
+export function adhocDesignatedRequirement(identifier) {
+  return `designated => identifier "${identifier}"`;
+}
+
+/** codesign에 더할 지정 요구 조건 인자. adhoc이고 고정할 식별자가 있을 때만 넣는다. 팀 서명은 기본 요구 조건이 이미 고정돼 있다. */
+export function designatedRequirementArgs(identity, identifier) {
+  return identity === ADHOC.identity && identifier ? [`-r=${adhocDesignatedRequirement(identifier)}`] : [];
+}
+
+/** `codesign -d -r-` 출력에 식별자 고정 요구 조건이 명시돼 있는가. 암묵 요구 조건은 "# designated => cdhash …"로 나온다. */
+export function hasFixedDesignatedRequirement(output, identifier) {
+  return String(output).split("\n").some((line) => line.trim() === adhocDesignatedRequirement(identifier));
+}
+
+/**
+ * 개발자에게 보여 줄 한 줄. 서명 결과와 사유 뒤에, adhoc이면 재빌드 뒤 허용이 켜짐인데도 거부될 때 할 일을 붙인다.
+ * "fixed to bundle ID"는 실제로 식별자 고정 요구 조건을 넣은 서명에만 적는다.
+ */
+export function describeDevCodesignIdentity(subject, choice, failed = false, advice = true, fixedRequirement = false) {
+  const tail = advice ? " If Screen Recording shows Fleet Console Dev as enabled but access is denied after a rebuild, remove its entry with −, request access again in Fleet, and enable it when listed." : "";
+  const adhoc = fixedRequirement ? "an ad hoc signature (fixed to bundle ID)" : "an ad hoc signature";
+  if (failed) return `${subject}: signing with "${choice.label}" failed; using ${adhoc}.${tail}`;
   if (choice.identity !== "-") return `${subject}: signed with "${choice.label}"${choice.reason === "first_of_many" ? ` (set ${DEV_CODESIGN_IDENTITY_ENV} to choose another identity)` : ""}.`;
   const why = choice.reason === "requested" ? `${DEV_CODESIGN_IDENTITY_ENV}=-` : choice.reason === "requested_identity_missing" ? `${DEV_CODESIGN_IDENTITY_ENV} names no valid code signing identity` : "no Apple Development signing identity was found";
-  return `${subject}: using an ad hoc signature because ${why}.${tail}`;
+  return `${subject}: using ${adhoc} because ${why}.${tail}`;
 }
 
 /** 고른 ID로 서명하고, 실패하면 adhoc으로 다시 서명한다. 실제로 쓴 ID를 돌려준다. */
-export async function codesignWithFallback(subject, choice, sign, log, { advice = true } = {}) {
+export async function codesignWithFallback(subject, choice, sign, log, { advice = true, fixedRequirement = false } = {}) {
   if (choice.identity !== "-") {
     try {
       await sign(choice.identity);
-      log(describeDevCodesignIdentity(subject, choice, false, advice));
+      log(describeDevCodesignIdentity(subject, choice, false, advice, fixedRequirement));
       return choice.identity;
     } catch {
       await sign("-");
-      log(describeDevCodesignIdentity(subject, choice, true, advice));
+      log(describeDevCodesignIdentity(subject, choice, true, advice, fixedRequirement));
       return ADHOC.identity;
     }
   }
   await sign("-");
-  log(describeDevCodesignIdentity(subject, choice, false, advice));
+  log(describeDevCodesignIdentity(subject, choice, false, advice, fixedRequirement));
   return ADHOC.identity;
 }
