@@ -47,11 +47,11 @@ it("names only the missing permission and keeps the toggle usable while requesti
 it("names the app macOS judges, such as Fleet Console Dev in a dev run, and adds the Screen Recording steps only when it is missing", async () => {
   const view = await mount({ ...ready, missingPermissions: ["accessibility", "screenRecording"], permissionHolder: "Fleet Console Dev" });
   const notice = view.node.querySelector('[role="status"]')?.textContent;
-  expect(notice).toContain("Fleet Console Dev needs Accessibility and Screen Recording permission. If it isn't in the Screen Recording list, add it with +; if it already looks on, turn it off and on again. If the app doesn't reopen after Quit & Reopen, open it again yourself. macOS may ask you to confirm once more on the next screen capture.");
+  expect(notice).toContain("Fleet Console Dev needs Accessibility and Screen Recording permission. If it isn't in the Screen & System Audio Recording list, add it with +; if it already looks on, turn it off and on again. If the app doesn't reopen after Quit & Reopen, open it again yourself. macOS may ask you to confirm once more on the next screen capture.");
   const accessibilityOnly = await mount({ ...ready, missingPermissions: ["accessibility"], permissionHolder: "Fleet Console Dev" });
   const short = accessibilityOnly.node.querySelector('[role="status"]')?.textContent;
   expect(short).toContain("Fleet Console Dev needs Accessibility permission.");
-  for (const line of ["Screen Recording list", "Quit & Reopen", "next screen capture"]) expect(short).not.toContain(line);
+  for (const line of ["System Audio Recording list", "Quit & Reopen", "next screen capture"]) expect(short).not.toContain(line);
 });
 
 it("keeps the toggle on when startup self-check pauses control and has no notice in normal use", async () => {
