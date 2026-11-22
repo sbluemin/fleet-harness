@@ -162,6 +162,24 @@ enum AXReader {
     return r == .success && el.map { belongs($0, win) } == true ? el : nil
   }
 
+  static func within(_ el: AXUIElement, _ ancestor: AXUIElement) -> Bool {
+    var current: AXUIElement? = el
+    for _ in 0..<32 {
+      guard let node = current else { return false }
+      if CFEqual(node, ancestor) { return true }
+      current = asAX(attribute(node, kAXParentAttribute))
+    }
+    return false
+  }
+
+  static func range(_ value: CFTypeRef?) -> CFRange? {
+    guard let value, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
+    var range = CFRange()
+    return AXValueGetValue(value as! AXValue, .cfRange, &range) ? range : nil
+  }
+
+  static func selectedRange(_ el: AXUIElement) -> CFRange? { range(attribute(el, kAXSelectedTextRangeAttribute)) }
+
   static func belongs(_ el: AXUIElement, _ win: WindowInfo, root: AXUIElement? = nil) -> Bool {
     var pid: pid_t = 0
     guard AXUIElementGetPid(el, &pid) == .success, pid == win.key.pid else { return false }
