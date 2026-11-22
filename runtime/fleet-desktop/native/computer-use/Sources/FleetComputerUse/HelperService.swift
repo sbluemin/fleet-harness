@@ -183,8 +183,11 @@ private func occurrences(of text: String, in value: String) -> Int {
 }
 
 /// Chromium·Electron은 창이 AppKit 안에서 key가 아니면 Command 단축키를 버린다(RenderWidgetHostViewCocoa
-/// performKeyEquivalent와 CommandDispatcher redispatchKeyEvent의 key 검사). 대상 입력칸에 대상 전용 클릭을 한 번 보내면
-/// 앱 활성화·실제 포인터 이동 없이 창이 key가 된다. 클릭이 옮긴 선택 범위는 단축키 전에 AX로 되돌리고 확인한다.
+/// performKeyEquivalent와 CommandDispatcher redispatchKeyEvent의 key 검사). AppKit 네이티브 입력칸도 key 창이 없으면
+/// Edit 메뉴 키 등가가 처리되지 않고, key가 아닌 창의 첫 클릭은 창을 key로 만드는 데만 쓰여 대상이 first responder가 되지
+/// 않는다(451f7d30 m3: ⌘V가 이전 first responder인 다른 칸에 들어감). 대상 입력칸에 대상 전용 클릭(화면 밖 프라이머 포함)을
+/// 한 번 보내면 앱 활성화·실제 포인터 이동 없이 창이 key가 되고 대상이 first responder가 된다. 클릭이 옮긴 선택 범위는
+/// 단축키 전에 AX로 되돌리고 확인한다.
 private struct KeyWindowPrimer {
   let element: AXUIElement
   let range: AXValue
@@ -301,7 +304,7 @@ private struct Expectation {
       // 장애를 주입한 경우 대상 조회나 입력 준비에도 들어가지 않는다.
       if fault != nil { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
       return try await act(p, record: record)
-    case "focus": return try focus(p)
+    case "focus": return try await focus(p)
     case "verify": return try await verify(p)
     case "cursor":
       try validateKeys(p, allowed: ["op"])
@@ -492,28 +495,51 @@ private struct Expectation {
     return .appkit
   }
 
-  private func focusTarget(_ node: AXNode, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
-    func confirmed() -> Bool {
-      if let focused = AXReader.focused(win, root: root) {
-        if CFEqual(focused, node.el) { return true }
-        let containerRoles = [kAXApplicationRole, kAXWindowRole, kAXGroupRole, kAXScrollAreaRole, "AXWebArea"]
-        guard let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
-              containerRoles.contains(role), !AXReader.editable(focused, role: role) else { return false }
-      }
-      // 원격 웹 콘텐츠와 UIKit은 앱 루트에 포커스 자식을 반환하지 않기도 한다.
-      // 정확한 자식의 AXFocused와 같은 대상 창이 모두 확인될 때만 이를 보완한다.
-      let remoteWeb = node.web && [.electron, .webkit].contains(win.engine)
-      return (remoteWeb || win.engine == .catalyst) && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
-        AXReader.focusedWindow(win, root: root)
+  private func targetFocused(_ node: AXNode, in win: WindowInfo, root: AXUIElement?) -> Bool {
+    if let focused = AXReader.focused(win, root: root) {
+      if CFEqual(focused, node.el) { return true }
+      let containerRoles = [kAXApplicationRole, kAXWindowRole, kAXGroupRole, kAXScrollAreaRole, "AXWebArea"]
+      guard let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+            containerRoles.contains(role), !AXReader.editable(focused, role: role) else { return false }
     }
+    // 원격 웹 콘텐츠와 UIKit은 앱 루트에 포커스 자식을 반환하지 않기도 한다.
+    // 정확한 자식의 AXFocused와 같은 대상 창이 모두 확인될 때만 이를 보완한다.
+    let remoteWeb = node.web && [.electron, .webkit].contains(win.engine)
+    return (remoteWeb || win.engine == .catalyst) && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
+      AXReader.focusedWindow(win, root: root)
+  }
+
+  private func focusTarget(_ node: AXNode, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
     guard AXReader.belongs(node.el, win, root: root), AXReader.attribute(node.el, kAXEnabledAttribute) as? Bool != false else {
       throw HelperError("no_editable_focus", "target_focus_unconfirmed")
     }
-    if confirmed() { return node.el }
+    if targetFocused(node, in: win, root: root) { return node.el }
     if mayFocus, AXReader.settable(node.el, kAXFocusedAttribute) { _ = AXReader.set(node.el, kAXFocusedAttribute, kCFBooleanTrue) }
     // setter의 반환값이 아니라 대상이 실제로 포커스됐는지 확인한다.
-    guard confirmed() else { throw HelperError("no_editable_focus", "target_focus_unconfirmed") }
+    guard targetFocused(node, in: win, root: root) else { throw HelperError("no_editable_focus", "target_focus_unconfirmed") }
     return node.el
+  }
+
+  /// 단축키로 끝나는 호출(paste 앞의 focus, 대상 지정 key)에서 쓴다. Chromium·Electron은 AXFocused 설정이 렌더러를 거쳐
+  /// 수십 ms 뒤에야 대상 AXFocused·앱 AXFocusedUIElement에 보여서(451f7d30 m2 실측 11~27ms), 설정 직후 한 번만 보면
+  /// 포커스 없는 입력칸을 늘 거절했다. 확인 조건은 그대로 두고 같은 확인을 짧게 다시 한다.
+  private func settleTargetFocus(_ node: AXNode, in win: WindowInfo, root: AXUIElement?) async throws -> AXUIElement {
+    do { return try focusTarget(node, in: win, root: root, mayFocus: true) }
+    catch let error as HelperError where error.code == "no_editable_focus" {
+      guard AXReader.belongs(node.el, win, root: root), AXReader.attribute(node.el, kAXEnabledAttribute) as? Bool != false,
+            AXReader.settable(node.el, kAXFocusedAttribute) else { throw error }
+      let deadline = clockNow() + 0.3
+      repeat {
+        try await pause(20)
+        if targetFocused(node, in: win, root: root) { return node.el }
+      } while clockNow() < deadline
+      throw error
+    }
+  }
+
+  private func settleEditableFocus(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?) async throws -> AXUIElement {
+    if let node, AXReader.editable(node.el, role: node.role) { _ = try await settleTargetFocus(node, in: win, root: root) }
+    return try focusEditable(node, in: win, root: root, mayFocus: false)
   }
 
   private func focusEditable(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
@@ -529,7 +555,7 @@ private struct Expectation {
     return focused
   }
 
-  private func focus(_ p: Object) throws -> Object {
+  private func focus(_ p: Object) async throws -> Object {
     try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "ref"])
     let (pid, id, started) = try windowAddress(p)
     var win = try window(pid, id, started: started)
@@ -540,7 +566,7 @@ private struct Expectation {
     try Task.checkCancellation()
     let current = try window(pid, id, started: started)
     guard current.key == win.key else { throw HelperError.unavailable("closed") }
-    guard let focused = try? focusEditable(node, in: win, root: tree.root, mayFocus: true) else { return ["editable": false] }
+    guard let focused = try? await settleEditableFocus(node, in: win, root: tree.root) else { return ["editable": false] }
     var result: Object = ["editable": true]
     if let node { result["focusedRef"] = node.ref }
     else if let ref = tree.nodes.first(where: { CFEqual($0.el, focused) })?.ref,
@@ -672,6 +698,8 @@ private struct Expectation {
     case .type:
       let text = request.text!
       try revalidate()
+      // 다시 확인하지 않는다. 한 번도 key가 아니었던 Electron 창은 포커스가 확인돼도 입력 문자를 버려서(451f7d30 m4),
+      // 재시도하면 거절 대신 효과 없는 전송이 된다.
       let target = try focusEditable(node, in: win, root: before.root, mayFocus: true)
       let detected = engine(for: node ?? before.nodes.first { CFEqual($0.el, target) }, at: nil, tree: before, win: win)
       let web = detected == .webkit || (detected == .appkit && AXReader.insideWebArea(target))
@@ -694,7 +722,7 @@ private struct Expectation {
         }
       } else if let node {
         try revalidate()
-        let focused = try focusTarget(node, in: win, root: before.root, mayFocus: true)
+        let focused = try await settleTargetFocus(node, in: win, root: before.root)
         needsTargetFocus = true
         point = try? localPoint(node: node, explicit: nil, in: win)
         if AXReader.editable(focused, role: node.role) { editable = focused }
@@ -706,7 +734,11 @@ private struct Expectation {
       // 앱이 활성이고 대상 창이 그 앱의 포커스 창이면 이미 AppKit key 창이라 클릭이 필요 없다. 비활성 앱에서는
       // AXFocusedWindow가 대상 창이어도 단축키가 버려졌으므로(b3c7139e m3 E2a, Chrome) key 여부를 믿지 않는다.
       let alreadyKey = NSRunningApplication(processIdentifier: pid)?.isActive == true && AXReader.focusedWindow(win, root: before.root)
-      if focus, !alreadyKey, [.chromium, .electron].contains(win.engine), let editable { primer = keyWindowPrimer(for: editable) }
+      // AppKit은 네이티브 입력칸만 실측했다(451f7d30 m3). 앱 안의 웹 콘텐츠(WebKit)는 바꾸지 않는다.
+      if focus, !alreadyKey, let editable,
+         [.chromium, .electron].contains(win.engine) || (win.engine == .appkit && !AXReader.insideWebArea(editable)) {
+        primer = keyWindowPrimer(for: editable)
+      }
     case .setValue:
       guard let node, AXReader.settable(node.el, kAXValueAttribute) else { throw HelperError("not_settable") }
       let text = request.text!
