@@ -63,10 +63,14 @@ function errorHint(error: FleetHelperError): string {
   if (code === "window_unavailable") {
     const reason = details?.reason;
     if (reason === "closed") return "This window is closed. If it is reopened, get its new id with computer_apps.";
-    if (reason === "hidden" || reason === "minimized" || reason === "other_space") {
-      return `Window unavailable: ${reason === "other_space" ? "on another Space" : reason}. If needed, ask the user to make the intended window visible on the current Space.`;
+    if (reason === "other_space") return "Window is on another Space: computer_state with image:true can view it; to control it, ask the user to bring it to the current Space.";
+    if (reason === "hidden" || reason === "minimized") {
+      return `Window unavailable: ${reason}. If needed, ask the user to make the intended window visible on the current Space.`;
     }
     return "Window unavailable.";
+  }
+  if (code === "needs_visible_window") {
+    return `The window is ${details?.reason === "hidden" ? "hidden" : "minimized"}, so this input can't reach it (typing, keys, drag and some clicks need a visible window). Use set_value or element actions instead; if it must be shown, ask the user.`;
   }
   if (code === "drag_unsupported") {
     return "Fleet does not support background drag for this target." + (details?.settableSlider === true
@@ -124,9 +128,10 @@ export function windowLine(id: string, window: HelperWindow): string {
 export function renderApps(lines: readonly string[], installed: HelperWindows["installed"]): ComputerUseResult {
   return textResult([...lines, ...(installed ?? []).map((app) => `installed: ${quoteApp(app.name)} ${quoteApp(app.path)}${app.bundleId ? ` ${quoteApp(app.bundleId)}` : ""}`)].join("\n") || "No matching apps or windows.");
 }
-export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string) {
+export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, viewOnly = false) {
   const lines = [`${id} ${quoteApp(window.title)} ${size(window.frame)}`];
   if (view) lines.push(`view ${view} ${size(window.frame)}`);
+  if (viewOnly) lines.push("view-only: the window is on another Space, so it has no elements and takes no input. To control it, ask the user to bring it to the current Space.");
   if (expand) {
     const element = elements.find((item) => item.ref === expand);
     if (element) lines.push(elementLine(element, true));

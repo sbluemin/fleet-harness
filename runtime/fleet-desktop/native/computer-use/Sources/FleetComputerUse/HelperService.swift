@@ -195,7 +195,8 @@ private struct KeyWindowPrimer {
 }
 
 /// type 앞에서 대상 창이 key여야 하는지 정한다. Electron은 대상 창이 앱의 AXFocusedWindow가 아니면(한 번도 key가 아니었던 창)
-/// AXFocused가 확인돼도 입력 문자를 버린다(e7e293ee m3: 재시도만 넣으면 'sent; changes:'). 다른 엔진은 실측하지 않아 그대로 둔다.
+/// AXFocused가 확인돼도 입력 문자를 버린다(e7e293ee m3: 재시도만 넣으면 'sent; changes:'). AppKit은 그런 창(닫았다 다시 연 창)에서
+/// 입력칸 포커스 확인부터 실패한다(dbdbe742 실측). 다른 엔진은 실측하지 않아 그대로 둔다.
 enum TypeKeyWindow: Equatable {
   /// 그대로 입력한다.
   case ready
@@ -205,7 +206,7 @@ enum TypeKeyWindow: Equatable {
   case refuse
 
   static func decide(engine: Engine, reportsFocusedWindow: Bool, appActive: Bool) -> Self {
-    guard engine == .electron, !reportsFocusedWindow else { return .ready }
+    guard [.electron, .appkit].contains(engine), !reportsFocusedWindow else { return .ready }
     return appActive ? .refuse : .prime
   }
 }
@@ -268,6 +269,7 @@ private struct Expectation {
   private var cursorKey: WindowKey?
   private var hoverTask: Task<Void, Never>?
   private var check: Object = ["ok": false, "reason": "not_ready", "ms": 0]
+  private let activation = ActivationGuard()
 
   init() {
     let fault = ProcessInfo.processInfo.environment["FLEET_COMPUTER_USE_FAULT"].flatMap(Fault.init(rawValue:))
@@ -275,14 +277,36 @@ private struct Expectation {
     self.fault = fault
     self.symbols = symbols
     self.catalog = WindowCatalog(symbols: symbols)
+    // 앱 실행이 끝나기(NSApp.run) 전에 걸어야 실행 직후의 활성화도 되돌린다.
+    activation.start()
   }
 
   func initialize() async -> Object {
     if fault == .selfCheck {
-      check = ["ok": false, "reason": "fault_injected_self_check", "ms": 0]
+      check = ["ok": false, "reason": "fault_injected_self_check", "ms": 0, "retryable": false]
     } else {
-      check = await selfCheck(symbols: symbols, permissions: HelperPermissions())
+      check = await runSelfCheck()
     }
+    return check
+  }
+
+  /// 일시 사유(사람의 포인터·앱 전환, 헬퍼 자신의 일시 활성화)로 실패한 점검은 짧게 다시 돈다. 그래도 실패하면 결과를 남기고,
+  /// 호출자가 다음 입력 전에 `recheck`로 다시 묻게 한다(dbdbe742: 시작 점검 실패가 헬퍼 수명 내내 입력을 막았다).
+  private func runSelfCheck() async -> Object {
+    var result: Object = [:]
+    for attempt in 1...SelfCheckPolicy.attempts {
+      result = await selfCheck(symbols: symbols, permissions: HelperPermissions())
+      result["attempts"] = attempt
+      guard SelfCheckPolicy.retryable(result), attempt < SelfCheckPolicy.attempts else { break }
+      try? await pause(SelfCheckPolicy.retryDelayMs)
+    }
+    result["retryable"] = SelfCheckPolicy.retryable(result)
+    return result
+  }
+
+  private func recheck() async -> Object {
+    guard fault != .selfCheck, check["ok"] as? Bool != true, SelfCheckPolicy.retryable(check) else { return check }
+    check = await runSelfCheck()
     return check
   }
 
@@ -321,6 +345,9 @@ private struct Expectation {
       if fault != nil { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
       return try await act(p, record: record)
     case "focus": return try await focus(p)
+    case "recheck":
+      try validateKeys(p, allowed: [])
+      return await recheck()
     case "verify": return try await verify(p)
     case "cursor":
       try validateKeys(p, allowed: ["op"])
@@ -376,12 +403,12 @@ private struct Expectation {
     }
   }
 
-  private func window(_ pid: pid_t, _ id: CGWindowID, started: Double? = nil) throws -> WindowInfo {
+  private func window(_ pid: pid_t, _ id: CGWindowID, started: Double? = nil, allowOtherSpace: Bool = false) throws -> WindowInfo {
     do {
       if let started, !matchesStart(catalog.launchDate(pid), started) {
         throw HelperError.unavailable("closed")
       }
-      let found = try catalog.available(pid, id)
+      let found = try catalog.available(pid, id, allowOtherSpace: allowOtherSpace)
       if let started, !matchesStart(found.key.launched, started) { throw HelperError.unavailable("closed") }
       return found
     }
@@ -434,22 +461,26 @@ private struct Expectation {
     let limit = try boundedInt(p["limit"], name: "limit", default: 200, range: 1...4_000)
     let valueLimit = try boundedInt(p["valueLimit"], name: "valueLimit", default: 80, range: 0...20_000)
     if p["image"] != nil && jsonBool(p["image"]) == nil { throw HelperError("invalid_params", "image") }
-    var win = try window(pid, id, started: started)
+    let image = jsonBool(p["image"]) == true
+    // 다른 스페이스의 창은 앱의 AX 창 목록에 없어 읽을 수 없고, 화면 캡처만 된다(dbdbe742 실측). 이미지를 청할 때만 보기 전용으로 돌려준다.
+    var win = try window(pid, id, started: started, allowOtherSpace: image)
+    let viewOnly = !win.onCurrentSpace
     // 손쉬운 사용이 없으면 AX 트리가 오류 없이 비어 버려 부족이 클릭 단계에서야 드러난다. 여기서 함께 알린다.
     let permissions = HelperPermissions()
     guard permissions.allowed else { throw permissions.error }
-    let tree = try await readPrepared(&win)
+    let tree = viewOnly ? AXTree(root: nil, nodes: [], complete: false, windowTitle: nil) : try await readPrepared(&win)
     let expanded = try expand.map { try ax.resolve($0, tree: tree, window: win) }
     let output = tree.snapshot(find: find, expand: expanded, limit: limit, valueLimit: valueLimit)
     var result: Object = ["window": win.snapshotJSON(), "elements": output.elements, "omitted": output.omitted,
                           "complete": tree.complete && find == nil && output.omitted == 0 && !output.hasOutside]
     if output.rootOutside > 0 { result["omittedOutside"] = output.rootOutside }
-    if jsonBool(p["image"]) == true {
+    if viewOnly { result["viewOnly"] = true }
+    if image {
       do { result["image"] = try await captureWindow(win) }
       catch { hideCursor(animated: false); throw error }
     }
     try Task.checkCancellation()
-    let fresh = try window(pid, id, started: started)
+    let fresh = try window(pid, id, started: started, allowOtherSpace: image)
     guard fresh.key == win.key, fresh.frame == win.frame else { throw HelperError.unavailable() }
     ax.publish(output.shown.values, for: win.key)
     return result
@@ -611,6 +642,10 @@ private struct Expectation {
     guard permissions.allowed else { throw permissions.error }
     guard check["ok"] as? Bool == true else { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
     guard win.key.launched != nil else { throw HelperError.unavailable() }
+    // 최소화·숨김 창은 앞으로 올리지 않고 요소 동작·값 설정·스크롤만 보낸다. 입력칸 포커스를 확인할 수 없어 타이핑·키·드래그는
+    // 보내기 전에 거절한다(dbdbe742 실측: type은 no_editable_focus, set_value·AXPress·스크롤 이벤트는 반영).
+    let notVisible = HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"])
+    if !win.onscreen, [.type, .key, .drag].contains(request.name) { throw notVisible }
     let before = try await readPrepared(&win)
     let node = try request.ref.map { try ax.resolve($0, tree: before, window: win) }
     let beforeWindows = catalog.all(pid: pid, visibleOnly: true)
@@ -641,7 +676,9 @@ private struct Expectation {
         }
       }
       if requiredFrame == nil && current.frame != win.frame { throw HelperError.unavailable() }
-      if let root = before.root, AXReader.attribute(root, kAXMinimizedAttribute) as? Bool == true { throw HelperError.unavailable("minimized") }
+      if let root = before.root, (AXReader.attribute(root, kAXMinimizedAttribute) as? Bool == true) != win.minimized {
+        throw HelperError.unavailable(win.minimized ? "unknown" : "minimized")
+      }
       for node in [node, endNode].compactMap({ $0 }) {
         guard AXReader.matchesLive(node.identity, in: win, root: before.root) else {
           throw HelperError("stale_element")
@@ -725,6 +762,16 @@ private struct Expectation {
     case .type:
       let text = request.text!
       try revalidate()
+      // 비활성 AppKit 앱이 대상 창을 포커스 창으로 보고하지 않으면(창을 닫았다 다시 연 경우 등) 입력칸 포커스를 확인할 수 없다
+      // (dbdbe742 실측: target_focus_unconfirmed). 포커스 확인 전에 창 프라이머로 창을 key로 만든다. 프라이머는 화면 밖 좌표의
+      // 클릭과 focus 레코드뿐이라 창 내용에 닿지 않는다.
+      if win.engine == .appkit,
+         TypeKeyWindow.decide(engine: .appkit, reportsFocusedWindow: AXReader.reportsFocusedWindow(win, root: before.root),
+                              appActive: NSRunningApplication(processIdentifier: pid)?.isActive == true) == .prime {
+        try await factory.windowPrimer(win).send(to: win, using: symbols, revalidate: revalidate)
+        guard try await settleReportedKeyWindow(win, root: before.root) else { throw HelperError("no_editable_focus", "key_window_unconfirmed") }
+        notes.append("key_window_primed")
+      }
       // Chromium·Electron은 AXFocused 설정이 늦게 보이므로(451f7d30 m2) 단축키처럼 같은 확인을 짧게 다시 한다.
       // 다른 엔진은 type에서 실측하지 않아 즉시 확인을 유지한다.
       let target = [.chromium, .electron].contains(win.engine)
@@ -808,9 +855,12 @@ private struct Expectation {
     }
 
     if sequence?.needsFocus == true && !symbols.hasFocusRecord { throw HelperError("self_check_failed", "focus_record_unavailable") }
+    // 화면 밖 창에는 focus 레코드가 필요한 이벤트를 보내지 않는다. 창을 key로 만드는 레코드가 최소화·숨김 창에 무엇을 하는지 실측하지 않았다.
+    if !win.onscreen, sequence?.needsFocus == true { throw notVisible }
     try revalidate()
     defer { idleCursor() }
-    await startCursor(point, in: win)
+    // 화면 밖 창의 원래 자리에 AI 커서를 띄우면 사람 화면의 엉뚱한 곳을 가리킨다.
+    if win.onscreen { await startCursor(point, in: win) } else { hideCursor(animated: false) }
     try revalidate()
     var via = "ax"
     if let name = axAction, let node {
@@ -818,6 +868,7 @@ private struct Expectation {
       if rc != .success {
         if (rc == .actionUnsupported || rc == .attributeUnsupported), [.click, .rightClick].contains(request.name), let point {
           sequence = try clickSequence(request.name == .rightClick ? .rightClick : .click, at: point)
+          if !win.onscreen, sequence?.needsFocus == true { throw notVisible }
         } else { throw failedAX(rc, defaultCode: "invalid_name") }
       }
     }

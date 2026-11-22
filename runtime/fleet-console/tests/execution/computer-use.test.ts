@@ -43,7 +43,8 @@ afterEach(async () => {
 
 function setup(installed = true) {
   let enabled = true;
-  let selfCheck = true;
+  let selfCheck: { ok: boolean; reason?: string; retryable?: boolean } = { ok: true };
+  const rechecks: { ok: boolean; reason?: string; retryable?: boolean }[] = [];
   let granted = { accessibility: true, screenRecording: true };
   let holder: string | undefined;
   let rows: HelperWindow[] = [{ ...sample }];
@@ -54,9 +55,15 @@ function setup(installed = true) {
   ];
   const replies = vi.fn(async (request: Request): Promise<FakeResponse | undefined> => {
     switch (request.method) {
-      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
+      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, ...(holder ? { permissionHolder: holder } : {}), selfCheck: granted.accessibility && granted.screenRecording ? { ...selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
+      case "recheck": return { ...(rechecks.shift() ?? selfCheck), ms: 1 };
       case "windows": return { windows: rows };
-      case "snapshot": return { window: rows.find((row) => row.windowId === request.params.windowId), elements, omitted: 0, complete: true, ...(request.params.image ? { image: { mime: "image/png", data: "aW1hZ2U=", width: 100, height: 100 } } : {}) };
+      case "snapshot": {
+        const row = rows.find((candidate) => candidate.windowId === request.params.windowId);
+        // 헬퍼처럼: 다른 스페이스의 창은 AX 요소 없이 화면 캡처만 돌려준다.
+        const viewOnly = row?.onCurrentSpace === false && !row.hidden && !row.minimized;
+        return { window: row, elements: viewOnly ? [] : elements, omitted: 0, complete: !viewOnly, ...(viewOnly ? { viewOnly } : {}), ...(request.params.image ? { image: { mime: "image/png", data: "aW1hZ2U=", width: 100, height: 100 } } : {}) };
+      }
       case "act": return { sent: true, via: "ax", changes: [], observation: "none", notes: [] };
       case "verify": return { status: "satisfied", waitedMs: 0 };
       case "focus": return { editable: true, focusedRef: "e2" };
@@ -102,7 +109,7 @@ function setup(installed = true) {
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
   return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions, openPrivacySettings,
-    enable: (value: boolean) => { enabled = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; },
+    enable: (value: boolean) => { enabled = value; }, check: (value: boolean | typeof selfCheck) => { selfCheck = typeof value === "boolean" ? { ok: value } : value; }, recheck: (...values: typeof rechecks) => { rechecks.push(...values); }, grant: (value: typeof granted) => { granted = value; }, holder: (value: string | undefined) => { holder = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
 
@@ -333,6 +340,36 @@ describe("Fleet Computer Use", () => {
     expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(2);
   });
 
+  it("controls a minimized window in place but only views a window on another Space", async () => {
+    const f = setup();
+    f.rows = [{ ...sample, minimized: true }, { ...sample, windowId: 11, title: "Elsewhere", onCurrentSpace: false }];
+    expect(text(await f.invoke("computer_apps", {}))).toMatch(/w1 .* minimized\nw2 .* other-space/u);
+    expect((await f.invoke("computer_state", { window: "w1" })).isError).toBe(false);
+    expect(text(await f.action({ action: "click", target: "e1" }))).toContain("via ax: sent");
+    expect(text(await f.invoke("computer_state", { window: "w2" }))).toContain("on another Space");
+    const viewed = await f.invoke("computer_state", { window: "w2", image: true });
+    expect(viewed.isError).toBe(false);
+    expect(text(viewed)).toContain("view-only");
+    const view = /^view (v\d+)/mu.exec(text(viewed))![1];
+    expect(text(await f.action({ window: "w2", action: "click", x: 10, y: 10, view }))).toContain("not sent: window_unavailable");
+    expect(f.calls("act")).toHaveLength(1);
+  });
+
+  it("rechecks a transient self-check failure before input instead of blocking the helper's lifetime", async () => {
+    const f = setup();
+    f.check({ ok: false, reason: "pointer_changed", retryable: true });
+    f.recheck({ ok: false, reason: "pointer_changed", retryable: true }, { ok: true });
+    await f.invoke("computer_apps", {});
+    expect(text(await f.action({ action: "click", target: "e1" }))).toContain("not sent: self_check_failed");
+    expect(f.calls("act")).toHaveLength(0);
+    expect(await f.service.readStatus()).toMatchObject({ selfCheckFailed: true });
+    await f.invoke("computer_state", { window: "w1" });
+    expect(text(await f.action({ action: "click", target: "e1" }))).toContain("via ax: sent");
+    expect(f.calls("recheck")).toHaveLength(2);
+    expect(f.calls("act")).toHaveLength(1);
+    expect(await f.service.readStatus()).toMatchObject({ selfCheckFailed: false });
+  });
+
   it("keeps observation available after self-check failure and correlates replies without replaying timed-out input", async () => {
     const f = setup();
     f.check(false);
@@ -340,6 +377,7 @@ describe("Fleet Computer Use", () => {
     expect((await f.invoke("computer_state", { window: "w1" })).isError).toBe(false);
     expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: self_check_failed");
     expect(f.calls("act")).toHaveLength(0);
+    expect(f.calls("recheck")).toHaveLength(0);
     expect(await f.service.readStatus()).toMatchObject({ enabled: true, selfCheckFailed: true });
     await f.service.stop();
     expect(await f.service.readStatus()).toMatchObject({ enabled: true, selfCheckFailed: true });

@@ -406,8 +406,8 @@ struct AXTree {
   }
 
   func read(_ win: WindowInfo, budgetMs: Int = 250) -> AXTree {
-    guard AXIsProcessTrusted(), let root = AXReader.window(win),
-          AXReader.attribute(root, kAXMinimizedAttribute) as? Bool != true else {
+    // 최소화·숨김 창도 AX 트리는 그대로 읽힌다(dbdbe742 실측). 다른 스페이스 창은 앱의 AX 창 목록에 없어 여기서 빈 트리가 된다.
+    guard AXIsProcessTrusted(), let root = AXReader.window(win) else {
       return AXTree(root: nil, nodes: [], complete: false, windowTitle: nil)
     }
     let start = clockNow()

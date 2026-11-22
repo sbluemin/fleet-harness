@@ -54,7 +54,8 @@ export interface ComputerUseDiagnostic {
 const identityOf = (w: SnapshotWindow) => `${w.pid}:${w.windowId}:${w.processStartedAt}`;
 const sameFrame = (a: Frame, b: Frame) => Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1;
 const address = (w: SnapshotWindow) => ({ pid: w.pid, windowId: w.windowId, processStartedAt: w.processStartedAt });
-const availableReason = (w: HelperWindow) => w.hidden ? "hidden" : w.minimized ? "minimized" : !w.onCurrentSpace ? "other_space" : undefined;
+// 최소화·숨김 창은 앞으로 올리지 않고 읽고 조작한다(헬퍼가 타이핑·키·드래그만 거절한다). 다른 스페이스의 창은 화면 캡처로 보기만 한다(dbdbe742).
+const availableReason = (w: HelperWindow, viewOnly: boolean) => !w.onCurrentSpace && !w.hidden && !w.minimized && !viewOnly ? "other_space" : undefined;
 const unavailable = (reason?: string) => new FleetHelperError("window_unavailable", false, { reason });
 const withOk = (result: ComputerUseResult): DeviceOutput => ({ result, code: "ok" });
 const pointInView = (point: Point, view: View) => point.x >= 0 && point.y >= 0 && point.x < view.width && point.y < view.height;
@@ -84,6 +85,9 @@ export class ComputerUseService {
   private readonly apps = new Set<string>();
   private readonly views = new Map<string, Map<string, View>>();
   private selfCheckFailed = false;
+  private failedSelfCheck(client: FleetHelperClient, hello = client.hello) {
+    return Boolean(hello && !hello.selfCheck.ok && hello.selfCheck.reason !== "permission_required");
+  }
   private permissionsRead: { at: number; result: Promise<ComputerUsePermissions | null> } | null = null;
   private readonly permissionRequestedAt = new Map<ComputerUsePermission, number>();
   private readonly recent = new Map<string, ComputerUseRecentCall[]>();
@@ -334,7 +338,7 @@ export class ComputerUseService {
     const client = this.client = this.deps.platform.createClient();
     try {
       const hello = await client.start();
-      if (this.client === client) this.selfCheckFailed = !hello.selfCheck.ok && hello.selfCheck.reason !== "permission_required";
+      if (this.client === client) this.selfCheckFailed = this.failedSelfCheck(client, hello);
     }
     catch (error) { await client.stop(); if (this.client === client) this.client = null; throw error; }
     return client;
@@ -440,13 +444,13 @@ export class ComputerUseService {
     for (const known of this.liveWindows.values()) if (!live.has(known.identity)) this.closeWindow(known);
     return rows;
   }
-  private async resolveWindow(client: FleetHelperClient, id: string, lifetime: AbortController) {
+  private async resolveWindow(client: FleetHelperClient, id: string, lifetime: AbortController, viewOnly = false) {
     const known = this.windows.get(id);
     if (!known || known.closed) throw unavailable(known?.closed ? "closed" : undefined);
     const windows = await this.windowsNow(client, lifetime);
     const window = windows.find((w) => identityOf(w) === known.identity);
     if (!window) throw unavailable("closed");
-    const reason = availableReason(window);
+    const reason = availableReason(window, viewOnly);
     if (reason) throw unavailable(reason);
     return { known, window };
   }
@@ -488,9 +492,9 @@ export class ComputerUseService {
   }
 
   private async observe(client: FleetHelperClient, args: StateArgs, actor: string, lifetime: AbortController, caller?: Caller) {
-    const { known, window } = await this.resolveWindow(client, args.window, lifetime);
+    const { known, window } = await this.resolveWindow(client, args.window, lifetime, args.image === true);
     if (args.expand) this.issuedElement(known, args.expand);
-    const { elements, image, omitted, window: observed } = await client.request("snapshot", {
+    const { elements, image, omitted, window: observed, viewOnly } = await client.request("snapshot", {
       ...address(window), find: args.find, expand: args.expand, limit: args.limit ?? 200, valueLimit: 80, image: args.image ?? false,
     });
     this.assertActive(lifetime);
@@ -507,12 +511,14 @@ export class ComputerUseService {
       views.set(args.window, { id: view, frame: { ...observed.frame }, width: image.width, height: image.height });
       this.views.set(actor, views);
     }
-    const result = renderState(args.window, observed, elements, omitted, args.expand, view);
+    const result = renderState(args.window, observed, elements, omitted, args.expand, view, viewOnly === true);
     return view && image ? { ...result, content: [...result.content, { type: "image", data: image.data, mimeType: image.mime }] } : result;
   }
 
   private async act(client: FleetHelperClient, args: ActionArgs, actor: string, lifetime: AbortController, onClipboard: (value: ClipboardRestoration) => void, didSend: () => void): Promise<DeviceOutput> {
-    client.assertInputAllowed();
+    try { await client.ensureInputAllowed(); }
+    finally { this.selfCheckFailed = this.failedSelfCheck(client); }
+    this.assertActive(lifetime);
     const { window, known } = await this.resolveWindow(client, args.window, lifetime);
     const element = args.target ? this.issuedElement(known, args.target) : undefined;
     const end = dragPoint(args.to);

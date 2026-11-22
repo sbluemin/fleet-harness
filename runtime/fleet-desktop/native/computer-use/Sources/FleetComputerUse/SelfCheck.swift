@@ -124,6 +124,20 @@ private final class ProbeView: NSView {
   override func mouseDown(with event: NSEvent) { mousePoint = convert(event.locationInWindow, from: nil) }
 }
 
+/// 시작 자체 점검의 재시도 정책. 일시 사유는 다시 돌리면 통과할 수 있다: 사람이 프로브(약 0.1초) 사이에 포인터를 움직이거나 앱을
+/// 바꾼 경우, 헬퍼 자신이 실행 직후 잠깐 활성화된 경우(dbdbe742 실측 20회 중 3~5회), 프로브 창·클릭이 늦은 경우다.
+/// 심볼·권한·디스플레이·좌표 불일치는 다시 돌려도 같으므로 재시도하지 않는다.
+enum SelfCheckPolicy {
+  static let attempts = 3
+  static let retryDelayMs = 150
+  static let transient: Set<String> = ["front_changed", "pointer_changed", "helper_activated", "probe_window_unavailable",
+                                       "probe_click_not_received", "probe_failed"]
+
+  static func retryable(_ check: Object) -> Bool {
+    check["ok"] as? Bool != true && transient.contains(check["reason"] as? String ?? "")
+  }
+}
+
 @MainActor func selfCheck(symbols: WindowSymbols, permissions: HelperPermissions) async -> Object {
   let start = clockNow()
   func report(_ reason: String? = nil) -> Object {
@@ -161,8 +175,11 @@ private final class ProbeView: NSView {
     let event = try EventFactory(symbols: symbols).pointer(.click, win: window, point: point, focus: false)
     try await event.send(to: window, using: symbols, revalidate: {})
     while view.mousePoint == nil, millis(since: start) < 500 { try await pause(10) }
-    guard front == NSWorkspace.shared.frontmostApplication?.processIdentifier,
-          CGEvent(source: nil)?.location == pointer else { return report("front_or_pointer_changed") }
+    let frontAfter = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    // 헬퍼 자신이 전면이면 ActivationGuard가 사람의 앱으로 되돌리는 중이다. 다음 시도에서 다시 잰다.
+    guard front != getpid(), frontAfter != getpid() else { return report("helper_activated") }
+    guard front == frontAfter else { return report("front_changed") }
+    guard CGEvent(source: nil)?.location == pointer else { return report("pointer_changed") }
     guard let actual = view.mousePoint else { return report("probe_click_not_received") }
     guard abs(actual.x - point.x) <= 0.5, abs(actual.y - point.y) <= 0.5 else { return report("probe_coordinate_mismatch") }
     return report()

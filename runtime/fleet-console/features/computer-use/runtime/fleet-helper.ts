@@ -19,7 +19,8 @@ export interface HelperElement {
 }
 export interface HelperImage { mime: string; data: string; width: number; height: number }
 export type SnapshotWindow = Pick<HelperWindow, "pid" | "windowId" | "processStartedAt" | "title" | "frame">;
-export interface HelperSnapshot { window: SnapshotWindow; elements: HelperElement[]; omitted: number; complete: boolean; image?: HelperImage }
+/** viewOnly: 다른 스페이스의 창이라 AX 요소 없이 화면 캡처만 담겼다. */
+export interface HelperSnapshot { window: SnapshotWindow; elements: HelperElement[]; omitted: number; complete: boolean; image?: HelperImage; viewOnly?: boolean }
 export interface HelperWindows { windows: HelperWindow[]; installed?: { name: string; path: string; bundleId: string }[] }
 export interface HelperAction {
   sent: boolean; via?: "ax" | "event" | "event+focus";
@@ -31,16 +32,18 @@ export interface HelperVerify { status: "satisfied" | "unsatisfied" | "unknown";
 export interface HelperHello {
   protocol: 1; helperVersion: number | string; os: string;
   permissions: { accessibility: boolean; screenRecording: boolean };
-  selfCheck: { ok: boolean; reason?: string; ms: number };
+  /** retryable: 사람의 포인터·앱 전환이나 헬퍼의 일시 활성화처럼 다시 점검하면 통과할 수 있는 실패다. */
+  selfCheck: HelperSelfCheck;
   /** TCC가 권한을 판정하는 앱의 표시 이름. 헬퍼 자신이 아니라 헬퍼를 띄운 앱이다. */
   permissionHolder?: string;
   /** 그 앱이 이 Console의 조상이라 종료하면 지금 세션도 끝나는지. 헬퍼가 확인했을 때만 true다. */
   permissionHolderHostsSession?: boolean;
 }
+export interface HelperSelfCheck { ok: boolean; reason?: string; ms: number; retryable?: boolean }
 /** requested는 지금 macOS에 물은 권한, deferred는 손쉬운 사용이 켜지면 헬퍼가 이어서 물을 권한(화면 기록)이다. */
 export interface HelperPermissionRequest { requested?: ("accessibility" | "screenRecording")[]; deferred?: ("accessibility" | "screenRecording")[]; permissions?: { accessibility: boolean; screenRecording: boolean } }
 export interface HelperFocus { editable: boolean; focusedRef?: string; role?: string }
-interface Replies { focus: HelperFocus; hello: HelperHello; windows: HelperWindows; snapshot: HelperSnapshot; act: HelperAction; verify: HelperVerify; cursor: object; requestPermissions: HelperPermissionRequest; shutdown: object }
+interface Replies { focus: HelperFocus; hello: HelperHello; recheck: HelperSelfCheck; windows: HelperWindows; snapshot: HelperSnapshot; act: HelperAction; verify: HelperVerify; cursor: object; requestPermissions: HelperPermissionRequest; shutdown: object }
 export class FleetHelperError extends Error {
   constructor(readonly code: string, readonly uncertain = false, readonly details?: Record<string, unknown>) { super(code); }
 }
@@ -140,18 +143,29 @@ export class FleetHelperClient {
     return this.hello = { ...rest, ...(holder ? { permissionHolder: holder } : {}), ...(holder && permissionHolderHostsSession === true ? { permissionHolderHostsSession: true } : {}) };
   }
 
-  request<K extends Exclude<keyof Replies, "shutdown" | "hello">>(method: K, params: object): Promise<Replies[K]> {
-    if (method === "act" || method === "focus") {
-      try { this.assertInputAllowed(); } catch (error) { return Promise.reject(error); }
-    }
+  request<K extends Exclude<keyof Replies, "shutdown" | "hello" | "recheck">>(method: K, params: object): Promise<Replies[K]> {
+    if (method === "act" || method === "focus") return this.ensureInputAllowed().then(() => this.send(method, params));
     return this.send(method, params);
+  }
+
+  /**
+   * 시작 자체 점검이 일시 사유로 실패했으면 입력 전에 헬퍼에 다시 점검하게 한다. 실패를 헬퍼 수명 내내 고정하면
+   * 사람이 점검 순간 마우스를 움직였다는 이유만으로 모든 입력이 막혔다(dbdbe742).
+   */
+  async ensureInputAllowed(): Promise<void> {
+    const check = this.hello?.selfCheck;
+    if (this.hello && check && !check.ok && check.retryable === true) {
+      const next = await this.send("recheck", {});
+      if (typeof next?.ok === "boolean") this.hello = { ...this.hello, selfCheck: next };
+    }
+    this.assertInputAllowed();
   }
 
   assertInputAllowed(): void {
     if (!this.hello) throw new FleetHelperError("internal");
     const missing = (["accessibility", "screenRecording"] as const).filter((key) => !this.hello!.permissions[key]);
     if (missing.length) throw new FleetHelperError("permission_required", false, { missing, ...(this.hello.permissionHolder ? { holder: this.hello.permissionHolder } : {}), ...(this.hello.permissionHolderHostsSession ? { holderHostsSession: true } : {}) });
-    if (!this.hello.selfCheck.ok) throw new FleetHelperError("self_check_failed");
+    if (!this.hello.selfCheck.ok) throw new FleetHelperError("self_check_failed", false, this.hello.selfCheck.reason ? { reason: this.hello.selfCheck.reason } : undefined);
   }
 
   stop(): Promise<boolean> {
