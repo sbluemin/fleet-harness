@@ -110,6 +110,7 @@ if (cmd.includes('/usr/bin/ditto -x -k')) {
   process.stdout.write('Fleet Console.app\\nconsole\\nfleet-package-identity.json\\n');
   return;
 }
+if (env.MOCK_PS_FAIL === '1' && cmd.startsWith('ps -ax')) process.exit(1);
 if (env.MOCK_RM_FAIL === '1' && cmd.includes('rm -rf --') && env.MOCK_RUNID && cmd.includes('e2e-remote-' + env.MOCK_RUNID) && cmd.startsWith('test ! -L')) process.exit(1);
 const child = spawn('sh', ['-c', cmd], {
   env: Object.assign({}, process.env, { HOME: HOME, PATH: MOCK_BIN + ':' + process.env.PATH }),
@@ -132,8 +133,20 @@ function materialize(cmd) {
   mkdirSync(macos, { recursive: true });
   mkdirSync(res, { recursive: true });
   mkdirSync(consoleDir, { recursive: true });
-  const exe = env.MOCK_APP === 'full' ? fullExe() : '#!/bin/sh\\nsleep 300\\n';
-  writeFileSync(path.join(macos, 'Fleet Console'), exe, { mode: 0o755 });
+  const exePath = path.join(macos, 'Fleet Console');
+  if (env.MOCK_APP === 'full') {
+    // Pinned-argv wrapper: the kernel argv[0] is exactly the contract
+    // executable path (like the real Mach-O), while node runs the body file.
+    // A plain script would show the interpreter path and miss the prefix rule.
+    // The body has no extension so node loads it as CommonJS (require works).
+    writeFileSync(exePath,
+      '#!/bin/sh\\n' +
+      'exec -a "' + exePath + '" "' + process.execPath + '" "' + exePath + '.bodymain" "' + dir + '" "$@"\\n',
+      { mode: 0o755 });
+    writeFileSync(exePath + '.bodymain', fullExeBody(), { mode: 0o755 });
+  } else {
+    writeFileSync(exePath, '#!/bin/sh\\nsleep 300\\n', { mode: 0o755 });
+  }
   writeFileSync(path.join(res, 'fleet-package-identity.json'), identity + '\\n');
   writeFileSync(path.join(dir, 'pkg', 'fleet-package-identity.json'), identity + '\\n');
   writeFileSync(path.join(dir, 'pkg', 'console', 'fleet-package-identity.json'), identity + '\\n');
@@ -148,21 +161,22 @@ function materialize(cmd) {
     '<key>FleetSourceRevision</key><string>' + rev + '</string>\\n</dict></plist>\\n');
   execFileSync('/usr/bin/plutil', ['-convert', 'binary1', plist]);
 }
-function fullExe() {
-  return '#!' + process.execPath + '\\n' +
-    "const { spawn } = require('child_process');\\n" +
+function fullExeBody() {
+  return "const { spawn } = require('child_process');\\n" +
     "const http = require('http');\\n" +
     "const path = require('path');\\n" +
     "const fs = require('fs');\\n" +
+    'const remoteDir = process.argv[2];\\n' +
     'let port = 0;\\n' +
-    'for (const a of process.argv.slice(2)) { const m = /^--remote-debugging-port=(\\\\d+)$/.exec(a); if (m) port = Number(m[1]); }\\n' +
-    'const remoteDir = path.resolve(process.argv[1], "..", "..", "..", "..", "..");\\n' +
+    'for (const a of process.argv.slice(3)) { const m = /^--remote-debugging-port=(\\\\d+)$/.exec(a); if (m) port = Number(m[1]); }\\n' +
     'const latest = path.join(remoteDir, "home", ".fleet", "desktop", "runtime", "console", "latest");\\n' +
+    'const nodeBin = path.join(remoteDir, "home", ".fleet", "desktop", "runtime", "node", "bin", "node");\\n' +
     'const loopLog = path.join(remoteDir, "console", "late.log");\\n' +
-    // Detached late-writing Console stand-in: argv carries the cli marker, cwd
-    // is the staged latest. It outlives this process unless signalled, like a
+    // Detached late-writing Console stand-in. Its argv[0] is the full owned
+    // node-cli-serve prefix (like the real sidecar spawn), cwd is the
+    // staged latest. It outlives this process unless signalled, like a
     // reparented sidecar child that keeps writing after its parent is gone.
-    'const child = spawn("/bin/sh", ["-c", "cd " + JSON.stringify(latest) + " && exec -a " + JSON.stringify("node " + latest + "/dist/cli.mjs serve") + " /bin/sh -c " + JSON.stringify("while true; do date +%s >> " + loopLog + "; sleep 1; done")], { detached: true, stdio: "ignore", cwd: latest });\\n' +
+    'const child = spawn("/bin/sh", ["-c", "cd " + JSON.stringify(latest) + " && exec -a " + JSON.stringify(nodeBin + " " + latest + "/dist/cli.mjs serve") + " /bin/sh -c " + JSON.stringify("while true; do date +%s >> " + loopLog + "; sleep 1; done")], { detached: true, stdio: "ignore", cwd: latest });\\n' +
     'child.on("error", () => {});\\n' +
     'child.unref();\\n' +
     'const server = http.createServer((req, res) => {\\n' +
@@ -309,10 +323,10 @@ main().then(() => {}, () => process.exit(1));
   };
 
   const sq = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
-  // A bystander whose command line carries the owned directory but no app or
-  // Console marker: reclaim must never signal it. Returns the child handle.
-  const spawnDecoy = (t, runId, remoteDir) => {
-    const child = spawn('/bin/sh', ['-c', `exec -a ${sq(`decoy-note ${remoteDir}`)} /bin/sleep 45`]);
+  // Bystanders reclaim must never signal: their command lines may carry owned
+  // strings, but never as the executable. Returns the child handle.
+  const spawnDecoy = (t, argv0) => {
+    const child = spawn('/bin/sh', ['-c', `exec -a ${sq(argv0)} /bin/sleep 45`]);
     t.after(() => { try { child.kill('SIGKILL'); } catch {} });
     return child;
   };
@@ -366,20 +380,28 @@ main().then(() => {}, () => process.exit(1));
     assert.deepEqual(fs.readdirSync(ctx.remoteDir), []);
   });
 
-  test('an app that exits first leaves a writing orphan: full reclaim, decoy lives', async (t) => {
+  test('an app that exits first leaves a writing orphan: full reclaim, decoys live', async (t) => {
     const ctx = await arrange(t, { app: 'full', extraEnv: { MOCK_FORWARD: '1' } });
     const proc = launch(ctx.args, ctx.env);
     await proc.waitReady();
-    const decoy = spawnDecoy(t, ctx.runId, ctx.remoteDir);
-    assert.ok(decoyAlive(decoy), 'decoy starts');
+    const exeAbs = `${ctx.remoteDir}/pkg/Fleet Console.app/Contents/MacOS/Fleet Console`;
+    const decoys = [
+      spawnDecoy(t, `decoy-note ${ctx.remoteDir}`),
+      // The exact owned executable path, but only as an argument: prefix rules
+      // must not mistake it for the program itself.
+      spawnDecoy(t, `less ${exeAbs}`),
+    ];
+    for (const decoy of decoys) assert.ok(decoyAlive(decoy), 'decoy starts');
     // The app vanishes first; its detached Console child keeps writing late
     // logs into the data console dir. Reclaim must stop the orphan before the
     // deletion (so nothing recreates state after us) yet never signal the
     // bystander that only shares the directory string.
     fs.writeFileSync(path.join(ctx.remoteDir, 'drop-app'), 'x');
+    // Prefix, not substring: the `less <exe>` decoy carries the exact path as
+    // an argument and must not read as the program itself.
     const exeGone = async () => {
       const out = (await import('node:child_process')).spawnSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' });
-      return !out.stdout.split('\n').some((line) => line.includes('MacOS/Fleet Console') && line.includes(ctx.runId));
+      return !out.stdout.split('\n').some((line) => line.trimStart().startsWith(exeAbs));
     };
     const deadline = Date.now() + 15000;
     for (;;) {
@@ -392,8 +414,8 @@ main().then(() => {}, () => process.exit(1));
     assert.ok(!fs.existsSync(ctx.remoteDir), 'owned remote dir reclaimed');
     await new Promise((r) => setTimeout(r, 3000));
     assert.ok(!fs.existsSync(ctx.remoteDir), 'no late writer recreated state');
-    assert.deepEqual(await awaitNoPayload(ctx.runId, { ignore: ['decoy-note '] }), [], 'orphan stopped, nothing remains');
-    assert.ok(decoyAlive(decoy), 'non-owned bystander was never signalled');
+    assert.deepEqual(await awaitNoPayload(ctx.runId, { ignore: ['decoy-note ', `less ${exeAbs}`] }), [], 'orphan stopped, nothing remains');
+    for (const decoy of decoys) assert.ok(decoyAlive(decoy), 'non-owned bystanders were never signalled');
     const summaries = proc.output().stderr.split('\n').filter((line) => line.startsWith('remote-reclaim: '));
     const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
     assert.equal(last.appGone, true);
@@ -429,6 +451,33 @@ main().then(() => {}, () => process.exit(1));
     const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
     assert.equal(last.appGone, 'not-started', 'nothing launched');
     assert.ok(!fs.existsSync(ctx.remoteDir), 'owned dir still reclaimed');
+  });
+
+  test('a failing process scan blocks deletion instead of assuming all-clear', async (t) => {
+    const ctx = await arrange(t, { app: 'sleep', extraEnv: { MOCK_PS_FAIL: '1' } });
+    t.after(() => {
+      // The scan failure leaves the fake app behind by design; stop it here so
+      // no sleeper outlives the test (scoped by this run id only).
+      try {
+        const out = spawnSync('ps', ['-ax', '-o', 'pid=', '-o', 'command='], { encoding: 'utf8' });
+        for (const line of out.stdout.split('\n')) {
+          const match = /^\s*(\d+)\s+([\s\S]*)$/.exec(line);
+          if (match && match[2].includes(`e2e-remote-${ctx.runId}`)) {
+            try { process.kill(Number(match[1]), 'SIGKILL'); } catch {}
+          }
+        }
+      } catch {}
+    });
+    const proc = launch(ctx.args, ctx.env);
+    const { code } = await proc.done;
+    assert.equal(code, 1, 'unknown process state is never exit 0');
+    const { stdout, stderr } = proc.output();
+    assert.equal(stdout, '', 'no READY line');
+    const summaries = stderr.split('\n').filter((line) => line.startsWith('remote-reclaim: '));
+    const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
+    assert.equal(last.dirBlockedBy, 'scan-failed');
+    assert.equal(last.dirGone, false);
+    assert.ok(fs.existsSync(ctx.remoteDir), 'unverified directory is left standing');
   });
 
   test('SIGTERM during transfer reclaims the claimed dir and exits 0', async (t) => {

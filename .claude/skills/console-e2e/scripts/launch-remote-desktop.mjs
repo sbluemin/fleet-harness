@@ -282,54 +282,76 @@ export function parsePsTable(text) {
 
 const isZombieCmd = (cmd) => /^\([^()]*\)$/.test(String(cmd).trim());
 
-/** A remote command shell (`sh -c ...`): our own plumbing or a transient
- * wrapper. Never a signal target on affinity alone. */
+/**
+ * A generic local command shell (`sh -c`, `bash -c`, `zsh -c`): our own
+ * plumbing, a transient wrapper, or someone else's shell. Never a signal
+ * target on string affinity alone, in any class.
+ */
 export function isShellCommand(cmd) {
-  return /(^|[/ ])sh -c( |$)/.test(String(cmd));
+  return /(^|[/ ])(sh|bash|zsh) -c( |$)/.test(String(cmd));
+}
+
+/** Executable-path prefix with a boundary (end of command, a space, or a
+ * slash for directory prefixes). A program that merely carries the path as
+ * an argument never matches. */
+export function hasPrefixBoundary(cmd, prefix) {
+  if (!prefix) return false;
+  const text = String(cmd);
+  return text === prefix || text.startsWith(`${prefix} `) || text.startsWith(`${prefix}/`);
+}
+
+export function isExecPrefix(cmd, exePath) {
+  return hasPrefixBoundary(cmd, exePath);
 }
 
 /**
- * Strict command markers identifying owned app/Console processes that lost
- * their tree link through reparenting. Every marker embeds the run-specific
- * directory, so a sibling run's paths can never match (the `/` after the run
- * id anchors each marker). Null-safe: unknown paths simply match nothing.
+ * Strict command markers identifying owned app/Console processes. Every
+ * marker embeds the run-specific directory, so a sibling run's paths can
+ * never match (the `/` after the run id anchors each marker). Null-safe:
+ * unknown paths simply match nothing.
+ *
+ * - exe: the pinned app executable; matched as a command prefix.
+ * - nodeCli: `<managed-node> <latest>/dist/cli.mjs serve` prefixes, one per
+ *   latest spelling; the managed sidecar runs exactly this argv head.
+ * - helpDirs: run-scoped helper directory prefixes (node-pty prebuilds, the
+ *   Computer Use helper bundle).
  */
-export function orphanMarkers({ appPath, latestDir, latestReal }) {
-  const markers = { exe: null, cli: [], aux: [] };
+export function orphanMarkers({ appPath, latestDir, latestReal, homeDir }) {
+  const markers = { exe: null, nodeCli: [], helpDirs: [] };
   if (appPath) {
     markers.exe = `${appPath}/Contents/MacOS/Fleet Console`;
-    markers.aux.push(`${appPath}/Contents/Helpers`);
+    markers.helpDirs.push(`${appPath}/Contents/Helpers`);
   }
+  const latests = [];
   for (const latest of [latestReal, latestDir]) {
-    if (!latest) continue;
-    const cli = `${latest}/dist/cli.mjs`;
-    if (!markers.cli.includes(cli)) markers.cli.push(cli);
-    const modules = `${latest}/node_modules`;
-    if (!markers.aux.includes(modules)) markers.aux.push(modules);
+    if (latest && !latests.includes(latest)) latests.push(latest);
+  }
+  const nodeBin = homeDir ? `${homeDir}/.fleet/desktop/runtime/node/bin/node` : null;
+  for (const latest of latests) {
+    if (nodeBin) markers.nodeCli.push(`${nodeBin} ${latest}/dist/cli.mjs serve`);
+    markers.helpDirs.push(`${latest}/node_modules`);
   }
   return markers;
 }
 
-/** True when cmd proves an owned app/Console/helper process. Command shells
- * never qualify, however many owned paths their command line carries. */
+/** True when cmd proves an owned app/Console/helper process that lost its
+ * tree link. Command shells never qualify, however many owned paths their
+ * command line carries. */
 export function isOrphanTarget(cmd, markers) {
   const text = String(cmd);
   if (isShellCommand(text)) return false;
-  if (markers.exe && text.includes(markers.exe)) return true;
-  for (const cli of markers.cli) {
-    if (cli && text.includes(cli) && text.includes(' serve')) return true;
-  }
-  for (const aux of markers.aux) {
-    if (aux && text.includes(aux)) return true;
+  if (hasPrefixBoundary(text, markers.exe)) return true;
+  for (const prefix of [...markers.nodeCli, ...markers.helpDirs]) {
+    if (hasPrefixBoundary(text, prefix)) return true;
   }
   return false;
 }
 
 /**
- * Split live rows into the root's tree (chain plus directory affinity) and
- * marker-proven orphans (reparented processes the chain no longer reaches).
- * Zombie rows are dead in both classes: their pid slot is still held, so it
- * cannot have been recycled to a live process.
+ * Split live rows into the root's tree (chain plus directory affinity, never
+ * command shells) and marker-proven orphans (reparented processes the chain
+ * no longer reaches). Zombie rows are dead in both classes: their pid slot
+ * is still held, so it cannot have been recycled to a live process.
  */
 export function scanOwnedProcesses(rows, { rootPid, dir, markers }) {
   const byPid = new Map();
@@ -355,7 +377,7 @@ export function scanOwnedProcesses(rows, { rootPid, dir, markers }) {
   const tree = [];
   const orphans = [];
   for (const row of rows) {
-    if (row.pid <= 0 || isZombieCmd(row.cmd)) continue;
+    if (row.pid <= 0 || isZombieCmd(row.cmd) || isShellCommand(row.cmd)) continue;
     if (inTree.has(row.pid)) {
       if (row.cmd.includes(dir)) tree.push(row.pid);
     } else if (isOrphanTarget(row.cmd, markers)) {
@@ -437,22 +459,43 @@ refresh_markers() {
   L="$DIR/home/.fleet/desktop/runtime/console/latest"
   LR=""
   if [ -d "$L" ]; then LR=$(cd "$L" 2>/dev/null && /bin/pwd -P 2>/dev/null); fi
-  CLI1=""; CLI2=""; AUX1=""; AUX2="$APPHELPERS"
-  if [ -n "$LR" ]; then CLI1="$LR/dist/cli.mjs"; AUX1="$LR/node_modules"; fi
-  CLI2="$L/dist/cli.mjs"
+  NODEBIN="$DIR/home/.fleet/desktop/runtime/node/bin/node"
+  NCLI1=""; NCLI2=""; AUX1=""; AUX2="$APPHELPERS"
+  if [ -n "$LR" ]; then
+    NCLI1="$NODEBIN $LR/dist/cli.mjs serve"
+    AUX1="$LR/node_modules"
+  fi
+  if [ -d "$L" ]; then
+    UNRESOLVED="$NODEBIN $L/dist/cli.mjs serve"
+    if [ "$UNRESOLVED" != "$NCLI1" ]; then NCLI2="$UNRESOLVED"; fi
+  fi
 }
 scan() {
   # Values travel via the environment, never argv: otherwise this very scan
   # would match its own command line (which carries every marker) and the
   # deletion gate below could never observe an empty, all-clear listing.
+  # Ownership here mirrors the launcher exactly: chain plus directory
+  # affinity excluding command shells, or executable prefix boundaries
+  # excluding command shells. A program that merely carries an owned path as
+  # an argument never qualifies.
   ps -ax -o pid= -o ppid= -o command= 2>/dev/null | \
     W_ROOT="$PID" W_DIR="$DIR" W_EXE="$EXE" \
-    W_CLI1="$CLI1" W_CLI2="$CLI2" W_AUX1="$AUX1" W_AUX2="$AUX2" awk '
+    W_NCLI1="$NCLI1" W_NCLI2="$NCLI2" W_AUX1="$AUX1" W_AUX2="$AUX2" awk '
   BEGIN {
     root = ENVIRON["W_ROOT"] + 0
     dir = ENVIRON["W_DIR"]; exe = ENVIRON["W_EXE"]
-    cli1 = ENVIRON["W_CLI1"]; cli2 = ENVIRON["W_CLI2"]
+    ncli1 = ENVIRON["W_NCLI1"]; ncli2 = ENVIRON["W_NCLI2"]
     aux1 = ENVIRON["W_AUX1"]; aux2 = ENVIRON["W_AUX2"]
+  }
+  function prefixed(c, p) {
+    if (p == "") return 0
+    if (index(c, p) != 1) return 0
+    if (length(c) == length(p)) return 1
+    s = substr(c, length(p)+1, 1)
+    return (s == " " || s == "/")
+  }
+  function isshell(c) {
+    return (c ~ /(^|[\\/ ])(sh|bash|zsh) -c( |$)/)
   }
   {
     pid=$1+0; ppid=$2+0
@@ -475,15 +518,16 @@ scan() {
       cmd=C[p]
       d=cmd; gsub(/^[ \\t]+|[ \\t]+$/, "", d)
       if (d ~ /^\\([^()]*\\)$/) continue
-      if (seen[p]) { if (index(cmd, dir)>0) print "T " p }
-      else {
-        if (cmd ~ /(^|[\\/ ])sh -c( |$)/) continue
+      if (seen[p]) {
+        if (!isshell(cmd) && index(cmd, dir)>0) print "T " p
+      } else {
+        if (isshell(cmd)) continue
         hit=0
-        if (exe!="" && index(cmd, exe)>0) hit=1
-        else if (cli1!="" && index(cmd, cli1)>0 && index(cmd, " serve")>0) hit=1
-        else if (cli2!="" && cli2!=cli1 && index(cmd, cli2)>0 && index(cmd, " serve")>0) hit=1
-        else if (aux1!="" && index(cmd, aux1)>0) hit=1
-        else if (aux2!="" && aux2!=aux1 && index(cmd, aux2)>0) hit=1
+        if (prefixed(cmd, exe)) hit=1
+        else if (prefixed(cmd, ncli1)) hit=1
+        else if (prefixed(cmd, ncli2)) hit=1
+        else if (prefixed(cmd, aux1)) hit=1
+        else if (prefixed(cmd, aux2)) hit=1
         if (hit) print "O " p
       }
     }
@@ -495,20 +539,23 @@ root_known() {
   [ -n "$cmd" ] || return 1
   case "$cmd" in *"$DIR"*) return 0;; *) PID=""; return 1;; esac
 }
+is_prefixed() { rest=\${1#"$2"}; [ "$rest" != "$1" ] || return 1; case $rest in ''|' '*|'/'*) return 0;; *) return 1;; esac; }
+is_shell() { printf '%s' "$1" | grep -E -q '(^|/)(sh|bash|zsh) -c( |$)'; }
 sig_one() {
   p=$1
   case $p in ''|*[!0-9]*) return 0;; esac
-  cmd=$(ps -p "$p" -o command= 2>/dev/null) || return 0
+  cmd=$(ps -p "$p" -o command= 2>/dev/null | sed -e 's/^[[:space:]]*//') || return 0
   [ -n "$cmd" ] || return 0
   if [ "$3" = T ]; then
+    is_shell "$cmd" && return 0
     case "$cmd" in *"$DIR"*) ;; *) return 0;; esac
   else
-    if printf '%s' "$cmd" | grep -E -q '(^|/)sh -c( |$)'; then return 0; fi
-    if [ -n "$EXE" ] && printf '%s' "$cmd" | grep -F -q -- "$EXE"; then :;
-    elif [ -n "$CLI1" ] && printf '%s' "$cmd" | grep -F -q -- "$CLI1" && printf '%s' "$cmd" | grep -F -q ' serve'; then :;
-    elif [ -n "$CLI2" ] && [ "$CLI2" != "$CLI1" ] && printf '%s' "$cmd" | grep -F -q -- "$CLI2" && printf '%s' "$cmd" | grep -F -q ' serve'; then :;
-    elif [ -n "$AUX1" ] && printf '%s' "$cmd" | grep -F -q -- "$AUX1"; then :;
-    elif [ -n "$AUX2" ] && [ "$AUX2" != "$AUX1" ] && printf '%s' "$cmd" | grep -F -q -- "$AUX2"; then :;
+    is_shell "$cmd" && return 0
+    if is_prefixed "$cmd" "$EXE"; then :;
+    elif is_prefixed "$cmd" "$NCLI1"; then :;
+    elif is_prefixed "$cmd" "$NCLI2"; then :;
+    elif is_prefixed "$cmd" "$AUX1"; then :;
+    elif is_prefixed "$cmd" "$AUX2"; then :;
     else return 0; fi
   fi
   kill -s "$2" "$p" 2>/dev/null || true
@@ -652,12 +699,17 @@ async function main() {
    * the launch PID reply was lost; never matches command shells. */
   async function discoverOwnedPids() {
     if (!remoteDir || !appPath) return [];
-    const exe = `${appPath}/Contents/MacOS/Fleet Console`;
+    const markers = orphanMarkers({
+      appPath,
+      latestDir,
+      latestReal,
+      homeDir: `${remoteDir}/home`,
+    });
     try {
       const { stdout } = await execRemote('ps -ax -o pid= -o ppid= -o command=', { timeout: 15_000 });
       const found = [];
       for (const row of parsePsTable(stdout)) {
-        if (row.pid > 0 && !isShellCommand(row.cmd) && row.cmd.includes(exe)) found.push(row.pid);
+        if (row.pid > 0 && !isShellCommand(row.cmd) && hasPrefixBoundary(row.cmd, markers.exe)) found.push(row.pid);
       }
       return found;
     } catch {
@@ -671,39 +723,45 @@ async function main() {
     return scanOwnedProcesses(parsePsTable(stdout), {
       rootPid,
       dir: remoteDir,
-      markers: orphanMarkers({ appPath, latestDir, latestReal }),
+      markers: orphanMarkers({
+        appPath,
+        latestDir,
+        latestReal,
+        homeDir: remoteDir ? `${remoteDir}/home` : null,
+      }),
     });
   }
 
   /**
    * One remote script that re-verifies every victim immediately before its
-   * signal: tree victims by directory affinity, orphans by strict markers
-   * (never command shells). grep -F keeps every marker literal.
+   * signal, with the same conditions as the scan: tree victims by directory
+   * affinity excluding command shells, orphans by executable prefix
+   * boundaries excluding command shells.
    */
   function buildKillScript({ tree, orphans, dir, markers, signal }) {
     const nums = (list) => list.filter((p) => Number.isSafeInteger(p) && p > 0).join(' ');
-    const lines = [];
+    const shellGuard = `printf '%s' "$cmd" | grep -E -q '(^|/)(sh|bash|zsh) -c( |$)'`;
+    const orphanTests = [];
+    if (markers.exe) orphanTests.push(`is_prefixed "$cmd" ${shQuote(markers.exe)}`);
+    for (const prefix of [...markers.nodeCli, ...markers.helpDirs]) {
+      orphanTests.push(`is_prefixed "$cmd" ${shQuote(prefix)}`);
+    }
+    const lines = [
+      `is_prefixed() { rest=\${1#"$2"}; [ "$rest" != "$1" ] || return 1; case $rest in ''|' '*|'/'*) return 0;; *) return 1;; esac; }`,
+      `fetch_cmd() { cmd=$(ps -p "$1" -o command= 2>/dev/null | sed -e 's/^[[:space:]]*//') || return 1; [ -n "$cmd" ] || return 1; }`,
+    ];
     if (tree.length > 0) {
       lines.push(`for pid in ${nums(tree)}; do`);
-      lines.push(`  cmd=$(ps -p "$pid" -o command= 2>/dev/null) || continue`);
-      lines.push(`  [ -n "$cmd" ] || continue`);
+      lines.push(`  fetch_cmd "$pid" || continue`);
+      lines.push(`  if ${shellGuard}; then continue; fi`);
       lines.push(`  if printf '%s' "$cmd" | grep -F -q -- ${shQuote(dir)}; then kill -s ${signal} "$pid" 2>/dev/null || true; fi`);
       lines.push(`done`);
     }
-    const clauses = [];
-    if (markers.exe) clauses.push(`printf '%s' "$cmd" | grep -F -q -- ${shQuote(markers.exe)}`);
-    for (const cli of markers.cli) {
-      clauses.push(`{ printf '%s' "$cmd" | grep -F -q -- ${shQuote(cli)} && printf '%s' "$cmd" | grep -F -q ' serve'; }`);
-    }
-    for (const aux of markers.aux) {
-      clauses.push(`printf '%s' "$cmd" | grep -F -q -- ${shQuote(aux)}`);
-    }
-    if (orphans.length > 0 && clauses.length > 0) {
+    if (orphans.length > 0 && orphanTests.length > 0) {
       lines.push(`for pid in ${nums(orphans)}; do`);
-      lines.push(`  cmd=$(ps -p "$pid" -o command= 2>/dev/null) || continue`);
-      lines.push(`  [ -n "$cmd" ] || continue`);
-      lines.push(`  if printf '%s' "$cmd" | grep -E -q '(^|/)sh -c( |$)'; then continue; fi`);
-      lines.push(`  if ${clauses.join(' || ')}; then kill -s ${signal} "$pid" 2>/dev/null || true; fi`);
+      lines.push(`  fetch_cmd "$pid" || continue`);
+      lines.push(`  if ${shellGuard}; then continue; fi`);
+      lines.push(`  if ${orphanTests.join(' || ')}; then kill -s ${signal} "$pid" 2>/dev/null || true; fi`);
       lines.push(`done`);
     }
     lines.push('exit 0');
@@ -717,7 +775,12 @@ async function main() {
    */
   async function killOwnedTree(pid) {
     if (!Number.isSafeInteger(pid) || pid <= 0) return 'not-started';
-    const markers = orphanMarkers({ appPath, latestDir, latestReal });
+    const markers = orphanMarkers({
+      appPath,
+      latestDir,
+      latestReal,
+      homeDir: remoteDir ? `${remoteDir}/home` : null,
+    });
     for (let round = 0; round < 3; round++) {
       let scan;
       try {
