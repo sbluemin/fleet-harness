@@ -106,10 +106,26 @@ export function createPair(runId, launch) {
       if (a.pid === b.pid || a.windowId === b.windowId) refuse('fixtures_not_distinct');
     },
     async status() { return Promise.all(entries().map(observe)); },
-    async act(action, expected, marker) {
+    async focus(expected) {
+      const target = members.get(expected?.role);
+      if (!tupleMatches(expected, target?.identity)) refuse('fixture_identity_mismatch');
+      const windows = await this.status();
+      if (!windows.every((window) => window.screenUnlocked === true)) refuse('screen_locked_or_unverified');
+      const focused = windows.filter((window) => window.focused === true);
+      if (focused.length !== 1) refuse('focus_source_unverified');
+      const source = members.get(focused[0].identity.role);
+      if (source === target) return false;
+      // Only the verified foreground sibling can yield. Swift rechecks both tuples at each step.
+      const yieldReply = await source.child.send({ action: 'yield-focus', expected: source.identity, peer: target.identity });
+      if (yieldReply.yielded !== true) refuse('focus_yield_unconfirmed');
+      const activation = await target.child.send({ action: 'accept-focus', expected: target.identity, peer: source.identity });
+      if (activation.activationRequested !== true) refuse('focus_activation_denied');
+      return true;
+    },
+    async input(expected, marker) {
       const member = members.get(expected?.role);
       if (!tupleMatches(expected, member?.identity)) refuse('fixture_identity_mismatch');
-      return member.child.send({ action, expected, marker }); // Swift checks the tuple again on its main thread.
+      return member.child.send({ action: 'input', expected, marker }); // Swift checks the tuple again on its main thread.
     },
     async stop() {
       // Precheck every live member before requesting either one to exit.
@@ -266,10 +282,10 @@ export async function servePair(opts, creator, build = buildWindow, report = emi
       if (request.action === 'status') {
         response = { runId: receipt.runId, windows: await pair.status() };
       } else if (request.action === 'focus' && request.allowActivate === true) {
-        await pair.act('focus', request.expected);
-        response = { activationRequested: true, windows: await pair.status() };
+        const activationRequested = await pair.focus(request.expected);
+        response = { activationRequested, windows: await pair.status() };
       } else if (request.action === 'input' && markerPattern.test(request.marker ?? '')) {
-        const reply = await pair.act('input', request.expected, request.marker);
+        const reply = await pair.input(request.expected, request.marker);
         if (reply.posted !== true) refuse('fixture_post_unconfirmed');
         response = { posted: true, delivery: 'unverified' };
       } else if (request.action === 'stop') {

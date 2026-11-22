@@ -22,6 +22,8 @@ function arrange(t) {
   }
   let index = 0;
   let pid = 500;
+  let frontPid;
+  const focusRequests = [];
   const newRun = () => {
     index++;
     const opts = { objective: 'focus-test', runDir: path.join(fleet, `e2e-${index}`), receiptFile: path.join(base, `${index}.json`) };
@@ -49,7 +51,13 @@ function arrange(t) {
             end({ code: 1 });
             throw Object.assign(new Error('launch failure'), { code: 'fixture_channel_ended' });
           }
-          if (request.action === 'snapshot') return { snapshot: { identity: child.identity, text: '' } };
+          if (request.action === 'snapshot') {
+            return { snapshot: { identity: child.identity, focused: frontPid === child.pid, screenUnlocked: true, text: '' } };
+          }
+          if (request.action === 'yield-focus' || request.action === 'accept-focus') {
+            focusRequests.push(request);
+            return request.action === 'yield-focus' ? { yielded: true } : { activationRequested: true };
+          }
           if (request.action === 'stop') { end({ code: 0 }); return { stopping: true }; }
           if (request.action === 'input') return { posted: true };
           throw new Error('unexpected request');
@@ -64,8 +72,38 @@ function arrange(t) {
     });
     return { children, reports, task, ready: Promise.race([readiness, task]) };
   }
-  return { newRun, start };
+  return { newRun, start, focusRequests, setFront: (identity) => { frontPid = identity.pid; } };
 }
+
+test('focus requests a cooperative handoff only from the same run’s verified foreground window', async (t) => {
+  const { newRun, start, focusRequests, setFront } = arrange(t);
+  const a = newRun();
+  const b = newRun();
+  const first = start(a);
+  const second = start(b);
+  const [{ windows: aWindows }, { windows: bWindows }] = await Promise.all([first.ready, second.ready]);
+  const [standIn, target] = aWindows.map((window) => window.identity);
+  const focus = (expected) => requestControl({ ...a, action: 'focus', expected });
+  try {
+    setFront(bWindows[0].identity);
+    await assert.rejects(focus(bWindows[1].identity), { code: 'fixture_identity_mismatch' });
+    await assert.rejects(focus(target), { code: 'focus_source_unverified' });
+    assert.deepEqual(focusRequests, []);
+
+    setFront(standIn);
+    assert.equal((await focus(standIn)).activationRequested, false);
+    const handoff = await focus(target);
+    assert.equal(handoff.activationRequested, true);
+    assert.equal(handoff.windows.find((window) => window.identity.role === 'target').focused, false);
+    assert.deepEqual(focusRequests, [
+      { action: 'yield-focus', expected: standIn, peer: target },
+      { action: 'accept-focus', expected: target, peer: standIn },
+    ]);
+  } finally {
+    await Promise.all([a, b].map((opts) => requestControl({ ...opts, action: 'stop' })));
+    await Promise.all([first.task, second.task]);
+  }
+});
 
 test('cross-run input and stop refuse; a changed observed identity prevents stopping either member', async (t) => {
   const { newRun, start } = arrange(t);
