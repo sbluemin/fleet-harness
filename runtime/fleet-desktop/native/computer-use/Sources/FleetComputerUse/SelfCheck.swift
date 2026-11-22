@@ -78,20 +78,37 @@ enum ScreenRecordingAfterAccessibility {
   nonisolated(unsafe) private static var watching = false
 
   static func schedule(timeout: TimeInterval = 300, interval: TimeInterval = 1) {
-    lock.lock()
-    defer { lock.unlock() }
-    guard !watching else { return }
-    watching = true
+    guard begin() else { return }
     DispatchQueue.global(qos: .utility).async {
-      defer { lock.lock(); watching = false; lock.unlock() }
-      let deadline = Date().addingTimeInterval(timeout)
-      while Date() < deadline {
-        Thread.sleep(forTimeInterval: interval)
-        guard AXIsProcessTrusted() else { continue }
-        if !CGPreflightScreenCaptureAccess() { _ = CGRequestScreenCaptureAccess() }
-        return
-      }
+      defer { end() }
+      _ = waitThenRequest(deadline: Date().addingTimeInterval(timeout), interval: interval,
+                          trusted: { AXIsProcessTrusted() }, granted: { CGPreflightScreenCaptureAccess() },
+                          request: { _ = CGRequestScreenCaptureAccess() }, sleep: { Thread.sleep(forTimeInterval: $0) }, now: { Date() })
     }
+  }
+
+  /// 감시는 헬퍼마다 하나다. 이미 돌고 있으면 false.
+  static func begin() -> Bool {
+    lock.lock(); defer { lock.unlock() }
+    guard !watching else { return false }
+    watching = true
+    return true
+  }
+
+  static func end() { lock.lock(); watching = false; lock.unlock() }
+
+  /// 손쉬운 사용이 켜질 때까지 `interval`마다 확인하고, 켜지면 화면 기록이 아직 없을 때만 한 번 요청한다. 요청했으면 true.
+  /// 기한까지 켜지지 않으면(사람이 거부했거나 늦음) 요청하지 않는다.
+  static func waitThenRequest(deadline: Date, interval: TimeInterval, trusted: () -> Bool, granted: () -> Bool,
+                              request: () -> Void, sleep: (TimeInterval) -> Void, now: () -> Date) -> Bool {
+    while now() < deadline {
+      sleep(interval)
+      guard trusted() else { continue }
+      guard !granted() else { return false }
+      request()
+      return true
+    }
+    return false
   }
 }
 

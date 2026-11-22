@@ -20,5 +20,7 @@ let package = Package(
         .linkedFramework("QuartzCore"),
       ]
     ),
+    // 실제 TCC를 건드리지 않는 순수 로직 시험(swift test). 헬퍼 빌드(swift build -c release)에는 들어가지 않는다.
+    .testTarget(name: "FleetComputerUseTests", dependencies: ["FleetComputerUse"], path: "Tests/FleetComputerUseTests"),
   ]
 )
