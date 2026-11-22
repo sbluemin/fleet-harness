@@ -13,6 +13,7 @@ import Dispatch
   private struct AppTarget: Decodable { let target: String }
   private struct OpenApp: Decodable { let app: String; let activate: Bool }
   private struct Settings: Decodable { let permissions: [String] }
+  private static let windowSymbols = WindowSymbols()
 
   static func run() -> Int32 {
     signal(SIGPIPE, SIG_IGN)
@@ -32,10 +33,33 @@ import Dispatch
       var values = HelperPermissions().json
       if let permissionHolder { values["holder"] = permissionHolder }
       result = values
-    case "verifyWindowIdentity":
+    case "verifyWindowIdentity", "windowState", "captureStill":
       guard let target = params(Identity.self), target.pid > 0, target.windowId > 0,
             target.processStartedAt.isFinite, target.processStartedAt > 0 else { return fail("invalid_params") }
-      result = ["identity": verifyWindowIdentity(target)]
+      let desktopVerification = request.method == "verifyWindowIdentity"
+      if request.method == "captureStill", !CGPreflightScreenCaptureAccess() { return fail("screen_recording_required") }
+      let state = windowState(target, includingHidden: !desktopVerification)
+      if desktopVerification {
+        result = ["identity": state.identity]
+      } else if request.method == "windowState" {
+        result = ["identity": state.identity, "onscreen": state.onscreen]
+      } else {
+        guard !state.onscreen, let frame = state.frame else { return fail("still_unavailable") }
+        // Service async ScreenCaptureKit callbacks on the real main thread without creating NSApplication.
+        let timeout = Timer(timeInterval: 4, repeats: false) { _ in }
+        RunLoop.main.add(timeout, forMode: .default)
+        Task { @MainActor in
+          guard let still = try? await capturePreviewStill(pid: target.pid, windowId: target.windowId, frame: frame) else {
+            exit(fail("still_unavailable"))
+          }
+          let current = windowState(target, includingHidden: true)
+          guard !current.onscreen, current.frame == frame else { exit(fail("still_unavailable")) }
+          exit(PlatformPipe.emit(["version": version, "ok": true, "result": still]) ? 0 : 1)
+        }
+        _ = CFRunLoopRunInMode(.defaultMode, 4, false)
+        timeout.invalidate()
+        return fail("still_unavailable")
+      }
     case "resolveApp":
       guard let target = params(AppTarget.self) else { return fail("invalid_params") }
       result = resolveApp(target.target)
@@ -54,16 +78,28 @@ import Dispatch
     return PlatformPipe.emit(["version": version, "ok": true, "result": result]) ? 0 : 1
   }
 
-  private static func verifyWindowIdentity(_ target: Identity) -> String {
-    guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isHidden,
-          app.launchDate?.timeIntervalSince1970 == target.processStartedAt else { return "mismatch" }
-    guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [Object] else { return "unknown" }
-    // A capture identity is not a WindowCatalog availability check: do not
-    // apply any behavior-specific filters for Space, minimization, or title.
-    return windows.contains {
+  private static func windowState(_ target: Identity, includingHidden: Bool) -> (identity: String, onscreen: Bool, frame: CGRect?) {
+    guard let app = NSRunningApplication(processIdentifier: target.pid), includingHidden || !app.isHidden,
+          app.launchDate?.timeIntervalSince1970 == target.processStartedAt else { return ("mismatch", false, nil) }
+    guard let windows = CGWindowListCopyWindowInfo(.optionAll, kCGNullWindowID) as? [Object] else { return ("unknown", false, nil) }
+    // Desktop verification uses only the exact process and window identity.
+    guard let window = windows.first(where: {
       $0[kCGWindowOwnerPID as String] as? pid_t == target.pid &&
       $0[kCGWindowNumber as String] as? CGWindowID == target.windowId
-    } ? "matches" : "mismatch"
+    }) else { return ("mismatch", false, nil) }
+    let onscreen = !app.isHidden && window[kCGWindowIsOnscreen as String] as? Bool == true
+    if includingHidden, !onscreen, !app.isHidden, AXIsProcessTrusted() {
+      let active = windowSymbols.activeSpaces()
+      // CUProbe's closed AppKit window remained in CG but disappeared from AXWindows;
+      // its minimized window remained in AX with AXMinimized=true. Only use this test
+      // in an active Space; hidden apps and inconclusive AX/Space data remain eligible.
+      if !active.isEmpty, let spaces = windowSymbols.windowSpaces(target.windowId), !spaces.isDisjoint(with: active),
+         AXReader.stillMinimized(pid: target.pid, windowId: target.windowId) == false {
+        return ("mismatch", false, nil)
+      }
+    }
+    let frame = (window[kCGWindowBounds as String] as? Object).flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+    return ("matches", onscreen, frame)
   }
 
   private static func isCleanTarget(_ value: String) -> Bool {

@@ -301,14 +301,26 @@ private func hasUIKitPlatform(_ url: URL) -> Bool {
 
 @MainActor func captureWindow(_ window: WindowInfo) async throws -> Object {
   guard CGPreflightScreenCaptureAccess() else { throw HelperPermissions().error }
+  return try await captureWindowImage(pid: window.key.pid, windowId: window.key.id, frame: window.frame,
+                                      onscreen: window.onscreen, maxWidth: nil)
+}
+
+@MainActor func capturePreviewStill(pid: pid_t, windowId: CGWindowID, frame: CGRect) async throws -> Object {
+  // 원격 미리보기 상한과 품질(REMOTE_PREVIEW_MAX_WIDTH, REMOTE_PREVIEW_JPEG_QUALITY).
+  try await captureWindowImage(pid: pid, windowId: windowId, frame: frame, onscreen: false, maxWidth: 480)
+}
+
+@MainActor private func captureWindowImage(pid: pid_t, windowId: CGWindowID, frame: CGRect,
+                                            onscreen: Bool, maxWidth: Int?) async throws -> Object {
   do {
     // 최소화·숨김·다른 스페이스 창은 화면 밖이라 onScreenWindowsOnly 목록에 없다. 그때만 전체를 열거한다(dbdbe742 실측: 실시간 내용이 잡힘).
-    let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: window.onscreen)
-    guard let match = content.windows.first(where: { $0.windowID == window.key.id && $0.owningApplication?.processID == window.key.pid }),
-          match.frame == window.frame else { throw HelperError.unavailable() }
+    let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: onscreen)
+    guard let match = content.windows.first(where: { $0.windowID == windowId && $0.owningApplication?.processID == pid }),
+          match.frame == frame else { throw HelperError.unavailable() }
     let filter = SCContentFilter(desktopIndependentWindow: match)
-    let width = max(1, Int(window.frame.width.rounded()))
-    let height = max(1, Int(window.frame.height.rounded()))
+    let scale = maxWidth.map { min(1, CGFloat($0) / max(1, frame.width)) } ?? 1
+    let width = max(1, Int((frame.width * scale).rounded()))
+    let height = max(1, Int((frame.height * scale).rounded()))
     let image: CGImage
     if #available(macOS 26.0, *) {
       // 스트림 대신 오디오 설정이 없는 정지 화면 API를 사용한다.
@@ -335,10 +347,13 @@ private func hasUIKitPlatform(_ url: URL) -> Bool {
       image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
     }
     let data = NSMutableData()
-    guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { throw HelperError("internal") }
-    CGImageDestinationAddImage(dest, image, nil)
+    let isPreview = maxWidth != nil
+    let format = isPreview ? UTType.jpeg : UTType.png
+    if let maxWidth, image.width > maxWidth { throw HelperError("internal") }
+    guard let dest = CGImageDestinationCreateWithData(data, format.identifier as CFString, 1, nil) else { throw HelperError("internal") }
+    CGImageDestinationAddImage(dest, image, isPreview ? [kCGImageDestinationLossyCompressionQuality: 0.6] as CFDictionary : nil)
     guard CGImageDestinationFinalize(dest) else { throw HelperError("internal") }
-    return ["mime": "image/png", "data": data.base64EncodedString(), "width": image.width, "height": image.height]
+    return ["mime": isPreview ? "image/jpeg" : "image/png", "data": data.base64EncodedString(), "width": image.width, "height": image.height]
   } catch let e as HelperError { throw e }
   catch { throw HelperError.unavailable() }
 }

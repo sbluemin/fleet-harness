@@ -34,7 +34,7 @@ import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
 import { RemotePreviewHub, createRemotePreviewRouter, receivesRemotePreviewState, receivesRemotePreviewViewers, toRemotePreviewTarget } from "../../../features/computer-use/host/remote-preview.js";
-import { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } from "../../../features/computer-use/shared/remote-preview.js";
+import { DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH, DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } from "../../../features/computer-use/shared/remote-preview.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -437,6 +437,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/permission-request", summary: "Request missing Computer Use permissions from macOS, or open Privacy & Security when they were requested recently.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
+  { method: "POST", path: DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH, summary: "Capture a still of the current offscreen Computer Use window for the local Desktop.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "POST", path: DESKTOP_REMOTE_PREVIEW_FRAME_PATH, summary: "Replace the single in-memory still of the Computer Use window while a full remote device is watching. Only the local Desktop window may upload.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: REMOTE_PREVIEW_STATE_PATH, summary: "Read whether a Computer Use still is available for this full remote session, for a screen that subscribed after the event stream opened. Loopback is 404 and monitoring sessions are refused.", category: "Desktop", gate: "origin-write", transport: "http" },
   { method: "GET", path: REMOTE_PREVIEW_FRAME_PATH, summary: "Long-poll the latest Computer Use still for a full remote session. Loopback is 404 and monitoring sessions are refused.", category: "Desktop", gate: "origin-write", transport: "http" },
@@ -871,7 +872,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     turnOpen: (objectiveId) => { const activity = consoleControl.observe(objectiveId)?.activity; return activity === "running" || activity === "awaiting"; },
   });
   // 화면의 주인은 목표(objectiveId)이거나 사령관 자신의 세션(commodoreId)이다 — 소유자 종류는 ownerKind 가 구분하고, 사령관 소유일 때 objectiveId 는 null 이다.
-  let computerCaptureTarget: { id: string; pid: number; windowId: number; processStartedAt: number; title: string; ownerKind: "objective" | "commodore"; objectiveId: string | null; commodoreId: string | null; actor: string } | null = null;
+  let computerCaptureTarget: { id: string; offscreen: boolean | null; pid: number; windowId: number; processStartedAt: number; title: string; ownerKind: "objective" | "commodore"; objectiveId: string | null; commodoreId: string | null; actor: string } | null = null;
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
@@ -906,11 +907,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           && computerCaptureTarget.objectiveId === ownerObjectiveId && computerCaptureTarget.commodoreId === ownerCommodoreId) {
           computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
         } else {
-          computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, ownerKind, objectiveId: ownerObjectiveId, commodoreId: ownerCommodoreId, actor, id: crypto.randomUUID() };
+          computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, ownerKind, objectiveId: ownerObjectiveId, commodoreId: ownerCommodoreId, actor, id: crypto.randomUUID(), offscreen: null };
         }
       }
       broadcastComputerCapture();
-      watchComputerCapture();
+      watchComputerCapture(computerCaptureTarget?.offscreen === null);
     },
     platform: computerUsePlatform,
     onFailure: recordFailure,
@@ -1681,6 +1682,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     writeJson,
     withSecurityHeaders,
     refresh: () => syncRemotePreview(),
+    captureTarget: () => computerUse.status().enabled && computerUse.activeOwner() !== null ? computerCaptureTarget : null,
+    captureStill: (target, signal) => computerUse.captureStill(target, signal),
   });
   routeRegistry.register("/api/v1/desktop/computer-preview", remotePreviewRouter);
   routeRegistry.register("/api/v1/computer-preview", remotePreviewRouter);
@@ -1689,7 +1692,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (req.method === "GET" && pathname === "/api/v1/desktop/computer-capture") {
       await verifyComputerCapture();
       // Desktop main도 getDisplayMedia의 창 선택 때 읽는다 — 네이티브 식별자는 이 루프백 응답에만 둔다.
-      writeJson(res, 200, { ...computerCaptureSnapshot(), target: computerUse.status().enabled ? computerCaptureTarget : null });
+      const snapshot = computerCaptureSnapshot();
+      writeJson(res, 200, { ...snapshot, target: snapshot.target ? computerCaptureTarget : null });
       return true;
     }
     writeJson(res, 405, { error: "method_not_allowed" });
@@ -2480,12 +2484,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function computerCaptureSnapshot() {
-    const target = computerUse.status().enabled ? computerCaptureTarget : null;
+    const target = computerUse.status().enabled && computerCaptureTarget && computerCaptureTarget.offscreen !== null ? computerCaptureTarget : null;
     const unavailableOwner = computerUse.captureUnavailableOwner();
     const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     const unavailableCommodoreId = unavailableOwner ? computerUseMcp.commodoreIdForOwner(unavailableOwner) : null;
     return {
-      target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title } : null,
+      target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title, offscreen: target.offscreen === true } : null,
       unavailableObjectiveId: unavailableOwner ? computerUseMcp.objectiveIdForOwner(unavailableOwner) : null,
       ...(unavailableCommodoreId ? { unavailableCommodoreId } : {}),
       // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
@@ -2532,28 +2536,40 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   async function verifyComputerCapture(): Promise<void> {
     const candidate = computerCaptureTarget;
     if (!candidate) return;
-    // 감시와 GET은 진행 중인 검증을 공유한다. 늦은 결과도 같은 대상의 명시적 false일 때만 해제한다.
-    const verification = computerCaptureVerification ??= computerUse.verifyCaptureTarget(candidate)
-      .then((valid) => {
-        if (valid === "mismatch" && computerCaptureTarget?.id === candidate.id) {
+    // 감시와 GET은 진행 중인 검증을 공유한다. 같은 대상의 명시적 불일치만 해제 근거다.
+    computerCaptureVerification ??= (async () => {
+      // 시간 초과나 조회 불가는 창 소멸의 증거가 아니다. 이때는 기존 영상 경로를 사용한다.
+      const unknown = { identity: "unknown", onscreen: false } as const;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const { identity, onscreen } = await Promise.race([
+          computerUse.captureWindowState(candidate).catch(() => unknown),
+          // 응답을 기다리는 Desktop의 3초 HTTP 한도 안에 대체 상태를 돌려준다.
+          new Promise<typeof unknown>((resolve) => { timeout = setTimeout(() => resolve(unknown), 2500); timeout.unref(); }),
+        ]);
+        if (computerCaptureTarget?.id !== candidate.id) return;
+        if (identity === "mismatch") {
           logComputerCapture({ captureReason: "verify_failed" });
           computerCaptureTarget = null;
           broadcastComputerCapture();
           watchComputerCapture();
+        } else {
+          const offscreen = identity === "matches" && !onscreen;
+          if (computerCaptureTarget.offscreen !== offscreen) {
+            computerCaptureTarget = { ...computerCaptureTarget, offscreen };
+            broadcastComputerCapture();
+          }
         }
-      })
-      .catch(() => undefined)
-      .finally(() => { computerCaptureVerification = null; });
-    // 3초는 응답 대기 한도일 뿐 창 소멸의 증거가 아니다. 시간 초과에는 대상과 감시를 유지한다.
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([
-      verification,
-      new Promise<void>((resolve) => { timeout = setTimeout(resolve, 3000); timeout.unref(); }),
-    ]).finally(() => { if (timeout) clearTimeout(timeout); });
+      } finally {
+        clearTimeout(timeout);
+        computerCaptureVerification = null;
+      }
+    })();
+    await computerCaptureVerification;
   }
 
   /** 네이티브 창 소멸은 도구 호출 없이도 일어난다. 기존 700ms 검증은 활성 대상에만 남기고 유휴에는 멈춘다. */
-  function watchComputerCapture(): void {
+  function watchComputerCapture(initial = false): void {
     if (!computerCaptureTarget) {
       if (computerCaptureWatch) clearTimeout(computerCaptureWatch);
       computerCaptureWatch = null;
@@ -2567,7 +2583,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         computerCaptureWatch = null;
         watchComputerCapture();
       });
-    }, 700);
+    }, initial ? 0 : 700);
     computerCaptureWatch = timer;
     timer.unref();
   }

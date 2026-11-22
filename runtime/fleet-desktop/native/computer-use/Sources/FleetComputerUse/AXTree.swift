@@ -140,6 +140,29 @@ enum AXReader {
 
   static func windows(_ pid: pid_t) -> [AXUIElement] { attribute(application(pid), kAXWindowsAttribute) as? [AXUIElement] ?? [] }
 
+  /// Whether an offscreen window is still minimized, rather than ordered out.
+  /// A complete AX list can prove absence; a failed read or lookup cannot.
+  static func stillMinimized(pid: pid_t, windowId: CGWindowID) -> Bool? {
+    guard let windowNumber else { return nil }
+    let deadline = DispatchTime.now() + .milliseconds(350)
+    // application() sets a per-element 180 ms AX timeout before we read the list.
+    guard let windows = attribute(application(pid), kAXWindowsAttribute) as? [AXUIElement],
+          DispatchTime.now() < deadline else { return nil }
+    var complete = true
+    for window in windows {
+      guard DispatchTime.now() < deadline else { return nil }
+      AXUIElementSetMessagingTimeout(window, 0.18)
+      var id: CGWindowID = 0
+      guard windowNumber(window, &id) == .success, id != 0 else { complete = false; continue }
+      if id == windowId {
+        guard DispatchTime.now() < deadline else { return nil }
+        let minimized = attribute(window, kAXMinimizedAttribute) as? Bool
+        return DispatchTime.now() < deadline ? minimized : nil
+      }
+    }
+    return complete && DispatchTime.now() < deadline ? false : nil
+  }
+
   static func window(_ win: WindowInfo, candidates: [AXUIElement]? = nil) -> AXUIElement? {
     let windows = candidates ?? self.windows(win.key.pid)
     var fallback: [AXUIElement] = []

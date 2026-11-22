@@ -1,5 +1,7 @@
 import type * as http from "node:http";
+import type { ComputerUseWindowIdentity } from "../runtime/platform.js";
 import {
+  DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH,
   DESKTOP_REMOTE_PREVIEW_FRAME_PATH,
   REMOTE_PREVIEW_AFTER_PARAM,
   REMOTE_PREVIEW_AGE_HEADER,
@@ -279,19 +281,50 @@ export interface RemotePreviewRouteDeps {
   readonly withSecurityHeaders: (headers: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
   /** 상태를 읽기 전에 캡처 대상·설정에 맞춘다(서버의 syncRemotePreview). */
   readonly refresh?: () => void;
+  readonly captureTarget: () => (ComputerUseWindowIdentity & { readonly id: string; readonly offscreen: boolean | null }) | null;
+  readonly captureStill: (target: ComputerUseWindowIdentity, signal: AbortSignal) => Promise<Buffer | null>;
 }
 
 const TARGET_ID = /^[A-Za-z0-9-]{1,64}$/u;
 
 export function createRemotePreviewRouter(deps: RemotePreviewRouteDeps): (ctx: { readonly req: http.IncomingMessage; readonly res: http.ServerResponse; readonly pathname: string }) => Promise<boolean> {
   const { hub, writeJson } = deps;
+  let stillInFlight = false;
   return async ({ req, res, pathname }) => {
-    if (pathname === DESKTOP_REMOTE_PREVIEW_FRAME_PATH) {
+    if (pathname === DESKTOP_REMOTE_PREVIEW_FRAME_PATH || pathname === DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH) {
       if (!deps.isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
       if (!deps.isExactConsoleOrigin(req) || !deps.isDesktopClient(req)) { writeJson(res, 403, { error: "forbidden" }); return true; }
+      const params = new URL(req.url ?? "/", "http://localhost").searchParams;
+      const targetId = params.get(REMOTE_PREVIEW_TARGET_PARAM);
+      if (pathname === DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH) {
+        res.setHeader("Cache-Control", "no-store");
+        if (!targetId || !TARGET_ID.test(targetId) || params.size !== 1) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        const candidate = deps.captureTarget();
+        let jpeg: Buffer | null = null;
+        if (!stillInFlight && candidate?.id === targetId && candidate.offscreen === true) {
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          res.once("close", abort);
+          stillInFlight = true;
+          try {
+            const captured = await deps.captureStill(candidate, controller.signal);
+            const current = deps.captureTarget();
+            if (!controller.signal.aborted && current?.id === targetId && current.offscreen === true) jpeg = captured;
+          } finally {
+            stillInFlight = false;
+            res.off("close", abort);
+          }
+        }
+        if (res.writableEnded || res.destroyed) return true;
+        res.writeHead(jpeg ? 200 : 204, deps.withSecurityHeaders({
+          "Cache-Control": "no-store",
+          ...(jpeg ? { "Content-Type": "image/jpeg", "Content-Length": String(jpeg.length) } : {}),
+        }));
+        res.end(jpeg ?? undefined);
+        return true;
+      }
       const type = req.headers["content-type"];
-      const targetId = new URL(req.url ?? "/", "http://localhost").searchParams.get(REMOTE_PREVIEW_TARGET_PARAM);
       if (typeof type !== "string" || !type.startsWith("image/jpeg") || !targetId || !TARGET_ID.test(targetId)) { writeJson(res, 400, { error: "invalid_frame" }); return true; }
       const bytes = await readRawBody(req, REMOTE_PREVIEW_MAX_BYTES);
       if (!bytes || bytes.length < 3 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) { writeJson(res, 400, { error: "invalid_frame" }); return true; }

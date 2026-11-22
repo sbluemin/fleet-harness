@@ -35,6 +35,10 @@ export interface ComputerUsePermissions {
   readonly holder?: string;
 }
 export type WindowIdentityResult = "matches" | "mismatch" | "unknown";
+export interface ComputerUseWindowState {
+  readonly identity: WindowIdentityResult;
+  readonly onscreen: boolean;
+}
 export type ClipboardRestoration = "restored" | "preserved_newer_contents" | "failed";
 export interface ClipboardLease { finish(): Promise<ClipboardRestoration> }
 
@@ -43,7 +47,8 @@ export interface ComputerUsePlatform {
   inspectInstallation(): Promise<boolean>;
   createClient(): FleetHelperClient;
   readPermissions(): Promise<ComputerUsePermissions | null>;
-  verifyWindow(target: ComputerUseWindowIdentity): Promise<WindowIdentityResult>;
+  windowState(target: ComputerUseWindowIdentity): Promise<ComputerUseWindowState>;
+  captureStill(target: ComputerUseWindowIdentity, signal: AbortSignal): Promise<Buffer | null>;
   resolveApp(target: string, signal: AbortSignal): Promise<ResolvedApp>;
   openApp(app: string, signal: AbortSignal, activate: boolean): Promise<ComputerUseOpenResult>;
   openPrivacySettings(permissions: readonly ComputerUsePermission[]): Promise<boolean>;

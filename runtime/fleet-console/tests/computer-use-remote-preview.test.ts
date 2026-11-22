@@ -9,8 +9,10 @@ import {
   receivesRemotePreviewViewers,
   toRemotePreviewTarget,
   type RemotePreviewSubscriber,
+  type RemotePreviewRouteDeps,
 } from "../features/computer-use/host/remote-preview.js";
 import {
+  DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH,
   DESKTOP_REMOTE_PREVIEW_FRAME_PATH,
   REMOTE_PREVIEW_AGE_HEADER,
   REMOTE_PREVIEW_FRAME_PATH,
@@ -162,7 +164,7 @@ describe("remote preview SSE recipients", () => {
  * 실제 HTTP 위의 라우터. 리스너·세션·출처는 헤더로 흉내 낸다 — 서버의 실제 판정 함수는 같은 자리에 꽂힌다.
  * x-test-listener: local|remote, x-test-session: <handle>:<full|monitoring>, x-test-origin: exact|none, x-test-read: same|cross, user-agent: Electron/…
  */
-async function serve(hub: RemotePreviewHub) {
+async function serve(hub: RemotePreviewHub, still?: Pick<RemotePreviewRouteDeps, "captureTarget" | "captureStill">) {
   const router = createRemotePreviewRouter({
     hub,
     isLoopbackListener: (req) => req.headers["x-test-listener"] !== "remote",
@@ -179,6 +181,7 @@ async function serve(hub: RemotePreviewHub) {
     writeJson: (res, status, body) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); },
     withSecurityHeaders: (headers) => headers,
     refresh: () => { refreshed += 1; },
+    ...(still ?? { captureTarget: () => null, captureStill: async () => null }),
   });
   let refreshed = 0;
   const server = http.createServer((req, res) => {
@@ -211,6 +214,54 @@ describe("remote preview routes", () => {
     // 아무도 보지 않으면 받지 않는다.
     expect(await (await upload(jpeg(1))).json()).toEqual({ error: "no_viewers" });
     expect(hub.frame()).toBeNull();
+  });
+
+  it("only captures the current offscreen target for the exact-origin loopback Desktop, with no frame on permission denial or release", async () => {
+    const { hub } = hubWith();
+    const window = { ...target(), pid: 5, windowId: 10, processStartedAt: 100, title: "Fixture", offscreen: true };
+    let live: typeof window | null = window;
+    let reply: () => Promise<Buffer | null> = async () => jpeg(7);
+    const captureStill = vi.fn(() => reply());
+    const { base, host } = await serve(hub, { captureTarget: () => live, captureStill });
+    const read = (params = "target=target-1", headers: Record<string, string> = host) => fetch(`${base}${DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH}?${params}`, { method: "POST", headers });
+    for (const tier of ["full", "monitoring"]) {
+      expect((await read(undefined, { ...host, "x-test-listener": "remote", "x-test-session": `viewer:${tier}` })).status).toBe(404);
+    }
+    expect((await read(undefined, { ...host, "x-test-origin": "none" })).status).toBe(403);
+    expect((await read(undefined, { ...host, "user-agent": "Chrome/140" })).status).toBe(403);
+    expect((await read("target=target-1&pid=5")).status).toBe(400);
+    expect((await read("target=unexpected")).status).toBe(204);
+    live = { ...window, offscreen: false };
+    expect((await read()).status).toBe(204);
+    expect(captureStill).not.toHaveBeenCalled();
+
+    live = window;
+    const shown = await read();
+    expect(shown.status).toBe(200);
+    expect(shown.headers.get("content-type")).toBe("image/jpeg");
+    expect(shown.headers.get("cache-control")).toBe("no-store");
+    expect(Buffer.from(await shown.arrayBuffer())).toEqual(jpeg(7));
+    expect(captureStill).toHaveBeenCalledWith(window, expect.any(AbortSignal));
+    expect(hub.frame()).toBeNull();
+
+    // 권한 없음은 헬퍼 포트에서 null로 돌아온다. HTTP는 조용히 장을 내지 않는다.
+    reply = async () => null;
+    expect((await read()).status).toBe(204);
+    for (const next of [{ ...window, id: "target-2" }, null]) {
+      let release!: (bytes: Buffer) => void;
+      live = window;
+      captureStill.mockClear();
+      reply = () => new Promise<Buffer>((resolve) => { release = resolve; });
+      const pending = read();
+      await vi.waitFor(() => expect(captureStill).toHaveBeenCalledTimes(1));
+      expect((await read()).status).toBe(204);
+      expect(captureStill).toHaveBeenCalledTimes(1);
+      live = next;
+      release(jpeg(8));
+      const response = await pending;
+      expect(response.status).toBe(204);
+      expect((await response.arrayBuffer()).byteLength).toBe(0);
+    }
   });
 
   it("serves the latest still to a full remote session and refuses loopback, unauthenticated, monitoring, and cross-origin reads", async () => {
