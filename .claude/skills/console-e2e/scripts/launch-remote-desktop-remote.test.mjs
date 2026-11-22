@@ -110,7 +110,6 @@ if (cmd.includes('/usr/bin/ditto -x -k')) {
   process.stdout.write('Fleet Console.app\\nconsole\\nfleet-package-identity.json\\n');
   return;
 }
-if (env.MOCK_PS_FAIL === '1' && cmd.startsWith('ps -ax')) process.exit(1);
 if (env.MOCK_RM_FAIL === '1' && cmd.includes('rm -rf --') && env.MOCK_RUNID && cmd.includes('e2e-remote-' + env.MOCK_RUNID) && cmd.startsWith('test ! -L')) process.exit(1);
 const child = spawn('sh', ['-c', cmd], {
   env: Object.assign({}, process.env, { HOME: HOME, PATH: MOCK_BIN + ':' + process.env.PATH }),
@@ -235,6 +234,13 @@ main().then(() => {}, () => process.exit(1));
       'exec /bin/rm "$@"',
       '',
     ].join(String.fromCharCode(10)), { mode: 0o755 });
+    // Both the host-initiated scan and the watchdog's inner scan use this ps.
+    fs.writeFileSync(path.join(bin, 'ps'), [
+      '#!/bin/sh',
+      'if [ "$MOCK_PS_FAIL" = 1 ] && [ "$1" = -ax ]; then exit 1; fi',
+      'exec /bin/ps "$@"',
+      '',
+    ].join('\n'), { mode: 0o755 });
     const remoteHome = path.join(base, 'remote-home');
     const remoteTemp = path.join(base, 'remote-temp');
     fs.mkdirSync(remoteHome, { mode: 0o700 });

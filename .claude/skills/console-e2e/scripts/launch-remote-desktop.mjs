@@ -478,7 +478,8 @@ scan() {
   # affinity excluding command shells, or executable prefix boundaries
   # excluding command shells. A program that merely carries an owned path as
   # an argument never qualifies.
-  ps -ax -o pid= -o ppid= -o command= 2>/dev/null | \
+  table=$(ps -ax -o pid= -o ppid= -o command= 2>/dev/null) || return 1
+  printf '%s\\n' "$table" | \
     W_ROOT="$PID" W_DIR="$DIR" W_EXE="$EXE" \
     W_NCLI1="$NCLI1" W_NCLI2="$NCLI2" W_AUX1="$AUX1" W_AUX2="$AUX2" awk '
   BEGIN {
