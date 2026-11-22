@@ -25,11 +25,11 @@ describe('ssh target selection (single source: FLEET_E2E_SSH_TARGET)', () => {
   });
   for (const bad of ['', '   ', 'a/b', 'host:22', '-oProxyJump=x', 'a b', 'user@@h', ';rm', 'host|cat', 'user@', '@host', '-alias']) {
     test(`refuses ${JSON.stringify(bad)}`, () => {
-      assert.throws(() => resolveSshTarget(bad), /FLEET_E2E_SSH_TARGET/);
+      assert.throws(() => resolveSshTarget(bad), /ssh-selector/);
     });
   }
   test('missing value refuses without a local fallback', () => {
-    assert.throws(() => resolveSshTarget(undefined), /refuses without it/);
+    assert.throws(() => resolveSshTarget(undefined), /ssh-selector-missing/);
   });
 });
 
@@ -87,7 +87,7 @@ describe('dry-run CLI (local mock only, no SSH connection)', () => {
   test('dry-run passes with a valid explicit package', async (t) => {
     const { base, pkg, sha } = arrange(t);
     const port = await freePort();
-    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'abc123',
+    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'a'.repeat(40),
       '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
     { FLEET_E2E_SSH_TARGET: 'remote-mac' });
     assert.equal(result.status, 0, result.stderr);
@@ -96,11 +96,11 @@ describe('dry-run CLI (local mock only, no SSH connection)', () => {
   test('dry-run refuses a digest mismatch (no public substitute)', async (t) => {
     const { base, pkg } = arrange(t);
     const port = await freePort();
-    const result = cli([base, '--package', pkg, '--package-sha256', '0'.repeat(64), '--package-revision', 'abc123',
+    const result = cli([base, '--package', pkg, '--package-sha256', '0'.repeat(64), '--package-revision', 'a'.repeat(40),
       '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
     { FLEET_E2E_SSH_TARGET: 'remote-mac' });
     assert.equal(result.status, 20);
-    assert.match(result.stderr, /sha256 mismatch/);
+    assert.match(result.stderr, /package-digest-mismatch/);
   });
 
   test('an occupied local port fails without any CDP traffic to it', async (t) => {
@@ -115,11 +115,11 @@ describe('dry-run CLI (local mock only, no SSH connection)', () => {
     t.after(() => server.close());
     const port = server.address().port;
     const before = Date.now();
-    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'abc123',
+    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'a'.repeat(40),
       '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
     { FLEET_E2E_SSH_TARGET: 'remote-mac' });
     assert.equal(result.status, 20, result.stderr);
-    assert.match(result.stderr, /already in use/);
+    assert.match(result.stderr, /local-port-occupied/);
     // Settle any in-flight connect; only a bare TCP handshake is allowed, never HTTP.
     await new Promise((r) => setTimeout(r, 300));
     assert.equal(requests, 0);
@@ -132,19 +132,19 @@ describe('dry-run CLI (local mock only, no SSH connection)', () => {
     const env = { ...process.env };
     delete env.FLEET_E2E_SSH_TARGET;
     const result = spawnSync(process.execPath, [script, base, '--package', pkg, '--package-sha256', sha,
-      '--package-revision', 'abc123', '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
+      '--package-revision', 'a'.repeat(40), '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
     { encoding: 'utf8', env });
     assert.equal(result.status, 20);
-    assert.match(result.stderr, /no local fallback/);
+    assert.match(result.stderr, /ssh-selector-missing/);
   });
 
   test('an invalid selector refuses before any connection', async (t) => {
     const { base, pkg, sha } = arrange(t);
     const port = await freePort();
-    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'abc123',
+    const result = cli([base, '--package', pkg, '--package-sha256', sha, '--package-revision', 'a'.repeat(40),
       '--run-id', 't1', '--local-port', String(port), '--remote-port', '19322', '--dry-run'],
     { FLEET_E2E_SSH_TARGET: 'not a/target' });
     assert.equal(result.status, 20);
-    assert.match(result.stderr, /Host alias or user@host/);
+    assert.match(result.stderr, /ssh-selector-invalid/);
   });
 });
