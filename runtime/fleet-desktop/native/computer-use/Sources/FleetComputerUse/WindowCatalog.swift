@@ -282,7 +282,7 @@ private func hasUIKitPlatform(_ url: URL) -> Bool {
 }
 
 @MainActor func captureWindow(_ window: WindowInfo) async throws -> Object {
-  guard CGPreflightScreenCaptureAccess() else { throw HelperError("permission_required", details: ["missing": ["screenRecording"]]) }
+  guard CGPreflightScreenCaptureAccess() else { throw HelperPermissions().error }
   do {
     let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
     guard let match = content.windows.first(where: { $0.windowID == window.key.id && $0.owningApplication?.processID == window.key.pid }),

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import type { ComputerUseWindowIdentity, ComputerUseWindowState, ComputerUseOpenResult } from "./platform.js";
+import { permissionHolderName, type ComputerUseWindowIdentity, type ComputerUseWindowState, type ComputerUseOpenResult } from "./platform.js";
 
 const WINDOW_STATE = `
 ObjC.import('AppKit'); ObjC.import('ApplicationServices');
@@ -86,24 +86,40 @@ export function verifyMacWindowIdentity(target: ComputerUseWindowIdentity): Prom
   });
 }
 
+// holder는 TCC가 권한을 판정하는 앱(책임 프로세스)의 이름이다. 이 probe는 헬퍼와 같은 Console 자식이라 같은 앱으로 판정된다.
+// 비공개 함수라 묶지 못하면 이름 없이 권한만 돌려준다.
 const READ_PERMISSIONS = `
-ObjC.import('ApplicationServices'); ObjC.import('CoreGraphics');
+ObjC.import('ApplicationServices'); ObjC.import('CoreGraphics'); ObjC.import('AppKit');
 ObjC.bindFunction('CGPreflightScreenCaptureAccess', ['bool', []]);
-JSON.stringify({ accessibility: Boolean($.AXIsProcessTrusted()), screenRecording: Boolean($.CGPreflightScreenCaptureAccess()) });`;
+var holder = null;
+try {
+  ObjC.bindFunction('getpid', ['int', []]);
+  ObjC.bindFunction('responsibility_get_pid_responsible_for_pid', ['int', ['int']]);
+  var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier($.responsibility_get_pid_responsible_for_pid($.getpid()));
+  if (app) holder = ObjC.unwrap(app.localizedName) || null;
+} catch (e) {}
+JSON.stringify({ accessibility: Boolean($.AXIsProcessTrusted()), screenRecording: Boolean($.CGPreflightScreenCaptureAccess()), holder: holder });`;
 
-export async function readMacPermissions(): Promise<{ accessibility: boolean; screenRecording: boolean } | null> {
+export interface MacPermissions { accessibility: boolean; screenRecording: boolean; holder?: string }
+
+export async function readMacPermissions(): Promise<MacPermissions | null> {
   return new Promise((resolve) => {
     execFile("/usr/bin/osascript", ["-l", "JavaScript", "-e", READ_PERMISSIONS], { timeout: 3000, maxBuffer: 4096, windowsHide: true }, (error, stdout) => {
       if (!error) {
         try {
           const value = JSON.parse(stdout);
-          if (typeof value.accessibility === "boolean" && typeof value.screenRecording === "boolean") { resolve(value); return; }
+          if (typeof value.accessibility === "boolean" && typeof value.screenRecording === "boolean") {
+            const holder = permissionHolderName(value.holder);
+            resolve({ accessibility: value.accessibility, screenRecording: value.screenRecording, ...(holder ? { holder } : {}) });
+            return;
+          }
         } catch { /* An unavailable probe is not a denial. */ }
       }
       resolve(null);
     });
   });
 }
+
 
 export async function openMacPrivacySettings(missing: readonly ("accessibility" | "screenRecording")[]): Promise<boolean> {
   if (process.platform !== "darwin" || !missing.length) return false;

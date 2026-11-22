@@ -2,15 +2,19 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { FleetHelperError, type createFleetComputerUsePlatform, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
-import { openMacApp, readMacPermissions, verifyMacWindowIdentity } from "../runtime/macos-window.js";
+import { openMacApp, readMacPermissions, verifyMacWindowIdentity, type MacPermissions } from "../runtime/macos-window.js";
 import { prepareMacPaste, type ClipboardRestoration } from "../runtime/macos-paste.js";
 import type { ComputerUseCaptureFailure, ComputerUseResult, ComputerUseWindowIdentity } from "../runtime/platform.js";
-import { COMPUTER_USE_PERMISSIONS, type ComputerUseSettingsStatus } from "../shared/status.js";
+import { COMPUTER_USE_PERMISSIONS, type ComputerUsePermission, type ComputerUseSettingsStatus } from "../shared/status.js";
 import { computerUseTools } from "./computer-use-tools.js";
 import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
 import { gateResult, nativeRole, offeredAction, renderAction, renderApps, renderError, renderOpen, renderSessionEnd, renderSessionStatus, renderState, renderVerify, windowLine } from "./computer-use-render.js";
 
 const IDLE_TIMEOUT_MS = 5 * 60_000;
+/** 같은 권한의 macOS 요청 창은 이 간격 안에서 한 번만 띄운다. 에이전트가 거듭 호출해도 창이 쌓이지 않게 한다. */
+const PERMISSION_REQUEST_INTERVAL_MS = 5 * 60_000;
+/** 이번 호출에서 Fleet이 요청 창을 띄웠는지("requested"), 간격 안이라 건너뛰었는지("recent"). 모르면 없음. */
+export type PermissionRequestOutcome = "requested" | "recent";
 const ACTION_NAMES = new Set<string>(computerUseTools[3].inputSchema.properties.action.enum);
 interface Caller { actor?: string; canDeliver?: () => boolean }
 type IssuedElement = Pick<HelperElement, "role" | "actions" | "settable">;
@@ -83,6 +87,7 @@ export class ComputerUseService {
   private readonly views = new Map<string, Map<string, View>>();
   private selfCheckFailed = false;
   private permissionsRead: { at: number; result: ReturnType<typeof readMacPermissions> } | null = null;
+  private readonly permissionRequestedAt = new Map<ComputerUsePermission, number>();
   private readonly recent = new Map<string, ComputerUseRecentCall[]>();
 
   constructor(private readonly deps: {
@@ -120,16 +125,17 @@ export class ComputerUseService {
     const helperAvailable = await this.inspectInstallation() === "available";
     const { enabled, supported } = this.status();
     const hello = this.helperInfo();
-    let permissions: Awaited<ReturnType<typeof readMacPermissions>> = null;
+    let permissions: MacPermissions | null = null;
     if (helperAvailable) {
       const now = Date.now();
       if (!this.permissionsRead || now - this.permissionsRead.at >= 5000) {
         this.permissionsRead = { at: now, result: (this.deps.readPermissions ?? readMacPermissions)() };
       }
-      permissions = (await this.permissionsRead.result) ?? hello?.permissions ?? null;
+      permissions = (await this.permissionsRead.result) ?? (hello ? { ...hello.permissions, ...(hello.permissionHolder ? { holder: hello.permissionHolder } : {}) } : null);
     }
     const missingPermissions = permissions ? COMPUTER_USE_PERMISSIONS.filter((permission) => !permissions[permission]) : null;
-    return { enabled, supported, helperAvailable, missingPermissions, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
+    const permissionHolder = permissions?.holder ?? hello?.permissionHolder ?? null;
+    return { enabled, supported, helperAvailable, missingPermissions, permissionHolder, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
   }
   async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
     return this.deps.enabled() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
@@ -262,9 +268,12 @@ export class ComputerUseService {
     let output: DeviceOutput | undefined;
     let clipboard: ClipboardRestoration | undefined;
     let sent = false;
+    let permissionRequest: PermissionRequestOutcome | undefined;
     try {
       this.assertActive(lifetime);
       const client = await this.startHelper(lifetime);
+      this.assertActive(lifetime);
+      permissionRequest = await this.requestMissingPermissions(client);
       this.assertActive(lifetime);
       this.state = "running";
       this.stage = "helper_request";
@@ -280,7 +289,8 @@ export class ComputerUseService {
       return output!;
     } catch (cause) {
       if (lifetime.signal.aborted || signal?.aborted) return output = reject("computer_use_stopped");
-      const error = cause instanceof FleetHelperError ? cause : new FleetHelperError("internal", sent);
+      let error = cause instanceof FleetHelperError ? cause : new FleetHelperError("internal", sent);
+      if (error.code === "permission_required" && permissionRequest) error = new FleetHelperError(error.code, error.uncertain, { ...error.details, request: permissionRequest });
       if (tool === "computer_state" || tool === "computer_action" || tool === "computer_verify") {
         if (error.code === "window_unavailable") this.publishCapture();
         else if (error.code === "permission_required" && Array.isArray(error.details?.missing) && error.details.missing.includes("accessibility")) this.publishCapture(undefined, "accessibility_permission_required");
@@ -332,6 +342,50 @@ export class ComputerUseService {
    * 준 뒤에는 헬퍼를 새로 띄워야 새 hello가 그 권한으로 판정된다. 화면 기록 허용은 이미 떠 있는
    * 프로세스에 반영되지 않을 수 있으므로 다시 읽기보다 재시작한다.
    */
+  private duePermissions(missing: readonly ComputerUsePermission[], now: number) {
+    return missing.filter((permission) => now - (this.permissionRequestedAt.get(permission) ?? -Infinity) >= PERMISSION_REQUEST_INTERVAL_MS);
+  }
+
+  /**
+   * 컴퓨터유즈가 처음 필요해질 때 빠진 권한 전부를 macOS 요청 창으로 한 번에 묻는다. 창과 시스템 설정 목록에는
+   * 헬퍼를 띄운 앱(TCC 판정 대상)이 올라가므로 사람이 + 로 앱을 찾아 넣지 않아도 된다. 허용은 사람이 하고,
+   * 허용 뒤 다음 호출에서 permissionsGrantedSince가 헬퍼를 새로 띄운다.
+   */
+  private async requestMissingPermissions(client: FleetHelperClient, now = Date.now()): Promise<PermissionRequestOutcome | undefined> {
+    const granted = client.hello?.permissions;
+    if (!granted) return undefined;
+    const missing = COMPUTER_USE_PERMISSIONS.filter((permission) => !granted[permission]);
+    if (!missing.length) return undefined;
+    const due = this.duePermissions(missing, now);
+    if (!due.length) return "recent";
+    try { await client.request("requestPermissions", { permissions: due }); }
+    catch (error) { this.reportFailure("computer_use_permission_request_failed", error); return undefined; }
+    for (const permission of due) this.permissionRequestedAt.set(permission, now);
+    return "requested";
+  }
+
+  /**
+   * 설정 화면의 "권한 요청". 간격 안에 이미 물었으면 macOS가 창을 다시 띄우지 않을 수 있으므로(거절한 화면 기록은
+   * 다시 묻지 않는다) 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
+   */
+  async requestPermissions(openSettings: (missing: readonly ComputerUsePermission[]) => Promise<boolean>): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
+    const { supported, helperAvailable, missingPermissions } = await this.readStatus();
+    if (!supported || !helperAvailable || !missingPermissions?.length) return null;
+    const now = Date.now();
+    const due = this.duePermissions(missingPermissions, now);
+    if (!due.length) return { opened: await openSettings(missingPermissions) };
+    const live = this.client?.live ? this.client : null;
+    const client = live ?? this.deps.platform.createClient();
+    try {
+      if (!live) await client.start();
+      await client.request("requestPermissions", { permissions: due });
+    } finally {
+      if (!live) await client.stop();
+    }
+    for (const permission of due) this.permissionRequestedAt.set(permission, now);
+    return { requested: due };
+  }
+
   private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
     const started = client.hello?.permissions;
     if (!started || COMPUTER_USE_PERMISSIONS.every((permission) => started[permission])) return false;

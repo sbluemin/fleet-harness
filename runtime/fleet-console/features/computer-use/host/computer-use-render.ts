@@ -1,7 +1,7 @@
 import type { HelperAction, HelperElement, HelperHello, HelperVerify, HelperWindow, HelperWindows, SnapshotWindow } from "../runtime/fleet-helper.js";
 import { FleetHelperError } from "../runtime/fleet-helper.js";
 import type { ClipboardRestoration } from "../runtime/macos-paste.js";
-import type { ComputerUseResult } from "../runtime/platform.js";
+import { permissionHolderName, type ComputerUseResult } from "../runtime/platform.js";
 import { InvalidComputerUseParameters, isElementId, type ActionArgs, type Expectation } from "./computer-use-input.js";
 
 export function quoteApp(value: string): string {
@@ -30,6 +30,23 @@ const hint: Record<string, string> = {
   clipboard_prepare_failed: "The clipboard could not be prepared.",
 };
 
+// 권한 안내 문구(프롬프트 자문 확정). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은 반복하지 않는다.
+// Fleet이 아는 것은 요청을 보냈는지뿐이라, 이력을 모르면 첫 문장을 뺀다. 앱 이름은 TCC 판정 대상이다.
+const PERMISSION_REQUEST_LINE = {
+  requested: "Fleet requested access from macOS.",
+  recent: "Fleet recently requested access; no new request was sent.",
+} as const;
+const PERMISSION_HOLDER_FALLBACK = "the app that started Fleet";
+const PERMISSION_LABELS = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]] as const;
+
+function permissionHint(details: Record<string, unknown> | undefined): string {
+  const missing = Array.isArray(details?.missing) ? details.missing : [];
+  const names = PERMISSION_LABELS.filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ") || "the required permissions";
+  const holder = permissionHolderName(details?.holder) ?? PERMISSION_HOLDER_FALLBACK;
+  const request = details?.request === "requested" || details?.request === "recent" ? `${PERMISSION_REQUEST_LINE[details.request]} ` : "";
+  return `${request}Ask the user to enable ${names} for ${holder} in System Settings › Privacy & Security. Retry after the user grants access.`;
+}
+
 function errorHint(error: FleetHelperError): string {
   const { code, details } = error;
   if (code === "window_unavailable") {
@@ -45,11 +62,7 @@ function errorHint(error: FleetHelperError): string {
       ? " To change the slider value, use set_value; app change events may not fire."
       : " If the drag itself is required, ask the user to perform it.");
   }
-  if (code === "permission_required") {
-    const missing = Array.isArray(details?.missing) ? details.missing : [];
-    const names = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]].filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ");
-    return `Fleet Console lacks ${names || "required device permissions"}. If needed, ask the user to grant access in System Settings › Privacy & Security.`;
-  }
+  if (code === "permission_required") return permissionHint(details);
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
 

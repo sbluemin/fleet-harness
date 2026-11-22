@@ -1,13 +1,46 @@
 import AppKit
 import ApplicationServices
 
+/// TCC는 이 헬퍼가 아니라 헬퍼를 띄운 앱(책임 프로세스)의 이름으로 권한을 판정한다. 설치본은 Fleet Console,
+/// pnpm dev는 Fleet Console Dev, 터미널에서 띄운 Console은 그 터미널이다. 안내가 그 이름을 가리키도록 읽어 둔다.
+/// 비공개 함수라 없거나 앱이 아니면 nil이고, 그때 안내는 이름 없이 나간다.
+let permissionHolder: String? = {
+  typealias Responsible = @convention(c) (pid_t) -> pid_t
+  guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid") else { return nil }
+  let pid = unsafeBitCast(symbol, to: Responsible.self)(getpid())
+  guard pid > 0, let name = NSRunningApplication(processIdentifier: pid)?.localizedName, !name.isEmpty else { return nil }
+  return name
+}()
+
 struct HelperPermissions {
+  static let names = ["accessibility", "screenRecording"]
   let accessibility = AXIsProcessTrusted()
   let screenRecording = CGPreflightScreenCaptureAccess()
   var missing: [String] { [("accessibility", accessibility), ("screenRecording", screenRecording)].compactMap { $0.1 ? nil : $0.0 } }
   var allowed: Bool { missing.isEmpty }
-  var error: HelperError { HelperError("permission_required", details: ["missing": missing]) }
+  /// 어느 경로에서 막혀도 빠진 권한을 전부 함께 알린다. 하나씩 알리면 사람이 허용과 재시도를 여러 번 오가게 된다.
+  var error: HelperError {
+    var details: Object = ["missing": missing]
+    if let permissionHolder { details["holder"] = permissionHolder }
+    return HelperError("permission_required", details: details)
+  }
   var json: Object { ["accessibility": accessibility, "screenRecording": screenRecording] }
+
+  /// 빠진 권한만 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
+  /// 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
+  static func request(_ wanted: Set<String>) -> [String] {
+    let now = HelperPermissions()
+    var requested: [String] = []
+    if wanted.contains("accessibility") && !now.accessibility {
+      _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+      requested.append("accessibility")
+    }
+    if wanted.contains("screenRecording") && !now.screenRecording {
+      _ = CGRequestScreenCaptureAccess()
+      requested.append("screenRecording")
+    }
+    return requested
+  }
 }
 
 private final class ProbePanel: NSPanel {

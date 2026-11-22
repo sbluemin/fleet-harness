@@ -40,7 +40,7 @@ Folder grants are one-use and in-memory. Browser-side cancellation stays local t
 
 ## Computer Use
 
-Computer Use runs in the Fleet Console desktop app on macOS. Enable it in Settings > Experiments > AI extensions; each Objective also needs permission. macOS Accessibility and Screen Recording permissions are checked without prompting on startup. Windows, Linux, and Console installations without the bundled helper cannot run Computer Use.
+Computer Use runs in the Fleet Console desktop app on macOS. Enable it in Settings > Experiments > AI extensions; each Objective also needs permission. The first time Computer Use needs macOS Accessibility or Screen Recording, Fleet asks macOS for every missing permission at once, at most once per five minutes. macOS judges these permissions by the app that started the helper (Fleet Console, Fleet Console Dev for `pnpm dev`, or the terminal that started Console), and that app appears in System Settings for the user to turn on. Windows, Linux, and Console installations without the bundled helper cannot run Computer Use.
 
 `computer_apps` lists windows (`wN`) and optionally finds installed apps. `computer_open` can explicitly open one exact application path or unambiguous bundle ID. Background open is a request, not a readiness or focus guarantee.
 

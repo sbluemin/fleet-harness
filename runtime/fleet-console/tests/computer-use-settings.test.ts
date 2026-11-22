@@ -6,12 +6,12 @@ import { MobileSettingsHostContext } from "../features/settings/client/mobile-ho
 import { ComputerUseRow } from "../features/settings/client/computer-use-row.js";
 import type { ComputerUseSettingsStatus } from "../features/computer-use/shared/status.js";
 
-const ready: ComputerUseSettingsStatus = { enabled: true, supported: true, helperAvailable: true, missingPermissions: [], selfCheckFailed: false };
+const ready: ComputerUseSettingsStatus = { enabled: true, supported: true, helperAvailable: true, missingPermissions: [], permissionHolder: null, selfCheckFailed: false };
 const mounted: (() => void)[] = [];
 afterEach(() => { for (const cleanup of mounted.splice(0)) cleanup(); vi.unstubAllGlobals(); });
 
 async function mount(status: ComputerUseSettingsStatus, mobile = false, stored = true) {
-  const fetch = vi.fn(async (path: string) => new Response(JSON.stringify(path.endsWith("privacy-settings") ? { opened: true } : status)));
+  const fetch = vi.fn(async (path: string) => new Response(JSON.stringify(path.endsWith("permission-request") ? { requested: ["accessibility"] } : status)));
   vi.stubGlobal("fetch", fetch);
   const node = document.createElement("div");
   document.body.append(node);
@@ -33,15 +33,20 @@ it("locks a missing helper but preserves its saved opt-in; other platforms are e
   expect(unsupported.toggle.checked).toBe(false);
 });
 
-it("names only the missing permission and keeps the toggle usable while opening Privacy Settings", async () => {
+it("names only the missing permission and keeps the toggle usable while requesting permissions", async () => {
   const view = await mount({ ...ready, enabled: false, missingPermissions: ["accessibility"] }, false, false);
   const notice = view.node.querySelector('[role="status"]')!;
   expect(notice.textContent).toContain("Fleet Console needs Accessibility permission.");
   expect(notice.textContent).not.toContain("Screen Recording");
   expect(view.toggle.disabled).toBe(false);
-  const button = Array.from(notice.querySelectorAll("button")).find((item) => item.textContent === "Open Privacy Settings")!;
+  const button = Array.from(notice.querySelectorAll("button")).find((item) => item.textContent === "Request permissions")!;
   await act(async () => { button.click(); });
-  expect(view.fetch.mock.calls.at(-1)).toMatchObject(["/api/v1/computer-use/privacy-settings", { method: "POST" }]);
+  expect(view.fetch.mock.calls.at(-1)).toMatchObject(["/api/v1/computer-use/permission-request", { method: "POST" }]);
+});
+
+it("names the app macOS judges, such as Fleet Console Dev in a dev run", async () => {
+  const view = await mount({ ...ready, missingPermissions: ["accessibility", "screenRecording"], permissionHolder: "Fleet Console Dev" });
+  expect(view.node.querySelector('[role="status"]')?.textContent).toContain("Fleet Console Dev needs Accessibility and Screen Recording permission.");
 });
 
 it("keeps the toggle on when startup self-check pauses control and has no notice in normal use", async () => {
