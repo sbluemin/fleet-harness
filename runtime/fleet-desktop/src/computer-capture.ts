@@ -98,7 +98,7 @@ export async function requestScreenRecordingPermission(log: (message: string) =>
     await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } });
     log(`computer capture screen recording requested status=${screenAccess()}`);
   } catch (error) {
-    log(`computer capture screen recording request failed: ${error instanceof Error ? error.message : "unknown"}`);
+    log(`computer capture screen recording request failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${screenAccess()}`);
   }
 }
 
