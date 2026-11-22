@@ -7,10 +7,11 @@ import type { TheWorldClientDeps } from "../deps.js";
 import { playCompanionCall, playDistrictSelect, playMongleChirp } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
+  addCompanionActorId,
   closeActorInteraction,
   openActorPanel,
   pushActorSpeech,
-  setCompanionActorId,
+  removeCompanionActorId,
   useWorldStore,
 } from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
@@ -89,7 +90,7 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
   const lastSpokenKeyRef = useRef<string | null>(null);
   const store = useWorldStore();
   const t = getWorldT(deps.commodore.language());
-  const isCompanion = store.companionActorId === actor.id;
+  const isCompanion = store.companionActorIds.includes(actor.id);
 
   const conversation = deps.useActorConversation(actor);
   const voiceSeed = useMemo(() => actorVoiceSeed(actor.id), [actor.id]);
@@ -271,11 +272,11 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
                 aria-pressed={isCompanion}
                 onClick={() => {
                   if (isCompanion) {
-                    setCompanionActorId(null);
+                    removeCompanionActorId(actor.id);
                     playDistrictSelect();
                     onStatusBanner(t("theWorld.companion.leftToast", { name: actor.name }));
                   } else {
-                    setCompanionActorId(actor.id);
+                    addCompanionActorId(actor.id);
                     playCompanionCall();
                     onStatusBanner(t("theWorld.companion.joinedToast", { name: actor.name }));
                   }

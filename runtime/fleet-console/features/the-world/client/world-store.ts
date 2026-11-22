@@ -261,7 +261,7 @@ export interface WorldStoreSnapshot {
   readonly selectedDistrictId: string | null;
   readonly hoveredDistrictId: string | null;
   readonly districtContextMenu: WorldDistrictContextMenu | null;
-  readonly companionActorId: string | null;
+  readonly companionActorIds: readonly string[];
   readonly emoteWheelOpen: boolean;
   readonly skyQuickMenu: WorldSkyQuickMenu | null;
   readonly photoSnapshotPreview: WorldPhotoSnapshotPreview | null;
@@ -309,7 +309,7 @@ let state: WorldStoreSnapshot = {
   selectedDistrictId: null,
   hoveredDistrictId: null,
   districtContextMenu: null,
-  companionActorId: null,
+  companionActorIds: [],
   emoteWheelOpen: false,
   skyQuickMenu: null,
   photoSnapshotPreview: null,
@@ -401,7 +401,7 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     selectedDistrictId: null,
     hoveredDistrictId: null,
     districtContextMenu: null,
-    companionActorId: null,
+    companionActorIds: [],
     emoteWheelOpen: false,
     skyQuickMenu: null,
     photoSnapshotPreview: null,
@@ -440,7 +440,7 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     selectedDistrictId: null,
     hoveredDistrictId: null,
     districtContextMenu: null,
-    companionActorId: null,
+    companionActorIds: [],
     emoteWheelOpen: false,
     skyQuickMenu: null,
     photoSnapshotPreview: null,
@@ -469,7 +469,7 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         selectedDistrictId: null,
         hoveredDistrictId: null,
         districtContextMenu: null,
-        companionActorId: null,
+        companionActorIds: [],
         emoteWheelOpen: false,
         skyQuickMenu: null,
         photoSnapshotPreview: null,
@@ -1171,10 +1171,34 @@ export function closeActorInteraction(): void {
   emit();
 }
 
-export function setCompanionActorId(id: string | null): void {
-  const next = id && id.length > 0 ? id : null;
-  if (state.companionActorId === next) return;
-  state = { ...state, companionActorId: next };
+export function addCompanionActorId(id: string): void {
+  if (!id) return;
+  if (state.companionActorIds.includes(id)) return;
+  state = { ...state, companionActorIds: [...state.companionActorIds, id] };
+  emit();
+}
+
+export function removeCompanionActorId(id: string): void {
+  if (!id || !state.companionActorIds.includes(id)) return;
+  state = {
+    ...state,
+    companionActorIds: state.companionActorIds.filter((existing) => existing !== id),
+  };
+  emit();
+}
+
+export function toggleCompanionActorId(id: string): void {
+  if (!id) return;
+  if (state.companionActorIds.includes(id)) {
+    removeCompanionActorId(id);
+  } else {
+    addCompanionActorId(id);
+  }
+}
+
+export function clearCompanionActorIds(): void {
+  if (state.companionActorIds.length === 0) return;
+  state = { ...state, companionActorIds: [] };
   emit();
 }
 

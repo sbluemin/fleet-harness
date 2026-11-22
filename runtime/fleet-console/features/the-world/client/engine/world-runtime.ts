@@ -222,7 +222,7 @@ export interface WorldRuntimeHandle {
   setCustomizerMode(open: boolean): void;
   triggerCustomizerPreviewBounce(): void;
   setCampfireSit(sitting: boolean): void;
-  setCompanionActor(actorId: string | null): void;
+  setCompanionActors(actorIds: readonly string[]): void;
   triggerPhotoGroupPose(): void;
   triggerAdmiralEmote(emote: "cheer" | "wave" | "clap" | "twirl" | "stardust" | "sit"): void;
   captureSnapshotDataUrl(): string | null;
@@ -2353,8 +2353,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     setCampfireSit(sitting) {
       playerCtrl.setCampfireSit(sitting);
     },
-    setCompanionActor(actorId) {
-      director.setCompanionActor(actorId);
+    setCompanionActors(actorIds) {
+      director.setCompanionActors(actorIds);
     },
     triggerPhotoGroupPose() {
       director.triggerPhotoGroupPose(camera.position.x, camera.position.z);

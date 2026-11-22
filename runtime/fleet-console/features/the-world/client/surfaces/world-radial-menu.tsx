@@ -6,12 +6,13 @@ import type { TheWorldClientDeps } from "../deps.js";
 import { playCompanionCall, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
+  addCompanionActorId,
   closeActorInteraction,
   openActorDialogue,
   openActorPanel,
+  removeCompanionActorId,
   requestActorEmote,
   requestApproachActor,
-  setCompanionActorId,
   triggerWorldChoreography,
   useWorldStore,
 } from "../world-store.js";
@@ -66,7 +67,7 @@ export function WorldRadialMenu({
 }) {
   const t = getWorldT(deps.commodore.language());
   const store = useWorldStore();
-  const isCompanion = store.companionActorId === actor.id;
+  const isCompanion = store.companionActorIds.includes(actor.id);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const actions = useMemo<readonly RadialAction[]>(() => {
@@ -99,11 +100,11 @@ export function WorldRadialMenu({
           tone: isCompanion ? "primary" : "default",
           run: () => {
             if (isCompanion) {
-              setCompanionActorId(null);
+              removeCompanionActorId(actor.id);
               playDistrictSelect();
               onStatusBanner(t("theWorld.companion.leftToast", { name: actor.name }));
             } else {
-              setCompanionActorId(actor.id);
+              addCompanionActorId(actor.id);
               playCompanionCall();
               onStatusBanner(t("theWorld.companion.joinedToast", { name: actor.name }));
             }

@@ -10,10 +10,11 @@ import type { TheWorldClientDeps } from "../deps.js";
 import { playCompanionCall, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
+  addCompanionActorId,
   closeActorInteraction,
   openActorDialogue,
   openActorPanel,
-  setCompanionActorId,
+  removeCompanionActorId,
   setInspectedObjectiveId,
   useWorldStore,
 } from "../world-store.js";
@@ -79,7 +80,7 @@ export const WorldPanelModal = memo(function WorldPanelModal({
 }: WorldPanelModalProps) {
   const t = getWorldT(deps.commodore.language());
   const store = useWorldStore();
-  const isCompanion = store.companionActorId === actor.id;
+  const isCompanion = store.companionActorIds.includes(actor.id);
   const [subObjectiveTab, setSubObjectiveTab] = useState<"goal" | "crew">("goal");
 
   const isCommodore = actor.role === "commodore" && Boolean(actor.commodoreId);
@@ -151,11 +152,11 @@ export const WorldPanelModal = memo(function WorldPanelModal({
               aria-pressed={isCompanion}
               onClick={() => {
                 if (isCompanion) {
-                  setCompanionActorId(null);
+                  removeCompanionActorId(actor.id);
                   playDistrictSelect();
                   onStatusBanner?.(t("theWorld.companion.leftToast", { name: actor.name }));
                 } else {
-                  setCompanionActorId(actor.id);
+                  addCompanionActorId(actor.id);
                   playCompanionCall();
                   onStatusBanner?.(t("theWorld.companion.joinedToast", { name: actor.name }));
                 }

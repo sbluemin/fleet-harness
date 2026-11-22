@@ -36,6 +36,7 @@ import {
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
+  clearCompanionActorIds,
   clearDispatchFlag,
   clearPhotoSnapshotPreview,
   closeActorInteraction,
@@ -58,6 +59,7 @@ import {
   openWarRoom,
   placeDispatchFlag,
   pushActorSpeech,
+  removeCompanionActorId,
   requestApproachActor,
   requestChatMention,
   requestChatMentions,
@@ -69,7 +71,6 @@ import {
   setCinemaMode,
   setCinemaSpotlight,
   setCommodoreGift,
-  setCompanionActorId,
   setDistrictNote,
   setEmoteWheelOpen,
   setHoveredDistrict,
@@ -305,7 +306,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       onCampfireStandUp: () => setSittingAtCampfire(false),
       onCinemaSpotlight: (label) => setCinemaSpotlight(label),
       onCompanionDutyReturn: (actorId, actorName) => {
-        setCompanionActorId(null);
+        removeCompanionActorId(actorId);
         const tNow = getWorldT(deps.commodore.language());
         pushActorSpeech(actorId, tNow("theWorld.companion.dutyReturnSpeech"));
         pushToast(tNow("theWorld.companion.dutyReturnToast", { name: actorName }));
@@ -318,7 +319,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtime.setAdmiralStyle(initial.admiralStyle);
     runtime.setCommodoreGifts(initial.commodoreGifts);
     runtime.setCinemaMode(initial.cinemaMode);
-    runtime.setCompanionActor(initial.companionActorId);
+    runtime.setCompanionActors(initial.companionActorIds);
     runtimeRef.current = runtime;
     return () => {
       runtime.dispose();
@@ -351,8 +352,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [store.overviewMode]);
 
   useEffect(() => {
-    runtimeRef.current?.setCompanionActor(store.companionActorId);
-  }, [store.companionActorId]);
+    runtimeRef.current?.setCompanionActors(store.companionActorIds);
+  }, [store.companionActorIds]);
 
   useEffect(() => {
     runtimeRef.current?.setWeather(store.weatherMode);
@@ -1005,20 +1006,30 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     openActorPanel(actorId, "chat");
   }, []);
 
-  const companionActor = useMemo(
-    () => (store.companionActorId ? snapshot.actors.find((a) => a.id === store.companionActorId) ?? null : null),
-    [snapshot.actors, store.companionActorId],
-  );
+  const companionActors = useMemo<readonly WorldActorSpec[]>(() => {
+    if (store.companionActorIds.length === 0) return [];
+    const byId = new Map(snapshot.actors.map((a) => [a.id, a]));
+    const list: WorldActorSpec[] = [];
+    for (const id of store.companionActorIds) {
+      const found = byId.get(id);
+      if (found) list.push(found);
+    }
+    return list;
+  }, [snapshot.actors, store.companionActorIds]);
 
   const handleEndCompanionWalk = useCallback(() => {
-    const name = companionActor?.name ?? "";
-    setCompanionActorId(null);
+    const count = companionActors.length;
+    const firstName = companionActors[0]?.name ?? "";
+    clearCompanionActorIds();
     playDistrictSelect();
-    if (name) {
+    if (count === 1 && firstName) {
       const tNow = getWorldT(deps.commodore.language());
-      pushToast(tNow("theWorld.companion.leftToast", { name }));
+      pushToast(tNow("theWorld.companion.leftToast", { name: firstName }));
+    } else if (count >= 2) {
+      const tNow = getWorldT(deps.commodore.language());
+      pushToast(tNow("theWorld.companion.leftAllToast", { count }));
     }
-  }, [companionActor?.name, deps, pushToast]);
+  }, [companionActors, deps, pushToast]);
 
   const minimapJumpItems = useMemo<readonly WorldMinimapJumpItem[]>(() => {
     const items: WorldMinimapJumpItem[] = [];
@@ -1546,7 +1557,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               <span>{t("theWorld.flight.banner")}</span>
             </button>
           ) : null}
-          {companionActor && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode ? (
+          {companionActors.length > 0 && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode ? (
             <div
               className="the-world-companion-pill"
               role="status"
@@ -1555,14 +1566,21 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             >
               <span className="the-world-companion-pill-dot" aria-hidden="true" />
               <span className="the-world-companion-pill-text">
-                {t("theWorld.companion.pill", { name: companionActor.name })}
+                {companionActors.length === 1
+                  ? t("theWorld.companion.pill", { name: companionActors[0]!.name })
+                  : t("theWorld.companion.pillMulti", {
+                      name: companionActors[0]!.name,
+                      others: companionActors.length - 1,
+                    })}
               </span>
               <button
                 type="button"
                 className="the-world-companion-pill-end"
                 onClick={handleEndCompanionWalk}
               >
-                {t("theWorld.companion.endWalk")}
+                {companionActors.length === 1
+                  ? t("theWorld.companion.endWalk")
+                  : t("theWorld.companion.endWalkAll")}
               </button>
             </div>
           ) : null}
