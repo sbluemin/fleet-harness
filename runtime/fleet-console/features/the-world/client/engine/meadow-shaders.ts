@@ -26,19 +26,23 @@ void main() {
   vec4 wp = modelMatrix * vec4(lp, 1.0);
   vWorldPos = wp.xyz;
 
-  // brookProfile(x)와 동일한 해석적 강변 거리 → 구불구불한 강둑/연못 윤곽에 밀착하는 물거품 계산
-  float centerZ = 9.2 + sin(wp.x * 0.095) * 2.9 + cos(wp.x * 0.04) * 1.1;
-  float pondBell = exp(-pow((wp.x - 5.8) / 4.8, 2.0));
-  float halfWidth = 1.45 + pondBell * 2.15;
+  // brook-geometry.ts의 brookProfile(x)와 100% 동일한 S자 곡류 강변 거리 계산
+  float centerZ = 14.2
+    - cos(wp.x * 0.068) * 4.2
+    + sin(wp.x * 0.036 + 0.35) * 4.4
+    + sin(wp.x * 0.135 - 0.7) * 1.5;
+  float eastPond = exp(-pow((wp.x - 19.5) / 6.2, 2.0)) * 2.15;
+  float westPond = exp(-pow((wp.x + 31.0) / 5.4, 2.0)) * 1.55;
+  float gentleBreath = 0.28 * sin(wp.x * 0.08 + 0.6);
+  float halfWidth = max(1.35, 1.55 + eastPond + westPond + gentleBreath);
   vShore = clamp(abs(wp.z - centerZ) / halfWidth, 0.0, 1.5);
 
-  // 동/서 아치 목교 교각 부근 물결 거품 근접도
-  float dEast = abs(wp.x - 8.6);
-  float dWest = abs(wp.x + 11.5);
-  vBridgeProx = max(
-    smoothstep(1.85, 0.75, dEast) * smoothstep(0.92, 0.15, vShore),
-    smoothstep(1.85, 0.75, dWest) * smoothstep(0.92, 0.15, vShore)
+  // 중앙 2기 + 외곽 순환 2기 = 총 4개 목교 교각 부근 물결 거품 근접도
+  float dMin = min(
+    min(abs(wp.x - 8.6), abs(wp.x + 11.5)),
+    min(abs(wp.x - 47.0), abs(wp.x + 46.5))
   );
+  vBridgeProx = smoothstep(1.90, 0.72, dMin) * smoothstep(0.92, 0.15, vShore);
 
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
@@ -502,23 +506,28 @@ float roadNoise(vec2 p) {
 }
 
 void main() {
-  // 시냇물 수로 위에서는 물과 겹치지 않도록 자동 페이드아웃 (목교 아래 수면 보존)
+  // 시냇물 수로 위에서는 물과 겹치지 않도록 자동 페이드아웃 (brook-geometry.ts 100% 일치)
   if (abs(vWorldPos.x) < 86.5) {
-    float centerZ = 9.2 + sin(vWorldPos.x * 0.095) * 2.9 + cos(vWorldPos.x * 0.04) * 1.1;
-    float pondBell = exp(-pow((vWorldPos.x - 5.8) / 4.8, 2.0));
-    float halfW = 1.45 + pondBell * 2.15;
+    float centerZ = 14.2
+      - cos(vWorldPos.x * 0.068) * 4.2
+      + sin(vWorldPos.x * 0.036 + 0.35) * 4.4
+      + sin(vWorldPos.x * 0.135 - 0.7) * 1.5;
+    float eastPond = exp(-pow((vWorldPos.x - 19.5) / 6.2, 2.0)) * 2.15;
+    float westPond = exp(-pow((vWorldPos.x + 31.0) / 5.4, 2.0)) * 1.55;
+    float gentleBreath = 0.28 * sin(vWorldPos.x * 0.08 + 0.6);
+    float halfW = max(1.35, 1.55 + eastPond + westPond + gentleBreath);
     float edgeDist = abs(vWorldPos.z - centerZ) - halfW;
     if (edgeDist < 0.08) discard;
   }
 
-  float nBroad = roadNoise(vWorldPos.xz * 0.55);
+  float nBroad = roadNoise(vWorldPos.xz * 0.42);
   float nFine = roadNoise(vWorldPos.xz * 3.4);
   float nPebble = roadNoise(vWorldPos.xz * 9.5);
 
-  // 유기적인 흙길 가장자리 굴곡 + 부드러운 페더링 (중앙 광장 석재 코어는 자연스럽게 개방)
-  float edgeWobble = (nBroad - 0.5) * 0.11 + (nFine - 0.5) * 0.045;
+  // 유기적인 시골길 폭 흔들림 & 부드러운 풀밭 경계 페더링 (중앙 광장 석재 코어는 자연스럽게 개방)
+  float edgeWobble = (nBroad - 0.5) * 0.17 + (nFine - 0.5) * 0.055;
   float u = vUv.x + edgeWobble;
-  float across = smoothstep(0.02, 0.25, u) * smoothstep(0.98, 0.75, u);
+  float across = smoothstep(0.03, 0.27, u) * smoothstep(0.97, 0.73, u);
   float plazaFade = smoothstep(3.8, 5.2, length(vWorldPos.xz - vec2(0.0, -1.6)));
   float alpha = across * clamp(vEndFade, 0.0, 1.0) * plazaFade * 0.94;
   if (alpha < 0.02) discard;

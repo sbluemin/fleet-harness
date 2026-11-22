@@ -11,7 +11,13 @@ import type {
 } from "../../shared/world-types.js";
 import { playDistrictHover, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
-import { setCommodoreGift, useWorldStore } from "../world-store.js";
+import {
+  COSMETIC_UNLOCK_THRESHOLDS,
+  isCosmeticUnlocked,
+  setCommodoreGift,
+  setStampBookOpen,
+  useWorldStore,
+} from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
 export interface WorldAdmiralCustomizerProps {
@@ -26,6 +32,10 @@ export interface WorldAdmiralCustomizerProps {
   readonly commodoreGifts?: Readonly<Record<string, WorldAdmiralHat>> | undefined;
   /** 시즌2: 사령관 모자 선물 콜백 (미전달 시 스토어 `setCommodoreGift` 직접 호출). */
   readonly onGiftHat?: ((commodoreId: string, hat: WorldAdmiralHat | null, commodoreName: string) => void) | undefined;
+  /** Sprint 21: 미해금 외형 클릭 시 항해 수첩 안내 토스트 콜백. */
+  readonly onLockedHint?: ((msg: string) => void) | undefined;
+  /** Sprint 21: 항해 수첩 모달 열기 콜백. */
+  readonly onOpenStampBook?: (() => void) | undefined;
 }
 
 type CustomizerTab = "self" | "gifts";
@@ -46,10 +56,18 @@ const ADMIRAL_HATS: readonly {
   readonly key: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
+  readonly requiredStamps?: number | undefined;
 }[] = [
   { id: "admiral", key: "theWorld.admiral.hat.admiral", icon: "hat", tone: "cerulean" },
   { id: "crown", key: "theWorld.admiral.hat.crown", icon: "crown", tone: "amber" },
   { id: "explorer", key: "theWorld.admiral.hat.explorer", icon: "compass", tone: "moss" },
+  {
+    id: "flower_crown",
+    key: "theWorld.admiral.hat.flower_crown",
+    icon: "sakura",
+    tone: "rose",
+    requiredStamps: COSMETIC_UNLOCK_THRESHOLDS.flower_crown,
+  },
   { id: "none", key: "theWorld.admiral.hat.none", icon: "close", tone: "inherit" },
 ];
 
@@ -58,10 +76,18 @@ const ADMIRAL_CAPES: readonly {
   readonly key: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
+  readonly requiredStamps?: number | undefined;
 }[] = [
   { id: "starlight", key: "theWorld.admiral.cape.starlight", icon: "cape", tone: "indigo" },
   { id: "hero", key: "theWorld.admiral.cape.hero", icon: "cape", tone: "rose" },
   { id: "forest", key: "theWorld.admiral.cape.forest", icon: "cape", tone: "moss" },
+  {
+    id: "aurora",
+    key: "theWorld.admiral.cape.aurora",
+    icon: "rainbow",
+    tone: "cerulean",
+    requiredStamps: COSMETIC_UNLOCK_THRESHOLDS.aurora,
+  },
   { id: "none", key: "theWorld.admiral.cape.none", icon: "close", tone: "inherit" },
 ];
 
@@ -70,10 +96,17 @@ const ADMIRAL_TRAILS: readonly {
   readonly key: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
+  readonly requiredStamps?: number | undefined;
 }[] = [
   { id: "stardust", key: "theWorld.admiral.trail.stardust", icon: "sparkle", tone: "amber" },
   { id: "sakura", key: "theWorld.admiral.trail.sakura", icon: "sakura", tone: "rose" },
-  { id: "rainbow", key: "theWorld.admiral.trail.rainbow", icon: "rainbow", tone: "teal" },
+  {
+    id: "rainbow",
+    key: "theWorld.admiral.trail.rainbow",
+    icon: "rainbow",
+    tone: "teal",
+    requiredStamps: COSMETIC_UNLOCK_THRESHOLDS.rainbow,
+  },
   { id: "none", key: "theWorld.admiral.trail.none", icon: "close", tone: "inherit" },
 ];
 
@@ -104,16 +137,30 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
   commodores = [],
   commodoreGifts: commodoreGiftsProp,
   onGiftHat,
+  onLockedHint,
+  onOpenStampBook,
 }: WorldAdmiralCustomizerProps) {
   const store = useWorldStore();
   const [tab, setTab] = useState<CustomizerTab>("self");
   const t = getWorldT(locale);
+  const unlockedStampCount = store.unlockedStamps.length;
   const activeHatMeta = ADMIRAL_HATS.find((h) => h.id === style.hat) ?? ADMIRAL_HATS[0]!;
   const effectiveGifts = commodoreGiftsProp ?? store.commodoreGifts;
   const giftableCommodores = commodores.filter(
     (actor): actor is WorldActorSpec & { readonly commodoreId: string } =>
       actor.role === "commodore" && typeof actor.commodoreId === "string" && actor.commodoreId.length > 0,
   );
+
+  const handleLockedCosmeticClick = (requiredCount: number) => {
+    playDistrictHover();
+    onLockedHint?.(t("theWorld.stamps.lockedHint", { count: requiredCount }));
+    if (onOpenStampBook) {
+      onOpenStampBook();
+    } else {
+      onClose();
+      setStampBookOpen(true);
+    }
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -244,7 +291,7 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
             </div>
           </div>
 
-          {/* 모자 4종 선택 */}
+          {/* 모자 선택 (스탬프 보상 들꽃 화관 포함) */}
           <div className="the-world-admiral-section">
             <span className="the-world-district-section-label">{t("theWorld.admiral.hatLabel")}</span>
             <div
@@ -254,13 +301,19 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
             >
               {ADMIRAL_HATS.map((hat) => {
                 const active = style.hat === hat.id;
+                const locked = !isCosmeticUnlocked(unlockedStampCount, hat.id);
                 return (
                   <button
                     key={hat.id}
                     type="button"
-                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}`}
+                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
+                    title={locked && hat.requiredStamps ? t("theWorld.stamps.lockedHint", { count: hat.requiredStamps }) : undefined}
                     onClick={() => {
+                      if (locked && hat.requiredStamps) {
+                        handleLockedCosmeticClick(hat.requiredStamps);
+                        return;
+                      }
                       playDistrictSelect();
                       onChangeStyle({ hat: hat.id });
                       onPreviewChange?.();
@@ -268,13 +321,18 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                   >
                     <WorldIcon name={hat.icon} size={14} tone={active ? "amber" : hat.tone} />
                     <span>{t(hat.key)}</span>
+                    {locked && hat.requiredStamps ? (
+                      <span className="the-world-admiral-lock-badge">
+                        {t("theWorld.stamps.unlockReq", { count: hat.requiredStamps })}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* 망토 4종 선택 */}
+          {/* 망토 선택 (스탬프 보상 오로라 망토 포함) */}
           <div className="the-world-admiral-section">
             <span className="the-world-district-section-label">{t("theWorld.admiral.capeLabel")}</span>
             <div
@@ -284,13 +342,19 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
             >
               {ADMIRAL_CAPES.map((cape) => {
                 const active = style.cape === cape.id;
+                const locked = !isCosmeticUnlocked(unlockedStampCount, cape.id);
                 return (
                   <button
                     key={cape.id}
                     type="button"
-                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}`}
+                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
+                    title={locked && cape.requiredStamps ? t("theWorld.stamps.lockedHint", { count: cape.requiredStamps }) : undefined}
                     onClick={() => {
+                      if (locked && cape.requiredStamps) {
+                        handleLockedCosmeticClick(cape.requiredStamps);
+                        return;
+                      }
                       playDistrictSelect();
                       onChangeStyle({ cape: cape.id });
                       onPreviewChange?.();
@@ -298,13 +362,18 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                   >
                     <WorldIcon name={cape.icon} size={14} tone={active ? "amber" : cape.tone} />
                     <span>{t(cape.key)}</span>
+                    {locked && cape.requiredStamps ? (
+                      <span className="the-world-admiral-lock-badge">
+                        {t("theWorld.stamps.unlockReq", { count: cape.requiredStamps })}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* 발걸음 궤적 4종 선택 */}
+          {/* 발걸음 궤적 선택 (스탬프 보상 무지개 별똥별 포함) */}
           <div className="the-world-admiral-section">
             <span className="the-world-district-section-label">{t("theWorld.admiral.trailLabel")}</span>
             <div
@@ -314,13 +383,19 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
             >
               {ADMIRAL_TRAILS.map((trail) => {
                 const active = style.trail === trail.id;
+                const locked = !isCosmeticUnlocked(unlockedStampCount, trail.id);
                 return (
                   <button
                     key={trail.id}
                     type="button"
-                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}`}
+                    className={`the-world-admiral-hat-pill${active ? " is-active" : ""}${locked ? " is-locked" : ""}`}
                     aria-pressed={active}
+                    title={locked && trail.requiredStamps ? t("theWorld.stamps.lockedHint", { count: trail.requiredStamps }) : undefined}
                     onClick={() => {
+                      if (locked && trail.requiredStamps) {
+                        handleLockedCosmeticClick(trail.requiredStamps);
+                        return;
+                      }
                       playDistrictSelect();
                       onChangeStyle({ trail: trail.id });
                       onPreviewChange?.();
@@ -328,6 +403,11 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
                   >
                     <WorldIcon name={trail.icon} size={14} tone={active ? "amber" : trail.tone} />
                     <span>{t(trail.key)}</span>
+                    {locked && trail.requiredStamps ? (
+                      <span className="the-world-admiral-lock-badge">
+                        {t("theWorld.stamps.unlockReq", { count: trail.requiredStamps })}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

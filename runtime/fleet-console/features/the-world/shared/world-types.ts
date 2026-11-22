@@ -31,9 +31,9 @@ export type WorldWeatherMode = "clear" | "sakura" | "rain" | "snow";
 
 export type WorldPlayerEmote = "wave" | "cheer" | "jump";
 
-export type WorldAdmiralHat = "admiral" | "crown" | "explorer" | "none";
+export type WorldAdmiralHat = "admiral" | "crown" | "explorer" | "flower_crown" | "none";
 
-export type WorldAdmiralCape = "starlight" | "hero" | "forest" | "none";
+export type WorldAdmiralCape = "starlight" | "hero" | "forest" | "aurora" | "none";
 
 export type WorldAdmiralTrail = "stardust" | "sakura" | "rainbow" | "none";
 

@@ -26,6 +26,7 @@ import type {
   WorldZoneSpec,
 } from "../shared/world-types.js";
 import type { TheWorldClientDeps } from "./deps.js";
+import { BROOK_SPAN_HALF_X, brookProfile } from "./engine/brook-geometry.js";
 import { getWorldT } from "./i18n/index.js";
 import { useVillageBiomes, useWorldActive } from "./world-store.js";
 
@@ -44,16 +45,8 @@ const MAX_DISTRICTS_PER_VILLAGE = 12;
 const MAX_VISIBLE_OUTPOSTS = 8;
 const MAX_WORLD_PLACE_RADIUS = 78.0;
 
-/** 시냇물 중심선 및 반폭 (`meadow-scene.ts`의 `brookProfile`과 동일 수식). */
-function brookProfile(x: number): { readonly centerZ: number; readonly halfWidth: number } {
-  const centerZ = 9.2 + Math.sin(x * 0.095) * 2.9 + Math.cos(x * 0.04) * 1.1;
-  const pondBell = Math.exp(-Math.pow((x - 5.8) / 4.8, 2));
-  const halfWidth = 1.45 + pondBell * 2.15;
-  return { centerZ, halfWidth };
-}
-
 function nudgeClearOfBrook(x: number, z: number, clearance: number): { readonly x: number; readonly z: number } {
-  if (Math.abs(x) >= 82) return { x, z };
+  if (Math.abs(x) >= BROOK_SPAN_HALF_X) return { x, z };
   const bp = brookProfile(x);
   const minDist = bp.halfWidth + clearance;
   const dz = z - bp.centerZ;

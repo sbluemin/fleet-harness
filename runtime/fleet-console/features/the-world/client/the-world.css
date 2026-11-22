@@ -7499,6 +7499,371 @@
   line-height: 1;
 }
 
+/* ── Sprint 21: 별빛 항해 수첩 · 스탬프 보상 배지 · 마을 정문 원클릭 결재 칩 ─── */
+
+.the-world-stamp-book {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.the-world-stamp-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.the-world-stamp-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 34%, oklch(100% 0 0 / 16%));
+  box-shadow: inset 0 1px 0 oklch(98% 0.01 85 / 12%);
+}
+
+.the-world-stamp-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.the-world-stamp-progress-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-stamp-progress-pct {
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: var(--mongle-amber);
+}
+
+.the-world-stamp-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(14% 0.02 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  overflow: hidden;
+}
+
+.the-world-stamp-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--mongle-amber) 86%, oklch(96% 0.01 85)) 0%,
+    var(--mongle-amber) 65%,
+    var(--mongle-teal) 100%
+  );
+  box-shadow: 0 0 10px color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  transition: width var(--duration-base) var(--ease-spring);
+}
+
+.the-world-stamp-rewards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  background: oklch(21% 0.022 258 / 90%);
+  border: 1px solid oklch(100% 0 0 / 15%);
+}
+
+.the-world-stamp-rewards-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.the-world-stamp-customizer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 56%, oklch(100% 0 0 / 18%));
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(20% 0.022 258 / 94%));
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-stamp-customizer-btn:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 28%, oklch(22% 0.022 258 / 98%));
+  border-color: var(--mongle-amber);
+}
+
+.the-world-stamp-customizer-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-stamp-rewards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.the-world-stamp-reward-card {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(17% 0.022 258 / 86%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+}
+
+.the-world-stamp-reward-card.is-unlocked {
+  background: color-mix(in oklch, var(--mongle-amber) 14%, oklch(21% 0.022 258 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, oklch(100% 0 0 / 18%));
+  box-shadow: 0 0 14px color-mix(in oklch, var(--mongle-amber) 18%, transparent);
+}
+
+.the-world-stamp-reward-card.is-locked {
+  opacity: 0.78;
+}
+
+.the-world-stamp-reward-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(23% 0.022 258 / 94%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  flex-shrink: 0;
+}
+
+.the-world-stamp-reward-card.is-unlocked .the-world-stamp-reward-icon {
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(20% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 68%, transparent);
+}
+
+.the-world-stamp-reward-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.the-world-stamp-reward-name {
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.006 85);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-stamp-reward-req {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  color: oklch(83% 0.012 255);
+}
+
+.the-world-stamp-reward-card.is-unlocked .the-world-stamp-reward-req {
+  color: var(--mongle-amber);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.the-world-stamp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 11px 12px;
+  border-radius: var(--radius-lg);
+  background: oklch(20% 0.022 258 / 86%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  transition: border-color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-stamp-card.is-unlocked {
+  background: linear-gradient(
+    160deg,
+    color-mix(in oklch, var(--mongle-amber) 16%, oklch(22% 0.022 258 / 96%)) 0%,
+    oklch(20% 0.022 258 / 94%) 100%
+  );
+  border-color: color-mix(in oklch, var(--mongle-amber) 60%, oklch(100% 0 0 / 20%));
+  box-shadow: 0 4px 16px oklch(5% 0.02 258 / 28%), 0 0 14px color-mix(in oklch, var(--mongle-amber) 20%, transparent), inset 0 1px 0 oklch(98% 0.012 85 / 18%);
+}
+
+.the-world-stamp-card.is-locked {
+  background: oklch(18% 0.02 258 / 78%);
+  border-style: dashed;
+  border-color: oklch(100% 0 0 / 16%);
+}
+
+.the-world-stamp-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.the-world-stamp-seal {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: oklch(16% 0.02 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+}
+
+.the-world-stamp-card.is-unlocked .the-world-stamp-seal {
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(18% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 74%, transparent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--mongle-amber) 34%, transparent);
+}
+
+.the-world-stamp-card.is-locked .the-world-stamp-seal {
+  opacity: 0.56;
+}
+
+.the-world-stamp-card-badge {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: oklch(16% 0.02 258 / 88%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: oklch(82% 0.012 255);
+}
+
+.the-world-stamp-card-badge.is-unlocked {
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(18% 0.022 258 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
+  color: var(--mongle-amber);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-stamp-card-title {
+  margin: 2px 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-stamp-card.is-locked .the-world-stamp-card-title {
+  color: oklch(88% 0.012 255);
+}
+
+.the-world-stamp-card-desc {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  line-height: 1.45;
+  color: oklch(83% 0.012 255);
+  word-break: keep-all;
+}
+
+/* 커스터마이저 미해금 스탬프 보상 잠금 스타일 */
+.the-world-admiral-hat-pill.is-locked {
+  opacity: 0.78;
+  border-style: dashed;
+  border-color: oklch(100% 0 0 / 20%);
+  background: oklch(18% 0.02 258 / 82%);
+}
+
+.the-world-admiral-hat-pill.is-locked:hover {
+  opacity: 1;
+  border-color: color-mix(in oklch, var(--mongle-amber) 52%, oklch(100% 0 0 / 20%));
+}
+
+.the-world-admiral-lock-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.022 258 / 94%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 48%, transparent);
+  color: var(--mongle-amber);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+}
+
+/* 마을 정문 원클릭 결재 / 대기 질문 바로 답하기 플로팅 칩 */
+.the-world-field-review-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: oklch(17% 0.022 258 / 94%);
+  backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 62%, oklch(100% 0 0 / 22%));
+  box-shadow: var(--shadow-soft), 0 0 14px color-mix(in oklch, var(--mongle-amber) 28%, transparent);
+  color: oklch(98% 0.006 85);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-field-review-chip.is-ask {
+  background: color-mix(in oklch, var(--mongle-amber) 26%, oklch(18% 0.022 258 / 96%));
+  border-color: var(--mongle-amber);
+}
+
+.the-world-field-review-chip.is-review {
+  background: color-mix(in oklch, var(--mongle-cerulean) 24%, oklch(18% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-cerulean) 68%, oklch(100% 0 0 / 22%));
+  box-shadow: var(--shadow-soft), 0 0 14px color-mix(in oklch, var(--mongle-cerulean) 28%, transparent);
+}
+
+.the-world-field-review-chip:hover {
+  transform: translateY(-1px) scale(1.03);
+  border-color: var(--mongle-amber);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-field-review-chip:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+@media (max-width: 760px) {
+  .the-world-stamp-rewards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .the-world-stamp-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── Sprint 16: 「더 월드」 전용 커스텀 SVG 포인터 커서 캐스케이드 ───────────── */
 
 .the-world-root :is(
@@ -7584,13 +7949,17 @@
   .the-world-polaroid-toast,
   .the-world-emote-ring,
   .the-world-emote-petal,
-  .the-world-emote-center {
+  .the-world-emote-center,
+  .the-world-stamp-progress-fill,
+  .the-world-field-review-chip {
     animation: none;
     transition: none;
   }
 }
 
 @media (forced-colors: active) {
+  .the-world-stamp-customizer-btn:focus-visible,
+  .the-world-field-review-chip:focus-visible,
   .the-world-companion-pill-trigger:focus-visible,
   .the-world-companion-pill-end:focus-visible,
   .the-world-companion-roster-btn:focus-visible,

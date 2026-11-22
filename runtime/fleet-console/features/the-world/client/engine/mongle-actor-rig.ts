@@ -599,8 +599,8 @@ float sdMarioStar(vec3 q, AnimRig rig) {
   vec3 sp = q - vec3(0.0, 0.01, 0.0);
   float core = sdEllipsoid(sp, vec3(0.45, 0.43, 0.38));
 
-  // 1) 위쪽 꼭짓점 (모자 없음일 땐 통통하게 톡, 모자 착용 시 모자 안쪽으로 부드럽게 안착)
-  float topY = (uHat == 3) ? 0.56 : 0.39;
+  // 1) 위쪽 꼭짓점 (모자 없음/들꽃 화관일 땐 통통하게 톡, 모자 착용 시 모자 안쪽으로 부드럽게 안착)
+  float topY = (uHat == 3 || uHat == 4) ? 0.55 : 0.39;
   float topPt = sdRoundCone(sp, vec3(0.0, 0.08, 0.0), vec3(0.0, topY, 0.0), 0.255, 0.155);
 
   // 2~3) 좌우 별 팔 꼭짓점: 기본 5각 별 ↔ 화이팅 만세 ↔ 슈퍼맨 비행 포즈
@@ -732,6 +732,33 @@ vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin, int hatCode)
     fp.xy = rot2(-0.48 - hb * 1.1) * fp.xy;
     float feather = sdEllipsoid(fp, vec3(0.045, 0.19, 0.085));
     res = opU(res, vec2(feather * sMin, 3.0));
+  } else if (hatCode == 4) {
+    // 지브리 들꽃 화관 (Flower Crown: 초록 덩굴 링 + 6송이 파스텔 들꽃 + 황금 꽃술 + 작은 잎사귀)
+    vec3 fp = hatOrigin - vec3(0.0, 0.01 + hb, 0.0);
+    fp.yz = rot2(-0.10 - hb * 0.65) * fp.yz;
+    // 초록 덩굴 화관 링 (mId == 13)
+    float rXZ = length(fp.xz);
+    vec2 qTorus = vec2(rXZ - 0.37, fp.y - 0.02);
+    float vine = length(qTorus) - 0.050;
+    res = opU(res, vec2(vine * sMin, 13.0));
+    // 6방위 극좌표 반복으로 작은 꽃송이 6개 + 잎사귀 배치
+    float aFl = atan(fp.z, fp.x);
+    float seg = mod(aFl + 3.1415926, 1.0471975) - 0.5235988;
+    vec3 sf = vec3(cos(seg) * rXZ, fp.y, sin(seg) * rXZ);
+    vec3 fc = sf - vec3(0.405, 0.045, 0.0);
+    // 꽃잎 클러스터 (mId == 14) + 황금 꽃술 중심 (mId == 4)
+    float petals = min(
+      min(sdSphere(fc - vec3(0.01, 0.048, 0.0), 0.048), sdSphere(fc - vec3(0.01, -0.045, 0.0), 0.048)),
+      min(sdSphere(fc - vec3(0.01, 0.0, 0.050), 0.048), sdSphere(fc - vec3(0.01, 0.0, -0.050), 0.048))
+    );
+    float bud = sdSphere(fc - vec3(0.036, 0.0, 0.0), 0.034);
+    // 꽃 사이 초록 잎사귀 (mId == 12)
+    float segLeaf = mod(aFl + 3.1415926 + 0.5235988, 1.0471975) - 0.5235988;
+    vec3 sl = vec3(cos(segLeaf) * rXZ, fp.y, sin(segLeaf) * rXZ);
+    float leaf = sdEllipsoid(sl - vec3(0.39, 0.03, 0.0), vec3(0.032, 0.032, 0.072));
+    res = opU(res, vec2(petals * sMin, 14.0));
+    res = opU(res, vec2(bud * sMin, 4.0));
+    res = opU(res, vec2(leaf * sMin, 12.0));
   }
   return res;
 }
@@ -907,11 +934,11 @@ vec2 mapScene(vec3 p, AnimRig rig) {
       float motes = min(sdSphere(sp - m1, 0.033), sdSphere(sp - m2, 0.024));
       res = opU(res, vec2(motes * sMin, 10.0));
     } else {
-      float hatY = (uHat == 1) ? 0.52 : 0.49;
+      float hatY = (uHat == 4) ? 0.41 : ((uHat == 1) ? 0.52 : 0.49);
       res = mapAdmiralHats(res, q - vec3(0.0, hatY, 0.0), hb, sMin, uHat);
     }
     if (uRainUmbrella > 0.02) {
-      float umbTop = (uHat == 3) ? 0.56 : 0.72;
+      float umbTop = (uHat == 3 || uHat == 4) ? 0.58 : 0.72;
       res = mapRainLeafUmbrella(res, q, umbTop, hb, sMin, t);
     }
     return res;
@@ -938,12 +965,12 @@ vec2 mapScene(vec3 p, AnimRig rig) {
 
     res = mapAdmiralHats(res, pq - vec3(0.0, 0.41, 0.0), rig.hatBounce, sMin, uHat);
     if (uRainUmbrella > 0.02) {
-      float umbTop = (uHat == 3) ? 0.54 : 0.70;
+      float umbTop = (uHat == 3 || uHat == 4) ? 0.56 : 0.70;
       res = mapRainLeafUmbrella(res, q, umbTop, rig.hatBounce, sMin, t);
     }
   } else {
-    if (uGiftHat >= 0 && uGiftHat < 3) {
-      // 사령관 선물 모자 착용 (제독모·황금 왕관·탐험가 모자)
+    if (uGiftHat >= 0 && uGiftHat != 3) {
+      // 사령관 선물 모자 착용 (제독모·황금 왕관·탐험가 모자·들꽃 화관)
       float topY = shapeCrownY(uShape);
       float giftY = (uGiftHat == 1) ? (topY + 0.01) : (topY - 0.03);
       res = mapAdmiralHats(res, q - vec3(0.0, giftY, 0.0), rig.hatBounce, sMin, uGiftHat);
@@ -973,7 +1000,7 @@ vec2 mapScene(vec3 p, AnimRig rig) {
 
     if (uRainUmbrella > 0.02) {
       float topY = shapeCrownY(uShape);
-      float umbTop = (uGiftHat >= 0 && uGiftHat < 3)
+      float umbTop = (uGiftHat >= 0 && uGiftHat != 3)
         ? (topY + 0.22)
         : ((uRole == 1) ? (topY + 0.24) : (topY + 0.06));
       res = mapRainLeafUmbrella(res, q, umbTop, rig.hatBounce, sMin, t);
@@ -1356,7 +1383,7 @@ void main() {
         coreCol = toLinear(vec3(0.54, 0.33, 0.17)) * (0.36 + 0.80 * wrap) + vec3(0.35, 0.22, 0.10) * spec * 0.18;
       }
       else if (mId == 9) {
-        // 3종 벨벳 미니 망토 (0=별빛 딥네이비 · 1=영웅 진홍 · 2=숲 에메랄드) + 황금 트림 + 등 중앙 황금 문양
+        // 4종 벨벳/오로라 미니 망토 (0=별빛 딥네이비 · 1=영웅 진홍 · 2=숲 에메랄드 · 4=오로라 별빛) + 황금 트림 + 등 중앙 황금 문양
         float capeRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
         vec3 baseCloth = (uCape == 1)
           ? vec3(0.68, 0.11, 0.16)
@@ -1364,6 +1391,17 @@ void main() {
         vec3 rimTint = (uCape == 1)
           ? vec3(0.98, 0.46, 0.34)
           : (uCape == 2 ? vec3(0.42, 0.84, 0.54) : vec3(0.38, 0.48, 0.92));
+        if (uCape == 4) {
+          // 오로라 별빛 망토: 시안 → 라벤더 보라 → 별빛 골드 흐르는 오로라 쉬머 그라데이션
+          float aurWave = 0.5 + 0.5 * sin(q.y * 5.2 + q.x * 3.1 - tAnim * 2.1 + sin(q.x * 5.5 + tAnim * 1.4) * 0.8);
+          float aurGold = smoothstep(0.62, 0.98, 0.5 + 0.5 * cos(q.y * 4.4 - q.x * 3.8 + tAnim * 1.6));
+          vec3 aurCyan = vec3(0.16, 0.86, 0.96);
+          vec3 aurViolet = vec3(0.64, 0.36, 0.98);
+          vec3 aurStar = vec3(1.0, 0.86, 0.36);
+          baseCloth = mix(mix(aurCyan, aurViolet, aurWave), aurStar, aurGold * 0.55);
+          rimTint = mix(aurCyan, aurStar, aurWave);
+          emissiveCol += toLinear(baseCloth) * (0.24 + capeRim * 0.52) * (0.55 + clamp(uNightGlow, 0.0, 1.0) * 0.75);
+        }
         vec3 capeVelvet = toLinear(baseCloth) * (0.42 + 0.72 * wrap)
           + toLinear(rimTint) * capeRim * 0.30;
         float smCape = clamp(rig.supermanPose, 0.0, 1.0);
@@ -1415,8 +1453,20 @@ void main() {
         coreCol = leafCol + toLinear(vec3(0.68, 0.92, 0.42)) * leafRim * 0.28 + vec3(0.82, 0.94, 0.86) * spec * 0.34;
       }
       else if (mId == 13) {
-        // 우천 시 연잎 우산 줄기
+        // 우천 시 연잎 우산 줄기 & 들꽃 화관 초록 덩굴
         coreCol = toLinear(vec3(0.18, 0.42, 0.18)) * (0.38 + 0.72 * wrap);
+      }
+      else if (mId == 14) {
+        // 지브리 들꽃 화관 6송이 파스텔 꽃잎 (방위각별 분홍·레몬·하늘·크림·라벤더·코랄)
+        int flIdx = int(mod(floor((atan(q.z, q.x) + 3.1415926) / 1.0471975), 6.0));
+        vec3 flCol = (flIdx == 0) ? vec3(0.99, 0.66, 0.82)
+          : ((flIdx == 1) ? vec3(1.00, 0.92, 0.46)
+          : ((flIdx == 2) ? vec3(0.56, 0.86, 1.00)
+          : ((flIdx == 3) ? vec3(1.00, 0.97, 0.90)
+          : ((flIdx == 4) ? vec3(0.80, 0.70, 1.00)
+          : vec3(1.00, 0.60, 0.64)))));
+        float flRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.2);
+        coreCol = toLinear(flCol) * (0.50 + 0.62 * wrap) + vec3(1.0, 0.98, 0.92) * flRim * 0.24;
       }
       else coreCol = toLinear(uBaseCol) * (0.35 + 0.80 * wrap);
     }
@@ -1442,7 +1492,7 @@ void main() {
         // 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (선물 모자 착용 일반 몽글이 포함)
         float capMask = ((uQuaker > 0 || uStarlight > 0.5) && uHat != 3)
           ? smoothstep(0.42 + rig.hatBounce, 0.28 + rig.hatBounce, qs.y)
-          : ((uGiftHat >= 0 && uGiftHat < 3)
+          : ((uGiftHat >= 0 && uGiftHat != 3)
             ? smoothstep(shapeCrownY(uShape) + 0.04 + rig.hatBounce, shapeCrownY(uShape) - 0.10 + rig.hatBounce, qs.y)
             : 1.0);
         float strand = smoothstep(0.24, 0.84, noise3(qs * 78.0));
@@ -1600,18 +1650,20 @@ const sharedContactMat = new ShaderMaterial({
 const sharedCrateMat = new MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.55, roughness: 0.35 });
 const sharedBeaconMat = new MeshStandardMaterial({ color: 0xfde047, emissive: 0xfacc15, emissiveIntensity: 1.45, roughness: 0.22 });
 
-const ADMIRAL_HAT_CODE: Readonly<Record<WorldAdmiralHat, number>> = {
+const ADMIRAL_HAT_CODE: Readonly<Record<string, number>> = {
   admiral: 0,
   crown: 1,
   explorer: 2,
   none: 3,
+  flower_crown: 4,
 };
 
-const ADMIRAL_CAPE_CODE: Readonly<Record<WorldAdmiralCape, number>> = {
+const ADMIRAL_CAPE_CODE: Readonly<Record<string, number>> = {
   starlight: 0,
   hero: 1,
   forest: 2,
   none: 3,
+  aurora: 4,
 };
 
 const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
@@ -1827,20 +1879,20 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
           rgb[2] * 0.80 + 0.20,
         );
       }
-      mat.uniforms["uHat"]!.value = ADMIRAL_HAT_CODE[hat];
+      mat.uniforms["uHat"]!.value = ADMIRAL_HAT_CODE[hat] ?? 0;
       if (cape !== undefined) {
-        mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape];
+        mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape] ?? 0;
       }
     },
     setCape(cape) {
-      mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape];
+      mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape] ?? 0;
     },
     setHat(hat) {
       if (isStarlight || params.quaker) {
-        mat.uniforms["uHat"]!.value = hat === null ? 0 : ADMIRAL_HAT_CODE[hat];
+        mat.uniforms["uHat"]!.value = hat === null ? 0 : (ADMIRAL_HAT_CODE[hat] ?? 0);
         mat.uniforms["uGiftHat"]!.value = -1;
       } else {
-        const code = hat === null || hat === "none" ? -1 : ADMIRAL_HAT_CODE[hat];
+        const code = hat === null || hat === "none" ? -1 : (ADMIRAL_HAT_CODE[hat] ?? -1);
         mat.uniforms["uGiftHat"]!.value = code;
         if (code >= 0) {
           mat.uniforms["uHat"]!.value = code;

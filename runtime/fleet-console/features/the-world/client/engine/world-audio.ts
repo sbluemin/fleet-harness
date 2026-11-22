@@ -124,6 +124,7 @@ export function setWorldAudioMuted(nextMuted: boolean): void {
   if (muted) {
     stopRainAmbienceInternal();
     stopBgmInternal();
+    stopSpatialAmbienceInternal();
   } else {
     if (rainDesired) {
       startRainAmbienceInternal();
@@ -1410,5 +1411,276 @@ export function playEmoteSparkle(kind?: string): void {
     duration: 0.18,
     peakGain: 0.18,
     attack: 0.008,
+  });
+}
+
+// --- Sprint 21: 거리 기반 공간 자연음(시냇물 · 모닥불 · 숲) + 하늘 링 콤보 · 스탬프 해금 SFX ---
+
+interface SpatialAmbienceNodes {
+  readonly ctx: AudioContext;
+  readonly brookSrc: AudioBufferSourceNode;
+  readonly brookFilter: BiquadFilterNode;
+  readonly brookGain: GainNode;
+  readonly fireSrc: AudioBufferSourceNode;
+  readonly fireFilter: BiquadFilterNode;
+  readonly fireGain: GainNode;
+  readonly forestSrc: AudioBufferSourceNode;
+  readonly forestFilter: BiquadFilterNode;
+  readonly forestGain: GainNode;
+}
+
+let spatialNodes: SpatialAmbienceNodes | null = null;
+let lastFireCrackleAt = 0;
+let nextFireCrackleGapMs = 320;
+let lastForestWildlifeAt = 0;
+let nextForestWildlifeGapMs = 2600;
+
+function stopSpatialAmbienceInternal(): void {
+  const nodes = spatialNodes;
+  spatialNodes = null;
+  if (!nodes) return;
+  for (const src of [nodes.brookSrc, nodes.fireSrc, nodes.forestSrc]) {
+    try {
+      src.stop();
+      src.disconnect();
+    } catch {
+      // 이미 정지된 노드는 무시한다.
+    }
+  }
+  for (const node of [
+    nodes.brookFilter,
+    nodes.brookGain,
+    nodes.fireFilter,
+    nodes.fireGain,
+    nodes.forestFilter,
+    nodes.forestGain,
+  ]) {
+    try {
+      node.disconnect();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function ensureSpatialAmbienceNodes(): SpatialAmbienceNodes | null {
+  if (muted || !audioCtx || !masterGain || audioCtx.state !== "running") return null;
+  if (spatialNodes && spatialNodes.ctx === audioCtx) return spatialNodes;
+  stopSpatialAmbienceInternal();
+
+  try {
+    const ctx = audioCtx;
+    const out = masterGain;
+    const buf = getRainNoiseBuffer(ctx);
+
+    const makeBed = (
+      type: BiquadFilterType,
+      freq: number,
+      q: number,
+    ): { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.setValueAtTime(freq, ctx.currentTime);
+      filter.Q.setValueAtTime(q, ctx.currentTime);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(out);
+      src.start();
+      return { src, filter, gain };
+    };
+
+    const brook = makeBed("bandpass", 920, 1.15);
+    const fire = makeBed("lowpass", 340, 0.75);
+    const forest = makeBed("bandpass", 540, 0.95);
+    spatialNodes = {
+      ctx,
+      brookSrc: brook.src,
+      brookFilter: brook.filter,
+      brookGain: brook.gain,
+      fireSrc: fire.src,
+      fireFilter: fire.filter,
+      fireGain: fire.gain,
+      forestSrc: forest.src,
+      forestFilter: forest.filter,
+      forestGain: forest.gain,
+    };
+    return spatialNodes;
+  } catch {
+    return null;
+  }
+}
+
+export interface SpatialAmbienceOptions {
+  readonly brookDist: number;
+  readonly campfireDist: number;
+  readonly forestDist: number;
+  readonly isNight: boolean;
+  readonly isRain: boolean;
+  readonly active: boolean;
+}
+
+/**
+ * 플레이어 위치 기준 시냇물(졸졸)·모닥불(타닥타닥)·숲(산들바람·새소리/밤 풀벌레) 공간 자연음을 0-GC로 믹싱한다.
+ * 사용자 오디오 제스처 이전이나 음소거·비활성 시 안전하게 무음 유지/해제한다.
+ */
+export function updateSpatialAmbience(opts: SpatialAmbienceOptions): void {
+  if (!opts.active || muted) {
+    if (spatialNodes) {
+      stopSpatialAmbienceInternal();
+    }
+    return;
+  }
+
+  const nodes = ensureSpatialAmbienceNodes();
+  if (!nodes || !masterGain) return;
+  const ctx = nodes.ctx;
+  const t = ctx.currentTime;
+
+  // 거리 감쇠 (부드러운 2차 곡선)
+  const brookFactor = Math.max(0, 1 - opts.brookDist / 18);
+  const brookVol = brookFactor * brookFactor * 0.14;
+  const fireFactor = Math.max(0, 1 - opts.campfireDist / 14);
+  const fireVol = fireFactor * fireFactor * 0.10;
+  const forestFactor = Math.max(0, 1 - opts.forestDist / 16);
+  const forestVol = forestFactor * forestFactor * 0.08;
+
+  // 시냇물 필터 주파수를 완만하게 변조해 졸졸 흐르는 물결 질감 연출
+  const brookFreq = 860 + Math.sin(t * 2.1) * 140 + Math.cos(t * 3.4) * 70;
+  nodes.brookFilter.frequency.setTargetAtTime(brookFreq, t, 0.12);
+  nodes.brookGain.gain.setTargetAtTime(Math.max(0.0001, brookVol), t, 0.18);
+  nodes.fireGain.gain.setTargetAtTime(Math.max(0.0001, fireVol), t, 0.18);
+  nodes.forestGain.gain.setTargetAtTime(Math.max(0.0001, forestVol), t, 0.22);
+
+  const nowMs = performance.now();
+
+  // 모닥불 근접 시 따뜻한 장작 타닥타닥 크래클
+  if (fireFactor > 0.18 && nowMs - lastFireCrackleAt >= nextFireCrackleGapMs) {
+    lastFireCrackleAt = nowMs;
+    nextFireCrackleGapMs = 190 + Math.random() * 340;
+    scheduleFilteredNoise(ctx, masterGain, {
+      duration: 0.018 + Math.random() * 0.014,
+      centerFreq: 2600 + Math.random() * 1900,
+      q: 2.6,
+      peakGain: (0.045 + Math.random() * 0.055) * fireFactor,
+      attack: 0.002,
+    });
+  }
+
+  // 숲 근접 시 낮 작은 새 지저귐 / 밤 은은한 풀벌레 울음 (우천 시 휴식)
+  if (!opts.isRain && forestFactor > 0.20 && nowMs - lastForestWildlifeAt >= nextForestWildlifeGapMs) {
+    lastForestWildlifeAt = nowMs;
+    if (opts.isNight) {
+      nextForestWildlifeGapMs = 1800 + Math.random() * 1700;
+      const baseHz = 3600 + Math.random() * 420;
+      for (let i = 0; i < 3; i += 1) {
+        scheduleTone(ctx, masterGain, {
+          type: "sine",
+          freqStart: baseHz,
+          delay: i * 0.065,
+          duration: 0.045,
+          peakGain: 0.022 * forestFactor,
+          attack: 0.006,
+        });
+      }
+    } else {
+      nextForestWildlifeGapMs = 2600 + Math.random() * 2400;
+      const f0 = 1580 + Math.random() * 480;
+      scheduleTone(ctx, masterGain, {
+        type: "sine",
+        freqStart: f0,
+        freqEnd: f0 * 1.24,
+        duration: 0.085,
+        peakGain: 0.036 * forestFactor,
+        attack: 0.008,
+      });
+      scheduleTone(ctx, masterGain, {
+        type: "sine",
+        freqStart: f0 * 1.18,
+        freqEnd: f0 * 1.42,
+        delay: 0.105,
+        duration: 0.11,
+        peakGain: 0.032 * forestFactor,
+        attack: 0.008,
+      });
+    }
+  }
+}
+
+const SKY_RING_PENTATONIC = [
+  523.25, // C5 도
+  587.33, // D5 레
+  659.25, // E5 미
+  783.99, // G5 솔
+  880.0, // A5 라
+  1046.5, // C6 도
+  1174.66, // D6 레
+  1318.51, // E6 미
+] as const;
+
+/** 하늘 순찰 별빛 링 통과 시 콤보에 따라 올라가는 5음계 하프 화음. */
+export function playSkyRingChime(comboIndex: number): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const idx = Math.max(0, Math.floor(comboIndex)) % SKY_RING_PENTATONIC.length;
+  const root = SKY_RING_PENTATONIC[idx]!;
+  const fifth = root * 1.4983;
+  const octave = root * 2.0;
+
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: root,
+    duration: 0.28,
+    peakGain: 0.34,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: fifth,
+    delay: 0.038,
+    duration: 0.26,
+    peakGain: 0.24,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: octave,
+    delay: 0.075,
+    duration: 0.34,
+    peakGain: 0.19,
+    attack: 0.008,
+  });
+}
+
+/** 별빛 항해 수첩 스탬프 최초 해금 시 맑은 오르골 팡파르. */
+export function playStampUnlock(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  // C5 -> E5 -> G5 -> B5 -> C6 맑은 오르골 상승 아르페지오 + 반짝임 배음
+  const notes = [523.25, 659.25, 783.99, 987.77, 1046.5] as const;
+  for (let i = 0; i < notes.length; i += 1) {
+    const isLast = i === notes.length - 1;
+    scheduleTone(eng.ctx, eng.out, {
+      type: i % 2 === 0 ? "sine" : "triangle",
+      freqStart: notes[i]!,
+      delay: i * 0.068,
+      duration: isLast ? 0.48 : 0.24,
+      peakGain: isLast ? 0.34 : 0.26,
+      attack: 0.007,
+    });
+  }
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 2093.0, // C7 오르골 반짝임
+    delay: 0.28,
+    duration: 0.42,
+    peakGain: 0.14,
+    attack: 0.01,
   });
 }

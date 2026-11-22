@@ -1,5 +1,6 @@
 import {
   AdditiveBlending,
+  BoxGeometry,
   Color,
   CylinderGeometry,
   DoubleSide,
@@ -15,6 +16,7 @@ import {
   Scene,
   ShaderMaterial,
   SphereGeometry,
+  TorusGeometry,
   Vector3,
 } from "three";
 
@@ -35,9 +37,20 @@ export interface LivingWorkflowPoint {
   readonly y?: number | undefined;
 }
 
+export interface SkyRingPassResult {
+  readonly ringIndex: number;
+  readonly combo: number;
+}
+
 export interface LivingWorkflowFx {
   /** 두 지점 사이로 포물선(2차 베지어) 별빛 전령 구슬을 발사한다. */
   spawnCourier(from: LivingWorkflowPoint, to: LivingWorkflowPoint, colorHex?: number): void;
+  /** 하늘 순찰 황금 별빛 링 8기의 가시성을 전환한다 (`overviewMode` 비행 중에만 표시). */
+  setSkyRingsVisible(visible: boolean): void;
+  /** 비행 중 플레이어 좌표가 8개 별빛 링 중 하나를 통과했는지 판정한다 (6초 쿨다운 + 황금 버스트 + 콤보). */
+  checkSkyRingPass(px: number, py: number, pz: number, isFlying: boolean): SkyRingPassResult | null;
+  /** 두 마을 사이를 잇는 빛나는 포물선 합동 작전 별빛 아치를 6.5초간 연출한다. */
+  spawnJointMissionArch(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
   /** 매 프레임 리빙 워크플로우 FX를 갱신한다 (비활성 FX는 visible=false로 Draw Call 0 유지). */
   update(
     dt: number,
@@ -50,8 +63,16 @@ export interface LivingWorkflowFx {
 
 const MAX_PILLARS = 12;
 const MAX_COURIERS = 24;
-const MAX_TRAIL_BEADS = 128;
+const MAX_TRAIL_BEADS = 160;
 const MAX_CRYSTALS = 16;
+const SKY_RING_COUNT = 8;
+const SKY_RING_COOLDOWN_SEC = 6.0;
+const SKY_RING_COMBO_WINDOW_SEC = 14.0;
+const MAX_JOINT_ARCHES = 4;
+const ARCH_SEGMENTS = 28;
+const MAX_ARCH_INSTANCES = MAX_JOINT_ARCHES * ARCH_SEGMENTS;
+const JOINT_ARCH_DURATION_SEC = 6.5;
+const MAX_MAILBOX_CRESTS = 16;
 
 const AURORA_PILLAR_VERTEX = /* glsl */ `
 out vec2 vUv;
@@ -135,6 +156,32 @@ interface TrailBead {
   life: number;
   maxLife: number;
   colorHex: number;
+}
+
+interface SkyRingState {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  cooldown: number;
+  flashTimer: number;
+}
+
+interface JointMissionArchSlot {
+  active: boolean;
+  sx: number;
+  sy: number;
+  sz: number;
+  cx: number;
+  cy: number;
+  cz: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  age: number;
+  duration: number;
+  colorHex: number;
+  sparkleAccum: number;
 }
 
 export function createLivingWorkflowFx(
@@ -261,6 +308,128 @@ export function createLivingWorkflowFx(
   crystalCoreInst.renderOrder = 8;
   root.add(crystalCoreInst);
 
+  // 4. 하늘 순찰 황금 별빛 링 8기 (외곽 토러스 + 내부 별빛 코어 링, 비행 중에만 활성화)
+  const skyRingOuterGeo = new TorusGeometry(2.85, 0.17, 12, 32);
+  const skyRingOuterMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.86,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const skyRingOuterInst = new InstancedMesh(skyRingOuterGeo, skyRingOuterMat, SKY_RING_COUNT);
+  skyRingOuterInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  skyRingOuterInst.frustumCulled = false;
+  skyRingOuterInst.count = SKY_RING_COUNT;
+  skyRingOuterInst.visible = false;
+  skyRingOuterInst.renderOrder = 9;
+  root.add(skyRingOuterInst);
+
+  const skyRingCoreGeo = new TorusGeometry(2.38, 0.065, 8, 28);
+  const skyRingCoreMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.72,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const skyRingCoreInst = new InstancedMesh(skyRingCoreGeo, skyRingCoreMat, SKY_RING_COUNT);
+  skyRingCoreInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  skyRingCoreInst.frustumCulled = false;
+  skyRingCoreInst.count = SKY_RING_COUNT;
+  skyRingCoreInst.visible = false;
+  skyRingCoreInst.renderOrder = 10;
+  root.add(skyRingCoreInst);
+
+  // 5. 합동 작전 별빛 아치 광선 (2차 베지어 세그먼트 1 InstancedMesh 풀, 0 할당)
+  const archSegGeo = new CylinderGeometry(0.16, 0.16, 1.0, 8, 1, true);
+  const archSegMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.84,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const archSegInst = new InstancedMesh(archSegGeo, archSegMat, MAX_ARCH_INSTANCES);
+  archSegInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  archSegInst.frustumCulled = false;
+  archSegInst.count = 0;
+  archSegInst.visible = false;
+  archSegInst.renderOrder = 9;
+  root.add(archSegInst);
+
+  // 6. 마을 정문 결재/검토 황금 우편함 봉투·왕관 크레스트 비콘 (2 InstancedMesh 풀)
+  const mailboxBodyGeo = new BoxGeometry(0.86, 0.56, 0.14);
+  const mailboxBodyMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.90,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const mailboxBodyInst = new InstancedMesh(mailboxBodyGeo, mailboxBodyMat, MAX_MAILBOX_CRESTS);
+  mailboxBodyInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  mailboxBodyInst.frustumCulled = false;
+  mailboxBodyInst.count = 0;
+  mailboxBodyInst.visible = false;
+  mailboxBodyInst.renderOrder = 8;
+  root.add(mailboxBodyInst);
+
+  const mailboxSealGeo = new OctahedronGeometry(0.24, 0);
+  const mailboxSealMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.95,
+    blending: AdditiveBlending,
+    depthWrite: false,
+  });
+  const mailboxSealInst = new InstancedMesh(mailboxSealGeo, mailboxSealMat, MAX_MAILBOX_CRESTS);
+  mailboxSealInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  mailboxSealInst.frustumCulled = false;
+  mailboxSealInst.count = 0;
+  mailboxSealInst.visible = false;
+  mailboxSealInst.renderOrder = 9;
+  root.add(mailboxSealInst);
+
+  const skyRings: SkyRingState[] = Array.from({ length: SKY_RING_COUNT }, (_, idx) => {
+    const angle = (idx / SKY_RING_COUNT) * Math.PI * 2;
+    const rx = 50.0;
+    const rz = 44.0;
+    const x = Math.cos(angle) * rx;
+    const z = Math.sin(angle) * rz;
+    const y = 18.2 + Math.sin(idx * 1.35) * 0.95;
+    const tangentX = -Math.sin(angle) * rx;
+    const tangentZ = Math.cos(angle) * rz;
+    return {
+      x,
+      y,
+      z,
+      yaw: Math.atan2(tangentX, tangentZ),
+      cooldown: 0,
+      flashTimer: 0,
+    };
+  });
+  let skyRingsVisible = false;
+  let skyRingCombo = 0;
+  let skyRingComboTimer = 0;
+
+  const jointArches: JointMissionArchSlot[] = Array.from({ length: MAX_JOINT_ARCHES }, () => ({
+    active: false,
+    sx: 0,
+    sy: 0,
+    sz: 0,
+    cx: 0,
+    cy: 0,
+    cz: 0,
+    tx: 0,
+    ty: 0,
+    tz: 0,
+    age: 0,
+    duration: JOINT_ARCH_DURATION_SEC,
+    colorHex: 0xfde047,
+    sparkleAccum: 0,
+  }));
+
   // 제로-GC 풀링 슬롯 & 스크래치 객체
   const couriers: CourierOrb[] = Array.from({ length: MAX_COURIERS }, () => ({
     active: false,
@@ -304,9 +473,112 @@ export function createLivingWorkflowFx(
   const tmpScale = new Vector3();
   const tmpEuler = new Euler();
   const tmpQuat = new Quaternion();
+  const tmpDir = new Vector3();
+  const tmpUp = new Vector3(0, 1, 0);
+  const tmpPrev = new Vector3();
+  const tmpNext = new Vector3();
   const tmpColor = new Color();
   const tmpColorA = new Color();
   const tmpColorB = new Color();
+
+  function setSkyRingsVisible(visible: boolean): void {
+    if (skyRingsVisible === visible) return;
+    skyRingsVisible = visible;
+    if (!visible) {
+      skyRingCombo = 0;
+      skyRingComboTimer = 0;
+      skyRingOuterInst.visible = false;
+      skyRingCoreInst.visible = false;
+    }
+  }
+
+  function checkSkyRingPass(
+    px: number,
+    py: number,
+    pz: number,
+    isFlying: boolean,
+  ): SkyRingPassResult | null {
+    if (!skyRingsVisible || !isFlying) return null;
+    for (let i = 0; i < SKY_RING_COUNT; i += 1) {
+      const ring = skyRings[i]!;
+      if (ring.cooldown > 0) continue;
+      const dx = px - ring.x;
+      const dy = (py - ring.y) * 1.15;
+      const dz = pz - ring.z;
+      if (dx * dx + dy * dy + dz * dz <= 3.75 * 3.75) {
+        ring.cooldown = SKY_RING_COOLDOWN_SEC;
+        ring.flashTimer = 0.9;
+        skyRingCombo += 1;
+        skyRingComboTimer = SKY_RING_COMBO_WINDOW_SEC;
+        // 링 둘레로 황금 별빛 버스트 방출
+        const rightX = Math.cos(ring.yaw);
+        const rightZ = -Math.sin(ring.yaw);
+        for (let b = 0; b < 12; b += 1) {
+          const ang = (b / 12) * Math.PI * 2;
+          const rCos = Math.cos(ang) * 2.75;
+          const rSin = Math.sin(ang) * 2.75;
+          pushTrailBead(
+            ring.x + rightX * rCos,
+            ring.y + rSin,
+            ring.z + rightZ * rCos,
+            b % 2 === 0 ? 0xfde047 : 0xfffbeb,
+            1.45,
+          );
+        }
+        return { ringIndex: i, combo: skyRingCombo };
+      }
+    }
+    return null;
+  }
+
+  function spawnJointMissionArch(
+    fromX: number,
+    fromZ: number,
+    toX: number,
+    toZ: number,
+    colorHex = 0xfde047,
+  ): void {
+    const dist = Math.hypot(toX - fromX, toZ - fromZ);
+    if (dist < 1.2) return;
+
+    let slot: JointMissionArchSlot | null = null;
+    for (let i = 0; i < MAX_JOINT_ARCHES; i += 1) {
+      if (!jointArches[i]!.active) {
+        slot = jointArches[i]!;
+        break;
+      }
+    }
+    if (!slot) {
+      let oldest = jointArches[0]!;
+      for (let i = 1; i < MAX_JOINT_ARCHES; i += 1) {
+        if (jointArches[i]!.age > oldest.age) oldest = jointArches[i]!;
+      }
+      slot = oldest;
+    }
+
+    const sy = getGroundHeight(fromX, fromZ) + 2.4;
+    const ty = getGroundHeight(toX, toZ) + 2.4;
+    const apexLift = Math.max(10.0, Math.min(24.0, dist * 0.32));
+
+    slot.active = true;
+    slot.sx = fromX;
+    slot.sy = sy;
+    slot.sz = fromZ;
+    slot.tx = toX;
+    slot.ty = ty;
+    slot.tz = toZ;
+    slot.cx = (fromX + toX) * 0.5;
+    slot.cy = Math.max(sy, ty) + apexLift;
+    slot.cz = (fromZ + toZ) * 0.5;
+    slot.age = 0;
+    slot.duration = JOINT_ARCH_DURATION_SEC;
+    slot.colorHex = colorHex;
+    slot.sparkleAccum = 0;
+
+    for (let k = 0; k < 5; k += 1) {
+      pushTrailBead(fromX, sy + k * 0.22, fromZ, colorHex, 1.25);
+    }
+  }
 
   function pushTrailBead(x: number, y: number, z: number, colorHex: number, scale = 0.85): void {
     const slot = trails[trailWriteCursor]!;
@@ -649,6 +921,194 @@ export function createLivingWorkflowFx(
       if (crystalCoreInst.instanceColor) crystalCoreInst.instanceColor.needsUpdate = true;
     }
 
+    // 4) 하늘 순찰 황금 별빛 링 8기 갱신 (비행 중에만 렌더링)
+    if (skyRingComboTimer > 0) {
+      skyRingComboTimer = Math.max(0, skyRingComboTimer - safeDt);
+      if (skyRingComboTimer === 0) skyRingCombo = 0;
+    }
+    for (let i = 0; i < SKY_RING_COUNT; i += 1) {
+      const ring = skyRings[i]!;
+      if (ring.cooldown > 0) ring.cooldown = Math.max(0, ring.cooldown - safeDt);
+      if (ring.flashTimer > 0) ring.flashTimer = Math.max(0, ring.flashTimer - safeDt);
+    }
+    if (skyRingsVisible) {
+      for (let i = 0; i < SKY_RING_COUNT; i += 1) {
+        const ring = skyRings[i]!;
+        const bobY = ring.y + Math.sin(elapsed * 2.0 + i * 0.85) * 0.34;
+        const flash01 = ring.flashTimer / 0.9;
+        const onCooldown = ring.cooldown > 0;
+        const outerScale = (onCooldown ? 0.86 : 1.0 + Math.sin(elapsed * 3.0 + i) * 0.04) + flash01 * 0.34;
+
+        tmpPos.set(ring.x, bobY, ring.z);
+        tmpEuler.set(0, ring.yaw, elapsed * 0.55 + i * 0.4);
+        tmpQuat.setFromEuler(tmpEuler);
+        tmpScale.setScalar(outerScale);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        skyRingOuterInst.setMatrixAt(i, tmpMat);
+
+        if (flash01 > 0.01) {
+          tmpColor.setHex(0xfffbeb).multiplyScalar(1.35 + flash01 * 0.65);
+        } else if (onCooldown) {
+          tmpColor.setHex(0x38bdf8).multiplyScalar(0.55);
+        } else {
+          tmpColor.setHex(0xfde047).multiplyScalar(1.15);
+        }
+        skyRingOuterInst.setColorAt(i, tmpColor);
+
+        const coreScale = (onCooldown ? 0.78 : 0.96) + flash01 * 0.42;
+        tmpEuler.set(0, ring.yaw, -elapsed * 1.35 - i * 0.6);
+        tmpQuat.setFromEuler(tmpEuler);
+        tmpScale.setScalar(coreScale);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        skyRingCoreInst.setMatrixAt(i, tmpMat);
+
+        tmpColor.setHex(onCooldown && flash01 <= 0.01 ? 0x7dd3fc : 0xfffbeb).multiplyScalar(onCooldown ? 0.65 : 1.35);
+        skyRingCoreInst.setColorAt(i, tmpColor);
+      }
+      skyRingOuterInst.count = SKY_RING_COUNT;
+      skyRingOuterInst.visible = true;
+      skyRingOuterInst.instanceMatrix.needsUpdate = true;
+      if (skyRingOuterInst.instanceColor) skyRingOuterInst.instanceColor.needsUpdate = true;
+      skyRingCoreInst.count = SKY_RING_COUNT;
+      skyRingCoreInst.visible = true;
+      skyRingCoreInst.instanceMatrix.needsUpdate = true;
+      if (skyRingCoreInst.instanceColor) skyRingCoreInst.instanceColor.needsUpdate = true;
+    } else {
+      skyRingOuterInst.visible = false;
+      skyRingCoreInst.visible = false;
+    }
+
+    // 5) 합동 작전 별빛 아치 광선 갱신 (6.5초 fade-in/out + 별빛 트레일)
+    let archSegCount = 0;
+    for (let ai = 0; ai < MAX_JOINT_ARCHES; ai += 1) {
+      const arch = jointArches[ai]!;
+      if (!arch.active) continue;
+      arch.age += safeDt;
+      if (arch.age >= arch.duration) {
+        arch.active = false;
+        continue;
+      }
+
+      const growT = Math.min(1, arch.age / 0.55);
+      const fadeOut = arch.age > arch.duration - 1.0
+        ? Math.max(0, (arch.duration - arch.age) / 1.0)
+        : 1.0;
+      const visScale = growT * fadeOut;
+
+      arch.sparkleAccum += safeDt;
+      if (arch.sparkleAccum >= 0.14 && fadeOut > 0.25) {
+        arch.sparkleAccum = 0;
+        const su = (arch.age * 0.58) % 1;
+        const sInv = 1 - su;
+        const bx = sInv * sInv * arch.sx + 2 * sInv * su * arch.cx + su * su * arch.tx;
+        const by = sInv * sInv * arch.sy + 2 * sInv * su * arch.cy + su * su * arch.ty;
+        const bz = sInv * sInv * arch.sz + 2 * sInv * su * arch.cz + su * su * arch.tz;
+        pushTrailBead(bx, by, bz, arch.colorHex, 1.15);
+      }
+
+      const visibleSteps = Math.max(1, Math.floor(ARCH_SEGMENTS * growT));
+      for (let s = 0; s < visibleSteps && archSegCount < MAX_ARCH_INSTANCES; s += 1) {
+        const u0 = s / ARCH_SEGMENTS;
+        const u1 = Math.min(growT, (s + 1) / ARCH_SEGMENTS);
+        if (u1 <= u0 + 1e-4) continue;
+        const inv0 = 1 - u0;
+        const inv1 = 1 - u1;
+        tmpPrev.set(
+          inv0 * inv0 * arch.sx + 2 * inv0 * u0 * arch.cx + u0 * u0 * arch.tx,
+          inv0 * inv0 * arch.sy + 2 * inv0 * u0 * arch.cy + u0 * u0 * arch.ty,
+          inv0 * inv0 * arch.sz + 2 * inv0 * u0 * arch.cz + u0 * u0 * arch.tz,
+        );
+        tmpNext.set(
+          inv1 * inv1 * arch.sx + 2 * inv1 * u1 * arch.cx + u1 * u1 * arch.tx,
+          inv1 * inv1 * arch.sy + 2 * inv1 * u1 * arch.cy + u1 * u1 * arch.ty,
+          inv1 * inv1 * arch.sz + 2 * inv1 * u1 * arch.cz + u1 * u1 * arch.tz,
+        );
+        tmpDir.subVectors(tmpNext, tmpPrev);
+        const segLen = tmpDir.length();
+        if (segLen < 1e-4) continue;
+        tmpDir.multiplyScalar(1 / segLen);
+        tmpPos.addVectors(tmpPrev, tmpNext).multiplyScalar(0.5);
+        tmpQuat.setFromUnitVectors(tmpUp, tmpDir);
+
+        const uMid = (u0 + u1) * 0.5;
+        const taper = 0.55 + Math.sin(uMid * Math.PI) * 0.75;
+        const pulseWave = 0.85 + Math.sin(uMid * 14.0 - elapsed * 7.5) * 0.25;
+        const radScale = taper * pulseWave * visScale;
+        tmpScale.set(radScale, segLen * 1.06, radScale);
+        tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+        archSegInst.setMatrixAt(archSegCount, tmpMat);
+
+        tmpColor.setHex(arch.colorHex);
+        tmpColorB.setHex(0xfffbeb);
+        tmpColor.lerp(tmpColorB, Math.max(0, Math.sin(uMid * 12.0 - elapsed * 6.5) * 0.45)).multiplyScalar(1.25 * fadeOut);
+        archSegInst.setColorAt(archSegCount, tmpColor);
+        archSegCount += 1;
+      }
+    }
+
+    archSegInst.count = archSegCount;
+    archSegInst.visible = archSegCount > 0;
+    if (archSegCount > 0) {
+      archSegInst.instanceMatrix.needsUpdate = true;
+      if (archSegInst.instanceColor) archSegInst.instanceColor.needsUpdate = true;
+    }
+
+    // 6) 마을 결재/검토 대기 황금 우편함 봉투·왕관 크레스트 비콘 갱신
+    let mailboxCount = 0;
+    for (let i = 0; i < villages.length && mailboxCount < MAX_MAILBOX_CRESTS; i += 1) {
+      const v = villages[i]!;
+      let hasReviewAlert = v.needsAttention || v.openAsksCount > 0;
+      if (!hasReviewAlert) {
+        for (let ai = 0; ai < actors.length; ai += 1) {
+          const a = actors[ai]!;
+          if (a.commodoreId === v.commodoreId && a.needsAttention) {
+            hasReviewAlert = true;
+            break;
+          }
+        }
+      }
+      if (!hasReviewAlert) continue;
+
+      const gateCos = Math.cos(v.gateAngle);
+      const gateSin = Math.sin(v.gateAngle);
+      const gx = v.x + gateCos * (v.radius + 1.15);
+      const gz = v.z + gateSin * (v.radius + 1.15);
+      const gy = getGroundHeight(gx, gz) + 4.15 + Math.sin(elapsed * 2.8 + i * 1.1) * 0.28;
+      const spin = elapsed * 1.65 + i * 0.7;
+      const pulse = 1.0 + Math.sin(elapsed * 4.2 + i) * 0.08;
+
+      tmpPos.set(gx, gy, gz);
+      tmpEuler.set(0.12 * Math.sin(elapsed * 2.4 + i), spin, 0.08 * Math.cos(elapsed * 2.1 + i));
+      tmpQuat.setFromEuler(tmpEuler);
+      tmpScale.setScalar(pulse);
+      tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+      mailboxBodyInst.setMatrixAt(mailboxCount, tmpMat);
+      tmpColor.setHex(0xfde047).multiplyScalar(1.22);
+      mailboxBodyInst.setColorAt(mailboxCount, tmpColor);
+
+      tmpPos.set(gx, gy + 0.56, gz);
+      tmpEuler.set(0, -spin * 1.6, Math.PI * 0.25);
+      tmpQuat.setFromEuler(tmpEuler);
+      tmpScale.setScalar(pulse * 1.05);
+      tmpMat.compose(tmpPos, tmpQuat, tmpScale);
+      mailboxSealInst.setMatrixAt(mailboxCount, tmpMat);
+      tmpColor.setHex(0xfffbeb).multiplyScalar(1.42);
+      mailboxSealInst.setColorAt(mailboxCount, tmpColor);
+
+      mailboxCount += 1;
+    }
+
+    mailboxBodyInst.count = mailboxCount;
+    mailboxBodyInst.visible = mailboxCount > 0;
+    mailboxSealInst.count = mailboxCount;
+    mailboxSealInst.visible = mailboxCount > 0;
+    if (mailboxCount > 0) {
+      mailboxBodyInst.instanceMatrix.needsUpdate = true;
+      mailboxSealInst.instanceMatrix.needsUpdate = true;
+      if (mailboxBodyInst.instanceColor) mailboxBodyInst.instanceColor.needsUpdate = true;
+      if (mailboxSealInst.instanceColor) mailboxSealInst.instanceColor.needsUpdate = true;
+    }
+
     initializedSnapshot = true;
   }
 
@@ -662,6 +1122,11 @@ export function createLivingWorkflowFx(
     trailInst.dispose();
     crystalOuterInst.dispose();
     crystalCoreInst.dispose();
+    skyRingOuterInst.dispose();
+    skyRingCoreInst.dispose();
+    archSegInst.dispose();
+    mailboxBodyInst.dispose();
+    mailboxSealInst.dispose();
     outerPillarGeo.dispose();
     innerPillarGeo.dispose();
     outerPillarMat.dispose();
@@ -674,11 +1139,24 @@ export function createLivingWorkflowFx(
     crystalOuterMat.dispose();
     crystalCoreGeo.dispose();
     crystalCoreMat.dispose();
+    skyRingOuterGeo.dispose();
+    skyRingOuterMat.dispose();
+    skyRingCoreGeo.dispose();
+    skyRingCoreMat.dispose();
+    archSegGeo.dispose();
+    archSegMat.dispose();
+    mailboxBodyGeo.dispose();
+    mailboxBodyMat.dispose();
+    mailboxSealGeo.dispose();
+    mailboxSealMat.dispose();
     scene.remove(root);
   }
 
   return {
     spawnCourier,
+    setSkyRingsVisible,
+    checkSkyRingPass,
+    spawnJointMissionArch,
     update,
     dispose,
   };

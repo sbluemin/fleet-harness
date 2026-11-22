@@ -37,7 +37,45 @@ const WEATHER_MODE_STORAGE_KEY = "fleet.theWorld.weatherMode.v1";
 const ADMIRAL_STYLE_STORAGE_KEY = "fleet.theWorld.admiralStyle.v2";
 const COMMODORE_GIFTS_STORAGE_KEY = "fleet.theWorld.commodoreGifts.v1";
 const DISTRICT_NOTES_STORAGE_KEY = "fleet.theWorld.districtNotes.v1";
+const UNLOCKED_STAMPS_STORAGE_KEY = "fleet.theWorld.unlockedStamps.v1";
 const MAX_DISTRICT_NOTE_LEN = 240;
+
+export const WORLD_STAMP_IDS = [
+  "first_dive",
+  "squadron_flight",
+  "campfire_party",
+  "rain_umbrella_walk",
+  "photo_snap",
+  "sky_ring_combo",
+  "tier5_citadel",
+  "objective_celebration",
+] as const;
+
+export type WorldStampId = (typeof WORLD_STAMP_IDS)[number];
+
+export type WorldUnlockableCosmeticKind = "flower_crown" | "aurora" | "rainbow";
+
+export const COSMETIC_UNLOCK_THRESHOLDS: Readonly<Record<WorldUnlockableCosmeticKind, number>> = {
+  flower_crown: 2,
+  aurora: 4,
+  rainbow: 6,
+};
+
+export function isCosmeticUnlocked(
+  unlockedCount: number,
+  kind: WorldUnlockableCosmeticKind | string,
+): boolean {
+  if (kind === "flower_crown") return unlockedCount >= COSMETIC_UNLOCK_THRESHOLDS.flower_crown;
+  if (kind === "aurora") return unlockedCount >= COSMETIC_UNLOCK_THRESHOLDS.aurora;
+  if (kind === "rainbow") return unlockedCount >= COSMETIC_UNLOCK_THRESHOLDS.rainbow;
+  return true;
+}
+
+const WORLD_STAMP_ID_SET: ReadonlySet<string> = new Set(WORLD_STAMP_IDS);
+
+function isWorldStampId(value: unknown): value is WorldStampId {
+  return typeof value === "string" && WORLD_STAMP_ID_SET.has(value);
+}
 
 const DEFAULT_ADMIRAL_STYLE: WorldAdmiralStyle = {
   tone: "amber",
@@ -55,15 +93,55 @@ function isWeatherMode(value: unknown): value is WorldWeatherMode {
 }
 
 function isAdmiralHat(value: unknown): value is WorldAdmiralHat {
-  return value === "admiral" || value === "crown" || value === "explorer" || value === "none";
+  return (
+    value === "admiral"
+    || value === "crown"
+    || value === "explorer"
+    || value === "flower_crown"
+    || value === "none"
+  );
 }
 
 function isAdmiralCape(value: unknown): value is WorldAdmiralCape {
-  return value === "starlight" || value === "hero" || value === "forest" || value === "none";
+  return (
+    value === "starlight"
+    || value === "hero"
+    || value === "forest"
+    || value === "aurora"
+    || value === "none"
+  );
 }
 
 function isAdmiralTrail(value: unknown): value is WorldAdmiralTrail {
   return value === "stardust" || value === "sakura" || value === "rainbow" || value === "none";
+}
+
+function readInitialUnlockedStamps(): readonly WorldStampId[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(UNLOCKED_STAMPS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const result: WorldStampId[] = [];
+    for (const item of parsed) {
+      if (isWorldStampId(item) && !result.includes(item)) {
+        result.push(item);
+      }
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
+
+function persistUnlockedStamps(stamps: readonly WorldStampId[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(UNLOCKED_STAMPS_STORAGE_KEY, JSON.stringify(stamps));
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
 }
 
 function readInitialBgmEnabled(): boolean {
@@ -275,6 +353,8 @@ export interface WorldStoreSnapshot {
   readonly warRoomOpen: boolean;
   readonly admiralCustomizerOpen: boolean;
   readonly gazetteOpen: boolean;
+  readonly stampBookOpen: boolean;
+  readonly unlockedStamps: readonly WorldStampId[];
   readonly cinemaMode: boolean;
   readonly cinemaSpotlight: string;
   readonly bgmEnabled: boolean;
@@ -318,6 +398,8 @@ let state: WorldStoreSnapshot = {
   warRoomOpen: false,
   admiralCustomizerOpen: false,
   gazetteOpen: false,
+  stampBookOpen: false,
+  unlockedStamps: readInitialUnlockedStamps(),
   cinemaMode: false,
   cinemaSpotlight: "",
   bgmEnabled: readInitialBgmEnabled(),
@@ -410,6 +492,7 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     chatActive: false,
@@ -449,6 +532,7 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     chatActive: false,
@@ -478,6 +562,7 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         warRoomOpen: false,
         admiralCustomizerOpen: false,
         gazetteOpen: false,
+        stampBookOpen: false,
         cinemaMode: false,
         cinemaSpotlight: "",
         chatActive: false,
@@ -505,6 +590,7 @@ export function openActorRadialMenu(actorId: string): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -528,6 +614,7 @@ export function openActorDialogue(actorId: string): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -551,6 +638,7 @@ export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objec
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -598,6 +686,7 @@ export function selectDistrict(districtId: string | null): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -688,6 +777,7 @@ export function setPhotoMode(enabled: boolean): void {
           warRoomOpen: false,
           admiralCustomizerOpen: false,
           gazetteOpen: false,
+          stampBookOpen: false,
           cinemaMode: false,
           cinemaSpotlight: "",
           chatActive: false,
@@ -737,6 +827,7 @@ export function openWarRoom(): void {
     questBoardOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -790,6 +881,7 @@ export function openGazette(): void {
     && !state.questBoardOpen
     && !state.warRoomOpen
     && !state.admiralCustomizerOpen
+    && !state.stampBookOpen
     && !state.cinemaMode
     && !state.photoMode
     && !state.overviewMode
@@ -809,6 +901,7 @@ export function openGazette(): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -826,6 +919,73 @@ export function closeGazette(): void {
 export function toggleGazette(): void {
   if (state.gazetteOpen) closeGazette();
   else openGazette();
+}
+
+export function unlockStamp(id: WorldStampId): boolean {
+  if (!isWorldStampId(id)) return false;
+  if (state.unlockedStamps.includes(id)) return false;
+  const next: readonly WorldStampId[] = [...state.unlockedStamps, id];
+  persistUnlockedStamps(next);
+  state = { ...state, unlockedStamps: next };
+  emit();
+  return true;
+}
+
+export function setStampBookOpen(open: boolean): void {
+  if (!open) {
+    if (!state.stampBookOpen) return;
+    state = { ...state, stampBookOpen: false };
+    emit();
+    return;
+  }
+  if (
+    state.stampBookOpen
+    && state.selectedActorId === null
+    && state.interactionMode === "closed"
+    && state.selectedDistrictId === null
+    && state.districtContextMenu === null
+    && !state.questBoardOpen
+    && !state.warRoomOpen
+    && !state.admiralCustomizerOpen
+    && !state.gazetteOpen
+    && !state.cinemaMode
+    && !state.photoMode
+    && !state.overviewMode
+  ) {
+    return;
+  }
+  state = {
+    ...state,
+    stampBookOpen: true,
+    selectedActorId: null,
+    interactionMode: "closed",
+    inspectedObjectiveId: null,
+    selectedDistrictId: null,
+    districtContextMenu: null,
+    emoteWheelOpen: false,
+    skyQuickMenu: null,
+    questBoardOpen: false,
+    warRoomOpen: false,
+    admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
+    photoMode: false,
+    overviewMode: false,
+  };
+  emit();
+}
+
+export function openStampBook(): void {
+  setStampBookOpen(true);
+}
+
+export function closeStampBook(): void {
+  setStampBookOpen(false);
+}
+
+export function toggleStampBook(): void {
+  setStampBookOpen(!state.stampBookOpen);
 }
 
 export function setCinemaMode(enabled: boolean): void {
@@ -846,6 +1006,7 @@ export function setCinemaMode(enabled: boolean): void {
           warRoomOpen: false,
           admiralCustomizerOpen: false,
           gazetteOpen: false,
+          stampBookOpen: false,
           chatActive: false,
           photoMode: false,
           overviewMode: false,
@@ -922,6 +1083,7 @@ export function openAdmiralCustomizer(): void {
     questBoardOpen: false,
     warRoomOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -977,6 +1139,7 @@ export function requestRallyAll(): void {
     questBoardOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1058,6 +1221,7 @@ export function openQuestBoard(): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
     cinemaMode: false,
     cinemaSpotlight: "",
     photoMode: false,
@@ -1113,6 +1277,7 @@ export function setOverviewMode(enabled: boolean): void {
           warRoomOpen: false,
           admiralCustomizerOpen: false,
           gazetteOpen: false,
+          stampBookOpen: false,
           cinemaMode: false,
           cinemaSpotlight: "",
           sittingAtCampfire: false,
@@ -1151,6 +1316,7 @@ export function closeActorInteraction(): void {
     && !state.warRoomOpen
     && !state.admiralCustomizerOpen
     && !state.gazetteOpen
+    && !state.stampBookOpen
   ) {
     return;
   }
@@ -1167,6 +1333,7 @@ export function closeActorInteraction(): void {
     warRoomOpen: false,
     admiralCustomizerOpen: false,
     gazetteOpen: false,
+    stampBookOpen: false,
   };
   emit();
 }
@@ -1217,6 +1384,7 @@ export function setEmoteWheelOpen(open: boolean): void {
           warRoomOpen: false,
           admiralCustomizerOpen: false,
           gazetteOpen: false,
+          stampBookOpen: false,
           photoMode: false,
           cinemaMode: false,
           cinemaSpotlight: "",

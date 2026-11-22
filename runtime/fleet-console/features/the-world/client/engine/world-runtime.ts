@@ -82,12 +82,14 @@ import {
   playMeteorImpact,
   playMongleChirp,
   playRallyHorn,
+  playSkyRingChime,
   playStarBoost,
   playStarTakeoffAscend,
   playStarTakeoffCharge,
   setBgmEnabled,
   setRainAmbience,
   updateBgmEnvironment,
+  updateSpatialAmbience,
   type WorldFootstepSurface,
 } from "./world-audio.js";
 
@@ -192,6 +194,10 @@ export interface WorldRuntimeConfig {
   readonly onCinemaSpotlight?: ((label: string) => void) | undefined;
   /** 동행 사령관이 실제 작업/확인 필요 상태에 돌입해 마을로 자동 복귀할 때 호출된다. */
   readonly onCompanionDutyReturn?: ((actorId: string, actorName: string) => void) | undefined;
+  /** 하늘 순찰 중 별빛 링을 통과할 때 누적 콤보를 전달한다. */
+  readonly onSkyRingPass?: ((combo: number) => void) | undefined;
+  /** 별똥별 유성 급강하로 지면에 착지한 순간 호출된다. */
+  readonly onMeteorLanded?: (() => void) | undefined;
   /** 액터 라벨의 구조적 변화(목록·말풍선·근접·선택·주의 상태)가 있을 때만 호출된다(평시 0Hz). */
   readonly onLabelsStructureChanged: (labels: readonly WorldActorLabelMeta[]) => void;
   /** 매 프레임 DOM `style.transform` 직접 갱신용 스크래치 좌표 콜백(React 리렌더 0). */
@@ -223,6 +229,8 @@ export interface WorldRuntimeHandle {
   triggerCustomizerPreviewBounce(): void;
   setCampfireSit(sitting: boolean): void;
   setCompanionActors(actorIds: readonly string[]): void;
+  triggerWelcomeBriefing(speech: string): void;
+  spawnJointMissionArch(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
   triggerPhotoGroupPose(): void;
   triggerAdmiralEmote(emote: "cheer" | "wave" | "clap" | "twirl" | "stardust" | "sit"): void;
   captureSnapshotDataUrl(): string | null;
@@ -763,6 +771,15 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let disposed = false;
   let elapsed = 0;
   let workshopFxAccum = 0;
+  let spatialAmbienceAccum = 0;
+  const spatialAmbienceScratch = {
+    brookDist: 999,
+    campfireDist: 999,
+    forestDist: 999,
+    isNight: false,
+    isRain: false,
+    active: false,
+  };
   let sprintDustAccum = 0;
   let stardustAccum = 0;
   let stardustStep = 0;
@@ -1122,6 +1139,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           );
         }
         director.reactToMeteorLanding(ix, iz);
+        config.onMeteorLanded?.();
       },
     });
 
@@ -1312,8 +1330,35 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const nearId = (playerCtrl.player.flying || playerCtrl.player.diving) ? null : nearIdRaw;
     config.onNearActorChanged(nearId);
 
-    // 리빙 워크플로우 3D 비주얼 FX (긴급 비콘 기둥 · 별빛 전령 구슬 · 마을 목표 진행 크리스탈)
+    // 리빙 워크플로우 3D 비주얼 FX (긴급 비콘 기둥 · 별빛 전령 구슬 · 마을 목표 진행 크리스탈 · 하늘 별빛 링 · 합동 아치 · 정문 결재 비콘)
+    livingWorkflowFx.setSkyRingsVisible(playerCtrl.isOverviewMode());
+    if (playerCtrl.player.flying) {
+      const ringHit = livingWorkflowFx.checkSkyRingPass(
+        playerCtrl.player.x,
+        playerCtrl.player.y,
+        playerCtrl.player.z,
+        true,
+      );
+      if (ringHit) {
+        playSkyRingChime(ringHit.combo);
+        director.triggerSquadronRingBoost();
+        config.onSkyRingPass?.(ringHit.combo);
+      }
+    }
     livingWorkflowFx.update(dt, elapsed, currentVillages, currentActors);
+
+    // 거리 기반 공간 자연음 (시냇물·모닥불·숲, 0.12s 스로틀, 0-GC)
+    spatialAmbienceAccum += dt;
+    if (spatialAmbienceAccum >= 0.12) {
+      spatialAmbienceAccum = 0;
+      spatialAmbienceScratch.brookDist = meadow.getNearestBrookDist(playerCtrl.player.x, playerCtrl.player.z);
+      spatialAmbienceScratch.campfireDist = Math.hypot(playerCtrl.player.x - 2.8, playerCtrl.player.z - 1.0);
+      spatialAmbienceScratch.forestDist = meadow.getNearestForestDist(playerCtrl.player.x, playerCtrl.player.z);
+      spatialAmbienceScratch.isNight = skyLighting.getNightFactor() > 0.45;
+      spatialAmbienceScratch.isRain = currentWeather === "rain";
+      spatialAmbienceScratch.active = currentLifecycle === "open";
+      updateSpatialAmbience(spatialAmbienceScratch);
+    }
 
     // 우천 연잎 우산 부드러운 0↔1 개폐 보간
     const rainTarget = currentWeather === "rain" ? 1 : 0;
@@ -2360,6 +2405,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     setCompanionActors(actorIds) {
       director.setCompanionActors(actorIds);
     },
+    triggerWelcomeBriefing(speech) {
+      director.triggerWelcomeBriefing(playerCtrl.player.x, playerCtrl.player.z, speech);
+    },
+    spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex) {
+      livingWorkflowFx.spawnJointMissionArch(fromX, fromZ, toX, toZ, colorHex);
+    },
     triggerPhotoGroupPose() {
       director.triggerPhotoGroupPose(camera.position.x, camera.position.z);
       playerEmoteKind = "cheer";
@@ -2778,6 +2829,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     dispose() {
       disposed = true;
       cancelAnimationFrame(rafId);
+      updateSpatialAmbience({
+        brookDist: 999,
+        campfireDist: 999,
+        forestDist: 999,
+        isNight: false,
+        isRain: false,
+        active: false,
+      });
       setRainAmbience(false);
       setBgmEnabled(false);
       if (typeof window !== "undefined" && window.__fleetWorldPerf === getRenderStats) {

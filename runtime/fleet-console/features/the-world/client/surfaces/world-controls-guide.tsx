@@ -31,6 +31,8 @@ const GUIDE_GROUPS: readonly {
       { keysKey: "theWorld.guide.cameraOrbitKeys", descKey: "theWorld.guide.cameraOrbitDesc", icon: "stage", tone: "moss" },
       { keys: "Shift", descKey: "theWorld.guide.sprintDesc", icon: "approach", tone: "teal" },
       { keys: "Space", descKey: "theWorld.guide.jumpDesc", icon: "sparkle", tone: "amber" },
+      { keysKey: "theWorld.controls.barrelRollKeys", descKey: "theWorld.controls.barrelRollDesc", icon: "spin", tone: "amber" },
+      { keysKey: "theWorld.controls.skyDiveKeys", descKey: "theWorld.controls.skyDiveDesc", icon: "sparkle", tone: "cerulean" },
     ],
   },
   {
@@ -38,10 +40,13 @@ const GUIDE_GROUPS: readonly {
     titleKey: "theWorld.guide.groupInteract",
     items: [
       { keys: "E", descKey: "theWorld.guide.interactDesc", icon: "greet", tone: "amber" },
+      { keysKey: "theWorld.controls.companionKeys", descKey: "theWorld.controls.companionDesc", icon: "crew", tone: "teal" },
       { keys: "Tab", descKey: "theWorld.guide.urgentDesc", icon: "bell", tone: "amber" },
       { keys: "F", descKey: "theWorld.guide.campfireDesc", icon: "fire", tone: "rose" },
+      { keys: "B", descKey: "theWorld.controls.emoteWheelDesc", icon: "cheer", tone: "rose" },
       { keys: "1 · 2 · 3", descKey: "theWorld.guide.emoteDesc", icon: "cheer", tone: "amber" },
       { keysKey: "theWorld.guide.quickMenuKeys", descKey: "theWorld.guide.quickMenuDesc", icon: "flag", tone: "moss" },
+      { keysKey: "theWorld.controls.skyQuickKeys", descKey: "theWorld.controls.skyQuickDesc", icon: "mapOverview", tone: "amber" },
     ],
   },
   {
@@ -49,9 +54,10 @@ const GUIDE_GROUPS: readonly {
     titleKey: "theWorld.guide.groupView",
     items: [
       { keys: "M", descKey: "theWorld.guide.overviewDesc", icon: "mapOverview", tone: "moss" },
+      { keys: "P", descKey: "theWorld.controls.photoStudioDesc", icon: "camera", tone: "cerulean" },
       { keys: "C", descKey: "theWorld.guide.cinemaDesc", icon: "cinema", tone: "teal" },
       { keys: "G", descKey: "theWorld.guide.gazetteDesc", icon: "gazette", tone: "amber" },
-      { keys: "P", descKey: "theWorld.guide.photoDesc", icon: "camera", tone: "cerulean" },
+      { keysKey: "theWorld.controls.stampBookKeys", descKey: "theWorld.controls.stampBookDesc", icon: "trophy", tone: "amber" },
       { keys: "Enter", descKey: "theWorld.guide.chatDesc", icon: "chat", tone: "teal" },
       { keys: "? / H", descKey: "theWorld.guide.guideDesc", icon: "question", tone: "amber" },
       { keys: "Shift+D", descKey: "theWorld.guide.debugDesc", icon: "tool", tone: "indigo" },

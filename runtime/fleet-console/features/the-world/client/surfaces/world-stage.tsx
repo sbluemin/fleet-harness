@@ -31,6 +31,7 @@ import {
   playMongleChirp,
   playOverviewToggle,
   playSend,
+  playStampUnlock,
   playWarp,
   setBgmEnabled,
   setWorldAudioMuted,
@@ -81,13 +82,16 @@ import {
   setOverviewMode,
   setPhotoMode,
   setSittingAtCampfire,
+  setStampBookOpen,
   setVillageBiome,
   setWeatherMode,
   setWorldTimeMode,
   toggleBgm,
   toggleCinemaMode,
   toggleOverviewMode,
+  unlockStamp,
   useWorldStore,
+  type WorldStampId,
 } from "../world-store.js";
 import { useWorldShortcuts } from "./use-world-shortcuts.js";
 import { WorldAdmiralCustomizer } from "./world-admiral-customizer.js";
@@ -112,6 +116,7 @@ import { WorldPhotoStudio } from "./world-photo-studio.js";
 import { WorldQuestBoardModal } from "./world-quest-board.js";
 import { WorldRadialMenu } from "./world-radial-menu.js";
 import { WorldSkyCommand, type WorldSkyHoverTarget } from "./world-sky-command.js";
+import { WorldStampBook } from "./world-stamp-book.js";
 import { WorldWarRoom } from "./world-war-room.js";
 
 const TOAST_DURATION_MS = 2_800;
@@ -132,7 +137,19 @@ const HAT_LABEL_KEYS: Readonly<Record<WorldAdmiralHat, TheWorldMessageKey>> = {
   admiral: "theWorld.admiral.hat.admiral",
   crown: "theWorld.admiral.hat.crown",
   explorer: "theWorld.admiral.hat.explorer",
+  flower_crown: "theWorld.admiral.hat.flower_crown",
   none: "theWorld.admiral.hat.none",
+};
+
+const STAMP_TITLE_KEYS: Readonly<Record<WorldStampId, TheWorldMessageKey>> = {
+  first_dive: "theWorld.stamps.item.first_dive.title",
+  squadron_flight: "theWorld.stamps.item.squadron_flight.title",
+  campfire_party: "theWorld.stamps.item.campfire_party.title",
+  rain_umbrella_walk: "theWorld.stamps.item.rain_umbrella_walk.title",
+  photo_snap: "theWorld.stamps.item.photo_snap.title",
+  sky_ring_combo: "theWorld.stamps.item.sky_ring_combo.title",
+  tier5_citadel: "theWorld.stamps.item.tier5_citadel.title",
+  objective_celebration: "theWorld.stamps.item.objective_celebration.title",
 };
 
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
@@ -251,6 +268,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }, CELEBRATION_TOAST_DURATION_MS);
   }, []);
 
+  const triggerStamp = useCallback((id: WorldStampId) => {
+    if (!unlockStamp(id)) return;
+    playStampUnlock();
+    const tNow = getWorldT(deps.commodore.language());
+    pushCelebrationToast(
+      tNow("theWorld.stamps.unlockedToast", { title: tNow(STAMP_TITLE_KEYS[id]) }),
+    );
+  }, [deps, pushCelebrationToast]);
+
   const handleToggleControlsGuide = useCallback(() => {
     setControlsGuideOpen((prev) => !prev);
   }, []);
@@ -316,6 +342,20 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         pushActorSpeech(actorId, tNow("theWorld.companion.dutyReturnSpeech"));
         pushToast(tNow("theWorld.companion.dutyReturnToast", { name: actorName }));
       },
+      onMeteorLanded: () => {
+        triggerStamp("first_dive");
+      },
+      onSkyRingPass: (combo) => {
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(
+          combo >= 2
+            ? tNow("theWorld.skyRing.comboToast", { combo })
+            : tNow("theWorld.skyRing.passToast", { combo }),
+        );
+        if (combo >= 2) {
+          triggerStamp("sky_ring_combo");
+        }
+      },
       onLabelsStructureChanged: setLabelMetas,
       onFramePositions: handleFramePositions,
     });
@@ -330,7 +370,86 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       runtime.dispose();
       runtimeRef.current = null;
     };
-  }, [deps, handleFramePositions, pushToast]);
+  }, [deps, handleFramePositions, pushToast, triggerStamp]);
+
+  // 입장 웰컴 브리핑 (진입당 1회, 액터 로드 0.9초 후 가장 가까운 사령관이 달려와 브리핑)
+  const briefingSentRef = useRef(false);
+  const questSummaryRef = useRef({
+    urgent: questBoardData.totalUrgentCount,
+    done: questBoardData.completedMissions.length,
+  });
+  questSummaryRef.current = {
+    urgent: questBoardData.totalUrgentCount,
+    done: questBoardData.completedMissions.length,
+  };
+
+  useEffect(() => {
+    if (store.lifecycle === "closed") {
+      briefingSentRef.current = false;
+      return;
+    }
+    if (store.lifecycle !== "open" || snapshot.actors.length === 0 || briefingSentRef.current) {
+      return;
+    }
+    briefingSentRef.current = true;
+    const timer = window.setTimeout(() => {
+      const tNow = getWorldT(deps.commodore.language());
+      const { urgent, done } = questSummaryRef.current;
+      const line = urgent > 0 && done > 0
+        ? tNow("theWorld.briefing.urgentAndDone", { urgent, done })
+        : urgent > 0
+          ? tNow("theWorld.briefing.urgentOnly", { urgent })
+          : done > 0
+            ? tNow("theWorld.briefing.doneOnly", { done })
+            : tNow("theWorld.briefing.calm");
+      runtimeRef.current?.triggerWelcomeBriefing(line);
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [deps, snapshot.actors.length, store.lifecycle]);
+
+  // 항해 스탬프 8종 자동 해금 감시 훅
+  useEffect(() => {
+    if (store.lifecycle !== "open") return;
+    if (store.overviewMode && store.companionActorIds.length >= 2) {
+      triggerStamp("squadron_flight");
+    }
+  }, [store.companionActorIds.length, store.lifecycle, store.overviewMode, triggerStamp]);
+
+  useEffect(() => {
+    if (store.lifecycle !== "open") return;
+    if (store.sittingAtCampfire && store.companionActorIds.length >= 1) {
+      triggerStamp("campfire_party");
+    }
+  }, [store.companionActorIds.length, store.lifecycle, store.sittingAtCampfire, triggerStamp]);
+
+  useEffect(() => {
+    if (store.lifecycle !== "open") return;
+    if (store.weatherMode === "rain") {
+      triggerStamp("rain_umbrella_walk");
+    }
+  }, [store.lifecycle, store.weatherMode, triggerStamp]);
+
+  useEffect(() => {
+    if (store.lifecycle !== "open") return;
+    if (snapshot.villages.some((v) => v.overallTier >= 5 || v.maxDistrictTier >= 5)) {
+      triggerStamp("tier5_citadel");
+    }
+  }, [snapshot.villages, store.lifecycle, triggerStamp]);
+
+  const prevCompletedCountRef = useRef<number | null>(null);
+  useEffect(() => {
+    const count = questBoardData.completedMissions.length;
+    if (prevCompletedCountRef.current !== null && count > prevCompletedCountRef.current) {
+      triggerStamp("objective_celebration");
+    }
+    prevCompletedCountRef.current = count;
+  }, [questBoardData.completedMissions.length, triggerStamp]);
+
+  useEffect(() => {
+    if (store.lifecycle === "open" && store.choreography?.kind === "celebrate") {
+      triggerStamp("objective_celebration");
+    }
+  }, [store.choreography, store.lifecycle, triggerStamp]);
 
   // 실시간 월드 스냅샷 동기화
   useEffect(() => {
@@ -623,6 +742,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.warRoomOpen
       || snap.admiralCustomizerOpen
       || snap.gazetteOpen
+      || snap.stampBookOpen
       || controlsGuideOpenRef.current
       || snap.photoMode
       || snap.cinemaMode
@@ -679,6 +799,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.warRoomOpen
       || snap.admiralCustomizerOpen
       || snap.gazetteOpen
+      || snap.stampBookOpen
       || snap.cinemaMode
       || snap.photoMode
       || snap.emoteWheelOpen
@@ -766,7 +887,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       deactivateChat();
     }
 
-    if (snap.admiralCustomizerOpen || snap.gazetteOpen || snap.cinemaMode) {
+    if (snap.admiralCustomizerOpen || snap.gazetteOpen || snap.stampBookOpen || snap.cinemaMode) {
       return;
     }
 
@@ -972,7 +1093,20 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, []);
 
   const handlePhotoCapture = useCallback((): string | null => {
-    return runtimeRef.current?.captureSnapshotDataUrl() ?? null;
+    const dataUrl = runtimeRef.current?.captureSnapshotDataUrl() ?? null;
+    if (dataUrl) {
+      triggerStamp("photo_snap");
+    }
+    return dataUrl;
+  }, [triggerStamp]);
+
+  const handleCloseStampBook = useCallback(() => {
+    setStampBookOpen(false);
+  }, []);
+
+  const handleOpenStampBookFromCustomizer = useCallback(() => {
+    closeAdmiralCustomizer();
+    setStampBookOpen(true);
   }, []);
 
   const handlePhotoExit = useCallback(() => {
@@ -1495,6 +1629,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         if (!cancelled && latestTarget && latestTarget.id !== village.id) {
           const tNow = getWorldT(deps.commodore.language());
           runtimeRef.current?.spawnCourierBetweenVillages(village, latestTarget);
+          runtimeRef.current?.spawnJointMissionArch(village.x, village.z, latestTarget.x, latestTarget.z);
           playFlagPlant();
           requestChatMentions(
             [`commodore:${village.commodoreId}`, `commodore:${latestTarget.commodoreId}`],
@@ -1503,8 +1638,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               to: latestTarget.label,
             }),
           );
-          pushToast(
-            tNow("theWorld.overview.dragLinkToast", {
+          pushCelebrationToast(
+            tNow("theWorld.jointArch.formedToast", {
               from: village.label,
               to: latestTarget.label,
             }),
@@ -1519,7 +1654,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
-  }, [deps, pushToast]);
+  }, [deps, pushCelebrationToast]);
 
   const visibleLabelMetas = useMemo(
     () => (store.overviewMode
@@ -1532,10 +1667,31 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     || store.warRoomOpen
     || store.admiralCustomizerOpen
     || store.gazetteOpen
+    || store.stampBookOpen
     || controlsGuideOpen;
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
   const playerLabelRevealed = !store.overviewMode && (playerHovered || store.admiralCustomizerOpen);
+
+  // 근처 사령관/마을 정문 원클릭 결재·질문 퀵 액션 해소
+  const nearFieldReviewTarget = useMemo(() => {
+    if (!store.nearActorId) return null;
+    const nearActor = snapshot.actors.find((a) => a.id === store.nearActorId) ?? null;
+    if (!nearActor || nearActor.role !== "commodore" || !nearActor.commodoreId) return null;
+    const hasAsk = questBoardData.asks.some((ask) => ask.commodoreId === nearActor.commodoreId)
+      || (nearActor.askCount ?? 0) > 0;
+    if (hasAsk) {
+      return { kind: "ask" as const, actor: nearActor, objectiveId: null as string | null };
+    }
+    const reviewMission = questBoardData.reviewMissions.find((m) => m.commodoreId === nearActor.commodoreId) ?? null;
+    if (reviewMission) {
+      return { kind: "review" as const, actor: nearActor, objectiveId: reviewMission.objectiveId };
+    }
+    if (nearActor.needsAttention) {
+      return { kind: "ask" as const, actor: nearActor, objectiveId: null as string | null };
+    }
+    return null;
+  }, [questBoardData.asks, questBoardData.reviewMissions, snapshot.actors, store.nearActorId]);
 
   return (
     <div
@@ -1803,6 +1959,52 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               ) : null}
             </div>
           ) : null}
+          {nearFieldReviewTarget && !store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed" ? (
+            <div
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: "76px",
+                transform: "translateX(-50%)",
+                zIndex: 9,
+                pointerEvents: "none",
+              }}
+            >
+              <button
+                type="button"
+                className={`the-world-field-review-chip ${nearFieldReviewTarget.kind === "ask" ? "is-ask" : "is-review"}`}
+                aria-label={t(
+                  nearFieldReviewTarget.kind === "ask"
+                    ? "theWorld.fieldReview.askAria"
+                    : "theWorld.fieldReview.reviewAria",
+                  { name: nearFieldReviewTarget.actor.name },
+                )}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  playDistrictSelect();
+                  if (nearFieldReviewTarget.kind === "review" && nearFieldReviewTarget.objectiveId) {
+                    openActorPanel(nearFieldReviewTarget.actor.id, "goals", nearFieldReviewTarget.objectiveId);
+                  } else {
+                    openActorDialogue(nearFieldReviewTarget.actor.id);
+                  }
+                }}
+              >
+                <WorldIcon
+                  name={nearFieldReviewTarget.kind === "ask" ? "bell" : "questBoard"}
+                  size={12}
+                  tone={nearFieldReviewTarget.kind === "ask" ? "amber" : "cerulean"}
+                />
+                <span>
+                  {nearFieldReviewTarget.actor.name} ·{" "}
+                  {t(
+                    nearFieldReviewTarget.kind === "ask"
+                      ? "theWorld.fieldReview.answerAsk"
+                      : "theWorld.fieldReview.reviewMission",
+                  )}
+                </span>
+              </button>
+            </div>
+          ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (
             <button
               type="button"
@@ -1934,6 +2136,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               onBroadcastAll={handleBroadcastAll}
             />
           ) : null}
+          {store.stampBookOpen ? (
+            <WorldStampBook
+              open
+              unlockedStamps={store.unlockedStamps}
+              locale={locale}
+              onOpenCustomizer={handleOpenAdmiralCustomizer}
+              onClose={handleCloseStampBook}
+            />
+          ) : null}
           {store.admiralCustomizerOpen ? (
             <WorldAdmiralCustomizer
               style={store.admiralStyle}
@@ -1943,6 +2154,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               onChangeStyle={handleChangeAdmiralStyle}
               onGiftHat={handleGiftHat}
               onPreviewChange={handlePreviewAdmiralChange}
+              onLockedHint={pushToast}
+              onOpenStampBook={handleOpenStampBookFromCustomizer}
               onClose={handleCloseAdmiralCustomizer}
             />
           ) : null}

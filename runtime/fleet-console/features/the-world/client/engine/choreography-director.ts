@@ -23,6 +23,7 @@ import type {
   WorldVillageSpec,
   WorldWeatherMode,
 } from "../../shared/world-types.js";
+import { BROOK_BRIDGES, brookProfile } from "./brook-geometry.js";
 import type { WorldAnimMode, WorldExpression } from "./mongle-actor-rig.js";
 
 /**
@@ -176,38 +177,25 @@ interface ActorPatrolState {
 }
 
 function brookCenterZAt(x: number): number {
-  return 9.2 + Math.sin(x * 0.095) * 2.9 + Math.cos(x * 0.04) * 1.1;
+  return brookProfile(x).centerZ;
 }
 
-function makeBridgeCrossing(x: number, yaw: number): {
-  readonly x: number;
-  readonly z: number;
-  readonly north: PatrolWaypoint;
-  readonly mid: PatrolWaypoint;
-  readonly south: PatrolWaypoint;
-} {
-  const cz = brookCenterZAt(x);
-  const pondBell = Math.exp(-Math.pow((x - 5.8) / 4.8, 2));
-  const halfSpan = 1.45 + pondBell * 2.15 + 2.85;
-  const sinY = Math.sin(yaw);
-  const cosY = Math.cos(yaw);
-  const northX = x - sinY * halfSpan;
-  const northZ = cz - cosY * halfSpan;
-  const southX = x + sinY * halfSpan;
-  const southZ = cz + cosY * halfSpan;
+const BRIDGE_CROSSINGS = BROOK_BRIDGES.map((bridge) => {
+  const halfSpan = bridge.halfSpan + 1.05;
+  const sinY = Math.sin(bridge.yaw);
+  const cosY = Math.cos(bridge.yaw);
+  const northX = bridge.x - sinY * halfSpan;
+  const northZ = bridge.z - cosY * halfSpan;
+  const southX = bridge.x + sinY * halfSpan;
+  const southZ = bridge.z + cosY * halfSpan;
   return {
-    x,
-    z: cz,
-    north: { x: northX, z: northZ, faceX: x, faceZ: cz },
-    mid: { x, z: cz, faceX: southX, faceZ: southZ },
-    south: { x: southX, z: southZ, faceX: x, faceZ: cz },
+    x: bridge.x,
+    z: bridge.z,
+    north: { x: northX, z: northZ, faceX: bridge.x, faceZ: bridge.z } as PatrolWaypoint,
+    mid: { x: bridge.x, z: bridge.z, faceX: southX, faceZ: southZ } as PatrolWaypoint,
+    south: { x: southX, z: southZ, faceX: bridge.x, faceZ: bridge.z } as PatrolWaypoint,
   };
-}
-
-const BRIDGE_CROSSINGS = [
-  makeBridgeCrossing(8.6, 0.34),
-  makeBridgeCrossing(-11.5, -0.26),
-] as const;
+});
 
 const MEADOW_EXCURSION_SPOTS: readonly PatrolWaypoint[] = [
   // 중앙 길드 회관 앞 광장
@@ -291,6 +279,10 @@ export interface ChoreographyDirector {
   triggerPhotoGroupPose(cameraX: number, cameraZ: number): number;
   /** 제독 이모트 휠 떼창 리액션: 반경 11m 이내 사령관들이 이모트에 맞춰 함께 환호/손흔들기/회전 리액션. */
   triggerAdmiralEmoteReaction(playerX: number, playerZ: number, emote: string): number;
+  /** 입장 웰컴 브리핑: 가장 가까운 사령관이 제독 앞 ~2.4m까지 달려와 점프·손흔들기와 함께 4.8초간 브리핑 말풍선 연출. */
+  triggerWelcomeBriefing(playerX: number, playerZ: number, speech: string): string | null;
+  /** 하늘 별빛 링 통과 시 비행 중인 동행 편대 전원에게 동기화 배럴롤 + 황금 스파클 버스트 발동. */
+  triggerSquadronRingBoost(): number;
   update(
     dt: number,
     elapsed: number,
@@ -326,6 +318,16 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     prevHeroLand: boolean;
     sparkleAccum: number;
   }>();
+  let welcomeBriefing: {
+    actorId: string;
+    targetX: number;
+    targetZ: number;
+    lookX: number;
+    lookZ: number;
+    speech: string;
+    timer: number;
+    arrived: boolean;
+  } | null = null;
 
   function getOrCreateCompanionState(actorId: string) {
     let cs = companionStates.get(actorId);
@@ -733,14 +735,21 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         ? ownVillage.gateExit.z
         : dest.z;
 
-    // 3. 시냇물 북쪽↔남쪽을 건너야 하면 가장 가까운 아치 목교 3단 포인트(진입→중앙→출구)를 경유한다
+    // 3. 시냇물 북쪽↔남쪽을 건너야 하면 가장 가까운 아치 목교 3단 포인트(진입→중앙→출구)를 경유한다 (4개 목교 지원)
     const curSouth = curZ > brookCenterZAt(curX);
     const dstSouth = targetApproachZ > brookCenterZAt(targetApproachX);
-    if (curSouth !== dstSouth) {
+    if (curSouth !== dstSouth && BRIDGE_CROSSINGS.length > 0) {
       const midX = (curX + targetApproachX) * 0.5;
-      const bridge = Math.abs(midX - BRIDGE_CROSSINGS[0].x) <= Math.abs(midX - BRIDGE_CROSSINGS[1].x)
-        ? BRIDGE_CROSSINGS[0]
-        : BRIDGE_CROSSINGS[1];
+      let bridge = BRIDGE_CROSSINGS[0]!;
+      let bestBridgeDist = Math.abs(midX - bridge.x);
+      for (let bi = 1; bi < BRIDGE_CROSSINGS.length; bi += 1) {
+        const candidate = BRIDGE_CROSSINGS[bi]!;
+        const d = Math.abs(midX - candidate.x);
+        if (d < bestBridgeDist) {
+          bestBridgeDist = d;
+          bridge = candidate;
+        }
+      }
       if (curSouth) {
         waypoints.push(bridge.south, bridge.mid, bridge.north);
       } else {
@@ -1212,6 +1221,67 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     return reacted;
   }
 
+  function triggerWelcomeBriefing(playerX: number, playerZ: number, speech: string): string | null {
+    let best: LiveActorMotion | null = null;
+    let bestDist = Infinity;
+    for (const m of motionList) {
+      if (m.spec.role !== "commodore") continue;
+      const d = Math.hypot(m.x - playerX, m.z - playerZ);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m;
+      }
+    }
+    if (!best) return null;
+
+    const dx = best.x - playerX;
+    const dz = best.z - playerZ;
+    const d = Math.hypot(dx, dz);
+    const dirX = d > 0.2 ? dx / d : 0.32;
+    const dirZ = d > 0.2 ? dz / d : -0.95;
+    const targetX = playerX + dirX * 2.4;
+    const targetZ = playerZ + dirZ * 2.4;
+
+    // 88m 넓은 맵에서 먼 마을 사령관도 ~1.2초 안에 달려오도록 14m 초과 시 반짝이며 근접 위치로 합류
+    if (d > 14.0) {
+      best.x = playerX + dirX * 7.4;
+      best.z = playerZ + dirZ * 7.4;
+      spawnBurst(best.x, 1.4, best.z, 0xfde047, 10);
+    }
+
+    welcomeBriefing = {
+      actorId: best.spec.id,
+      targetX,
+      targetZ,
+      lookX: playerX,
+      lookZ: playerZ,
+      speech,
+      timer: 7.2,
+      arrived: false,
+    };
+    return best.spec.id;
+  }
+
+  function triggerSquadronRingBoost(): number {
+    let boosted = 0;
+    for (let i = 0; i < companionActorIds.length; i += 1) {
+      const id = companionActorIds[i]!;
+      const m = motions.get(id);
+      if (!m || m.flightAlt <= 1.2) continue;
+      const cs = getOrCreateCompanionState(id);
+      const rank = Math.floor(i / 2);
+      const side = i % 2 === 0 ? 1 : -1;
+      cs.barrelDelay = 0.04 + rank * 0.055 + (side < 0 ? 0.02 : 0);
+      cs.barrelTimer = 0;
+      m.hopBoost = Math.max(m.hopBoost, 1.15);
+      m.expression = "happy";
+      m.blush = 0.82;
+      spawnBurst(m.x, m.flightAlt + 0.55, m.z, 0xfde047, 12);
+      boosted += 1;
+    }
+    return boosted;
+  }
+
   let lastCommandNonce = 0;
 
   const director: ChoreographyDirector = {
@@ -1231,6 +1301,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           if (compIdx >= 0) {
             companionActorIds.splice(compIdx, 1);
             companionStates.delete(id);
+          }
+          if (welcomeBriefing?.actorId === id) {
+            welcomeBriefing = null;
           }
         }
       }
@@ -1325,6 +1398,8 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     getCompanionActorIds,
     triggerPhotoGroupPose,
     triggerAdmiralEmoteReaction,
+    triggerWelcomeBriefing,
+    triggerSquadronRingBoost,
     handleCommand(cmd) {
       if (cmd.nonce === lastCommandNonce) return false;
       lastCommandNonce = cmd.nonce;
@@ -1843,6 +1918,82 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         m.flightAlt = 0;
         m.flightRoll = 0;
         m.flightPitch = 0;
+
+        // 입장 웰컴 브리핑: 가장 가까운 사령관이 제독 앞 ~2.4m까지 달려와 점프·손흔들기 + 4.8초간 브리핑 말풍선 연출
+        if (welcomeBriefing && welcomeBriefing.actorId === m.spec.id) {
+          if (isFocused || (companionCtx?.playerFlying ?? false)) {
+            welcomeBriefing = null;
+          } else {
+            welcomeBriefing.timer -= dt;
+            if (welcomeBriefing.timer <= 0) {
+              welcomeBriefing = null;
+            } else {
+              const anim = getOrCreateAnimState(m.spec.id);
+              if (anim.emoteTimer > 0) {
+                anim.emoteTimer = Math.max(0, anim.emoteTimer - dt);
+                anim.emoteElapsed += dt;
+                if (anim.emoteTimer === 0) anim.emoteKind = null;
+              }
+              const bDist = Math.hypot(welcomeBriefing.targetX - m.x, welcomeBriefing.targetZ - m.z);
+              if (!welcomeBriefing.arrived && bDist > 0.55) {
+                const step = Math.min(bDist, 4.9 * dt);
+                const nx = m.x + ((welcomeBriefing.targetX - m.x) / bDist) * step;
+                const nz = m.z + ((welcomeBriefing.targetZ - m.z) / bDist) * step;
+                const resolved = resolveMovement(m.x, m.z, nx, nz, 0.46);
+                const moved = Math.hypot(resolved.x - m.x, resolved.z - m.z);
+                m.x = resolved.x;
+                m.z = resolved.z;
+                m.tx = welcomeBriefing.targetX;
+                m.tz = welcomeBriefing.targetZ;
+                m.yaw = Math.atan2(welcomeBriefing.targetX - m.x, welcomeBriefing.targetZ - m.z);
+                m.moving = moved > 0.002;
+                m.moveSpeed = dt > 0.0001 ? moved / dt : 0;
+                m.worldAnim = m.moveSpeed > 3.5 ? "sprint" : "walk";
+                m.expression = "happy";
+                m.blush = 0.45;
+                m.gazeTargetX = welcomeBriefing.lookX;
+                m.gazeTargetZ = welcomeBriefing.lookZ;
+                if (moved < 0.002 && bDist < 3.6) {
+                  // 장애물로 더 가까이 못 가도 즉시 도착 처리해 브리핑 개시
+                  welcomeBriefing.arrived = true;
+                  welcomeBriefing.timer = Math.max(welcomeBriefing.timer, 4.8);
+                  m.hopBoost = Math.max(m.hopBoost, 1.45);
+                  triggerActorEmote(m.spec.id, "wave", 2.4);
+                  m.speech = welcomeBriefing.speech;
+                  m.speechTimer = 4.8;
+                  spawnBurst(m.x, 1.55, m.z, 0xfde047, 12);
+                }
+              } else {
+                if (!welcomeBriefing.arrived) {
+                  welcomeBriefing.arrived = true;
+                  welcomeBriefing.timer = 4.8;
+                  m.hopBoost = Math.max(m.hopBoost, 1.45);
+                  triggerActorEmote(m.spec.id, "wave", 2.4);
+                  m.speech = welcomeBriefing.speech;
+                  m.speechTimer = 4.8;
+                  spawnBurst(m.x, 1.55, m.z, 0xfde047, 12);
+                }
+                m.tx = m.x;
+                m.tz = m.z;
+                m.moving = false;
+                m.moveSpeed = 0;
+                const lookYaw = Math.atan2(welcomeBriefing.lookX - m.x, welcomeBriefing.lookZ - m.z);
+                let df = lookYaw - m.yaw;
+                while (df > Math.PI) df -= Math.PI * 2;
+                while (df < -Math.PI) df += Math.PI * 2;
+                m.yaw += df * Math.min(1, dt * 7.5);
+                m.worldAnim = anim.emoteTimer > 0 && anim.emoteKind ? anim.emoteKind : "idle";
+                m.animPhase = anim.emoteTimer > 0 ? anim.emoteElapsed : 0;
+                m.expression = "happy";
+                m.blush = 0.72;
+                m.gazeTargetX = welcomeBriefing.lookX;
+                m.gazeTargetZ = welcomeBriefing.lookZ;
+              }
+              continue;
+            }
+          }
+        }
+
         const patrolPlan = m.spec.role === "commodore" && m.spec.commodoreId
           ? villagePatrolPlans.get(m.spec.commodoreId)
           : undefined;
@@ -2478,6 +2629,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       animStates.clear();
       companionActorIds.length = 0;
       companionStates.clear();
+      welcomeBriefing = null;
       projectiles.length = 0;
       particles.length = 0;
       particleInstanced.dispose();

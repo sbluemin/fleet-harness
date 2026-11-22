@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type { WorldVillageSpec, WorldZoneSpec } from "../../shared/world-types.js";
+import { BROOK_BRIDGES, BROOK_SPAN_HALF_X, brookProfile } from "../engine/brook-geometry.js";
 import { getWorldT } from "../i18n/index.js";
 import { WorldIcon } from "./world-icons.js";
 
@@ -93,11 +94,12 @@ export function formatMinimapPlayerTransform(x: number, z: number, yaw: number):
   return `translate(${mx.toFixed(1)} ${my.toFixed(1)}) rotate(${deg.toFixed(1)})`;
 }
 
-/** `meadow-scene.ts` / `world-projection.ts`와 동일한 시냇물 곡선 SVG path 생성 (1회 계산). */
+/** `brook-geometry.ts` 단일 진실 곡선과 100% 일치하는 시냇물 SVG path 생성 (1회 계산). */
 function buildBrookSvgPath(): string {
   const pts: string[] = [];
-  for (let x = -82; x <= 82; x += 4) {
-    const z = 9.2 + Math.sin(x * 0.095) * 2.9 + Math.cos(x * 0.04) * 1.1;
+  const limit = BROOK_SPAN_HALF_X - 2;
+  for (let x = -limit; x <= limit; x += 3) {
+    const z = brookProfile(x).centerZ;
     const { mx, my } = worldToMinimapCoords(x, z);
     pts.push(`${pts.length === 0 ? "M" : "L"} ${mx.toFixed(1)} ${my.toFixed(1)}`);
   }
@@ -106,8 +108,16 @@ function buildBrookSvgPath(): string {
 
 const BROOK_SVG_PATH = buildBrookSvgPath();
 const PLAZA_COORDS = worldToMinimapCoords(0, -1.5);
-const EAST_BRIDGE_COORDS = worldToMinimapCoords(8.6, 9.2 + Math.sin(8.6 * 0.095) * 2.9 + Math.cos(8.6 * 0.04) * 1.1);
-const WEST_BRIDGE_COORDS = worldToMinimapCoords(-11.5, 9.2 + Math.sin(-11.5 * 0.095) * 2.9 + Math.cos(-11.5 * 0.04) * 1.1);
+const BRIDGE_MARKERS = BROOK_BRIDGES.map((bridge) => {
+  const coords = worldToMinimapCoords(bridge.x, bridge.z);
+  return {
+    id: bridge.id,
+    mx: coords.mx,
+    my: coords.my,
+    rotDeg: (-bridge.yaw * 180) / Math.PI,
+    isOuter: bridge.isOuter,
+  };
+});
 
 /**
  * 다크 크리스탈 RTS 전략 미니맵 (`React.memo` + `forwardRef`).
@@ -405,24 +415,24 @@ export const WorldMinimap = memo(
               r={MINIMAP_RADIUS * (64 / MINIMAP_WORLD_RADIUS)}
             />
 
-            {/* 시냇물 & 목교 */}
+            {/* 시냇물 & 4개 목교(중앙 2기 + 외곽 순환 2기) */}
             <path className="the-world-minimap-brook" d={BROOK_SVG_PATH} />
-            <rect
-              className="the-world-minimap-bridge"
-              x={EAST_BRIDGE_COORDS.mx - 2.5}
-              y={EAST_BRIDGE_COORDS.my - 4}
-              width={5}
-              height={8}
-              rx={1.2}
-            />
-            <rect
-              className="the-world-minimap-bridge"
-              x={WEST_BRIDGE_COORDS.mx - 2.5}
-              y={WEST_BRIDGE_COORDS.my - 4}
-              width={5}
-              height={8}
-              rx={1.2}
-            />
+            {BRIDGE_MARKERS.map((bridge) => {
+              const w = bridge.isOuter ? 4.4 : 5.0;
+              const h = bridge.isOuter ? 7.0 : 8.0;
+              return (
+                <rect
+                  key={bridge.id}
+                  className="the-world-minimap-bridge"
+                  x={bridge.mx - w * 0.5}
+                  y={bridge.my - h * 0.5}
+                  width={w}
+                  height={h}
+                  rx={1.2}
+                  transform={`rotate(${bridge.rotDeg.toFixed(1)} ${bridge.mx.toFixed(1)} ${bridge.my.toFixed(1)})`}
+                />
+              );
+            })}
 
             {/* 아웃포스트 캠프 다이아몬드 마커 */}
             {outposts.map((op) => {

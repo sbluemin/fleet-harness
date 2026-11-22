@@ -33,8 +33,10 @@ import {
   toggleOverviewMode,
   togglePhotoMode,
   toggleSoundMuted,
+  toggleStampBook,
   triggerWorldChoreography,
   useWorldStore,
+  WORLD_STAMP_IDS,
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
@@ -349,6 +351,26 @@ export const WorldHud = memo(function WorldHud({
                 tone={envOpen ? "amber" : activeWeatherMeta.tone}
               />
               <span>{t("theWorld.hud.envLabel")}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`the-world-btn${store.stampBookOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.stamps.hudAria")}
+              aria-pressed={store.stampBookOpen}
+              title={t("theWorld.stamps.hudTitle")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                toggleStampBook();
+              }}
+            >
+              <WorldIcon name="trophy" size={14} tone="amber" />
+              <span>{t("theWorld.stamps.hudLabel")}</span>
+              <span className="the-world-hud-badge">
+                {store.unlockedStamps.length}/{WORLD_STAMP_IDS.length}
+              </span>
             </button>
 
             <button

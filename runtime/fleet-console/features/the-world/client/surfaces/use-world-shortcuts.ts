@@ -27,6 +27,7 @@ import {
   setOverviewMode,
   setPhotoMode,
   setSittingAtCampfire,
+  setStampBookOpen,
   toggleCinemaMode,
   toggleEmoteWheel,
   toggleOverviewMode,
@@ -94,6 +95,8 @@ export function useWorldShortcuts({
               closeQuestBoard();
             } else if (current.gazetteOpen) {
               closeGazette();
+            } else if (current.stampBookOpen) {
+              setStampBookOpen(false);
             } else if (current.interactionMode !== "closed" || current.selectedDistrictId !== null) {
               closeActorInteraction();
             }
@@ -110,6 +113,7 @@ export function useWorldShortcuts({
         || snap.warRoomOpen
         || snap.admiralCustomizerOpen
         || snap.gazetteOpen
+        || snap.stampBookOpen
         || guideOpen;
 
       // Tab: 긴급 확인 필요 사령관 즉시 이동 · 대화창 오픈 (순환)
@@ -359,6 +363,10 @@ export function useWorldShortcuts({
         }
         if (snap.gazetteOpen) {
           closeGazette();
+          return;
+        }
+        if (snap.stampBookOpen) {
+          setStampBookOpen(false);
           return;
         }
         if (snap.warRoomOpen) {
