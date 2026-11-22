@@ -71,7 +71,7 @@ function errorHint(error: FleetHelperError): string {
   }
   if (code === "needs_visible_window") {
     const state = details?.reason === "hidden" || details?.reason === "minimized" ? details.reason : "not on screen";
-    return `Window is ${state}. If it achieves the same result, use set_value to replace a whole field, click with an element target, or ax_action with a name listed for that target. If the original input is needed, ask the user to show the window.`;
+    return `Window is ${state}. If it achieves the same result, use set_value to replace a whole field or ax_action with a name computer_state lists for that element. If the blocked input is necessary, ask the user to show the window.`;
   }
   if (code === "drag_unsupported") {
     return "Fleet does not support background drag for this target." + (details?.settableSlider === true
