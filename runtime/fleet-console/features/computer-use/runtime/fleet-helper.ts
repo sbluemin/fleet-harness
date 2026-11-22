@@ -1,7 +1,7 @@
 import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
-import { isRecord } from "./platform.js";
+import { isRecord, permissionHolderName } from "./platform.js";
 import type { ChildProcess } from "node:child_process";
 
 export interface Frame { x: number; y: number; w: number; h: number }
@@ -31,9 +31,15 @@ export interface HelperHello {
   protocol: 1; helperVersion: number | string; os: string;
   permissions: { accessibility: boolean; screenRecording: boolean };
   selfCheck: { ok: boolean; reason?: string; ms: number };
+  /** TCC가 권한을 판정하는 앱의 표시 이름. 헬퍼 자신이 아니라 헬퍼를 띄운 앱이다. */
+  permissionHolder?: string;
+  /** 그 앱이 이 Console의 조상이라 종료하면 지금 세션도 끝나는지. 헬퍼가 확인했을 때만 true다. */
+  permissionHolderHostsSession?: boolean;
 }
+/** requested는 지금 macOS에 물은 권한, deferred는 손쉬운 사용이 켜지면 헬퍼가 이어서 물을 권한(화면 기록)이다. */
+export interface HelperPermissionRequest { requested?: ("accessibility" | "screenRecording")[]; deferred?: ("accessibility" | "screenRecording")[]; permissions?: { accessibility: boolean; screenRecording: boolean } }
 export interface HelperFocus { editable: boolean; focusedRef?: string; role?: string }
-interface Replies { focus: HelperFocus; hello: HelperHello; windows: HelperWindows; snapshot: HelperSnapshot; act: HelperAction; verify: HelperVerify; cursor: object; shutdown: object }
+interface Replies { focus: HelperFocus; hello: HelperHello; windows: HelperWindows; snapshot: HelperSnapshot; act: HelperAction; verify: HelperVerify; cursor: object; requestPermissions: HelperPermissionRequest; shutdown: object }
 export class FleetHelperError extends Error {
   constructor(readonly code: string, readonly uncertain = false, readonly details?: Record<string, unknown>) { super(code); }
 }
@@ -89,7 +95,9 @@ export class FleetHelperClient {
   async start(): Promise<HelperHello> {
     const hello = await this.send("hello", {});
     if (hello.protocol !== 1 || typeof hello.selfCheck?.ok !== "boolean" || typeof hello.permissions?.accessibility !== "boolean" || typeof hello.permissions?.screenRecording !== "boolean") throw new FleetHelperError("internal");
-    return this.hello = hello;
+    const { permissionHolder, permissionHolderHostsSession, ...rest } = hello;
+    const holder = permissionHolderName(permissionHolder);
+    return this.hello = { ...rest, ...(holder ? { permissionHolder: holder } : {}), ...(holder && permissionHolderHostsSession === true ? { permissionHolderHostsSession: true } : {}) };
   }
 
   request<K extends Exclude<keyof Replies, "shutdown" | "hello">>(method: K, params: object): Promise<Replies[K]> {
@@ -102,7 +110,7 @@ export class FleetHelperClient {
   assertInputAllowed(): void {
     if (!this.hello) throw new FleetHelperError("internal");
     const missing = (["accessibility", "screenRecording"] as const).filter((key) => !this.hello!.permissions[key]);
-    if (missing.length) throw new FleetHelperError("permission_required", false, { missing });
+    if (missing.length) throw new FleetHelperError("permission_required", false, { missing, ...(this.hello.permissionHolder ? { holder: this.hello.permissionHolder } : {}), ...(this.hello.permissionHolderHostsSession ? { holderHostsSession: true } : {}) });
     if (!this.hello.selfCheck.ok) throw new FleetHelperError("self_check_failed");
   }
 

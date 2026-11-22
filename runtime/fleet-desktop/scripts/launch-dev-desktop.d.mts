@@ -3,6 +3,8 @@ export function createMacDevWrapper(input: {
   stageDirectory: string;
   iconPath: string;
   cloneApp?: (sourcePath: string, destinationPath: string) => Promise<void>;
+  resolveSigning?: () => Promise<import("./dev-codesign.mjs").DevCodesignChoice>;
+  log?: (message: string) => void;
 }): Promise<{ appPath: string; executablePath: string }>;
 export function createInfoPlist(sourceInfo: string, electronAppPath: string): string;
 export function createMacDevLaunchArguments(wrapperPath: string, appPath: string, args?: string[], env?: NodeJS.ProcessEnv): string[];

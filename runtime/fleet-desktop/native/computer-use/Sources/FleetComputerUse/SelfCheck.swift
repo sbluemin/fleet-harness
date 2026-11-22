@@ -1,13 +1,115 @@
 import AppKit
 import ApplicationServices
 
+/// TCC는 이 헬퍼가 아니라 헬퍼를 띄운 앱(책임 프로세스)의 이름으로 권한을 판정한다. 설치본은 Fleet Console,
+/// pnpm dev는 Fleet Console Dev, 터미널에서 띄운 Console은 그 터미널이다. 안내가 그 이름을 가리키도록 읽어 둔다.
+/// 비공개 함수라 없거나 앱이 아니면 nil이고, 그때 안내는 이름 없이 나간다.
+private let permissionHolderApp: (pid: pid_t, name: String)? = {
+  typealias Responsible = @convention(c) (pid_t) -> pid_t
+  guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid") else { return nil }
+  let pid = unsafeBitCast(symbol, to: Responsible.self)(getpid())
+  guard pid > 0, let name = NSRunningApplication(processIdentifier: pid)?.localizedName, !name.isEmpty else { return nil }
+  return (pid, name)
+}()
+let permissionHolder = permissionHolderApp?.name
+
+/// 판정 대상 앱이 이 헬퍼를 띄운 Console의 조상인지. 그렇다면 화면 기록을 켠 뒤 macOS가 권하는 "종료 및 다시 열기"가
+/// 그 Console과 지금 세션을 함께 끝낸다. 부모를 따라 올라가 확인하고, 확인하지 못하면 false다.
+let permissionHolderHostsConsole: Bool = {
+  guard let holder = permissionHolderApp?.pid else { return false }
+  var pid = getppid()
+  for _ in 0..<32 {
+    if pid == holder { return true }
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    guard pid > 1, sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return false }
+    pid = info.kp_eproc.e_ppid
+  }
+  return false
+}()
+
 struct HelperPermissions {
+  static let names = ["accessibility", "screenRecording"]
   let accessibility = AXIsProcessTrusted()
   let screenRecording = CGPreflightScreenCaptureAccess()
   var missing: [String] { [("accessibility", accessibility), ("screenRecording", screenRecording)].compactMap { $0.1 ? nil : $0.0 } }
   var allowed: Bool { missing.isEmpty }
-  var error: HelperError { HelperError("permission_required", details: ["missing": missing]) }
+  /// 어느 경로에서 막혀도 빠진 권한을 전부 함께 알린다. 하나씩 알리면 사람이 허용과 재시도를 여러 번 오가게 된다.
+  var error: HelperError {
+    var details: Object = ["missing": missing]
+    if let permissionHolder { details["holder"] = permissionHolder }
+    if permissionHolderHostsConsole { details["holderHostsSession"] = true }
+    return HelperError("permission_required", details: details)
+  }
   var json: Object { ["accessibility": accessibility, "screenRecording": screenRecording] }
+
+  /// 빠진 권한을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
+  /// 팀 ID로 서명한 앱에서는 화면 기록도 이 요청으로 "화면 기록" 창이 뜨고 목록에 오른다(macOS 26.5 실측). adhoc 서명 앱에서는
+  /// 창도 목록 등록도 없었으므로 안내가 + 추가를 함께 말한다. tccd의 "does not allow prompting" 기록은 창이 떠도 남는다.
+  /// 손쉬운 사용이 아직 없으면 화면 기록은 지금 묻지 않고 손쉬운 사용이 켜지는 즉시 묻는다(`deferred`). 손쉬운 사용 창이 떠 있는
+  /// 동안의 화면 기록 요청은 창도 목록 등록도 없이 사라졌기 때문이다(실측). 허용은 사람이 하고, 결과는 다음 hello에서 읽는다.
+  static func request(_ wanted: Set<String>) -> (requested: [String], deferred: [String]) {
+    let now = HelperPermissions()
+    var requested: [String] = []
+    var deferred: [String] = []
+    if wanted.contains("accessibility") && !now.accessibility {
+      _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+      requested.append("accessibility")
+    }
+    if wanted.contains("screenRecording") && !now.screenRecording {
+      if now.accessibility {
+        _ = CGRequestScreenCaptureAccess()
+        requested.append("screenRecording")
+      } else {
+        ScreenRecordingAfterAccessibility.schedule()
+        deferred.append("screenRecording")
+      }
+    }
+    return (requested, deferred)
+  }
+}
+
+/// 손쉬운 사용이 켜지면 곧바로 화면 기록을 묻는 감시. 헬퍼마다 하나만 돌고, Console의 요청 간격(5분)이 지나거나 헬퍼가
+/// 내려가면 함께 끝난다. 사람이 손쉬운 사용을 거부하면 화면 기록은 묻지 않는다. Console은 미룬 요청을 기록하지 않으므로
+/// 다음 호출에서 같은 감시를 다시 건다.
+enum ScreenRecordingAfterAccessibility {
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var watching = false
+
+  static func schedule(timeout: TimeInterval = 300, interval: TimeInterval = 1) {
+    guard begin() else { return }
+    DispatchQueue.global(qos: .utility).async {
+      defer { end() }
+      _ = waitThenRequest(deadline: Date().addingTimeInterval(timeout), interval: interval,
+                          trusted: { AXIsProcessTrusted() }, granted: { CGPreflightScreenCaptureAccess() },
+                          request: { _ = CGRequestScreenCaptureAccess() }, sleep: { Thread.sleep(forTimeInterval: $0) }, now: { Date() })
+    }
+  }
+
+  /// 감시는 헬퍼마다 하나다. 이미 돌고 있으면 false.
+  static func begin() -> Bool {
+    lock.lock(); defer { lock.unlock() }
+    guard !watching else { return false }
+    watching = true
+    return true
+  }
+
+  static func end() { lock.lock(); watching = false; lock.unlock() }
+
+  /// 손쉬운 사용이 켜질 때까지 `interval`마다 확인하고, 켜지면 화면 기록이 아직 없을 때만 한 번 요청한다. 요청했으면 true.
+  /// 기한까지 켜지지 않으면(사람이 거부했거나 늦음) 요청하지 않는다.
+  static func waitThenRequest(deadline: Date, interval: TimeInterval, trusted: () -> Bool, granted: () -> Bool,
+                              request: () -> Void, sleep: (TimeInterval) -> Void, now: () -> Date) -> Bool {
+    while now() < deadline {
+      sleep(interval)
+      guard trusted() else { continue }
+      guard !granted() else { return false }
+      request()
+      return true
+    }
+    return false
+  }
 }
 
 private final class ProbePanel: NSPanel {

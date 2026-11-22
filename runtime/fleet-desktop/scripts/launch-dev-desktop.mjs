@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { codesignWithFallback, resolveDevCodesignIdentity, signingEnv } from "./dev-codesign.mjs";
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
@@ -25,7 +26,9 @@ export async function createMacDevWrapper(input) {
   for (const file of [path.join(electronAppPath, "Contents", "MacOS", "Electron"), path.join(electronAppPath, "Contents", "Info.plist"), input.iconPath,
     path.join(desktopDirectory, "build", "entitlements.mac.plist")]) sourceIdentity.update(await readFile(file));
   const identity = sourceIdentity.digest("hex");
-  if (await isReusableWrapper(wrapperPath, identity)) {
+  // 팀 ID 서명이어야 macOS가 화면 기록을 묻고 목록에 올린다. 고른 ID가 바뀌면 다시 서명한다.
+  const signing = await (input.resolveSigning ?? resolveDevCodesignIdentity)();
+  if (await isReusableWrapper(wrapperPath, identity, signing)) {
     return { appPath: wrapperPath, executablePath };
   }
 
@@ -37,8 +40,10 @@ export async function createMacDevWrapper(input) {
   const sourceInfo = await readFile(sourceInfoPath, "utf8");
   await writeFile(wrapperInfoPath, createInfoPlist(sourceInfo, identity));
   await copyFile(input.iconPath, wrapperIconPath);
-  await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", "-", "--identifier", bundleIdentifier,
-    "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath]);
+  await codesignWithFallback(productName, signing, async (signer) => {
+    await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", signer, "--timestamp=none", "--identifier", bundleIdentifier,
+      "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath], { env: signingEnv() });
+  }, input.log ?? ((message) => process.stderr.write(`${message}\n`)));
   await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
   return { appPath: wrapperPath, executablePath };
 }
@@ -85,7 +90,7 @@ async function cloneMacApp(sourcePath, destinationPath) {
   await execFileAsync("/bin/cp", ["-cR", sourcePath, destinationPath]);
 }
 
-async function isReusableWrapper(wrapperPath, electronAppPath) {
+async function isReusableWrapper(wrapperPath, electronAppPath, signing) {
   try {
     const [info, executable] = await Promise.all([
       readFile(path.join(wrapperPath, "Contents", "Info.plist"), "utf8"),
@@ -94,7 +99,9 @@ async function isReusableWrapper(wrapperPath, electronAppPath) {
     if (!executable.isFile() || !info.includes(plistString(wrapperSourceKey, electronAppPath))
       || !info.includes(`<string>${bundleIdentifier}</string>`) || !info.includes(`<string>${productName}</string>`)) return false;
     await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
-    return true;
+    // 서명 ID가 고른 것과 다르면(adhoc으로 물러났던 래퍼 포함) 다시 서명한다.
+    const { stderr } = await execFileAsync("/usr/bin/codesign", ["-dvv", wrapperPath]);
+    return signing.identity === "-" ? stderr.includes("Signature=adhoc") : stderr.includes(`Authority=${signing.label}\n`);
   } catch {
     return false;
   }

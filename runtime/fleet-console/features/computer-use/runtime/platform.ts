@@ -32,6 +32,12 @@ export interface ComputerUseOpenResult {
   readonly windowState: ComputerUseWindowState;
   readonly error?: string;
 }
+/** 판정 앱 이름은 사람과 에이전트 안내에 그대로 들어가므로 짧은 한 줄 문자열만 받는다. */
+export function permissionHolderName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.trim();
+  return name && name.length <= 120 && !/[\u0000-\u001f\u007f]/u.test(name) ? name : undefined;
+}
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

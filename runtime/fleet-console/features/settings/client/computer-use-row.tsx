@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import type { ComputerUseSettingsStatus } from "../../computer-use/shared/status.js";
+import { COMPUTER_USE_PERMISSION_REQUEST_PATH, type ComputerUseSettingsStatus } from "../../computer-use/shared/status.js";
 import { SettingsRow, SettingsToggle } from "./preferences-context.js";
 import { MobileIcon } from "../../../core/client/src/chrome/mobile/mobile-icons.js";
 import { SettingsHelp } from "../../../core/client/src/chrome/components/settings-help.js";
-import { useT } from "../../../core/client/src/i18n/index.js";
+import { renderMessage, useT } from "../../../core/client/src/i18n/index.js";
 
 type ReadStatus = ComputerUseSettingsStatus | "pending" | "remote" | "failed";
 
@@ -42,26 +42,35 @@ function noticeFor(status: ReadStatus) {
 export function ComputerUseRow({ enabled, saving, onChange, mobile = false }: { readonly enabled: boolean; readonly saving: boolean; readonly onChange: (enabled: boolean) => void; readonly mobile?: boolean }) {
   const t = useT();
   const { status, retry } = useComputerUseStatus(enabled);
-  const [opening, setOpening] = useState(false);
-  const [openFailed, setOpenFailed] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requestFailed, setRequestFailed] = useState(false);
   const key = noticeFor(status);
   const locked = typeof status === "string" || !status.supported || !status.helperAvailable;
   const permissionMissing = key === "permissionsBoth" || key === "permissionAccessibility" || key === "permissionScreenRecording";
-  const openPrivacy = async () => {
-    setOpening(true);
-    setOpenFailed(false);
+  // 빠진 권한을 macOS 요청 창으로 묻는다. 최근에 이미 물었다면 서버가 대신 시스템 설정을 연다.
+  const requestPermissions = async () => {
+    setRequesting(true);
+    setRequestFailed(false);
     try {
-      const response = await fetch("/api/v1/computer-use/privacy-settings", { method: "POST" });
-      setOpenFailed(!response.ok);
-    } catch { setOpenFailed(true); }
-    finally { setOpening(false); }
+      const response = await fetch(COMPUTER_USE_PERMISSION_REQUEST_PATH, { method: "POST" });
+      setRequestFailed(!response.ok);
+    } catch { setRequestFailed(true); }
+    finally { setRequesting(false); }
   };
   const title = t("settings.computerUse.title");
   const switchControl = <SettingsToggle checked={key !== "unsupported" && enabled} busy={saving} disabled={locked} ariaLabel={title} onChange={onChange} />;
   const actionClass = mobile ? "settings-mobile-textlink" : "fc-settings-reset";
   const notice = key ? <>
-    {t(`settings.computerUse.${key}`)}
-    {permissionMissing && <> <button type="button" className={actionClass} disabled={opening} onClick={(event) => { event.stopPropagation(); void openPrivacy(); }}>{t("settings.computerUse.openPrivacy")}</button>{openFailed && <> {t("settings.computerUse.openPrivacyFailed")}</>}</>}
+    {permissionMissing && typeof status === "object"
+      // 권한은 헬퍼를 띄운 앱의 이름으로 판정된다(설치본 Fleet Console, pnpm dev Fleet Console Dev). 읽지 못하면 Fleet Console로 둔다.
+      ? renderMessage(t(`settings.computerUse.${key}`), { app: status.permissionHolder ?? "Fleet Console" })
+      : t(`settings.computerUse.${key}`)}
+    {/* 화면 기록이 빠졌을 때만: 목록에 없으면 + 추가(요청 창이 뜨지 않는 빌드), 옛 빌드 허용이 켜짐으로 남았으면 껐다 켜기,
+        켠 뒤 macOS의 종료 및 다시 열기에서 앱이 다시 열리지 않는 경우, 첫 캡처의 macOS 확인 창(실측 근거는 임무 4 기록). */}
+    {typeof status === "object" && status.missingPermissions?.includes("screenRecording") && <>
+      {" "}{t("settings.computerUse.permissionScreenRecordingList")} {t("settings.computerUse.permissionScreenRecordingReopen")} {t("settings.computerUse.permissionScreenRecordingConfirm")}
+    </>}
+    {permissionMissing && <> <button type="button" className={actionClass} disabled={requesting} onClick={(event) => { event.stopPropagation(); void requestPermissions(); }}>{t("settings.computerUse.requestPermissions")}</button>{requestFailed && <> {t("settings.computerUse.requestPermissionsFailed")}</>}</>}
     {status === "failed" && <> <button type="button" className={actionClass} onClick={(event) => { event.stopPropagation(); retry(); }}>{t("settings.computerUse.retry")}</button></>}
   </> : null;
   if (mobile) return <SettingsRow label={title} hint={t("settings.computerUse.help")} helpTip={notice && <span className="fc-settings-row__hint" role="status">{notice}</span>} icon={<MobileIcon name="layout" />} disabled={locked}>{switchControl}</SettingsRow>;

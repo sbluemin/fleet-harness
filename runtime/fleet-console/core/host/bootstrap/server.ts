@@ -430,7 +430,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
-  { method: "POST", path: "/api/v1/computer-use/privacy-settings", summary: "Open macOS Privacy & Security for missing Computer Use permissions.", category: "Settings", gate: "origin-strict", transport: "http" },
+  { method: "POST", path: "/api/v1/computer-use/permission-request", summary: "Request missing Computer Use permissions from macOS, or open Privacy & Security when they were requested recently.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },

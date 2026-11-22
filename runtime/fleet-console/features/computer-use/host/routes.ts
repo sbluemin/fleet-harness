@@ -2,6 +2,7 @@ import type * as http from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { openMacPrivacySettings } from "../runtime/macos-window.js";
 import type { ComputerUseService } from "./computer-use.js";
+import { COMPUTER_USE_PERMISSION_REQUEST_PATH } from "../shared/status.js";
 interface ComputerUseRouteDeps {
   readonly computerUse: ComputerUseService;
   readonly openPrivacySettings?: typeof openMacPrivacySettings;
@@ -18,14 +19,12 @@ export function createComputerUseRouter(deps: ComputerUseRouteDeps): RouteHandle
       return true;
     }
     if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    if (req.method === "POST" && pathname === "/api/v1/computer-use/privacy-settings") {
-      const { supported, helperAvailable, missingPermissions } = await computerUse.readStatus();
-      if (!supported || !helperAvailable || !missingPermissions?.length) {
-        writeJson(res, 409, { error: "privacy_settings_unavailable" });
-      } else {
-        const opened = await (deps.openPrivacySettings ?? openMacPrivacySettings)(missingPermissions);
-        writeJson(res, opened ? 200 : 503, { opened });
-      }
+    if (req.method === "POST" && pathname === COMPUTER_USE_PERMISSION_REQUEST_PATH) {
+      let outcome: Awaited<ReturnType<ComputerUseService["requestPermissions"]>>;
+      try { outcome = await computerUse.requestPermissions(deps.openPrivacySettings ?? openMacPrivacySettings); }
+      catch { writeJson(res, 503, { error: "permission_request_failed" }); return true; }
+      if (!outcome) writeJson(res, 409, { error: "permission_request_unavailable" });
+      else writeJson(res, "opened" in outcome && !outcome.opened ? 503 : 200, outcome);
       return true;
     }
     if (req.method === "POST" && pathname === "/api/v1/computer-use/stop") {

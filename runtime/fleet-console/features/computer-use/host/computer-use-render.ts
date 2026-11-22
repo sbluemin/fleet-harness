@@ -1,7 +1,7 @@
 import type { HelperAction, HelperElement, HelperHello, HelperVerify, HelperWindow, HelperWindows, SnapshotWindow } from "../runtime/fleet-helper.js";
 import { FleetHelperError } from "../runtime/fleet-helper.js";
 import type { ClipboardRestoration } from "../runtime/macos-paste.js";
-import type { ComputerUseResult } from "../runtime/platform.js";
+import { permissionHolderName, type ComputerUseResult } from "../runtime/platform.js";
 import { InvalidComputerUseParameters, isElementId, type ActionArgs, type Expectation } from "./computer-use-input.js";
 
 export function quoteApp(value: string): string {
@@ -30,6 +30,35 @@ const hint: Record<string, string> = {
   clipboard_prepare_failed: "The clipboard could not be prepared.",
 };
 
+// 권한 안내 문구(프롬프트 자문 확정, 결정 "permission_required 문구 v2"). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은
+// 반복하지 않는다. Fleet이 아는 것은 요청을 보냈는지뿐이라, 이력을 모르면 첫 문장을 뺀다. 앱 이름은 TCC 판정 대상이다.
+const PERMISSION_REQUEST_LINE = {
+  requested: "Fleet requested access from macOS.",
+  recent: "Fleet recently requested access; no new request was sent.",
+} as const;
+const PERMISSION_HOLDER_FALLBACK = "the app that started Fleet";
+const PERMISSION_LABELS = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]] as const;
+// 화면 기록이 빠졌을 때만 붙인다. 갈림은 서명 종류가 아니라 사람이 목록에서 보는 상태(없음·이미 켜짐)다.
+// 요청 창이 뜨지 않는 빌드는 목록에 없고, 옛 빌드의 허용은 켜짐으로 남아도 거부된다.
+const SCREEN_RECORDING_LIST = "Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on.";
+// 화면 기록을 켜면 macOS가 종료 및 다시 열기를 권하는데, 실측에서 앱이 다시 열리지 않았다. 그 앱이 이 Console을 띄워 지금 세션을
+// 호스팅한다고 헬퍼가 확인했을 때만 세션이 끊길 수 있다고 먼저 알리게 한다. 자동 복귀·재시도는 약속하지 않는다.
+const SCREEN_RECORDING_REOPEN = "If they choose Quit & Reopen and the app stays closed, have them reopen it manually.";
+const SCREEN_RECORDING_REOPEN_HOSTING = "If they choose Quit & Reopen, warn them first that this session may be interrupted and that they may need to reopen the app manually.";
+// 허용 뒤 첫 캡처에서 macOS(ScreenCaptureKit)가 따로 확인 창을 띄운다. 예고일 뿐 시험 캡처나 재승인 지시가 아니다.
+const SCREEN_RECORDING_NEXT_CAPTURE = "On the next capture, macOS may ask the user to confirm Screen Recording for that app.";
+
+function permissionHint(details: Record<string, unknown> | undefined): string {
+  const missing = Array.isArray(details?.missing) ? details.missing : [];
+  const names = PERMISSION_LABELS.filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ") || "the required permissions";
+  const holder = permissionHolderName(details?.holder);
+  const request = details?.request === "requested" || details?.request === "recent" ? `${PERMISSION_REQUEST_LINE[details.request]} ` : "";
+  const ask = `${request}Ask the user to enable ${names} for ${holder ?? PERMISSION_HOLDER_FALLBACK} in System Settings › Privacy & Security.`;
+  if (!missing.includes("screenRecording")) return `${ask} Retry after the user confirms the change.`;
+  const reopen = holder && details?.holderHostsSession === true ? SCREEN_RECORDING_REOPEN_HOSTING : SCREEN_RECORDING_REOPEN;
+  return `${ask} ${SCREEN_RECORDING_LIST} ${reopen} Retry after the user confirms the change. ${SCREEN_RECORDING_NEXT_CAPTURE}`;
+}
+
 function errorHint(error: FleetHelperError): string {
   const { code, details } = error;
   if (code === "window_unavailable") {
@@ -45,11 +74,7 @@ function errorHint(error: FleetHelperError): string {
       ? " To change the slider value, use set_value; app change events may not fire."
       : " If the drag itself is required, ask the user to perform it.");
   }
-  if (code === "permission_required") {
-    const missing = Array.isArray(details?.missing) ? details.missing : [];
-    const names = [["accessibility", "Accessibility"], ["screenRecording", "Screen Recording"]].filter(([key]) => missing.includes(key)).map(([, label]) => label).join(" and ");
-    return `Fleet Console lacks ${names || "required device permissions"}. If needed, ask the user to grant access in System Settings › Privacy & Security.`;
-  }
+  if (code === "permission_required") return permissionHint(details);
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
 

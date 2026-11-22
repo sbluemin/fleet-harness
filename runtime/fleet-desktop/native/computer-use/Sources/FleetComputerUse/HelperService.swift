@@ -273,7 +273,17 @@ private struct Expectation {
       try validateKeys(p, allowed: [])
       let os = ProcessInfo.processInfo.operatingSystemVersion
       let version = "\(os.majorVersion).\(os.minorVersion)" + (os.patchVersion == 0 ? "" : ".\(os.patchVersion)")
-      return ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check]
+      var hello: Object = ["protocol": 1, "helperVersion": 1, "os": version, "permissions": HelperPermissions().json, "symbols": symbols.json, "selfCheck": check]
+      if let permissionHolder { hello["permissionHolder"] = permissionHolder }
+      if permissionHolderHostsConsole { hello["permissionHolderHostsSession"] = true }
+      return hello
+    case "requestPermissions":
+      try validateKeys(p, allowed: ["permissions"])
+      guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy(HelperPermissions.names.contains) else {
+        throw HelperError("invalid_params", "permissions")
+      }
+      let result = HelperPermissions.request(Set(wanted))
+      return ["requested": result.requested, "deferred": result.deferred, "permissions": HelperPermissions().json]
     case "windows":
       try validateKeys(p, allowed: ["query"])
       let query = try optionalString(p["query"], name: "query", max: 300)
@@ -406,6 +416,9 @@ private struct Expectation {
     let valueLimit = try boundedInt(p["valueLimit"], name: "valueLimit", default: 80, range: 0...20_000)
     if p["image"] != nil && jsonBool(p["image"]) == nil { throw HelperError("invalid_params", "image") }
     var win = try window(pid, id, started: started)
+    // 손쉬운 사용이 없으면 AX 트리가 오류 없이 비어 버려 부족이 클릭 단계에서야 드러난다. 여기서 함께 알린다.
+    let permissions = HelperPermissions()
+    guard permissions.allowed else { throw permissions.error }
     let tree = try await readPrepared(&win)
     let expanded = try expand.map { try ax.resolve($0, tree: tree, window: win) }
     let output = tree.snapshot(find: find, expand: expanded, limit: limit, valueLimit: valueLimit)
@@ -429,6 +442,8 @@ private struct Expectation {
     guard let raw = p["expect"] as? [Object], (1...8).contains(raw.count) else { throw HelperError("invalid_params", "expect must contain 1 to 8 conditions") }
     let expect = try raw.map(Expectation.init)
     let timeout = try boundedInt(p["timeoutMs"], name: "timeoutMs", default: 0, range: 0...10_000)
+    let permissions = HelperPermissions()
+    guard permissions.allowed else { throw permissions.error }
     let start = clockNow()
     func result(index: Int, actual: Object) -> Object {
       var result: Object = ["index": index, "expected": expect[index].raw, "waitedMs": millis(since: start)]
@@ -793,7 +808,10 @@ private struct Expectation {
     // CannotComplete는 IPC 타임아웃일 수도 있으므로 입력이 안 나갔다고 단정하거나 재전송하지 않는다.
     if code == .cannotComplete || code == .failure { return HelperError("timeout", "ax_delivery_unknown") }
     if code == .invalidUIElement { return HelperError("stale_element") }
-    if code == .apiDisabled { return HelperError("permission_required", details: ["missing": ["accessibility"]]) }
+    if code == .apiDisabled {
+      let permissions = HelperPermissions()
+      return permissions.allowed ? HelperError("permission_required", details: ["missing": ["accessibility"]]) : permissions.error
+    }
     return HelperError(defaultCode)
   }
 
