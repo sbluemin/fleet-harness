@@ -1,11 +1,9 @@
 import type * as http from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
-import { openMacPrivacySettings } from "../runtime/macos-window.js";
 import type { ComputerUseService } from "./computer-use.js";
 import { COMPUTER_USE_PERMISSION_REQUEST_PATH } from "../shared/status.js";
 interface ComputerUseRouteDeps {
   readonly computerUse: ComputerUseService;
-  readonly openPrivacySettings?: typeof openMacPrivacySettings;
   readonly isLoopbackListener: (req: http.IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: http.IncomingMessage) => boolean;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
@@ -21,7 +19,7 @@ export function createComputerUseRouter(deps: ComputerUseRouteDeps): RouteHandle
     if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
     if (req.method === "POST" && pathname === COMPUTER_USE_PERMISSION_REQUEST_PATH) {
       let outcome: Awaited<ReturnType<ComputerUseService["requestPermissions"]>>;
-      try { outcome = await computerUse.requestPermissions(deps.openPrivacySettings ?? openMacPrivacySettings); }
+      try { outcome = await computerUse.requestPermissions(); }
       catch { writeJson(res, 503, { error: "permission_request_failed" }); return true; }
       if (!outcome) writeJson(res, 409, { error: "permission_request_unavailable" });
       else writeJson(res, "opened" in outcome && !outcome.opened ? 503 : 200, outcome);

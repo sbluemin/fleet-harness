@@ -1,10 +1,7 @@
-import { realpath, stat } from "node:fs/promises";
-import { isAbsolute } from "node:path";
+import { marked } from "marked";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
-import { FleetHelperError, type createFleetComputerUsePlatform, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
-import { openMacApp, readMacPermissions, verifyMacWindowIdentity, type MacPermissions } from "../runtime/macos-window.js";
-import { prepareMacPaste, type ClipboardRestoration } from "../runtime/macos-paste.js";
-import type { ComputerUseCaptureFailure, ComputerUseResult, ComputerUseWindowIdentity } from "../runtime/platform.js";
+import { FleetHelperError, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
+import type { ClipboardLease, ClipboardRestoration, ComputerUseCaptureFailure, ComputerUsePermissions, ComputerUsePlatform, ComputerUseResult, ComputerUseWindowIdentity, WindowIdentityResult } from "../runtime/platform.js";
 import { COMPUTER_USE_PERMISSIONS, type ComputerUsePermission, type ComputerUseSettingsStatus } from "../shared/status.js";
 import { computerUseTools } from "./computer-use-tools.js";
 import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
@@ -79,6 +76,7 @@ export class ComputerUseService {
   private stage: string | null = null;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private stopping: Promise<void> | null = null;
+  private clipboardCleanup: Promise<ClipboardRestoration | undefined> | null = null;
   private windowSequence = 0;
   private viewSequence = 0;
   private readonly windows = new Map<string, KnownWindow>();
@@ -86,17 +84,13 @@ export class ComputerUseService {
   private readonly apps = new Set<string>();
   private readonly views = new Map<string, Map<string, View>>();
   private selfCheckFailed = false;
-  private permissionsRead: { at: number; result: ReturnType<typeof readMacPermissions> } | null = null;
+  private permissionsRead: { at: number; result: Promise<ComputerUsePermissions | null> } | null = null;
   private readonly permissionRequestedAt = new Map<ComputerUsePermission, number>();
   private readonly recent = new Map<string, ComputerUseRecentCall[]>();
 
   constructor(private readonly deps: {
     readonly enabled: () => boolean;
-    readonly platform: ReturnType<typeof createFleetComputerUsePlatform>;
-    readonly openApp?: typeof openMacApp;
-    readonly preparePaste?: typeof prepareMacPaste;
-    readonly verifyWindow?: typeof verifyMacWindowIdentity;
-    readonly readPermissions?: typeof readMacPermissions;
+    readonly platform: ComputerUsePlatform;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
@@ -125,11 +119,11 @@ export class ComputerUseService {
     const helperAvailable = await this.inspectInstallation() === "available";
     const { enabled, supported } = this.status();
     const hello = this.helperInfo();
-    let permissions: MacPermissions | null = null;
+    let permissions: ComputerUsePermissions | null = null;
     if (helperAvailable) {
       const now = Date.now();
       if (!this.permissionsRead || now - this.permissionsRead.at >= 5000) {
-        this.permissionsRead = { at: now, result: (this.deps.readPermissions ?? readMacPermissions)() };
+        this.permissionsRead = { at: now, result: this.deps.platform.readPermissions() };
       }
       permissions = (await this.permissionsRead.result) ?? (hello ? { ...hello.permissions, ...(hello.permissionHolder ? { holder: hello.permissionHolder } : {}) } : null);
     }
@@ -137,8 +131,8 @@ export class ComputerUseService {
     const permissionHolder = permissions?.holder ?? hello?.permissionHolder ?? null;
     return { enabled, supported, helperAvailable, missingPermissions, permissionHolder, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
   }
-  async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
-    return this.deps.enabled() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
+  async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<WindowIdentityResult> {
+    return this.deps.enabled() ? await this.deps.platform.verifyWindow(target) : "mismatch";
   }
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
@@ -178,11 +172,13 @@ export class ComputerUseService {
     this.apps.clear();
     this.resetReferences();
     const client = this.client;
+    const clipboardCleanup = this.clipboardCleanup;
     this.client = null;
     this.stopping = Promise.resolve().then(async () => {
       try {
-        const clean = !client || await client.stop();
-        this.cleanupStatus = !client ? "not_needed" : clean ? "notified" : "failed";
+        const [helperStopped, restored] = await Promise.all([client?.stop() ?? true, clipboardCleanup]);
+        const clean = helperStopped && restored !== "failed";
+        this.cleanupStatus = !client && !clipboardCleanup ? "not_needed" : clean ? "notified" : "failed";
         this.cleanupFailure = clean ? null : "timeout";
         if (!clean) this.reportFailure("computer_use_stop_failed", new Error("timeout"));
       } catch (error) {
@@ -280,9 +276,16 @@ export class ComputerUseService {
       const actor = caller?.actor ?? owner;
       switch (tool) {
         case "computer_apps": output = withOk(await this.list(client, (args as { query?: string }).query, lifetime)); break;
-        case "computer_open": output = await this.open(client, args as OpenArgs, lifetime); break;
+        case "computer_open": output = await this.open(args as OpenArgs, lifetime); break;
         case "computer_state": output = withOk(await this.observe(client, args as StateArgs, actor, lifetime, caller)); break;
-        case "computer_action": output = await this.act(client, args as ActionArgs, actor, lifetime, (value) => { clipboard = value; }, () => { sent = true; }); break;
+        case "computer_action": {
+          const action = args as ActionArgs;
+          const work = this.act(client, action, actor, lifetime, (value) => { clipboard = value; }, () => { sent = true; });
+          if (action.action === "paste") this.clipboardCleanup = work.then(() => clipboard, () => clipboard);
+          try { output = await work; }
+          finally { this.clipboardCleanup = null; }
+          break;
+        }
         case "computer_verify": output = await this.verify(client, args as VerifyArgs, lifetime); break;
       }
       this.assertActive(lifetime);
@@ -382,12 +385,12 @@ export class ComputerUseService {
    * 설정 화면의 "권한 요청". 간격 안에 이미 물었으면 macOS가 창을 다시 띄우지 않을 수 있으므로(한 번 거절된 요청은 다시 묻지 않는다)
    * 그때는 해당 시스템 설정 화면을 연다. 헬퍼가 떠 있지 않으면 요청만 하고 내린다.
    */
-  async requestPermissions(openSettings: (missing: readonly ComputerUsePermission[]) => Promise<boolean>): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
+  async requestPermissions(): Promise<{ requested: ComputerUsePermission[] } | { opened: boolean } | null> {
     const { supported, helperAvailable, missingPermissions } = await this.readStatus();
     if (!supported || !helperAvailable || !missingPermissions?.length) return null;
     const now = Date.now();
     const due = this.duePermissions(missingPermissions, now);
-    if (!due.length) return { opened: await openSettings(missingPermissions) };
+    if (!due.length) return { opened: await this.deps.platform.openPrivacySettings(missingPermissions) };
     const live = this.client?.live ? this.client : null;
     const client = live ?? this.deps.platform.createClient();
     let requested: ComputerUsePermission[];
@@ -398,13 +401,13 @@ export class ComputerUseService {
     } finally {
       if (!live) await client.stop();
     }
-    return requested.length ? { requested } : { opened: await openSettings(missingPermissions) };
+    return requested.length ? { requested } : { opened: await this.deps.platform.openPrivacySettings(missingPermissions) };
   }
 
   private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
     const started = client.hello?.permissions;
     if (!started || COMPUTER_USE_PERMISSIONS.every((permission) => started[permission])) return false;
-    const now = await (this.deps.readPermissions ?? readMacPermissions)();
+    const now = await this.deps.platform.readPermissions();
     return now !== null && COMPUTER_USE_PERMISSIONS.some((permission) => !started[permission] && now[permission]);
   }
 
@@ -455,25 +458,18 @@ export class ComputerUseService {
     return renderApps(result.windows.filter((w) => w.processStartedAt > 0).map((w) => windowLine(this.registerWindow(w).id, w)), result.installed);
   }
 
-  private async open(client: FleetHelperClient, args: OpenArgs, lifetime: AbortController) {
-    let app = args.app;
-    if (app !== app.trim() || /[\u0000-\u001f\u007f]/u.test(app)) throw new InvalidComputerUseParameters("Use an exact .app path or an unambiguous bundle ID.");
-    if (!isAbsolute(app)) {
-      if (!/^[a-z0-9_-]+(?:\.[a-z0-9_-]+)+$/iu.test(app)) throw new InvalidComputerUseParameters("Use an exact .app path or an unambiguous bundle ID.");
-      const matches = await client.request("windows", { query: app });
-      const paths = new Set([...(matches.installed ?? []).filter((x) => x.bundleId === app).map((x) => x.path), ...matches.windows.filter((x) => x.bundleId === app).map((x) => x.bundlePath)].filter(Boolean));
-      if (paths.size !== 1) throw new InvalidComputerUseParameters("Bundle ID did not match exactly one installation; use the exact .app path.");
-      app = [...paths][0]!;
-    }
-    try {
-      if (!isAbsolute(app) || !app.endsWith(".app")) throw new Error();
-      app = await realpath(app);
-      if (!app.endsWith(".app") || !(await stat(app)).isDirectory()) throw new Error();
-    } catch { throw new InvalidComputerUseParameters("Use an existing .app bundle path."); }
+  private async open(args: OpenArgs, lifetime: AbortController) {
+    const resolved = await this.deps.platform.resolveApp(args.app, lifetime.signal);
     this.assertActive(lifetime);
+    if ("error" in resolved) throw new InvalidComputerUseParameters({
+      exact_target_required: "Use an exact .app path or an unambiguous bundle ID.",
+      unambiguous_target_required: "Bundle ID did not match exactly one installation; use the exact .app path.",
+      installed_target_required: "Use an existing .app bundle path.",
+    }[resolved.error]);
+    const { app } = resolved;
     this.views.clear();
     this.publishCapture();
-    const opened = await (this.deps.openApp ?? openMacApp)(app, lifetime.signal, args.activate === true);
+    const opened = await this.deps.platform.openApp(app, lifetime.signal, args.activate === true);
     const result = renderOpen(opened.requestDispatched, Boolean(opened.error), app);
     return { result, code: result.isError ? opened.requestDispatched ? "dispatch_unknown" : "not_sent:open_failed" : "ok" };
   }
@@ -537,13 +533,17 @@ export class ComputerUseService {
     this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
     const target = { ...address(window), ref: args.target };
     let clipboard: ClipboardRestoration | undefined;
-    let lease: Awaited<ReturnType<typeof prepareMacPaste>> | undefined;
+    let lease: ClipboardLease | undefined;
     let params: object;
     if (args.action === "paste") {
       const focus = await client.request("focus", target);
       if (!focus.editable) throw new FleetHelperError("no_editable_focus");
       this.assertActive(lifetime);
-      try { lease = await (this.deps.preparePaste ?? prepareMacPaste)(args.text!, args.format ?? "text"); }
+      try {
+        const text = args.text!;
+        const html = args.format === "md" ? await marked.parse(text, { async: false }) : args.format === "html" ? text : undefined;
+        lease = await this.deps.platform.preparePaste({ text, ...(html === undefined ? {} : { html }) }, lifetime.signal);
+      }
       catch { throw new FleetHelperError("clipboard_prepare_failed"); }
       // 일반 텍스트 붙여넣기만 헬퍼가 같은 문자열이 늘었는지로 검증한다. md·html은 필드 값이 원문과 달라 관측 결과를 그대로 쓴다.
       const plain = args.format === undefined || args.format === "text";

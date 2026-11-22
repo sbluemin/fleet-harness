@@ -144,6 +144,8 @@ export async function assertMacComputerUseHelper(appBundle) {
   const helper = join(appBundle, ...MAC_COMPUTER_USE_HELPER_APP, "Contents", "MacOS", "fleet-computer-use");
   const info = await stat(helper).catch(() => null);
   if (!info?.isFile() || (info.mode & 0o111) === 0) throw new Error(`Computer Use helper is missing or not executable: ${helper}`);
+  const marker = join(appBundle, ...MAC_COMPUTER_USE_HELPER_APP, "Contents", "Resources", "computer-use-platform-version");
+  if (await readFile(marker, "utf8").catch(() => null) !== "1\n") throw new Error(`Computer Use helper platform ABI marker is missing or incompatible: ${marker}`);
 }
 
 export function macSigningTeam(codesignInfo) {

@@ -1,7 +1,8 @@
 import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
-import { isRecord, permissionHolderName } from "./platform.js";
+import { isRecord, permissionHolderName, type ComputerUsePlatform } from "./platform.js";
+import { callPlatform, COMPUTER_USE_PLATFORM_VERSION, prepareClipboardLease } from "./platform-helper.js";
 import type { ChildProcess } from "node:child_process";
 
 export interface Frame { x: number; y: number; w: number; h: number }
@@ -48,18 +49,57 @@ interface Runtime {
   spawnProcess(request: { command: string; args: readonly string[]; env: NodeJS.ProcessEnv }): ChildProcess;
 }
 
-export function createFleetComputerUsePlatform(runtime: Runtime, command: string | undefined, platform = process.platform) {
-  const executable = command && isAbsolute(command) ? command : undefined;
+export function createFleetComputerUsePlatform(runtime: Runtime, config: {
+  readonly supported: boolean;
+  readonly command?: string;
+  readonly platformVersion?: string;
+}): ComputerUsePlatform {
+  const executable = config.supported && config.command && isAbsolute(config.command) &&
+    config.platformVersion === String(COMPUTER_USE_PLATFORM_VERSION) ? config.command : undefined;
+  const spawn = (args: readonly string[]) => {
+    if (!executable) throw new FleetHelperError("helper_missing");
+    return runtime.spawnProcess({ command: executable, args, env: runtime.childEnv() });
+  };
   return {
-    supported: () => platform === "darwin",
+    supported: () => config.supported,
     async inspectInstallation() {
-      if (!executable || platform !== "darwin") return false;
+      if (!executable) return false;
       try { await access(executable, constants.X_OK); return (await stat(executable)).isFile(); } catch { return false; }
     },
     createClient: () => {
       if (!executable) throw new FleetHelperError("helper_missing");
       return new FleetHelperClient(runtime, executable);
     },
+    async readPermissions() {
+      const result = await callPlatform(spawn, "readPermissions", {}, 3000);
+      if (typeof result?.accessibility !== "boolean" || typeof result.screenRecording !== "boolean") return null;
+      const holder = permissionHolderName(result.holder);
+      return { accessibility: result.accessibility, screenRecording: result.screenRecording, ...(holder ? { holder } : {}) };
+    },
+    async verifyWindow({ pid, windowId, processStartedAt }) {
+      const result = await callPlatform(spawn, "verifyWindowIdentity", { pid, windowId, processStartedAt }, 3000);
+      return result?.identity === "matches" || result?.identity === "mismatch" ? result.identity : "unknown";
+    },
+    async resolveApp(target, signal) {
+      const result = await callPlatform(spawn, "resolveApp", { target }, 3000, signal);
+      if (typeof result?.app === "string" && isAbsolute(result.app)) return { app: result.app };
+      const error = result?.error;
+      if (error === "exact_target_required" || error === "unambiguous_target_required" || error === "installed_target_required") return { error };
+      throw new FleetHelperError("computer_use_open_failed");
+    },
+    async openApp(app, signal, activate) {
+      const result = await callPlatform(spawn, "openApp", { app, activate }, 12_000, signal);
+      if (typeof result?.requestDispatched !== "boolean" || typeof result.windowReady !== "boolean") {
+        // A missing reply is not evidence that LaunchServices did not receive the request.
+        return { requestDispatched: true, windowReady: false, error: "computer_use_open_failed" };
+      }
+      return { requestDispatched: result.requestDispatched, windowReady: result.windowReady,
+        ...(result.error === undefined ? {} : { error: "computer_use_open_failed" }) };
+    },
+    async openPrivacySettings(permissions) {
+      return (await callPlatform(spawn, "openPrivacySettings", { permissions }, 4000))?.opened === true;
+    },
+    preparePaste: (payload, signal) => prepareClipboardLease(spawn, payload, signal),
   };
 }
 

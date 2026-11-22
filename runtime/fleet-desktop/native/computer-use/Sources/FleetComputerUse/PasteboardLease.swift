@@ -59,7 +59,7 @@ struct PasteboardLease<Board: LeasePasteboard> {
   }
 }
 
-private struct NativePasteboard: LeasePasteboard {
+struct NativePasteboard: LeasePasteboard {
   let board: NSPasteboard
   var changeCount: Int { board.changeCount }
 

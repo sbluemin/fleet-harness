@@ -297,7 +297,7 @@ private struct Expectation {
         return [w.title, w.app, w.bundleId, w.bundlePath].contains { $0.localizedCaseInsensitiveContains(q) }
       }
       var result: Object = ["windows": filtered.map { $0.json() }]
-      if let query, !query.isEmpty { result["installed"] = catalog.installed(query: query) }
+      if let query, !query.isEmpty { result["installed"] = WindowCatalog.installed(query: query) }
       return result
     case "snapshot": return try await snapshot(p)
     case "act":

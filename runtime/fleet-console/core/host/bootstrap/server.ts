@@ -860,7 +860,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const computerUsePlatform = createFleetComputerUsePlatform({
     childEnv: () => stripConsoleInternalEnv(process.env),
     spawnProcess: (request) => ownedProcesses.spawn(request),
-  }, process.env.FLEET_COMPUTER_USE_HELPER);
+  }, {
+    // Keep the existing unsupported-vs-missing Settings distinction. Actual native availability is the helper ABI.
+    supported: process.platform === "darwin",
+    command: process.env.FLEET_COMPUTER_USE_HELPER,
+    platformVersion: process.env.FLEET_COMPUTER_USE_PLATFORM_VERSION,
+  });
   const computerUse = new ComputerUseService({
     onCaptureTarget: (target) => {
       const objectiveId = target ? computerUseMcp.objectiveIdForOwner(target.owner) : null;
@@ -2472,7 +2477,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 감시와 GET은 진행 중인 검증을 공유한다. 늦은 결과도 같은 대상의 명시적 false일 때만 해제한다.
     const verification = computerCaptureVerification ??= computerUse.verifyCaptureTarget(candidate)
       .then((valid) => {
-        if (valid === false && computerCaptureTarget?.id === candidate.id) {
+        if (valid === "mismatch" && computerCaptureTarget?.id === candidate.id) {
           logComputerCapture({ captureReason: "verify_failed" });
           computerCaptureTarget = null;
           broadcastComputerCapture();

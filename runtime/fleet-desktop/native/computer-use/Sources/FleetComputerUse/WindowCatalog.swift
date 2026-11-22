@@ -210,7 +210,7 @@ struct WindowInfo {
     return window
   }
 
-  func installed(query: String) -> [Object] {
+  static func installed(query: String) -> [Object] {
     let home = FileManager.default.homeDirectoryForCurrentUser
     let roots = [URL(fileURLWithPath: "/Applications"), URL(fileURLWithPath: "/System/Applications"),
                  URL(fileURLWithPath: "/System/Applications/Utilities"), URL(fileURLWithPath: "/Applications/Utilities"),

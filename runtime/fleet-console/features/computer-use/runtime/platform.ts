@@ -1,3 +1,6 @@
+import type { ComputerUsePermission } from "../shared/status.js";
+import type { FleetHelperClient } from "./fleet-helper.js";
+
 export interface ComputerUseWindowIdentity {
   readonly pid: number;
   readonly windowId: number;
@@ -17,22 +20,36 @@ export interface ComputerUseResult {
   readonly structuredContent?: unknown;
   readonly isError?: boolean;
 }
-export interface ComputerUseWindowState {
-  readonly app: string;
-  readonly status: "not_running" | "no_window" | "minimized" | "available" | "unknown";
-  readonly pid: number | null;
-  readonly frontmost: boolean | null;
-  readonly hidden: boolean | null;
-  readonly windowCount: number | null;
-  readonly reason?: string;
-}
 export interface ComputerUseOpenResult {
   readonly requestDispatched: boolean;
   readonly windowReady: boolean;
-  readonly windowState: ComputerUseWindowState;
   readonly error?: string;
 }
-/** 판정 앱 이름은 사람과 에이전트 안내에 그대로 들어가므로 짧은 한 줄 문자열만 받는다. */
+
+export type ResolvedApp = { readonly app: string } | {
+  readonly error: "exact_target_required" | "unambiguous_target_required" | "installed_target_required";
+};
+export interface ComputerUsePermissions {
+  readonly accessibility: boolean;
+  readonly screenRecording: boolean;
+  readonly holder?: string;
+}
+export type WindowIdentityResult = "matches" | "mismatch" | "unknown";
+export type ClipboardRestoration = "restored" | "preserved_newer_contents" | "failed";
+export interface ClipboardLease { finish(): Promise<ClipboardRestoration> }
+
+export interface ComputerUsePlatform {
+  supported(): boolean;
+  inspectInstallation(): Promise<boolean>;
+  createClient(): FleetHelperClient;
+  readPermissions(): Promise<ComputerUsePermissions | null>;
+  verifyWindow(target: ComputerUseWindowIdentity): Promise<WindowIdentityResult>;
+  resolveApp(target: string, signal: AbortSignal): Promise<ResolvedApp>;
+  openApp(app: string, signal: AbortSignal, activate: boolean): Promise<ComputerUseOpenResult>;
+  openPrivacySettings(permissions: readonly ComputerUsePermission[]): Promise<boolean>;
+  preparePaste(payload: { readonly text: string; readonly html?: string }, signal: AbortSignal): Promise<ClipboardLease>;
+}
+
 export function permissionHolderName(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const name = value.trim();
