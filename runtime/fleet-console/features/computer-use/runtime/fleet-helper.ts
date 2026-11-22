@@ -36,7 +36,8 @@ export interface HelperHello {
   /** 그 앱이 이 Console의 조상이라 종료하면 지금 세션도 끝나는지. 헬퍼가 확인했을 때만 true다. */
   permissionHolderHostsSession?: boolean;
 }
-export interface HelperPermissionRequest { requested?: ("accessibility" | "screenRecording")[]; permissions?: { accessibility: boolean; screenRecording: boolean } }
+/** requested는 지금 macOS에 물은 권한, deferred는 손쉬운 사용이 켜지면 헬퍼가 이어서 물을 권한(화면 기록)이다. */
+export interface HelperPermissionRequest { requested?: ("accessibility" | "screenRecording")[]; deferred?: ("accessibility" | "screenRecording")[]; permissions?: { accessibility: boolean; screenRecording: boolean } }
 export interface HelperFocus { editable: boolean; focusedRef?: string; role?: string }
 interface Replies { focus: HelperFocus; hello: HelperHello; windows: HelperWindows; snapshot: HelperSnapshot; act: HelperAction; verify: HelperVerify; cursor: object; requestPermissions: HelperPermissionRequest; shutdown: object }
 export class FleetHelperError extends Error {

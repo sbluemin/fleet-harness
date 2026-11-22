@@ -61,7 +61,12 @@ function setup(installed = true) {
       case "act": return { sent: true, via: "ax", changes: [], observation: "none", notes: [] };
       case "verify": return { status: "satisfied", waitedMs: 0 };
       case "focus": return { editable: true, focusedRef: "e2" };
-      case "requestPermissions": return { requested: (request.params as { permissions: string[] }).permissions.filter((key) => !granted[key as keyof typeof granted]), permissions: { ...granted } };
+      case "requestPermissions": {
+        // 헬퍼처럼: 손쉬운 사용이 없으면 화면 기록은 지금 묻지 않고 미룬다(deferred).
+        const wanted = (request.params as { permissions: string[] }).permissions.filter((key) => !granted[key as keyof typeof granted]);
+        const deferred: string[] = granted.accessibility ? [] : wanted.filter((key) => key === "screenRecording");
+        return { requested: wanted.filter((key) => !deferred.includes(key)), deferred, permissions: { ...granted } };
+      }
       default: return {};
     }
   });
@@ -203,11 +208,48 @@ describe("Fleet Computer Use", () => {
     f.holder("Fleet Console Dev");
     f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
     await f.invoke("computer_apps", {});
-    // 손쉬운 사용과 화면 기록을 헬퍼 한 번의 요청으로 묻는다. 요청 창과 목록에는 판정 대상 앱이 오른다.
+    // 두 권한을 헬퍼 한 번의 요청으로 보낸다. 헬퍼는 손쉬운 사용 창을 띄우고, 화면 기록은 손쉬운 사용이 켜지면 이어서 묻는다.
     expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }]);
     expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent. Ask the user to enable Accessibility and Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
-    expect(f.calls("requestPermissions")).toHaveLength(1);
+    // 미룬 화면 기록은 기록하지 않으므로 다음 호출이 다시 이어 건다. 손쉬운 사용은 간격 안이라 다시 띄우지 않는다.
+    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }, { permissions: ["screenRecording"] }]);
     expect(f.calls("act")).toHaveLength(0);
+  });
+
+  it("asks for Screen Recording as soon as Accessibility is on, and never holds it back while Accessibility is refused", async () => {
+    const f = setup();
+    f.grant({ accessibility: false, screenRecording: false });
+    f.holder("Fleet Console Dev");
+    f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
+    await f.invoke("computer_apps", {});
+    // 손쉬운 사용을 거부한 채라면 화면 기록은 계속 미뤄질 뿐 "요청함"으로 남지 않는다.
+    for (let attempt = 0; attempt < 2; attempt++) expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet recently requested access; no new request was sent.");
+    expect(f.calls("requestPermissions")).toEqual([{ permissions: ["accessibility", "screenRecording"] }, { permissions: ["screenRecording"] }, { permissions: ["screenRecording"] }]);
+    // 손쉬운 사용을 켜면 다음 호출이 헬퍼를 새로 띄우고, 간격을 기다리지 않고 화면 기록을 곧바로 묻는다.
+    f.grant({ accessibility: true, screenRecording: false });
+    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required — Fleet requested access from macOS. Ask the user to enable Screen Recording for Fleet Console Dev in System Settings › Privacy & Security. Under Screen Recording, have them add the app with + if it isn’t listed, or turn its switch off and back on if it was already on. If they choose Quit & Reopen and the app stays closed, have them reopen it manually. Retry after the user confirms the change. On the next capture, macOS may ask the user to confirm Screen Recording for that app.");
+    expect(f.calls("requestPermissions").at(-1)).toEqual({ permissions: ["screenRecording"] });
+    expect(f.calls("shutdown")).toHaveLength(1);
+  });
+
+  it("from the settings button with a short-lived helper, asks for Accessibility and leaves Screen Recording for the next press", async () => {
+    const f = setup();
+    f.grant({ accessibility: false, screenRecording: false });
+    f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: false });
+    const openPrivacySettings = vi.fn(async () => true);
+    const press = async () => {
+      const writeJson = vi.fn();
+      const router = createComputerUseRouter({ computerUse: f.service, writeJson, openPrivacySettings, isLoopbackListener: () => true, isExactConsoleOrigin: () => true });
+      await router({ req: { method: "POST" } as never, res: {} as never, pathname: "/api/v1/computer-use/permission-request" });
+      return writeJson.mock.calls[0]?.slice(1);
+    };
+    expect(await press()).toEqual([200, { requested: ["accessibility"] }]);
+    f.grant({ accessibility: true, screenRecording: false });
+    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
+    expect(await press()).toEqual([200, { requested: ["screenRecording"] }]);
+    expect(openPrivacySettings).not.toHaveBeenCalled();
+    expect(f.calls("shutdown")).toHaveLength(2);
   });
 
   it("warns that Quit & Reopen may end the session only when the helper confirms the app hosts this Console, and keeps Accessibility-only hints short", async () => {

@@ -348,18 +348,23 @@ export class ComputerUseService {
 
   /**
    * 빠진 권한을 헬퍼 한 번의 요청으로 macOS에 묻는다. 헬퍼의 판정 대상(헬퍼를 띄운 앱) 이름으로 요청 창이 뜨고 목록에 오른다.
-   * 헬퍼가 실제로 물은 권한만 간격 기록에 넣는다(그사이 허용된 권한은 묻지 않는다).
+   * 손쉬운 사용이 아직 없으면 헬퍼는 화면 기록을 미뤄 두었다가 손쉬운 사용이 켜지는 즉시 묻는다(손쉬운 사용 창이 떠 있는 동안의
+   * 화면 기록 요청은 macOS가 창 없이 버렸다). 헬퍼가 실제로 물은 권한만 간격 기록에 넣는다. 미룬 화면 기록은 기록하지 않으므로,
+   * 사람이 손쉬운 사용을 거부했거나 헬퍼가 그사이 내려가도 다음 호출이 다시 이어 건다.
    */
-  private async sendPermissionRequests(client: FleetHelperClient, due: readonly ComputerUsePermission[], now: number): Promise<ComputerUsePermission[]> {
+  private async sendPermissionRequests(client: FleetHelperClient, due: readonly ComputerUsePermission[], now: number) {
     const reply = await client.request("requestPermissions", { permissions: [...due] });
     const requested = due.filter((permission) => reply.requested?.includes(permission));
+    const deferred = due.filter((permission) => reply.deferred?.includes(permission));
     for (const permission of requested) this.permissionRequestedAt.set(permission, now);
-    return requested;
+    return { requested, deferred };
   }
 
   /**
-   * 컴퓨터유즈가 처음 필요해질 때 빠진 권한 전부를 한 번에 묻는다. 요청 창과 시스템 설정 목록에는 헬퍼를 띄운 앱(TCC 판정 대상)이
-   * 올라가므로 사람이 + 로 앱을 찾아 넣지 않아도 된다. 허용은 사람이 하고, 허용 뒤 다음 호출에서 permissionsGrantedSince가 헬퍼를 새로 띄운다.
+   * 컴퓨터유즈가 처음 필요해질 때 빠진 권한을 묻는다. 둘 다 빠졌으면 손쉬운 사용 창이 먼저 뜨고, 사람이 켜는 즉시 화면 기록 창이
+   * 이어서 뜬다. 요청 창과 시스템 설정 목록에는 헬퍼를 띄운 앱(TCC 판정 대상)이 올라가므로 사람이 + 로 앱을 찾아 넣지 않아도 된다.
+   * 허용 뒤 다음 호출에서 permissionsGrantedSince가 헬퍼를 새로 띄운다. 이번 호출이 새로 보낸 것이 없고 간격 안에 물은 권한이
+   * 있으면(화면 기록이 손쉬운 사용을 기다리는 중 포함) "recent"다.
    */
   private async requestMissingPermissions(client: FleetHelperClient, now = Date.now()): Promise<PermissionRequestOutcome | undefined> {
     const granted = client.hello?.permissions;
@@ -367,8 +372,9 @@ export class ComputerUseService {
     const missing = COMPUTER_USE_PERMISSIONS.filter((permission) => !granted[permission]);
     if (!missing.length) return undefined;
     const due = this.duePermissions(missing, now);
-    if (!due.length) return "recent";
-    try { return (await this.sendPermissionRequests(client, due, now)).length ? "requested" : undefined; }
+    const recent = due.length < missing.length ? "recent" : undefined;
+    if (!due.length) return recent;
+    try { return (await this.sendPermissionRequests(client, due, now)).requested.length ? "requested" : recent; }
     catch (error) { this.reportFailure("computer_use_permission_request_failed", error); return undefined; }
   }
 
@@ -387,7 +393,8 @@ export class ComputerUseService {
     let requested: ComputerUsePermission[];
     try {
       if (!live) await client.start();
-      requested = await this.sendPermissionRequests(client, due, now);
+      // 잠깐 띄운 헬퍼는 곧 내려가므로 미룬 화면 기록 요청도 함께 끝난다. 기록하지 않으니 손쉬운 사용을 켠 뒤 다시 누르면 묻는다.
+      ({ requested } = await this.sendPermissionRequests(client, due, now));
     } finally {
       if (!live) await client.stop();
     }

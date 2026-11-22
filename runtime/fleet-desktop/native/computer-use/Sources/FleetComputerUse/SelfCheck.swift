@@ -47,19 +47,51 @@ struct HelperPermissions {
   /// 빠진 권한을 macOS 요청 창으로 묻는다. 창과 시스템 설정 목록에는 판정 대상 앱이 올라가므로 사람이 + 로 추가하지 않아도 된다.
   /// 팀 ID로 서명한 앱에서는 화면 기록도 이 요청으로 "화면 기록" 창이 뜨고 목록에 오른다(macOS 26.5 실측). adhoc 서명 앱에서는
   /// 창도 목록 등록도 없었으므로 안내가 + 추가를 함께 말한다. tccd의 "does not allow prompting" 기록은 창이 떠도 남는다.
-  /// 허용은 사람이 시스템 설정에서 하고, 결과는 다음 hello에서 읽는다.
-  static func request(_ wanted: Set<String>) -> [String] {
+  /// 손쉬운 사용이 아직 없으면 화면 기록은 지금 묻지 않고 손쉬운 사용이 켜지는 즉시 묻는다(`deferred`). 손쉬운 사용 창이 떠 있는
+  /// 동안의 화면 기록 요청은 창도 목록 등록도 없이 사라졌기 때문이다(실측). 허용은 사람이 하고, 결과는 다음 hello에서 읽는다.
+  static func request(_ wanted: Set<String>) -> (requested: [String], deferred: [String]) {
     let now = HelperPermissions()
     var requested: [String] = []
+    var deferred: [String] = []
     if wanted.contains("accessibility") && !now.accessibility {
       _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
       requested.append("accessibility")
     }
     if wanted.contains("screenRecording") && !now.screenRecording {
-      _ = CGRequestScreenCaptureAccess()
-      requested.append("screenRecording")
+      if now.accessibility {
+        _ = CGRequestScreenCaptureAccess()
+        requested.append("screenRecording")
+      } else {
+        ScreenRecordingAfterAccessibility.schedule()
+        deferred.append("screenRecording")
+      }
     }
-    return requested
+    return (requested, deferred)
+  }
+}
+
+/// 손쉬운 사용이 켜지면 곧바로 화면 기록을 묻는 감시. 헬퍼마다 하나만 돌고, Console의 요청 간격(5분)이 지나거나 헬퍼가
+/// 내려가면 함께 끝난다. 사람이 손쉬운 사용을 거부하면 화면 기록은 묻지 않는다. Console은 미룬 요청을 기록하지 않으므로
+/// 다음 호출에서 같은 감시를 다시 건다.
+enum ScreenRecordingAfterAccessibility {
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var watching = false
+
+  static func schedule(timeout: TimeInterval = 300, interval: TimeInterval = 1) {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !watching else { return }
+    watching = true
+    DispatchQueue.global(qos: .utility).async {
+      defer { lock.lock(); watching = false; lock.unlock() }
+      let deadline = Date().addingTimeInterval(timeout)
+      while Date() < deadline {
+        Thread.sleep(forTimeInterval: interval)
+        guard AXIsProcessTrusted() else { continue }
+        if !CGPreflightScreenCaptureAccess() { _ = CGRequestScreenCaptureAccess() }
+        return
+      }
+    }
   }
 }
 

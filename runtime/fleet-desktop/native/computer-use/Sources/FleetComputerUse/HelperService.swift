@@ -282,7 +282,8 @@ private struct Expectation {
       guard let wanted = p["permissions"] as? [String], !wanted.isEmpty, wanted.allSatisfy(HelperPermissions.names.contains) else {
         throw HelperError("invalid_params", "permissions")
       }
-      return ["requested": HelperPermissions.request(Set(wanted)), "permissions": HelperPermissions().json]
+      let result = HelperPermissions.request(Set(wanted))
+      return ["requested": result.requested, "deferred": result.deferred, "permissions": HelperPermissions().json]
     case "windows":
       try validateKeys(p, allowed: ["query"])
       let query = try optionalString(p["query"], name: "query", max: 300)
