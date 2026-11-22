@@ -34,7 +34,7 @@ import type { Duplex } from "node:stream";
 import { createBrowserDesktopRouter } from "../../../features/browser/host/desktop-routes.js";
 import { createComputerUseRouter } from "../../../features/computer-use/host/routes.js";
 import { RemotePreviewHub, createRemotePreviewRouter, receivesRemotePreviewState, receivesRemotePreviewViewers, toRemotePreviewTarget } from "../../../features/computer-use/host/remote-preview.js";
-import { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_VIEWERS_EVENT } from "../../../features/computer-use/shared/remote-preview.js";
+import { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } from "../../../features/computer-use/shared/remote-preview.js";
 import { createRemoteAdminRoutes } from "../../../features/remote-access/host/admin-routes.js";
 import { createPairingRoutes } from "../../../features/remote-access/host/pairing-routes.js";
 import { createUpdatesRoutes } from "../../../features/updates/host/routes.js";
@@ -438,6 +438,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "POST", path: DESKTOP_REMOTE_PREVIEW_FRAME_PATH, summary: "Replace the single in-memory still of the Computer Use window while a full remote device is watching. Only the local Desktop window may upload.", category: "Desktop", gate: "loopback", transport: "http" },
+  { method: "GET", path: REMOTE_PREVIEW_STATE_PATH, summary: "Read whether a Computer Use still is available for this full remote session, for a screen that subscribed after the event stream opened. Loopback is 404 and monitoring sessions are refused.", category: "Desktop", gate: "origin-write", transport: "http" },
   { method: "GET", path: REMOTE_PREVIEW_FRAME_PATH, summary: "Long-poll the latest Computer Use still for a full remote session. Loopback is 404 and monitoring sessions are refused.", category: "Desktop", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the managing Desktop's Fleet Browser is connected, plus this viewer's surface mode and execution host.", category: "Settings", gate: "origin-write", transport: "http" },
@@ -1679,6 +1680,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     writeJson,
     withSecurityHeaders,
+    refresh: () => syncRemotePreview(),
   });
   routeRegistry.register("/api/v1/desktop/computer-preview", remotePreviewRouter);
   routeRegistry.register("/api/v1/computer-preview", remotePreviewRouter);

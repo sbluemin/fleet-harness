@@ -9,6 +9,11 @@ export const DESKTOP_REMOTE_PREVIEW_FRAME_PATH = "/api/v1/desktop/computer-previ
 /** 원격 full 화면이 최신 정지 화면을 기다려 받는 경로(long-poll). 루프백에서는 404, monitoring은 403이다. */
 export const REMOTE_PREVIEW_FRAME_PATH = "/api/v1/computer-preview/frame";
 
+/**
+ * 원격 full 화면이 붙자마자 1회 읽는 지금 상태. SSE 채널은 지난 프레임을 다시 보내지 않으므로, 화면이 핸드셰이크 뒤에
+ * 구독을 시작해도 이미 진행 중인 컴퓨터 사용을 놓치지 않게 한다. 판정은 프레임 경로와 같다(루프백 404·monitoring 403).
+ */
+export const REMOTE_PREVIEW_STATE_PATH = "/api/v1/computer-preview/state";
 /** 원격 full 구독자에게만 — 지금 보여 줄 화면이 있는지와 호스트가 보내기를 껐는지. */
 export const REMOTE_PREVIEW_STATE_EVENT = "computer-preview:state";
 /** 호스트 Desktop(로컬) 구독자에게만 — 정지 화면을 받아 가는 원격 기기 수. 0이면 뽑지 않는다. */

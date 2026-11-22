@@ -16,6 +16,7 @@ import {
   REMOTE_PREVIEW_FRAME_PATH,
   REMOTE_PREVIEW_MAX_BYTES,
   REMOTE_PREVIEW_SEQ_HEADER,
+  REMOTE_PREVIEW_STATE_PATH,
   readRemotePreviewState,
 } from "../features/computer-use/shared/remote-preview.js";
 
@@ -177,7 +178,9 @@ async function serve(hub: RemotePreviewHub) {
     },
     writeJson: (res, status, body) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)); },
     withSecurityHeaders: (headers) => headers,
+    refresh: () => { refreshed += 1; },
   });
+  let refreshed = 0;
   const server = http.createServer((req, res) => {
     const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
     void router({ req, res, pathname }).then((handled) => { if (!handled) { res.writeHead(418); res.end(); } });
@@ -190,7 +193,9 @@ async function serve(hub: RemotePreviewHub) {
     fetch(`${base}${DESKTOP_REMOTE_PREVIEW_FRAME_PATH}?target=${targetId}`, { method: "POST", headers, body: new Uint8Array(body) });
   const watch = (session: string | null, afterSeq = 0, extra: Record<string, string> = {}, signal?: AbortSignal) =>
     fetch(`${base}${REMOTE_PREVIEW_FRAME_PATH}?afterSeq=${afterSeq}`, { headers: { "x-test-listener": "remote", ...(session ? { "x-test-session": session } : {}), ...extra }, ...(signal ? { signal } : {}) });
-  return { base, upload, watch, host };
+  const readState = (session: string | null, extra: Record<string, string> = {}) =>
+    fetch(`${base}${REMOTE_PREVIEW_STATE_PATH}`, { headers: { "x-test-listener": "remote", ...(session ? { "x-test-session": session } : {}), ...extra } });
+  return { base, upload, watch, readState, host, refreshes: () => refreshed };
 }
 
 describe("remote preview routes", () => {
@@ -246,6 +251,27 @@ describe("remote preview routes", () => {
     const off = await watch("session-a:full");
     expect(off.status).toBe(409);
     expect(await off.json()).toEqual({ error: "preview_unavailable" });
+  });
+
+  it("lets a full remote screen that subscribed late read the current state once, under the same gate as frames", async () => {
+    const { hub } = hubWith({ waitMs: 2000 });
+    const { base, readState, refreshes } = await serve(hub);
+    hub.update(target(), true);
+    expect((await fetch(`${base}${REMOTE_PREVIEW_STATE_PATH}`)).status).toBe(404);
+    expect((await readState(null)).status).toBe(401);
+    expect((await readState("watcher:monitoring")).status).toBe(403);
+    expect((await readState("session-a:full", { "x-test-read": "cross" })).status).toBe(403);
+    const before = refreshes();
+    const response = await readState("session-a:full");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual({ target: target(), sending: true });
+    // 읽기 전에 캡처 대상·설정에 맞춘다.
+    expect(refreshes()).toBe(before + 1);
+    // 상태 읽기는 시청이 아니다 — 호스트가 장을 뽑기 시작하지 않는다.
+    expect(hub.viewers()).toBe(0);
+    hub.update(target(), false);
+    expect(await (await readState("session-a:full")).json()).toEqual({ target: target(), sending: false });
   });
 
   it("refuses a fifth distinct session while four are watching", async () => {

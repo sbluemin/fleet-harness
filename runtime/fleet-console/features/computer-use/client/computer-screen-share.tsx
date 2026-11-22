@@ -14,6 +14,7 @@ import {
   REMOTE_PREVIEW_SEQ_HEADER,
   REMOTE_PREVIEW_STALE_MS,
   REMOTE_PREVIEW_STATE_EVENT,
+  REMOTE_PREVIEW_STATE_PATH,
   REMOTE_PREVIEW_TARGET_PARAM,
   REMOTE_PREVIEW_VIEWERS_EVENT,
   readRemotePreviewState,
@@ -407,7 +408,19 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       }
       publish();
     };
-    const unsubscribe = subscribeConsoleChannel(REMOTE_PREVIEW_STATE_EVENT, apply);
+    // 스트림이 먼저 말을 걸었는가. 늦게 돌아온 1회 조회가 더 새 상태를 되돌리지 않게 한다.
+    let streamed = false;
+    const unsubscribe = subscribeConsoleChannel(REMOTE_PREVIEW_STATE_EVENT, (payload) => { streamed = true; apply(payload); });
+    // 채널은 지난 프레임을 다시 보내지 않는다 — 핸드셰이크 뒤에 붙은 화면이 진행 중인 사용을 놓치지 않게 1회 읽는다.
+    // 원격 full이 아니면(로컬 화면 404, monitoring 403) 아무것도 하지 않는다.
+    const initial = new AbortController();
+    void fetch(REMOTE_PREVIEW_STATE_PATH, { cache: "no-store", signal: AbortSignal.any([initial.signal, AbortSignal.timeout(3000)]) })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body: unknown = await response.json();
+        if (!streamed) apply(body);
+      })
+      .catch(() => undefined);
     const releaseOffline = () => {
       if (getState().connection !== "offline" || target === null) return;
       // 끊기면 다시 붙을 때 서버가 지금 상태를 다시 보낸다. 그 사이 낡은 이미지를 남기지 않는다.
@@ -416,7 +429,7 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       publish();
     };
     const unsubscribeConnection = subscribeStore(releaseOffline);
-    return () => { disposed = true; reset(); unsubscribe(); unsubscribeConnection(); setRemoteCapture(null); };
+    return () => { disposed = true; initial.abort(); reset(); unsubscribe(); unsubscribeConnection(); setRemoteCapture(null); };
   }, []);
   return <ObjectiveUseContext.Provider value={activity}><RemoteViewersContext.Provider value={remoteViewers}><CaptureContext.Provider value={capture ?? remoteCapture}>{children}</CaptureContext.Provider></RemoteViewersContext.Provider></ObjectiveUseContext.Provider>;
 }

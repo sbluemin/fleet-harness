@@ -16,13 +16,15 @@ vi.mock("../core/client/src/integration/objective-records-sse.js", () => ({
 const emit = (channel: string, payload: unknown) => { for (const listener of channels.get(channel) ?? []) listener(payload); };
 
 const { ComputerScreenShare, ComputerScreenShareProvider } = await import("../features/computer-use/client/computer-screen-share.js");
-const { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_VIEWERS_EVENT } = await import("../features/computer-use/shared/remote-preview.js");
+const { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } = await import("../features/computer-use/shared/remote-preview.js");
 
 const target = { id: "target-1", ownerKind: "commodore", objectiveId: null, commodoreId: "commodore-1", actor: "commodore-1" };
 type Responder = (signal: AbortSignal) => Promise<Response>;
 let frames: Responder[] = [];
 let fetchMock: ReturnType<typeof vi.fn>;
 let objectUrls = 0;
+/** 1회 상태 읽기의 응답 — 없으면 로컬 화면처럼 404다. */
+let initialState: (() => Promise<Response>) | null = null;
 const mounted: (() => void)[] = [];
 
 beforeEach(() => {
@@ -30,6 +32,7 @@ beforeEach(() => {
   channels.clear();
   frames = [];
   objectUrls = 0;
+  initialState = null;
   fetchMock = vi.fn(async (input: string, init?: RequestInit) => {
     const path = String(input);
     if (path.startsWith(REMOTE_PREVIEW_FRAME_PATH)) {
@@ -40,6 +43,7 @@ beforeEach(() => {
       return new Promise<Response>((_, reject) => signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
     }
     if (path.startsWith(DESKTOP_REMOTE_PREVIEW_FRAME_PATH)) return new Response(null, { status: 204 });
+    if (path.startsWith(REMOTE_PREVIEW_STATE_PATH) && initialState) return initialState();
     return new Response(JSON.stringify({}), { status: 404 });
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -176,4 +180,23 @@ it("on the host Desktop, shares the existing window track only while a remote de
   await flush(3000);
   expect(uploads()).toHaveLength(stopped);
   expect(card.querySelector(".computer-screen-share-remote")).toBeNull();
+});
+
+it("recovers a preview that was already running when the screen subscribed after the stream's first state frame", async () => {
+  // 스트림의 첫 상태 프레임은 이 화면이 구독하기 전에 지나갔다 — 채널은 다시 보내지 않는다.
+  initialState = async () => new Response(JSON.stringify({ target, sending: true }), { status: 200, headers: { "content-type": "application/json" } });
+  frames.push(frame());
+  const node = await mount();
+  await flush();
+  expect(node.querySelector(".computer-screen-share.is-remote img")?.getAttribute("src")).toBe("blob:frame-1");
+});
+
+it("does not let a late initial read undo a newer state that the stream already delivered", async () => {
+  let answer: (response: Response) => void = () => undefined;
+  initialState = () => new Promise<Response>((resolve) => { answer = resolve; });
+  const node = await mount();
+  await act(async () => { emit(REMOTE_PREVIEW_STATE_EVENT, { target: null, sending: false }); });
+  await act(async () => { answer(new Response(JSON.stringify({ target, sending: true }), { status: 200, headers: { "content-type": "application/json" } })); });
+  await flush();
+  expect(node.querySelector(".computer-screen-share")).toBeNull();
 });

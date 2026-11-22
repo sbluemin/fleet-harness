@@ -6,6 +6,7 @@ import {
   REMOTE_PREVIEW_FRAME_PATH,
   REMOTE_PREVIEW_MAX_BYTES,
   REMOTE_PREVIEW_SEQ_HEADER,
+  REMOTE_PREVIEW_STATE_PATH,
   REMOTE_PREVIEW_TARGET_PARAM,
   type RemotePreviewState,
   type RemotePreviewTarget,
@@ -276,6 +277,8 @@ export interface RemotePreviewRouteDeps {
   readonly remoteSession: (req: http.IncomingMessage) => { readonly handle: string; readonly access: "full" | "monitoring" } | null;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly withSecurityHeaders: (headers: http.OutgoingHttpHeaders) => http.OutgoingHttpHeaders;
+  /** 상태를 읽기 전에 캡처 대상·설정에 맞춘다(서버의 syncRemotePreview). */
+  readonly refresh?: () => void;
 }
 
 const TARGET_ID = /^[A-Za-z0-9-]{1,64}$/u;
@@ -298,7 +301,7 @@ export function createRemotePreviewRouter(deps: RemotePreviewRouteDeps): (ctx: {
       res.end();
       return true;
     }
-    if (pathname === REMOTE_PREVIEW_FRAME_PATH) {
+    if (pathname === REMOTE_PREVIEW_FRAME_PATH || pathname === REMOTE_PREVIEW_STATE_PATH) {
       // 호스트 화면 앞의 사람은 실시간 영상을 이미 본다. 이 경로는 원격 기기 전용이다.
       if (deps.isLoopbackListener(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
       if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -307,6 +310,12 @@ export function createRemotePreviewRouter(deps: RemotePreviewRouteDeps): (ctx: {
       // 결정 8cd1a62d: 보기 전용(monitoring) 기기에는 보내지 않는다. 읽기 요청이라 입장 규칙은 통과하므로 여기서 막는다.
       if (session.access !== "full") { writeJson(res, 403, { error: "preview_full_only" }); return true; }
       if (!deps.isSameOriginConsoleRead(req)) { writeJson(res, 403, { error: "forbidden" }); return true; }
+      if (pathname === REMOTE_PREVIEW_STATE_PATH) {
+        deps.refresh?.();
+        res.setHeader("Cache-Control", "no-store");
+        writeJson(res, 200, hub.state());
+        return true;
+      }
       const raw = Number(new URL(req.url ?? "/", "http://localhost").searchParams.get(REMOTE_PREVIEW_AFTER_PARAM) ?? "0");
       const afterSeq = Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : 0;
       const controller = new AbortController();
