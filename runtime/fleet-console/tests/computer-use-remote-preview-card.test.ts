@@ -205,6 +205,7 @@ it("uses a still instead of a stream only while the host card is visible or a re
   const stills = () => requests(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH);
   const uploads = () => requests(DESKTOP_REMOTE_PREVIEW_FRAME_PATH);
   const node = await mount();
+  Object.defineProperties(node, { clientWidth: { value: 1200 }, clientHeight: { value: 800 } });
   const setOffscreen = (offscreen: boolean) => act(async () => { emit("computer-capture:state", { target: { ...target, title: "Fixture", offscreen } }); });
   await setOffscreen(true);
   await flush(2000);
@@ -240,7 +241,14 @@ it("uses a still instead of a stream only while the host card is visible or a re
   await setOffscreen(false);
   await flush();
   expect(getDisplayMedia).toHaveBeenCalledTimes(1);
-  expect(node.querySelector(".computer-screen-share video")).not.toBeNull();
+  const restored = node.querySelector<HTMLVideoElement>(".computer-screen-share video")!;
+  const card = node.querySelector<HTMLElement>(".computer-screen-share")!;
+  expect(card.style.height).toBe("160px");
+  // Dock에서 복원되는 창은 획득 순간 트랙 설정이 실제 프레임과 다를 수 있다 — 카드는 프레임 크기를 따른다.
+  Object.defineProperties(restored, { videoWidth: { value: 1040 }, videoHeight: { value: 904 } });
+  await act(async () => { restored.dispatchEvent(new Event("resize")); });
+  expect(card.style.width).toBe("256px");
+  expect(Number.parseFloat(card.style.height)).toBeCloseTo(256 * 904 / 1040, 3);
   await setOffscreen(true);
   expect(track.stop).toHaveBeenCalledTimes(1);
   expect(node.querySelector(".computer-screen-share video")).toBeNull();

@@ -541,6 +541,12 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   const preferredSize = useRef<{ width: number; height: number } | null>(null);
   /** 원격 정지 화면의 가로세로비 — 이미지가 처음 읽힐 때 정한다. 영상은 트랙 설정에서 읽는다. */
   const [remoteRatio, setRemoteRatio] = useState<number | null>(null);
+  /**
+   * 영상 프레임의 가로세로비. 트랙 설정은 획득 순간의 값이라, 최소화에서 막 복원되는 창처럼 그 순간의 크기가
+   * 실제 프레임과 다를 수 있다. 그 스트림의 프레임 크기를 알면 그것을 따른다.
+   */
+  const [videoFrame, setVideoFrame] = useState<{ stream: MediaStream; ratio: number } | null>(null);
+  const videoRatio = videoFrame && videoFrame.stream === own?.stream ? videoFrame.ratio : null;
   const stillId = own?.target.offscreen ? own.target.id : null;
   useEffect(() => {
     const element = card.current;
@@ -591,7 +597,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     if (!element || !parent) return;
     const resize = () => {
       const settings = own?.stream?.getVideoTracks()[0]?.getSettings();
-      const ratio = own?.stream ? (settings?.width || 16) / (settings?.height || 9) : remoteRatio ?? 16 / 10;
+      const ratio = own?.stream ? videoRatio ?? (settings?.width || 16) / (settings?.height || 9) : remoteRatio ?? 16 / 10;
       const preferred = preferredSize.current;
       const inset = chromeTopInset(element);
       const width = Math.max(1, Math.min(preferred?.width ?? Math.min(256, 256 * ratio), parent.clientWidth - 24));
@@ -606,13 +612,24 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     const observer = new ResizeObserver(resize);
     observer.observe(parent);
     return () => observer.disconnect();
-  }, [own?.stream, own?.target.id, remoteRatio]);
+  }, [own?.stream, own?.target.id, remoteRatio, videoRatio]);
   useEffect(() => {
     const element = video.current;
-    if (!element || !own?.stream) return;
-    element.srcObject = own.stream;
+    const stream = own?.stream;
+    if (!element || !stream) return;
+    element.srcObject = stream;
+    // 첫 프레임의 크기와 이후 바뀐 크기(대상 창 크기 조절 포함)를 카드 비율에 반영한다.
+    const measure = () => {
+      if (element.videoWidth > 0 && element.videoHeight > 0) setVideoFrame({ stream, ratio: element.videoWidth / element.videoHeight });
+    };
+    element.addEventListener("loadedmetadata", measure);
+    element.addEventListener("resize", measure);
     void element.play().catch(() => undefined);
-    return () => { element.srcObject = null; };
+    return () => {
+      element.removeEventListener("loadedmetadata", measure);
+      element.removeEventListener("resize", measure);
+      element.srcObject = null;
+    };
   }, [own?.stream]);
   if (!own) return null;
   // 칩은 영상 위에는 겹쳐도 되지만 문구(실패·권한 안내) 위에는 겹치면 안 된다 — 영상이 없을 때는 CSS 가 칩을 본문 위 한 줄로 내린다.
