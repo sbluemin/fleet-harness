@@ -26,16 +26,21 @@
  *   (`.e2e-remote-run.json` with runId + nonce) that is read back in the same
  *   step. Reclaim removes the directory only when the marker still matches;
  *   anything else is left alone and reported.
- * - Every destructive remote signal re-verifies ownership first: a PID is
- *   signalled only while `ps` shows its command line still runs from the owned
- *   directory (PID-reuse safe), including the app's descendant processes. A
- *   pid row with no readable command, e.g. `(node)`, is a zombie: dead, with
- *   its pid slot still held, so it cannot have been recycled; the reclaim
- *   waits briefly for init to reap it and only then reports it gone. A row
- *   that turns into a foreign live command is refused, never signalled.
+ * - Killing is chain-based for the app tree and marker-based for reparented
+ *   processes: a process that lost its tree link still matches only on strict
+ *   run-anchored markers (the pinned app executable, `<latest>/dist/cli.mjs`
+ *   with `serve`, run-scoped helper prefixes). Command shells (`sh -c ...`)
+ *   never qualify on affinity alone, however many owned paths their command
+ *   line carries, so generic SSH plumbing is never signalled. Every signal is
+ *   preceded by a fresh per-PID re-verification inside the same remote call.
+ *   A pid row with no readable command, e.g. `(node)`, is a zombie: dead, with
+ *   its pid slot still held, so it cannot have been recycled.
+ * - Deletion is gated: the directory goes only with a fresh scan proving no
+ *   live owned app/Console/helper remains (tree or reparented), plus a
+ *   post-removal re-verification, so a late writer cannot recreate state
+ *   after us. A blocked deletion reports incomplete and retries instead.
  * - Completion is strict: only a verified-gone (or never-created) app and
- *   directory count as complete. An unproven state such as refused-not-owned
- *   or marker-unverified-left-alone exits non-zero, never 0.
+ *   directory count as complete. An unproven state exits non-zero, never 0.
  * - A remote watchdog is tied to a dedicated control SSH connection started
  *   right after the claim. It learns the app PID over its stdin, and when that
  *   connection closes (launcher exit, signal, or network drop) it kills the
@@ -266,6 +271,100 @@ export function parseLsofOwnership(lsofOut, port, pid) {
   return { ownLoopback: ownLoopback.value, foreign };
 }
 
+/** Parse `ps -ax -o pid= -o ppid= -o command=` into rows (multiline argv may
+ * yield unparseable continuation lines, which are dropped). */
+export function parsePsTable(text) {
+  return String(text).split('\n').map((line) => {
+    const match = /^\s*(\d+)\s+(\d+)\s+([\s\S]*)$/.exec(line);
+    return match ? { pid: Number(match[1]), ppid: Number(match[2]), cmd: match[3] } : null;
+  }).filter(Boolean);
+}
+
+const isZombieCmd = (cmd) => /^\([^()]*\)$/.test(String(cmd).trim());
+
+/** A remote command shell (`sh -c ...`): our own plumbing or a transient
+ * wrapper. Never a signal target on affinity alone. */
+export function isShellCommand(cmd) {
+  return /(^|[/ ])sh -c( |$)/.test(String(cmd));
+}
+
+/**
+ * Strict command markers identifying owned app/Console processes that lost
+ * their tree link through reparenting. Every marker embeds the run-specific
+ * directory, so a sibling run's paths can never match (the `/` after the run
+ * id anchors each marker). Null-safe: unknown paths simply match nothing.
+ */
+export function orphanMarkers({ appPath, latestDir, latestReal }) {
+  const markers = { exe: null, cli: [], aux: [] };
+  if (appPath) {
+    markers.exe = `${appPath}/Contents/MacOS/Fleet Console`;
+    markers.aux.push(`${appPath}/Contents/Helpers`);
+  }
+  for (const latest of [latestReal, latestDir]) {
+    if (!latest) continue;
+    const cli = `${latest}/dist/cli.mjs`;
+    if (!markers.cli.includes(cli)) markers.cli.push(cli);
+    const modules = `${latest}/node_modules`;
+    if (!markers.aux.includes(modules)) markers.aux.push(modules);
+  }
+  return markers;
+}
+
+/** True when cmd proves an owned app/Console/helper process. Command shells
+ * never qualify, however many owned paths their command line carries. */
+export function isOrphanTarget(cmd, markers) {
+  const text = String(cmd);
+  if (isShellCommand(text)) return false;
+  if (markers.exe && text.includes(markers.exe)) return true;
+  for (const cli of markers.cli) {
+    if (cli && text.includes(cli) && text.includes(' serve')) return true;
+  }
+  for (const aux of markers.aux) {
+    if (aux && text.includes(aux)) return true;
+  }
+  return false;
+}
+
+/**
+ * Split live rows into the root's tree (chain plus directory affinity) and
+ * marker-proven orphans (reparented processes the chain no longer reaches).
+ * Zombie rows are dead in both classes: their pid slot is still held, so it
+ * cannot have been recycled to a live process.
+ */
+export function scanOwnedProcesses(rows, { rootPid, dir, markers }) {
+  const byPid = new Map();
+  const byParent = new Map();
+  for (const row of rows) {
+    byPid.set(row.pid, row);
+    if (!byParent.has(row.ppid)) byParent.set(row.ppid, []);
+    byParent.get(row.ppid).push(row.pid);
+  }
+  const inTree = new Set();
+  if (Number.isSafeInteger(rootPid) && rootPid > 0) {
+    inTree.add(rootPid);
+    const queue = [rootPid];
+    while (queue.length) {
+      for (const child of byParent.get(queue.pop()) ?? []) {
+        if (!inTree.has(child)) {
+          inTree.add(child);
+          queue.push(child);
+        }
+      }
+    }
+  }
+  const tree = [];
+  const orphans = [];
+  for (const row of rows) {
+    if (row.pid <= 0 || isZombieCmd(row.cmd)) continue;
+    if (inTree.has(row.pid)) {
+      if (row.cmd.includes(dir)) tree.push(row.pid);
+    } else if (isOrphanTarget(row.cmd, markers)) {
+      orphans.push(row.pid);
+    }
+  }
+  return { tree, orphans };
+}
+
 function sha256File(file) {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256');
@@ -332,23 +431,109 @@ const SSH_BASE = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'Stric
  * verified its own reclaim. Every destructive step re-verifies ownership. */
 const WATCHDOG = `
 DIR=$1; RUNID=$2; NONCE=$3; PID=""
-owned() { ps -p "$1" -o command= 2>/dev/null | grep -F -q "$DIR"; }
-descendants() { ps -ax -o pid= -o ppid= 2>/dev/null | awk -v p="$1" '$2==p {print $1}'; }
-cleanup() {
-  if [ -n "$PID" ]; then
-    for c in $(descendants "$PID"); do
-      if [ "$c" -gt 0 ] 2>/dev/null && owned "$c"; then kill "$c" 2>/dev/null || true; fi
-    done
-    if owned "$PID"; then kill "$PID" 2>/dev/null || true; fi
-    sleep 2
-    for c in $(descendants "$PID"); do
-      if [ "$c" -gt 0 ] 2>/dev/null && owned "$c"; then kill -9 "$c" 2>/dev/null || true; fi
-    done
-    if owned "$PID"; then kill -9 "$PID" 2>/dev/null || true; fi
+EXE="$DIR/pkg/Fleet Console.app/Contents/MacOS/Fleet Console"
+APPHELPERS="$DIR/pkg/Fleet Console.app/Contents/Helpers"
+refresh_markers() {
+  L="$DIR/home/.fleet/desktop/runtime/console/latest"
+  LR=""
+  if [ -d "$L" ]; then LR=$(cd "$L" 2>/dev/null && /bin/pwd -P 2>/dev/null); fi
+  CLI1=""; CLI2=""; AUX1=""; AUX2="$APPHELPERS"
+  if [ -n "$LR" ]; then CLI1="$LR/dist/cli.mjs"; AUX1="$LR/node_modules"; fi
+  CLI2="$L/dist/cli.mjs"
+}
+scan() {
+  # Values travel via the environment, never argv: otherwise this very scan
+  # would match its own command line (which carries every marker) and the
+  # deletion gate below could never observe an empty, all-clear listing.
+  ps -ax -o pid= -o ppid= -o command= 2>/dev/null | \
+    W_ROOT="$PID" W_DIR="$DIR" W_EXE="$EXE" \
+    W_CLI1="$CLI1" W_CLI2="$CLI2" W_AUX1="$AUX1" W_AUX2="$AUX2" awk '
+  BEGIN {
+    root = ENVIRON["W_ROOT"] + 0
+    dir = ENVIRON["W_DIR"]; exe = ENVIRON["W_EXE"]
+    cli1 = ENVIRON["W_CLI1"]; cli2 = ENVIRON["W_CLI2"]
+    aux1 = ENVIRON["W_AUX1"]; aux2 = ENVIRON["W_AUX2"]
+  }
+  {
+    pid=$1+0; ppid=$2+0
+    line=$0; sub(/^[ \\t]*[0-9]+[ \\t]+[0-9]+[ \\t]+/, "", line)
+    if (pid<=0) next
+    P[pid]=ppid; C[pid]=line
+    CH[ppid]=CH[ppid] " " pid
+  }
+  END {
+    top=0
+    if ((root+0)>0) stack[++top]=root+0
+    while (top>0) {
+      cur=stack[top--]+0
+      if (cur<=0 || seen[cur]) continue
+      seen[cur]=1
+      n=split(CH[cur], a, " ")
+      for (i=1;i<=n;i++) if (a[i]!="") stack[++top]=a[i]+0
+    }
+    for (p in P) {
+      cmd=C[p]
+      d=cmd; gsub(/^[ \\t]+|[ \\t]+$/, "", d)
+      if (d ~ /^\\([^()]*\\)$/) continue
+      if (seen[p]) { if (index(cmd, dir)>0) print "T " p }
+      else {
+        if (cmd ~ /(^|[\\/ ])sh -c( |$)/) continue
+        hit=0
+        if (exe!="" && index(cmd, exe)>0) hit=1
+        else if (cli1!="" && index(cmd, cli1)>0 && index(cmd, " serve")>0) hit=1
+        else if (cli2!="" && cli2!=cli1 && index(cmd, cli2)>0 && index(cmd, " serve")>0) hit=1
+        else if (aux1!="" && index(cmd, aux1)>0) hit=1
+        else if (aux2!="" && aux2!=aux1 && index(cmd, aux2)>0) hit=1
+        if (hit) print "O " p
+      }
+    }
+  }'
+}
+root_known() {
+  [ -n "$PID" ] || return 1
+  cmd=$(ps -p "$PID" -o command= 2>/dev/null) || return 1
+  [ -n "$cmd" ] || return 1
+  case "$cmd" in *"$DIR"*) return 0;; *) PID=""; return 1;; esac
+}
+sig_one() {
+  p=$1
+  case $p in ''|*[!0-9]*) return 0;; esac
+  cmd=$(ps -p "$p" -o command= 2>/dev/null) || return 0
+  [ -n "$cmd" ] || return 0
+  if [ "$3" = T ]; then
+    case "$cmd" in *"$DIR"*) ;; *) return 0;; esac
+  else
+    if printf '%s' "$cmd" | grep -E -q '(^|/)sh -c( |$)'; then return 0; fi
+    if [ -n "$EXE" ] && printf '%s' "$cmd" | grep -F -q -- "$EXE"; then :;
+    elif [ -n "$CLI1" ] && printf '%s' "$cmd" | grep -F -q -- "$CLI1" && printf '%s' "$cmd" | grep -F -q ' serve'; then :;
+    elif [ -n "$CLI2" ] && [ "$CLI2" != "$CLI1" ] && printf '%s' "$cmd" | grep -F -q -- "$CLI2" && printf '%s' "$cmd" | grep -F -q ' serve'; then :;
+    elif [ -n "$AUX1" ] && printf '%s' "$cmd" | grep -F -q -- "$AUX1"; then :;
+    elif [ -n "$AUX2" ] && [ "$AUX2" != "$AUX1" ] && printf '%s' "$cmd" | grep -F -q -- "$AUX2"; then :;
+    else return 0; fi
   fi
-  M="$DIR/${MARKER}"
-  if [ -f "$M" ] && grep -F -q "$RUNID" "$M" 2>/dev/null && grep -F -q "$NONCE" "$M" 2>/dev/null; then
-    rm -rf -- "$DIR"
+  kill -s "$2" "$p" 2>/dev/null || true
+}
+cleanup() {
+  refresh_markers
+  root_known || true
+  round=1
+  while [ "$round" -le 4 ]; do
+    if [ "$round" -ge 3 ]; then sig=KILL; else sig=TERM; fi
+    scan | while read -r class pid; do
+      sig_one "$pid" "$sig" "$class"
+    done
+    sleep 1
+    round=$((round+1))
+  done
+  # Deletion gate: remove only with a successful scan proving no live owned
+  # processes remain. A failed scan reads as unknown, never as all-clear.
+  if scanned=$(scan); then
+    if [ -z "$(printf '%s' "$scanned" | tr -d ' \\n')" ]; then
+      M="$DIR/${MARKER}"
+      if [ -f "$M" ] && grep -F -q "$RUNID" "$M" 2>/dev/null && grep -F -q "$NONCE" "$M" 2>/dev/null; then
+        rm -rf -- "$DIR"
+      fi
+    fi
   fi
 }
 trap 'cleanup; exit 0' HUP INT TERM
@@ -463,20 +648,16 @@ async function main() {
     }
   };
 
-  /** PIDs whose command line proves they run from the owned directory. */
+  /** The app executable itself, wherever the tree link points. Used only when
+   * the launch PID reply was lost; never matches command shells. */
   async function discoverOwnedPids() {
-    if (!remoteDir) return [];
+    if (!remoteDir || !appPath) return [];
+    const exe = `${appPath}/Contents/MacOS/Fleet Console`;
     try {
-      const { stdout } = await execRemote('ps -ax -o pid= -o command=', { timeout: 15_000 });
+      const { stdout } = await execRemote('ps -ax -o pid= -o ppid= -o command=', { timeout: 15_000 });
       const found = [];
-      for (const line of String(stdout).split('\n')) {
-        const match = /^\s*(\d+)\s+([\s\S]*)$/.exec(line);
-        if (!match) continue;
-        const pid = Number(match[1]);
-        const cmd = match[2];
-        if (pid > 0 && cmd.includes(remoteDir) && cmd.includes(`--remote-debugging-port=${opts.remotePort}`)) {
-          found.push(pid);
-        }
+      for (const row of parsePsTable(stdout)) {
+        if (row.pid > 0 && !isShellCommand(row.cmd) && row.cmd.includes(exe)) found.push(row.pid);
       }
       return found;
     } catch {
@@ -484,83 +665,82 @@ async function main() {
     }
   }
 
-  /** Kill one PID tree, verifying every PID still belongs to the owned dir first. */
+  /** Fresh tree-plus-orphan scan for the deletion gate and the kill rounds. */
+  async function snapshotOwned(rootPid) {
+    const { stdout } = await execRemote('ps -ax -o pid= -o ppid= -o command=', { timeout: 15_000 });
+    return scanOwnedProcesses(parsePsTable(stdout), {
+      rootPid,
+      dir: remoteDir,
+      markers: orphanMarkers({ appPath, latestDir, latestReal }),
+    });
+  }
+
+  /**
+   * One remote script that re-verifies every victim immediately before its
+   * signal: tree victims by directory affinity, orphans by strict markers
+   * (never command shells). grep -F keeps every marker literal.
+   */
+  function buildKillScript({ tree, orphans, dir, markers, signal }) {
+    const nums = (list) => list.filter((p) => Number.isSafeInteger(p) && p > 0).join(' ');
+    const lines = [];
+    if (tree.length > 0) {
+      lines.push(`for pid in ${nums(tree)}; do`);
+      lines.push(`  cmd=$(ps -p "$pid" -o command= 2>/dev/null) || continue`);
+      lines.push(`  [ -n "$cmd" ] || continue`);
+      lines.push(`  if printf '%s' "$cmd" | grep -F -q -- ${shQuote(dir)}; then kill -s ${signal} "$pid" 2>/dev/null || true; fi`);
+      lines.push(`done`);
+    }
+    const clauses = [];
+    if (markers.exe) clauses.push(`printf '%s' "$cmd" | grep -F -q -- ${shQuote(markers.exe)}`);
+    for (const cli of markers.cli) {
+      clauses.push(`{ printf '%s' "$cmd" | grep -F -q -- ${shQuote(cli)} && printf '%s' "$cmd" | grep -F -q ' serve'; }`);
+    }
+    for (const aux of markers.aux) {
+      clauses.push(`printf '%s' "$cmd" | grep -F -q -- ${shQuote(aux)}`);
+    }
+    if (orphans.length > 0 && clauses.length > 0) {
+      lines.push(`for pid in ${nums(orphans)}; do`);
+      lines.push(`  cmd=$(ps -p "$pid" -o command= 2>/dev/null) || continue`);
+      lines.push(`  [ -n "$cmd" ] || continue`);
+      lines.push(`  if printf '%s' "$cmd" | grep -E -q '(^|/)sh -c( |$)'; then continue; fi`);
+      lines.push(`  if ${clauses.join(' || ')}; then kill -s ${signal} "$pid" 2>/dev/null || true; fi`);
+      lines.push(`done`);
+    }
+    lines.push('exit 0');
+    return lines.join('\n');
+  }
+
+  /**
+   * Kill the owned app tree and any reparented owned processes. Discovery is
+   * chain-based for the tree and marker-based for orphans, and every signal
+   * is preceded by a fresh per-PID re-verification inside one remote call.
+   */
   async function killOwnedTree(pid) {
-    const numeric = (value) => /^\d+$/.test(String(value)) && Number(value) > 0;
-    if (!numeric(pid)) return 'not-started';
-    const descendantsOf = (rows, root) => {
-      const byParent = new Map();
-      for (const row of rows) {
-        if (!byParent.has(row.ppid)) byParent.set(row.ppid, []);
-        byParent.get(row.ppid).push(row.pid);
-      }
-      const out = [];
-      const queue = [root];
-      while (queue.length) {
-        const current = queue.pop();
-        for (const child of byParent.get(current) ?? []) {
-          out.push(child);
-          queue.push(child);
-        }
-      }
-      return out;
-    };
+    if (!Number.isSafeInteger(pid) || pid <= 0) return 'not-started';
+    const markers = orphanMarkers({ appPath, latestDir, latestReal });
     for (let round = 0; round < 3; round++) {
-      let rows;
+      let scan;
       try {
         const { stdout } = await execRemote('ps -ax -o pid= -o ppid= -o command=', { timeout: 15_000 });
-        rows = stdout.split('\n').map((line) => {
-          const match = /^\s*(\d+)\s+(\d+)\s+([\s\S]*)$/.exec(line);
-          return match ? { pid: Number(match[1]), ppid: Number(match[2]), cmd: match[3] } : null;
-        }).filter(Boolean);
+        scan = scanOwnedProcesses(parsePsTable(stdout), { rootPid: pid, dir: remoteDir, markers });
       } catch {
         return false;
       }
-      const self = rows.find((row) => row.pid === pid);
-      if (!self) return true;
-      if (!self.cmd.includes(remoteDir)) {
-        // A pid row with no readable command, e.g. `(node)`, is a zombie: dead,
-        // holding only its pid slot (which therefore cannot have been recycled
-        // to a live process). Give init a moment to reap it; a row that turns
-        // into a foreign live command is refused, never signalled.
-        if (/^\([^()]*\)$/.test(self.cmd.trim())) {
-          let revived = false;
-          for (let i = 0; i < 10 && !revived; i++) {
-            await sleep(500);
-            let seen = null;
-            try {
-              seen = (await execRemote(`ps -p ${pid} -o command= || true`, { timeout: 15_000 })).stdout;
-            } catch {
-              return false;
-            }
-            const now = String(seen).trim();
-            if (!now) return true;
-            if (now.includes(remoteDir)) { revived = true; break; }
-            if (!/^\([^()]*\)$/.test(now)) return 'refused-not-owned';
-          }
-          if (!revived) return true;
-          continue;
-        } else {
-          return 'refused-not-owned';
-        }
-      }
+      if (scan.tree.length === 0 && scan.orphans.length === 0) return true;
       const signal = round < 2 ? 'TERM' : 'KILL';
-      const victims = [pid, ...descendantsOf(rows, pid)]
-        .filter((candidate) => rows.find((row) => row.pid === candidate)?.cmd.includes(remoteDir));
-      if (victims.length === 0) return 'refused-not-owned';
       try {
-        await execRemote(`kill -s ${signal} ${victims.join(' ')}`, { timeout: 15_000 });
+        await execRemote(
+          buildKillScript({ tree: scan.tree, orphans: scan.orphans, dir: remoteDir, markers, signal }),
+          { timeout: 30_000 },
+        );
       } catch {
         // Keep polling; a dead PID races the kill.
       }
       await sleep(1000);
     }
-    try {
-      const { stdout } = await execRemote(`ps -p ${pid} -o command= || true`, { timeout: 15_000 });
-      return stdout.includes(remoteDir) ? false : true;
-    } catch {
-      return false;
-    }
+    const final = await snapshotOwned(pid).catch(() => null);
+    if (final === null) return false;
+    return final.tree.length === 0 && final.orphans.length === 0 ? true : false;
   }
 
   // ---- serialized, retryable reclaim ---------------------------------------
@@ -604,7 +784,8 @@ async function main() {
       } catch {
         summary.appGone = false;
       }
-      remotePid = null;
+      // Kept until after the deletion gate below so the gate still sees the
+      // tree; orphans are root-independent and cover a live app regardless.
     }
     if (tunnel) {
       try {
@@ -630,11 +811,26 @@ async function main() {
           markerOk = false;
         }
         if (markerOk) {
-          await execRemote(
-            `test ! -L ${shQuote(remoteDir)} && rm -rf -- ${shQuote(remoteDir)} && test ! -e ${shQuote(remoteDir)}`,
-            { timeout: 30_000 },
-          );
-          summary.dirGone = true;
+          // Deletion gate: no live owned app/Console/helper may remain, whether
+          // still in the tree or reparented. Deleting under a live writer lets
+          // it recreate state (e.g. console/) after us, so a blocked deletion
+          // reports incomplete and retries instead.
+          const live = await snapshotOwned(remotePid).catch(() => null);
+          if (live === null || live.tree.length > 0 || live.orphans.length > 0) {
+            summary.dirGone = false;
+            summary.dirBlockedBy = live === null ? 'scan-failed'
+              : { tree: live.tree.length, orphans: live.orphans.length };
+          } else {
+            await execRemote(
+              `test ! -L ${shQuote(remoteDir)} && rm -rf -- ${shQuote(remoteDir)} && test ! -e ${shQuote(remoteDir)}`,
+              { timeout: 30_000 },
+            );
+            // A dying writer could still recreate state in the gap: re-verify
+            // after a breath before calling the directory gone.
+            await sleep(2000);
+            await execRemote(`test ! -e ${shQuote(remoteDir)}`, { timeout: 15_000 });
+            summary.dirGone = true;
+          }
         } else {
           // Never delete a directory whose ownership proof is missing: it may
           // belong to another run after a partial claim. Report, do not touch.
@@ -647,6 +843,7 @@ async function main() {
       } catch {
         summary.dirGone = false;
       }
+      remotePid = null;
     }
     if (control && !controlStdinClosed) {
       controlStdinClosed = true;

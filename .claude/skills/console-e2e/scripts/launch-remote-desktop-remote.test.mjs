@@ -153,12 +153,18 @@ function fullExe() {
     "const { spawn } = require('child_process');\\n" +
     "const http = require('http');\\n" +
     "const path = require('path');\\n" +
+    "const fs = require('fs');\\n" +
     'let port = 0;\\n' +
     'for (const a of process.argv.slice(2)) { const m = /^--remote-debugging-port=(\\\\d+)$/.exec(a); if (m) port = Number(m[1]); }\\n' +
     'const remoteDir = path.resolve(process.argv[1], "..", "..", "..", "..", "..");\\n' +
     'const latest = path.join(remoteDir, "home", ".fleet", "desktop", "runtime", "console", "latest");\\n' +
-    'const child = spawn("/bin/sh", ["-c", "cd " + JSON.stringify(latest) + " && exec -a " + JSON.stringify("node " + latest + "/dist/cli.mjs serve") + " /bin/sleep 300"], { stdio: "ignore" });\\n' +
+    'const loopLog = path.join(remoteDir, "console", "late.log");\\n' +
+    // Detached late-writing Console stand-in: argv carries the cli marker, cwd
+    // is the staged latest. It outlives this process unless signalled, like a
+    // reparented sidecar child that keeps writing after its parent is gone.
+    'const child = spawn("/bin/sh", ["-c", "cd " + JSON.stringify(latest) + " && exec -a " + JSON.stringify("node " + latest + "/dist/cli.mjs serve") + " /bin/sh -c " + JSON.stringify("while true; do date +%s >> " + loopLog + "; sleep 1; done")], { detached: true, stdio: "ignore", cwd: latest });\\n' +
     'child.on("error", () => {});\\n' +
+    'child.unref();\\n' +
     'const server = http.createServer((req, res) => {\\n' +
     '  if (req.url === "/json/version") { res.writeHead(200, {"content-type": "application/json"}); res.end(JSON.stringify({ Browser: "Fleet Console Test/0.0.0-test", "Protocol-Version": "1.3" })); }\\n' +
     '  else if (req.url === "/json/list") { res.writeHead(200, {"content-type": "application/json"}); res.end(JSON.stringify([{ id: "MOCKPAGE1", type: "page", url: "http://127.0.0.1:1/console/objectives" }])); }\\n' +
@@ -166,7 +172,10 @@ function fullExe() {
     '});\\n' +
     'server.listen(port, "127.0.0.1");\\n' +
     'const die = () => { try { child.kill("SIGKILL"); } catch {} process.exit(0); };\\n' +
-    'process.on("SIGTERM", die); process.on("SIGINT", die);\\n';
+    'process.on("SIGTERM", die); process.on("SIGINT", die);\\n' +
+    // Drop-file trigger: vanish first (the orphan scenario) while the detached
+    // child keeps writing. Always armed; inert unless the file appears.
+    'setInterval(() => { let hit = false; try { hit = fs.existsSync(remoteDir + "/drop-app"); } catch (e) {} if (hit) { try { server.close(); } catch (e) {} process.exit(0); } }, 300);\\n';
 }
 `,
     scp: `#!/usr/bin/env node
@@ -286,21 +295,33 @@ main().then(() => {}, () => process.exit(1));
   };
   const psHasRun = async (runId) => (await psMatches(runId)).length > 0;
   // Payload processes must be gone; the supervisor shell (matched by its own
-  // template) has a bounded drain after the launcher exits, so ignore it while
-  // waiting, then require total silence.
-  const awaitNoPayload = async (runId, timeoutMs = 10000) => {
+  // template) has a bounded drain, so it never counts. Extra `ignore`
+  // substrings cover test bystanders that are meant to survive.
+  const awaitNoPayload = async (runId, { timeoutMs = 10000, ignore = [] } = {}) => {
+    const noises = ['sh -c DIR=$1; RUNID=', ...ignore];
     const deadline = Date.now() + timeoutMs;
-    let rest = [];
     for (;;) {
-      rest = (await psMatches(runId)).filter((line) => !line.includes('sh -c DIR=$1; RUNID='));
-      if (rest.length === 0) {
-        const lingering = await psMatches(runId);
-        if (lingering.length === 0) return [];
-        if (Date.now() > deadline) return lingering;
-      } else if (Date.now() > deadline) {
-        return rest;
-      }
+      const rest = (await psMatches(runId)).filter((line) => !noises.some((noise) => line.includes(noise)));
+      if (rest.length === 0) return [];
+      if (Date.now() > deadline) return rest;
       await new Promise((r) => setTimeout(r, 500));
+    }
+  };
+
+  const sq = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+  // A bystander whose command line carries the owned directory but no app or
+  // Console marker: reclaim must never signal it. Returns the child handle.
+  const spawnDecoy = (t, runId, remoteDir) => {
+    const child = spawn('/bin/sh', ['-c', `exec -a ${sq(`decoy-note ${remoteDir}`)} /bin/sleep 45`]);
+    t.after(() => { try { child.kill('SIGKILL'); } catch {} });
+    return child;
+  };
+  const decoyAlive = (child) => {
+    try {
+      process.kill(child.pid, 0);
+      return true;
+    } catch {
+      return false;
     }
   };
 
@@ -343,6 +364,40 @@ main().then(() => {}, () => process.exit(1));
     assert.notEqual(code, 0);
     assert.equal(proc.output().stdout, '');
     assert.deepEqual(fs.readdirSync(ctx.remoteDir), []);
+  });
+
+  test('an app that exits first leaves a writing orphan: full reclaim, decoy lives', async (t) => {
+    const ctx = await arrange(t, { app: 'full', extraEnv: { MOCK_FORWARD: '1' } });
+    const proc = launch(ctx.args, ctx.env);
+    await proc.waitReady();
+    const decoy = spawnDecoy(t, ctx.runId, ctx.remoteDir);
+    assert.ok(decoyAlive(decoy), 'decoy starts');
+    // The app vanishes first; its detached Console child keeps writing late
+    // logs into the data console dir. Reclaim must stop the orphan before the
+    // deletion (so nothing recreates state after us) yet never signal the
+    // bystander that only shares the directory string.
+    fs.writeFileSync(path.join(ctx.remoteDir, 'drop-app'), 'x');
+    const exeGone = async () => {
+      const out = (await import('node:child_process')).spawnSync('ps', ['-ax', '-o', 'command='], { encoding: 'utf8' });
+      return !out.stdout.split('\n').some((line) => line.includes('MacOS/Fleet Console') && line.includes(ctx.runId));
+    };
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      if (await exeGone()) break;
+      if (Date.now() > deadline) throw new Error('app never dropped');
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    const { code } = await proc.done;
+    assert.equal(code, 0, `reclaim completes: ${proc.output().stderr.slice(-1500)}`);
+    assert.ok(!fs.existsSync(ctx.remoteDir), 'owned remote dir reclaimed');
+    await new Promise((r) => setTimeout(r, 3000));
+    assert.ok(!fs.existsSync(ctx.remoteDir), 'no late writer recreated state');
+    assert.deepEqual(await awaitNoPayload(ctx.runId, { ignore: ['decoy-note '] }), [], 'orphan stopped, nothing remains');
+    assert.ok(decoyAlive(decoy), 'non-owned bystander was never signalled');
+    const summaries = proc.output().stderr.split('\n').filter((line) => line.startsWith('remote-reclaim: '));
+    const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
+    assert.equal(last.appGone, true);
+    assert.equal(last.dirGone, true);
   });
 
   test('a listener owned by another PID fails fast without READY', async (t) => {

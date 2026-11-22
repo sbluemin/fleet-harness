@@ -11,9 +11,14 @@ import {
   assertOwnedRemoteDir,
   checkAppPlist,
   checkIdentityDocument,
+  isOrphanTarget,
+  isShellCommand,
+  orphanMarkers,
   ownedRemoteDir,
   parsePort,
+  parsePsTable,
   resolveSshTarget,
+  scanOwnedProcesses,
   shQuote,
 } from './launch-remote-desktop.mjs';
 
@@ -207,4 +212,70 @@ describe('packaged identity contract (exact fields, no substrings)', () => {
       assert.throws(() => checkAppPlist(plistFor(options), doc), /package-identity-mismatch/);
     });
   }
+});
+
+describe('orphan discovery after reparenting (strict markers only)', () => {
+  const DIR = '/tmp/e2e-remote-abc';
+  const LATEST = `${DIR}/home/.fleet/desktop/runtime/console/latest`;
+  const markers = orphanMarkers({
+    appPath: `${DIR}/pkg/Fleet Console.app`,
+    latestDir: LATEST,
+    latestReal: LATEST,
+  });
+
+  test('markers derive the pinned executable and console paths', () => {
+    assert.equal(markers.exe, `${DIR}/pkg/Fleet Console.app/Contents/MacOS/Fleet Console`);
+    assert.ok(markers.cli.includes(`${LATEST}/dist/cli.mjs`));
+    assert.ok(markers.aux.some((entry) => entry.endsWith('/node_modules')));
+    const empty = orphanMarkers({ appPath: null, latestDir: null, latestReal: null });
+    assert.equal(empty.exe, null);
+    assert.deepEqual(empty.cli, []);
+  });
+
+  test('command shells never qualify, however many owned paths they carry', () => {
+    assert.equal(isShellCommand(`/bin/sh -c 'cat ${LATEST}/dist/cli.mjs serve'`), true);
+    assert.equal(isShellCommand(`sh -c 'kill ${DIR}'`), true);
+    assert.equal(isOrphanTarget(`/bin/sh -c 'cat ${LATEST}/dist/cli.mjs serve'`, markers), false);
+    assert.equal(isOrphanTarget(`ssh -o BatchMode=yes mock-remote cat '${LATEST}/fleet-package-identity.json'`, markers), false);
+  });
+
+  test('owned app, console, and helper commands qualify', () => {
+    assert.equal(isOrphanTarget(`${markers.exe} --remote-debugging-port=1`, markers), true);
+    assert.equal(isOrphanTarget(`node ${LATEST}/dist/cli.mjs serve`, markers), true);
+    assert.equal(isOrphanTarget(`${LATEST}/node_modules/node-pty/prebuilds/x/spawn-helper`, markers), true);
+  });
+
+  test('bare directory strings and missing serve do not qualify', () => {
+    assert.equal(isOrphanTarget(`notes-for ${DIR}`, markers), false);
+    assert.equal(isOrphanTarget(`node ${LATEST}/dist/cli.mjs`, markers), false);
+    assert.equal(isOrphanTarget('/usr/bin/sleep 300', markers), false);
+  });
+
+  test('a sibling run prefix never matches anchored markers', () => {
+    const sibling = `${DIR}2/pkg/Fleet Console.app/Contents/MacOS/Fleet Console`;
+    assert.equal(isOrphanTarget(sibling, markers), false);
+    assert.equal(isOrphanTarget(`node ${DIR}2/home/.fleet/desktop/runtime/console/latest/dist/cli.mjs serve`, markers), false);
+  });
+
+  test('scan splits tree members from reparented orphans and spares decoys', () => {
+    const table = [
+      `100 1 ${markers.exe} --remote-debugging-port=1`,
+      `101 100 node ${LATEST}/dist/cli.mjs serve`,
+      `102 1 node ${LATEST}/dist/cli.mjs serve`,
+      `103 1 notes-for ${DIR}`,
+      `104 1 /bin/sh -c 'cat ${LATEST}/dist/cli.mjs serve'`,
+      `105 1 (node)`,
+      `106 1 /usr/bin/sleep 300`,
+    ].join('\n');
+    const rows = parsePsTable(table);
+    assert.equal(rows.length, 7);
+    const live = scanOwnedProcesses(rows, { rootPid: 100, dir: DIR, markers });
+    assert.deepEqual(live.tree, [100, 101]);
+    assert.deepEqual(live.orphans, [102]);
+    const gone = scanOwnedProcesses(rows.filter((row) => row.pid !== 100 && row.pid !== 101), {
+      rootPid: 100, dir: DIR, markers,
+    });
+    assert.deepEqual(gone.tree, []);
+    assert.deepEqual(gone.orphans, [102]);
+  });
 });
