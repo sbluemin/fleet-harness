@@ -90,11 +90,11 @@ import Dispatch
     let onscreen = !app.isHidden && window[kCGWindowIsOnscreen as String] as? Bool == true
     if includingHidden, !onscreen, !app.isHidden, AXIsProcessTrusted() {
       let active = windowSymbols.activeSpaces()
-      // A closed AppKit window can remain in the CG list. Only reject it when the
-      // window still belongs to an active Space and its exact AX window says it is not minimized.
-      // Hidden apps, other Spaces, and inconclusive AX/Space data must remain eligible.
+      // CUProbe's closed AppKit window remained in CG but disappeared from AXWindows;
+      // its minimized window remained in AX with AXMinimized=true. Only use this test
+      // in an active Space; hidden apps and inconclusive AX/Space data remain eligible.
       if !active.isEmpty, let spaces = windowSymbols.windowSpaces(target.windowId), !spaces.isDisjoint(with: active),
-         AXReader.minimized(pid: target.pid, windowId: target.windowId) == false {
+         AXReader.stillMinimized(pid: target.pid, windowId: target.windowId) == false {
         return ("mismatch", false, nil)
       }
     }
