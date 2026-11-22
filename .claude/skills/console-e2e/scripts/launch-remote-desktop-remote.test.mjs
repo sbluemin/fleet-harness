@@ -139,7 +139,9 @@ function materialize(cmd) {
   if (!m) process.exit(99);
   const dir = m[1];
   const rev = env.MOCK_REVISION;
-  const identity = JSON.stringify({ sourceRevision: rev });
+  const identity = env.MOCK_IDENTITY === 'wrong-kind'
+    ? JSON.stringify({ schemaVersion: 1, kind: 'something-else', sourceRevision: rev, bundleId: 'com.dotobokuri.fleet-console', productName: 'Fleet Console' })
+    : JSON.stringify({ schemaVersion: 1, kind: 'fleet-remote-mac-package', sourceRevision: rev, bundleId: 'com.dotobokuri.fleet-console', productName: 'Fleet Console' });
   const macos = path.join(dir, 'pkg', 'Fleet Console.app', 'Contents', 'MacOS');
   const res = path.join(dir, 'pkg', 'Fleet Console.app', 'Contents', 'Resources');
   const consoleDir = path.join(dir, 'pkg', 'console', 'dist');
@@ -357,6 +359,20 @@ main().then(() => {}, () => process.exit(1));
     const { stdout, stderr } = proc.output();
     assert.equal(stdout, '', 'no READY line');
     assert.ok(stderr.includes('cdp-listener-owner-mismatch'));
+    assert.ok(!fs.existsSync(ctx.remoteDir), 'owned dir still reclaimed');
+  });
+
+  test('an identity with the right revision but wrong kind refuses exactly', async (t) => {
+    const ctx = await arrange(t, { app: 'sleep', extraEnv: { MOCK_IDENTITY: 'wrong-kind' } });
+    const proc = launch(ctx.args, ctx.env);
+    const { code } = await proc.done;
+    assert.equal(code, 1);
+    const { stdout, stderr } = proc.output();
+    assert.equal(stdout, '', 'no READY line');
+    assert.ok(stderr.includes('package-identity-mismatch'), 'exact field check, not a substring');
+    const summaries = stderr.split('\n').filter((line) => line.startsWith('remote-reclaim: '));
+    const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
+    assert.equal(last.appGone, 'not-started', 'nothing launched');
     assert.ok(!fs.existsSync(ctx.remoteDir), 'owned dir still reclaimed');
   });
 

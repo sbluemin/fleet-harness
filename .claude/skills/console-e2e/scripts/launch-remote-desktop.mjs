@@ -65,10 +65,13 @@
  *   fallback. The sha256 is verified on the host and again on the remote side
  *   before extraction. Single-format contract: the zip root holds exactly
  *   fleet-package-identity.json, `Fleet Console.app`, and console/. The
- *   identity in all three places (root, app Contents/Resources, console/) and
- *   Info.plist FleetSourceRevision must equal the CLI revision, and the bundle
- *   ID must be com.dotobokuri.fleet-console. Only the extracted app's own
- *   executable is ever run directly.
+ *   identity in all three places (root, app Contents/Resources, console/) is
+ *   verified byte-identical and then field-exact: schemaVersion 1,
+ *   kind fleet-remote-mac-package, sourceRevision equal to the CLI 40-hex
+ *   revision, bundleId com.dotobokuri.fleet-console, productName Fleet
+ *   Console. Info.plist must carry the same bundle ID and revision, and its
+ *   executable must be exactly `Fleet Console`, which then runs only at the
+ *   pinned `Fleet Console.app/Contents/MacOS/Fleet Console` path.
  * - Before start, the transferred console/ is staged as latest into the
  *   isolated HOME's runtime (<home>/.fleet/desktop/runtime/console/latest)
  *   and the app launches with FLEET_CONSOLE_RELEASE_TAG=source. That tag is
@@ -129,7 +132,15 @@ const SHA256_RE = /^[0-9a-f]{64}$/;
 const REVISION_RE = /^[0-9a-f]{40}$/;
 const APP_BUNDLE_ID = 'com.dotobokuri.fleet-console';
 const APP_DIRNAME = 'Fleet Console.app';
+const APP_EXECUTABLE = 'Fleet Console';
 const IDENTITY_FILENAME = 'fleet-package-identity.json';
+// Identity schema of the host-built package (prepare-remote-mac-package.mjs):
+// { schemaVersion: 1, kind: 'fleet-remote-mac-package', sourceRevision,
+//   bundleId, productName }. Kept literal here until the shared entrypoint
+// single-sources it; the env-contract test pins the behavior instead.
+const IDENTITY_SCHEMA = 1;
+const IDENTITY_KIND = 'fleet-remote-mac-package';
+const IDENTITY_PRODUCT = 'Fleet Console';
 const REMOTE_BASENAME = (runId) => `e2e-remote-${runId}`;
 const MARKER = '.e2e-remote-run.json';
 const DEFAULT_CDP_TIMEOUT_MS = 60_000;
@@ -260,6 +271,39 @@ function sha256File(file) {
     stream.on('data', (chunk) => hash.update(chunk));
     stream.on('end', () => resolve(hash.digest('hex')));
   });
+}
+
+/** Exact identity-document check against the host package contract. */
+export function checkIdentityDocument(text, revision) {
+  let doc;
+  try {
+    doc = JSON.parse(String(text));
+  } catch {
+    throw new ToolError(1, 'package-identity-mismatch');
+  }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)
+      || doc.schemaVersion !== IDENTITY_SCHEMA
+      || doc.kind !== IDENTITY_KIND
+      || doc.sourceRevision !== revision
+      || doc.bundleId !== APP_BUNDLE_ID
+      || doc.productName !== IDENTITY_PRODUCT) {
+    throw new ToolError(1, 'package-identity-mismatch');
+  }
+  return doc;
+}
+
+/** Exact app-plist check: release bundle, stamped revision, pinned executable. */
+export function checkAppPlist(text, identity) {
+  const bundleVersion = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
+  const bundleExecutable = /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
+  const bundleId = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
+  const sourceRevision = /<key>FleetSourceRevision<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
+  if (bundleId !== identity.bundleId || bundleId !== APP_BUNDLE_ID) throw new ToolError(1, 'package-identity-mismatch');
+  if (sourceRevision !== identity.sourceRevision) throw new ToolError(1, 'package-identity-mismatch');
+  // Only the contract's executable name is allowed; it runs at the pinned
+  // `Fleet Console.app/Contents/MacOS/Fleet Console` path, never elsewhere.
+  if (bundleExecutable !== APP_EXECUTABLE) throw new ToolError(1, 'package-identity-mismatch');
+  return { bundleVersion, bundleExecutable };
 }
 
 /** True when something already answers on 127.0.0.1:port. Connects only; no CDP traffic. */
@@ -780,10 +824,9 @@ async function main() {
     // ---- extract + packaged-identity verification -----------------------------
     // Single-format contract: the zip root holds exactly
     // fleet-package-identity.json, `Fleet Console.app`, and console/.
-    // The identity in all three places (root, app Resources, console/) and
-    // Info.plist FleetSourceRevision must equal the CLI 40-hex revision, and
-    // the bundle ID must be com.dotobokuri.fleet-console. Only the extracted
-    // app's own executable is ever run directly.
+    // The identity triple is verified byte-identical, then field-exact
+    // (checkIdentityDocument); the plist check (checkAppPlist) pins the
+    // bundle ID, the revision, and the `Fleet Console` executable name.
     var identityContent = null;
     var stagedConsoleVersion = null;
     {
@@ -813,7 +856,9 @@ async function main() {
         throw new ToolError(1, 'package-identity-mismatch');
       }
       const { stdout: identity } = await ssh(`cat ${shQuote(idRoot)}`, 'package-identity-unreadable', { timeout: 30_000 });
-      if (!String(identity).includes(opts['--package-revision'])) throw new ToolError(1, 'package-identity-mismatch');
+      // The triple digest above proves all three files byte-identical, so the
+      // exact field check on this copy covers all three places.
+      var identityDoc = checkIdentityDocument(String(identity), opts['--package-revision']);
       identityContent = String(identity);
       const { stdout: consolePkg } = await ssh(
         `cat ${shQuote(`${remoteDir}/pkg/console/package.json`)}`,
@@ -837,22 +882,26 @@ async function main() {
     stage = 'extracted';
 
     // ---- app identity --------------------------------------------------------
-    let bundleExecutable;
+    // Only the contract's `Fleet Console` executable is allowed, at the pinned
+    // `Fleet Console.app/Contents/MacOS/Fleet Console` path (the packager's
+    // EXECUTABLE_RELATIVE_PATH); anything else refuses before any launch.
     var bundleVersion = null;
+    var bundleExecutable = null;
     {
       const { stdout: plist } = await ssh(
         `cat ${shQuote(`${appPath}/Contents/Info.plist`)}`,
         'app-identity-unreadable',
         { timeout: 30_000 },
       );
-      const text = String(plist);
-      bundleVersion = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
-      bundleExecutable = /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
-      const bundleId = /<key>CFBundleIdentifier<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
-      const sourceRevision = /<key>FleetSourceRevision<\/key>\s*<string>([^<]+)<\/string>/.exec(text)?.[1] ?? null;
-      if (bundleId !== APP_BUNDLE_ID) throw new ToolError(1, 'package-identity-mismatch');
-      if (sourceRevision !== opts['--package-revision']) throw new ToolError(1, 'package-identity-mismatch');
-      if (!bundleExecutable || /["'\\$`\0-\x1f\x7f]/.test(bundleExecutable)) throw new ToolError(1, 'app-identity-unreadable');
+      let checked;
+      try {
+        checked = checkAppPlist(String(plist), identityDoc);
+      } catch (error) {
+        if (error instanceof ToolError && error.stable === 'package-identity-mismatch') throw error;
+        throw new ToolError(1, 'app-identity-unreadable');
+      }
+      bundleVersion = checked.bundleVersion;
+      bundleExecutable = checked.bundleExecutable;
     }
     checkAborted();
 
@@ -909,6 +958,8 @@ async function main() {
         `FLEET_DESKTOP_DATA_DIR=${remoteDir}/desktop`,
         'FLEET_CONSOLE_RELEASE_TAG=source',
       ].map(shQuote).join(' ');
+      // bundleExecutable is proven to be exactly `Fleet Console` above, so this
+      // is the pinned contract path, never another bundle binary.
       const executable = `${appPath}/Contents/MacOS/${bundleExecutable}`;
       launchAttempted = true;
       const { stdout: pidOut } = await ssh(

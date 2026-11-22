@@ -9,6 +9,8 @@ import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import {
   assertOwnedRemoteDir,
+  checkAppPlist,
+  checkIdentityDocument,
   ownedRemoteDir,
   parsePort,
   resolveSshTarget,
@@ -147,4 +149,62 @@ describe('dry-run CLI (local mock only, no SSH connection)', () => {
     assert.equal(result.status, 20);
     assert.match(result.stderr, /ssh-selector-invalid/);
   });
+});
+
+describe('packaged identity contract (exact fields, no substrings)', () => {
+  const REV = 'c'.repeat(40);
+  const good = JSON.stringify({
+    schemaVersion: 1,
+    kind: 'fleet-remote-mac-package',
+    sourceRevision: REV,
+    bundleId: 'com.dotobokuri.fleet-console',
+    productName: 'Fleet Console',
+  });
+  const plistFor = ({ bundleId = 'com.dotobokuri.fleet-console', revision = REV, executable = 'Fleet Console' } = {}) => [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<plist version="1.0"><dict>',
+    `<key>CFBundleIdentifier</key><string>${bundleId}</string>`,
+    '<key>CFBundleShortVersionString</key><string>0.44.0</string>',
+    `<key>CFBundleExecutable</key><string>${executable}</string>`,
+    `<key>FleetSourceRevision</key><string>${revision}</string>`,
+    '</dict></plist>',
+  ].join('\n');
+
+  test('accepts the exact contract document and plist', () => {
+    const doc = checkIdentityDocument(good, REV);
+    assert.equal(doc.sourceRevision, REV);
+    const app = checkAppPlist(plistFor(), doc);
+    assert.equal(app.bundleExecutable, 'Fleet Console');
+    assert.equal(app.bundleVersion, '0.44.0');
+  });
+
+  for (const [name, mutate] of [
+    ['schemaVersion', (d) => ({ ...d, schemaVersion: 2 })],
+    ['kind', (d) => ({ ...d, kind: 'fleet-remote-mac-package-v2' })],
+    ['sourceRevision', (d) => ({ ...d, sourceRevision: 'd'.repeat(40) })],
+    ['bundleId', (d) => ({ ...d, bundleId: 'com.dotobokuri.fleet-console.dev' })],
+    ['productName', (d) => ({ ...d, productName: 'Fleet Console Dev' })],
+  ]) {
+    test(`refuses a document with a wrong ${name}`, () => {
+      assert.throws(() => checkIdentityDocument(JSON.stringify(mutate(JSON.parse(good))), REV), /package-identity-mismatch/);
+    });
+  }
+
+  test('refuses malformed and non-object documents', () => {
+    for (const bad of ['{nope', 'null', '[]', '"str"', '42']) {
+      assert.throws(() => checkIdentityDocument(bad, REV), /package-identity-mismatch/);
+    }
+  });
+
+  for (const [name, options] of [
+    ['bundle id', { bundleId: 'com.dotobokuri.fleet-console.dev' }],
+    ['revision', { revision: 'd'.repeat(40) }],
+    ['renamed executable', { executable: 'Fleet Console Helper' }],
+    ['helper executable', { executable: 'fleet-computer-use' }],
+  ]) {
+    test(`refuses a plist with a wrong ${name}`, () => {
+      const doc = checkIdentityDocument(good, REV);
+      assert.throws(() => checkAppPlist(plistFor(options), doc), /package-identity-mismatch/);
+    });
+  }
 });
