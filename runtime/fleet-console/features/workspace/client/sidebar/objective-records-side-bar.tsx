@@ -60,7 +60,7 @@ import { useClusterIndex } from "../objective-clusters.js";
 import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import { RowToolUse } from "./side-bar-cluster-row.js";
-import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
+import { useCommodoreBrowserUse, useCommodoreComputerUse } from "../../../computer-use/client/computer-screen-share.js";
 import { selectBrowserSpaceForCommodore } from "../../../browser/client/browser-surface.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
@@ -1091,6 +1091,9 @@ export function TheaterSectionHeader({
   // 그 사령관의 목표가 쓰는 것은 목표 줄의 몫이고, 자기 아바타를 가진 행(TaskForce)은 사령관이 아니다.
   const localBrowsing = useCommodoreBrowserUse(avatarOverride || presentation ? null : theater.commodore?.id ?? null);
   const browsing = presentation?.browsing ?? localBrowsing;
+  // 컴퓨터 조작이 브라우저보다 우선해 말한다 — 목표 줄이 한 줄에 하나만 말하는 것(컴퓨터 → 브라우저)과 같다. 원격 행은 로컬 기계가 아니라 말하지 않는다.
+  const computing = useCommodoreComputerUse(avatarOverride || presentation ? null : theater.commodore?.id ?? null);
+  const rowTool = computing ? "computer" : browsing ? "browser" : null;
   const headerClassName = [
     "side-bar-theater-header",
     "side-bar-theater-header--split",
@@ -1230,9 +1233,9 @@ export function TheaterSectionHeader({
               <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onClick={select} onDoubleClick={(event) => { event.stopPropagation(); onStartAliasEdit(theater.id); }}>{displayName}</span>
               {accessory}
             </span>
-            <span className={`side-bar-theater-swap${browsing ? " is-tool-using" : ""}`}>
+            <span className={`side-bar-theater-swap${rowTool ? " is-tool-using" : ""}`}>
               <span className="side-bar-theater-sub">{summaryText}</span>
-              <RowToolUse tool={browsing ? "browser" : null} label={browsing ? t("sidebar.row.use.browser") : null} />
+              <RowToolUse tool={rowTool} label={rowTool ? t(rowTool === "computer" ? "sidebar.row.use.computer" : "sidebar.row.use.browser") : null} />
             </span>
           </span>
         </>

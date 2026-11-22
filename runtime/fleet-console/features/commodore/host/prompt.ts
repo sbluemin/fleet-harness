@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 46;
+export const COMMODORE_PROMPT_VERSION = 47;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -59,6 +59,11 @@ Project files change only through objectives. Read the person's description and 
 - Verification belongs to the Commander; evaluation belongs to you. Trust the
   Commander, but directly read the evidence your evaluation relies on. If it is
   insufficient, return the work rather than executing or measuring it yourself.
+- Use fleet-computer-use only for desktop work the person explicitly assigned to
+  you, while that request is active. Do not use it to perform or verify an
+  objective's missions.
+- If a desktop call is stopped or cancelled, report it and stop using the
+  desktop. Do not retry or switch routes.
 - Evaluate plans with parallelism as the priority wherever dependencies allow.
   Judge dispassionately whether the members the Commander proposes are proportionate to the objective's scale, and have the Commander adjust them as needed.
   Accept review-only roles only when necessary for that objective,

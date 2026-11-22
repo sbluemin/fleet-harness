@@ -364,6 +364,9 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         tools: {
           builtins: ["WebSearch", "WebFetch", "Read", "Bash", "Glob", "Grep", "Skill"],
           browser: { scopeId: `commodore:${options.commodoreId}` },
+          // 컴퓨터 사용은 사령관의 기본 승인이다 — 허용 카드도 사령관별 허용 칸도 없다. 켜고 끄는 것은 사람의 전체 실험 스위치 하나이고,
+          // 호스트가 호출마다 그 스위치를 묻는다. 스위치가 꺼진 채 열린 세션도 도구를 받아(resident), 사람이 켜면 곧바로 쓴다.
+          computerUse: { enabled: () => true, resident: true, commodoreId: options.commodoreId },
           custom: [
             { name: FLEET_COMMODORE_TOOL_GROUP, tools: [...tools.map(observed), ...options.boardTools.map(observed)], alwaysLoad: true },
             ...(options.gatewayTools ? [{ ...options.gatewayTools, tools: options.gatewayTools.tools.map(observed) }] : []),

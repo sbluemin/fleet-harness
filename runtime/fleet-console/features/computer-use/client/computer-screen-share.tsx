@@ -43,12 +43,14 @@ type ObjectiveUseActivity = {
   computer: string[];
   /** 컴퓨터를 지금 조작하는 참가자 — 공유 컨텍스트에서는 기기의 주인(computer, 루트)과 다르다. */
   computerActor: string | null;
+  /** 자기 세션으로 컴퓨터를 쓰는 사령관들 — 그 사령관의 Objective 가 쓰는 것은 `computer` 가 말한다. */
+  computerCommodores: string[];
   browser: string[];
   /** 자기 세션으로 플릿 브라우저를 쓰는 사령관들 — 그 사령관의 Objective 가 쓰는 것은 `browser` 가 말한다. */
   browserCommodores: string[];
   requests: ObjectiveUseRequest[];
 };
-const EMPTY_ACTIVITY: ObjectiveUseActivity = { computer: [], computerActor: null, browser: [], browserCommodores: [], requests: [] };
+const EMPTY_ACTIVITY: ObjectiveUseActivity = { computer: [], computerActor: null, computerCommodores: [], browser: [], browserCommodores: [], requests: [] };
 const ObjectiveUseContext = createContext<ObjectiveUseActivity>(EMPTY_ACTIVITY);
 export function useObjectiveUse(objectiveId: string) {
   const activity = useContext(ObjectiveUseContext);
@@ -56,6 +58,11 @@ export function useObjectiveUse(objectiveId: string) {
     computer: activity.computer.includes(objectiveId),
     browser: activity.browser.includes(objectiveId),
   };
+}
+/** 그 사령관 자신의 세션이 지금 사람의 컴퓨터를 조작하는가 — 사이드바의 사령관 줄이 읽는다. */
+export function useCommodoreComputerUse(commodoreId: string | null): boolean {
+  const activity = useContext(ObjectiveUseContext);
+  return commodoreId !== null && activity.computerCommodores.includes(commodoreId);
 }
 /** 그 사령관 자신의 세션이 지금 플릿 브라우저를 쓰는가 — 사이드바의 사령관 줄과 사령관 대화의 지구본이 읽는다. */
 export function useCommodoreBrowserUse(commodoreId: string | null): boolean {
@@ -111,7 +118,7 @@ function readActivity(value: unknown): ObjectiveUseActivity {
   const record = value as Record<string, unknown>;
   const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
   const requests = readRequests(record.requests);
-  return { computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), browserCommodores: ids(record.browserCommodores), requests };
+  return { computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, computerCommodores: ids(record.computerCommodores), browser: ids(record.browser), browserCommodores: ids(record.browserCommodores), requests };
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Objective이 소유한다. */

@@ -1018,7 +1018,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const browserObjectiveRecords = drivingOwners.filter((id) => !!objectiveRecords.get(id));
     // 사령관 자신의 세션은 Objective 가 아니다 — 그 묶음 id 는 사령관의 스페이스 id 라, 사령관 id 로 따로 싣는다(사이드바의 사령관 줄과 사령관 대화의 지구본이 읽는다).
     const browserCommodores = drivingOwners.flatMap((id) => { const commodoreId = commodoreOfBrowserSpace(id); return commodoreId ? [commodoreId] : []; });
-    return { computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
+    // 사령관 자신의 세션이 기기를 잡은 경우 — 목표가 아니므로 computer 가 아니라 사령관 id 로 따로 싣는다(browserCommodores 와 같은 자리).
+    const computerCommodore = owner && experiments.computerUse ? computerUseMcp.commodoreIdForOwner(owner) : null;
+    return { computer: computerObjective, computerActor, computerCommodore, browser: browserObjectiveRecords, browserCommodores };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
   // 플러그인 MCP 도구의 호출자 — 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
@@ -2338,6 +2340,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return {
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
+      computerCommodores: using.computerCommodore ? [using.computerCommodore] : [],
       browser: using.browser,
       browserCommodores: using.browserCommodores,
       requests: requests.filter((request) => live.has(request.objectiveId)),
