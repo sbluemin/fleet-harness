@@ -24,7 +24,7 @@ export interface PlayerState {
   moveSpeed: number;
   /** 모닥불 벤치 착석 경과 초 (8초 초과 시 sit → doze 전환). */
   campfireSitSec: number;
-  /** 별빛 상공 비행 고도 (지상 0, 자유 비행 ~14.5m). */
+  /** 별빛 상공 비행 고도 (지상 0, 자유 비행 ~18.0m). */
   flightAlt: number;
   /** 별빛 상공 자유 비행 활성 여부. */
   flying: boolean;
@@ -119,7 +119,7 @@ export interface PlayerAndCameraController {
   /** 심시티 스타일 구역 선택 포커스 — 부드럽게 쿼터뷰로 틸트/줌하며 WASD 이동 또는 해제 시 복귀한다. */
   focusDistrict(x: number, z: number, radius: number, getGroundHeight: (x: number, z: number) => number): void;
   clearDistrictFocus(): void;
-  /** RTS 하늘 조망 모드 (`M` 키) — 56m 초원 전체를 상공 쿼터뷰로 내려다보며 해제/구역 선택 시 급강하한다. */
+  /** RTS 하늘 조망 모드 (`M` 키) — 88m 초원 전체를 상공 쿼터뷰로 내려다보며 해제/구역 선택 시 급강하한다. */
   setOverviewMode(enabled: boolean): void;
   isOverviewMode(): boolean;
   /** `Shift` 대시 질주 상태 여부. */
@@ -193,9 +193,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   const cameraTarget = new Vector3(0.4, 1.45, 2.2);
 
   // 심시티 구역 선택 시 일시적인 쿼터뷰 포커스 상태 & RTS 하늘 비행 모드 상태
-  const ORBIT_CLAMP = 50;
-  const FLIGHT_CLAMP = 54;
-  const FLIGHT_TARGET_ALT = 14.5;
+  const ORBIT_CLAMP = 80;
+  const FLIGHT_CLAMP = 84;
+  const FLIGHT_TARGET_ALT = 18.0;
   const TAKEOFF_CHARGE_SEC = 0.52;
   const TAKEOFF_ASCEND_SEC = 0.66;
   const HERO_LAND_SEC = 0.56;
@@ -209,8 +209,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   } | null = null;
 
   let overviewMode = false;
-  const overviewAnchor = new Vector3(0, 1.0, 3.0);
-  let overviewDist = 72;
+  const overviewAnchor = new Vector3(0, 1.0, 9.0);
+  let overviewDist = 124;
   let overviewPitch = 1.06;
 
   // 유성 급강하 착지 아크 상태 & 2단계 이륙 시퀀스 · 배럴롤 상태
@@ -465,11 +465,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         pendingChargeCue = true;
         pendingTakeoffCue = true;
         overviewAnchor.set(
-          Math.max(-28, Math.min(28, player.x * 0.52)),
+          Math.max(-44, Math.min(44, player.x * 0.52)),
           1.0 + FLIGHT_TARGET_ALT * 0.14,
-          Math.max(-24, Math.min(28, player.z * 0.52 + 3.0)),
+          Math.max(-40, Math.min(46, player.z * 0.52 + 9.0)),
         );
-        overviewDist = 72;
+        overviewDist = 124;
         overviewPitch = 1.06;
       } else if (player.takeoffPhase === "charge") {
         // 지상 충전 중 취소 시 깔끔하게 지상 복귀
@@ -538,7 +538,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onWheelZoom(deltaY) {
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
-        overviewDist = Math.max(32.0, Math.min(112.0, overviewDist * Math.exp(clamped * 0.0012)));
+        overviewDist = Math.max(32.0, Math.min(165.0, overviewDist * Math.exp(clamped * 0.0012)));
       } else if (districtFocus) {
         districtFocus.dist = Math.max(7.2, Math.min(34.0, districtFocus.dist * Math.exp(clamped * 0.0012)));
       } else {
@@ -689,7 +689,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             pendingAscendCue = true;
           }
         } else {
-          // 2단계 `ascend`: 0 -> 14.5m 회오리 급상승 + 카메라 줌아웃 복귀
+          // 2단계 `ascend`: 0 -> 18.0m 회오리 급상승 + 카메라 줌아웃 복귀
           takeoffElapsed += opts.dt;
           const t = Math.min(1, takeoffElapsed / TAKEOFF_ASCEND_SEC);
           player.takeoffProgress = t;
@@ -706,8 +706,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           while (yawBack < -Math.PI) yawBack += Math.PI * 2;
           camYaw += yawBack * (1 - Math.exp(-opts.dt * 5.8));
 
-          const anchorX = Math.max(-28, Math.min(28, player.x * 0.52));
-          const anchorZ = Math.max(-24, Math.min(28, player.z * 0.52 + 3.0));
+          const anchorX = Math.max(-44, Math.min(44, player.x * 0.52));
+          const anchorZ = Math.max(-40, Math.min(40, player.z * 0.52 + 3.0));
           overviewAnchor.set(anchorX, 1.0 + player.flightAlt * 0.14, anchorZ);
 
           if (t >= 1) {
@@ -765,7 +765,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             camYaw += opts.dt * 0.14;
           }
         } else if (overviewMode) {
-          // 🌠 별빛 상공 자유 비행 (`14.5m`, `WASD` 19m/s 슈퍼맨 자세 ↔ 정지 호버, `Shift` 34m/s 부스트, `Space` 360° 배럴롤)
+          // 🌠 별빛 상공 자유 비행 (`18.0m`, `WASD` 24m/s 슈퍼맨 자세 ↔ 정지 호버, `Shift` 44m/s 부스트, `Space` 360° 배럴롤)
           flightClock += opts.dt;
           player.campfireSitSec = 0;
           player.flying = true;
@@ -787,7 +787,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
             const mz = -sy * (ix / len) + cy * (iz / len);
-            const flySpeed = boostNow ? 34.0 : 19.0;
+            const flySpeed = boostNow ? 44.0 : 24.0;
             targetVx = mx * flySpeed;
             targetVz = mz * flySpeed;
 
@@ -835,20 +835,20 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             barrelAdd = barrelRollDir * rollEase * Math.PI * 2;
           }
           player.flightRoll = bankRollSmoothed + barrelAdd;
-          const targetPitch = Math.min(0.45, (speedMag / 34.0) * 0.42 + (boostNow ? 0.08 : 0));
+          const targetPitch = Math.min(0.45, (speedMag / 44.0) * 0.42 + (boostNow ? 0.08 : 0));
           player.flightPitch += (targetPitch - player.flightPitch) * Math.min(1, opts.dt * 8.0);
 
-          // 기본 줌에서는 8개 마을 전체 시야를 유지하고, 근접 줌인 시 상공 비행 중인 별 제독 중심으로 부드럽게 프레이밍
-          const wideX = Math.max(-28, Math.min(28, player.x * 0.52));
-          const wideZ = Math.max(-24, Math.min(28, player.z * 0.52 + 3.0));
+          // 기본 줌에서는 확장된 8개+ 마을 전체 시야를 유지하고, 근접 줌인 시 상공 비행 중인 별 제독 중심으로 부드럽게 프레이밍
+          const wideX = Math.max(-44, Math.min(44, player.x * 0.52));
+          const wideZ = Math.max(-40, Math.min(46, player.z * 0.52 + 9.0));
           const wideY = 1.0 + player.flightAlt * 0.14;
-          const closeZoom = Math.max(0, Math.min(1, (64 - overviewDist) / 34));
+          const closeZoom = Math.max(0, Math.min(1, (110 - overviewDist) / 72));
           const anchorX = wideX + (player.x - wideX) * closeZoom;
           const anchorZ = wideZ + (player.z - wideZ) * closeZoom;
           const anchorY = wideY + (gyUnder + player.flightAlt * 0.85 - wideY) * closeZoom;
           overviewAnchor.set(anchorX, anchorY, anchorZ);
         } else if (opts.cameraMode === "orbit") {
-          // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±50m) 위로 부드럽게 패닝!
+          // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±80m) 위로 부드럽게 패닝!
           player.campfireSitSec = 0;
           player.walking = false;
           player.flying = false;
@@ -861,7 +861,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
             const mz = -sy * (ix / len) + cy * (iz / len);
-            const panSpeed = (player.sprinting ? 26 : 15) * opts.dt;
+            const panSpeed = (player.sprinting ? 34 : 20) * opts.dt;
             orbitAnchor.x = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, orbitAnchor.x + mx * panSpeed));
             orbitAnchor.z = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, orbitAnchor.z + mz * panSpeed));
             orbitAnchor.y = Math.max(0.5, opts.getGroundHeight(orbitAnchor.x, orbitAnchor.z)) + 0.9;

@@ -2063,7 +2063,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           // 상호작용 중인 대상은 제자리에 멈춰 서서 제독을 바라본다
           m.tx = m.x;
           m.tz = m.z;
-        } else if (m.spec.state === "idle" && isNight && Math.hypot(m.spec.homeX - 2.8, m.spec.homeZ - 1.0) < 22) {
+        } else if (m.spec.state === "idle" && isNight && Math.hypot(m.spec.homeX - 2.8, m.spec.homeZ - 1.0) < 36) {
           // 밤이 되면 광장 인근의 유휴(idle) 에이전트들이 모닥불(2.8, 1.0) 둘레에 여유 있는 간격으로 둘러앉음
           const seatAngle = idx * 0.95 + 0.4;
           m.tx = 2.8 + Math.cos(seatAngle) * 2.15;

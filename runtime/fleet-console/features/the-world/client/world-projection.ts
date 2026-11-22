@@ -42,7 +42,7 @@ const PLAZA_X = 0;
 const PLAZA_Z = -1.5;
 const MAX_DISTRICTS_PER_VILLAGE = 12;
 const MAX_VISIBLE_OUTPOSTS = 8;
-const MAX_WORLD_PLACE_RADIUS = 48.5;
+const MAX_WORLD_PLACE_RADIUS = 78.0;
 
 /** 시냇물 중심선 및 반폭 (`meadow-scene.ts`의 `brookProfile`과 동일 수식). */
 function brookProfile(x: number): { readonly centerZ: number; readonly halfWidth: number } {
@@ -53,7 +53,7 @@ function brookProfile(x: number): { readonly centerZ: number; readonly halfWidth
 }
 
 function nudgeClearOfBrook(x: number, z: number, clearance: number): { readonly x: number; readonly z: number } {
-  if (Math.abs(x) >= 48) return { x, z };
+  if (Math.abs(x) >= 82) return { x, z };
   const bp = brookProfile(x);
   const minDist = bp.halfWidth + clearance;
   const dz = z - bp.centerZ;
@@ -70,33 +70,33 @@ function clampToWorldRadius(x: number, z: number, maxR: number): { readonly x: n
 }
 
 /**
- * 사령관 마을 앵커 프리셋 (이동 반경 56m, 중앙 광장 r<12m 및 시냇물 z≈9.2±4 회피, 상호 간격 ≥20m 보장).
+ * 사령관 마을 앵커 프리셋 (이동 반경 88m, 중앙 광장 r>=24m 및 시냇물 z≈9.2±5 회피, 인접 마을 간격 ≥34~40m 보장).
  * 1링(0~6): 초원 핵심 경관 권역 / 2링(7~11): 외곽 확장 권역.
  */
 const VILLAGE_ANCHOR_SLOTS: readonly { readonly x: number; readonly z: number }[] = [
-  { x: -21.5, z: -14.5 }, // 0: 북서 초원
-  { x: 21.5, z: -14.5 },  // 1: 북동 초원
-  { x: 0.0, z: -25.5 },   // 2: 북쪽 언덕
-  { x: 18.0, z: 26.5 },   // 3: 남동 벚꽃 언덕 (목교 건너)
-  { x: -18.0, z: 26.0 },  // 4: 남서 강변 초원 (목교 건너)
-  { x: -38.0, z: -2.5 },  // 5: 서쪽 초원
-  { x: 39.5, z: -4.5 },   // 6: 동쪽 초원
-  { x: 0.0, z: 38.0 },    // 7: 남쪽 계곡
-  { x: -36.5, z: -29.0 }, // 8: 외곽 북서
-  { x: 36.5, z: -29.0 },  // 9: 외곽 북동
-  { x: -16.5, z: -41.5 }, // 10: 외곽 북북서
-  { x: 16.5, z: -41.5 },  // 11: 외곽 북북동
+  { x: -34.0, z: -24.0 }, // 0: 북서 초원
+  { x: 34.0, z: -24.0 },  // 1: 북동 초원
+  { x: 0.0, z: -40.0 },   // 2: 북쪽 언덕
+  { x: 30.0, z: 40.0 },   // 3: 남동 벚꽃 언덕 (목교 건너)
+  { x: -30.0, z: 39.0 },  // 4: 남서 강변 초원 (목교 건너)
+  { x: -62.0, z: -5.0 },  // 5: 서쪽 초원
+  { x: 63.0, z: -6.5 },   // 6: 동쪽 초원
+  { x: 0.0, z: 60.0 },    // 7: 남쪽 계곡
+  { x: -58.0, z: -46.0 }, // 8: 외곽 북서
+  { x: 58.0, z: -46.0 },  // 9: 외곽 북동
+  { x: -26.0, z: -66.0 }, // 10: 외곽 북북서
+  { x: 26.0, z: -66.0 },  // 11: 외곽 북북동
 ];
 
 const FALLBACK_OUTPOST_SLOTS: readonly { readonly x: number; readonly z: number }[] = [
-  { x: -14.5, z: 2.5 },
-  { x: 14.5, z: 2.0 },
-  { x: -10.0, z: -16.0 },
-  { x: 10.0, z: -16.0 },
-  { x: -30.0, z: 24.0 },
-  { x: 30.0, z: 24.0 },
-  { x: -28.0, z: 35.0 },
-  { x: 28.0, z: 35.0 },
+  { x: -22.0, z: -4.0 },
+  { x: 22.0, z: -4.0 },
+  { x: -16.0, z: -28.0 },
+  { x: 16.0, z: -28.0 },
+  { x: -48.0, z: 34.0 },
+  { x: 48.0, z: 34.0 },
+  { x: -44.0, z: 52.0 },
+  { x: 44.0, z: 52.0 },
 ];
 
 function resolveVillageAnchor(idx: number, villageRadius: number): { readonly x: number; readonly z: number } {
@@ -104,7 +104,7 @@ function resolveVillageAnchor(idx: number, villageRadius: number): { readonly x:
   if (preset) return preset;
   const overflowIdx = idx - VILLAGE_ANCHOR_SLOTS.length;
   const ringAngle = -Math.PI * 0.85 + overflowIdx * 0.56;
-  const radius = Math.min(45.5, 43.0 + Math.floor(overflowIdx / 8) * 2.5);
+  const radius = Math.min(74.0, 68.0 + Math.floor(overflowIdx / 8) * 3.0);
   const rawX = Math.cos(ringAngle) * radius;
   const rawZ = Math.sin(ringAngle) * radius;
   const clear = nudgeClearOfBrook(rawX, rawZ, villageRadius + 2.0);

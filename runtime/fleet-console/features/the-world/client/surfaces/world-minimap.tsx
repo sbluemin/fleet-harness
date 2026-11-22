@@ -17,7 +17,7 @@ import { WorldIcon } from "./world-icons.js";
 export const MINIMAP_VIEW_SIZE = 164;
 export const MINIMAP_CENTER = MINIMAP_VIEW_SIZE / 2;
 export const MINIMAP_RADIUS = 74;
-export const MINIMAP_WORLD_RADIUS = 56;
+export const MINIMAP_WORLD_RADIUS = 88;
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -65,7 +65,7 @@ export interface WorldMinimapProps {
   readonly onJumpToDistrict?: ((item: WorldMinimapJumpItem) => void) | undefined;
 }
 
-/** 월드 좌표 `(x, z)` → 미니맵 SVG 좌표 `(mx, my)` 변환 (반경 56m 원형 클램프). */
+/** 월드 좌표 `(x, z)` → 미니맵 SVG 좌표 `(mx, my)` 변환 (반경 88m 원형 클램프). */
 export function worldToMinimapCoords(x: number, z: number): { readonly mx: number; readonly my: number } {
   const dist = Math.hypot(x, z);
   const clampedScale = dist > MINIMAP_WORLD_RADIUS && dist > 0.001 ? MINIMAP_WORLD_RADIUS / dist : 1;
@@ -95,7 +95,7 @@ export function formatMinimapPlayerTransform(x: number, z: number, yaw: number):
 /** `meadow-scene.ts` / `world-projection.ts`와 동일한 시냇물 곡선 SVG path 생성 (1회 계산). */
 function buildBrookSvgPath(): string {
   const pts: string[] = [];
-  for (let x = -50; x <= 50; x += 4) {
+  for (let x = -82; x <= 82; x += 4) {
     const z = 9.2 + Math.sin(x * 0.095) * 2.9 + Math.cos(x * 0.04) * 1.1;
     const { mx, my } = worldToMinimapCoords(x, z);
     pts.push(`${pts.length === 0 ? "M" : "L"} ${mx.toFixed(1)} ${my.toFixed(1)}`);
@@ -111,7 +111,7 @@ const WEST_BRIDGE_COORDS = worldToMinimapCoords(-11.5, 9.2 + Math.sin(-11.5 * 0.
 /**
  * 다크 크리스탈 RTS 전략 미니맵 (`React.memo` + `forwardRef`).
  *
- * - 전체 56m 초원의 중앙 광장 · 시냇물 · 사령관 마을(호버 툴팁 · Tier · 작업 펄스 · 경보 핑)을 한눈에 표시한다.
+ * - 전체 88m 초원의 중앙 광장 · 시냇물 · 사령관 마을(호버 툴팁 · Tier · 작업 펄스 · 경보 핑)을 한눈에 표시한다.
  * - 플레이어 위치/방향 화살표(`playerMarkerRef`)와 사령관 실시간 산책 도트(`updateRoamingDots`)를
  *   Direct-DOM으로 갱신해 React 리렌더가 0Hz로 유지된다.
  * - 하단 푸터에 `구역 이동` 팝오버를 통합해 우하단 UI 중복을 제거했다.
@@ -348,7 +348,7 @@ export const WorldMinimap = memo(
             viewBox={`0 0 ${MINIMAP_VIEW_SIZE} ${MINIMAP_VIEW_SIZE}`}
             aria-hidden="true"
           >
-            {/* 초원 외곽 경계 (56m) 및 거리 동심원 */}
+            {/* 초원 외곽 경계 (88m) 및 거리 동심원 */}
             <circle
               className="the-world-minimap-meadow"
               cx={MINIMAP_CENTER}
@@ -359,13 +359,13 @@ export const WorldMinimap = memo(
               className="the-world-minimap-ring"
               cx={MINIMAP_CENTER}
               cy={MINIMAP_CENTER}
-              r={MINIMAP_RADIUS * (24 / MINIMAP_WORLD_RADIUS)}
+              r={MINIMAP_RADIUS * (36 / MINIMAP_WORLD_RADIUS)}
             />
             <circle
               className="the-world-minimap-ring"
               cx={MINIMAP_CENTER}
               cy={MINIMAP_CENTER}
-              r={MINIMAP_RADIUS * (42 / MINIMAP_WORLD_RADIUS)}
+              r={MINIMAP_RADIUS * (64 / MINIMAP_WORLD_RADIUS)}
             />
 
             {/* 시냇물 & 목교 */}

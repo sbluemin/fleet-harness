@@ -283,8 +283,8 @@ function projectPointInto(
 
 const MAX_VISIBLE_VILLAGE_SIGNS = 6;
 const MAX_OVERVIEW_VILLAGE_SIGNS = 16;
-const MAX_VILLAGE_SIGN_DIST = 54;
-const MAX_OVERVIEW_SIGN_DIST = 165;
+const MAX_VILLAGE_SIGN_DIST = 86;
+const MAX_OVERVIEW_SIGN_DIST = 260;
 const MAX_ACTOR_LABEL_DIST = 58;
 const MAX_PLAYER_LABEL_DIST = 44;
 const VIEWPORT_MARGIN_X = 160;
@@ -480,7 +480,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   renderer.info.autoReset = false;
 
   const scene = new Scene();
-  const camera = new PerspectiveCamera(46, 16 / 9, 0.4, 260);
+  const camera = new PerspectiveCamera(46, 16 / 9, 0.4, 720);
 
   // PMREM 기반 IBL 환경맵: 돌·목재·기와·금속 PBR 재질에 은은한 하늘 반사와 깊이감을 부여한다.
   const pmremGenerator = new PMREMGenerator(renderer);
@@ -2086,7 +2086,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       tempPos.set(d.x, dgy + 2.4 + d.tier * 0.32, d.z);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
-        && projTop.w < (inOverview ? 175 : 72)
+        && projTop.w < (inOverview ? 260 : 88)
         && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
@@ -2108,7 +2108,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       tempPos.set(nbX, nbY, nbZ);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
-        && projTop.w < (inOverview ? 165 : 48)
+        && projTop.w < (inOverview ? 260 : 54)
         && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
@@ -2126,7 +2126,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       tempPos.set(ghX, ghY, ghZ);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
-        && projTop.w < (inOverview ? 165 : 54)
+        && projTop.w < (inOverview ? 260 : 62)
         && projTop.y >= TOP_SIGN_SAFE_Y
         && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
       ) {
@@ -2584,12 +2584,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
 
       // Zero-Mesh 2단 지면 평면 교차 근사 (1차 평균 마을 높이 → 2차 실제 지형 높이 보정)
       const t0 = (0.46 - origin.y) / direction.y;
-      if (t0 <= 0 || t0 > 240) return null;
+      if (t0 <= 0 || t0 > 420) return null;
       const wx0 = origin.x + direction.x * t0;
       const wz0 = origin.z + direction.z * t0;
       const gy = meadow.getGroundHeight(wx0, wz0);
       const t1 = (gy - origin.y) / direction.y;
-      if (t1 <= 0 || t1 > 240) return null;
+      if (t1 <= 0 || t1 > 420) return null;
       const wx = origin.x + direction.x * t1;
       const wz = origin.z + direction.z * t1;
 
@@ -2625,7 +2625,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (Math.abs(direction.y) < 1e-4) return null;
 
       const t0 = (0.46 - origin.y) / direction.y;
-      if (t0 <= 0 || t0 > 240) return null;
+      if (t0 <= 0 || t0 > 420) return null;
       const wx = origin.x + direction.x * t0;
       const wz = origin.z + direction.z * t0;
 
@@ -2654,19 +2654,19 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       // 아래쪽 지면을 향한 광선만 허용 (하늘 클릭 제외)
       if (direction.y >= -1e-4) return null;
 
-      const GROUND_CLAMP = 48;
+      const GROUND_CLAMP = 82;
       const t0 = -origin.y / direction.y;
-      if (t0 <= 0 || t0 > 260) return null;
+      if (t0 <= 0 || t0 > 420) return null;
       const wx0 = Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.x + direction.x * t0));
       const wz0 = Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.z + direction.z * t0));
 
       // 2차 실제 지형 높이 보정
       const gy = meadow.getGroundHeight(wx0, wz0);
       const t1 = (gy - origin.y) / direction.y;
-      const wx = t1 > 0 && t1 <= 260
+      const wx = t1 > 0 && t1 <= 420
         ? Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.x + direction.x * t1))
         : wx0;
-      const wz = t1 > 0 && t1 <= 260
+      const wz = t1 > 0 && t1 <= 420
         ? Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.z + direction.z * t1))
         : wz0;
 

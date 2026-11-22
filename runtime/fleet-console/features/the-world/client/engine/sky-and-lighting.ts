@@ -245,7 +245,7 @@ vec3 rainbowSpectrum(float t) {
 void main() {
   // 픽셀 단위 반경·호각 계산 + 메시 경계 이전 완전 0 페더링으로 에일리어싱/어두운 테두리 0
   float r = length(vLocalPos);
-  float r01 = clamp((r - 25.0) / 9.0, 0.0, 1.0);
+  float r01 = clamp((r - 42.0) / 14.0, 0.0, 1.0);
   float arc01 = clamp(atan(vLocalPos.y, vLocalPos.x) / 3.14159265, 0.0, 1.0);
   float radialFade = smoothstep(0.08, 0.30, r01) * smoothstep(0.92, 0.70, r01);
   float arcFade = smoothstep(0.06, 0.24, arc01) * smoothstep(0.94, 0.76, arc01);
@@ -278,7 +278,7 @@ void main() {
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPos;
   float dist = max(3.0, -mvPos.z);
-  gl_PointSize = clamp((135.0 / dist) * (0.65 + 0.55 * blink), 2.5, 18.0);
+  gl_PointSize = clamp((155.0 / dist) * (0.65 + 0.55 * blink), 2.5, 18.0);
 }
 `;
 
@@ -381,18 +381,18 @@ function resolveTargetBlend(mode: WorldTimeMode, elapsed: number): number {
 
 const MAX_NIGHT_LAMP_LIGHTS = 6;
 const MAX_ANTENNA_LIGHTS = 4;
-const MAX_GOLDEN_FIREFLIES = 96;
+const MAX_GOLDEN_FIREFLIES = 128;
 const MAX_SKY_METEORS = 3;
-const MAX_WEATHER_PARTICLES = 320;
-const SHADOW_BOUNDS = 36;
+const MAX_WEATHER_PARTICLES = 360;
+const SHADOW_BOUNDS = 95;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_TEXEL_WORLD = (SHADOW_BOUNDS * 2) / SHADOW_MAP_SIZE;
 const SHADOW_SNAP_STEP = SHADOW_TEXEL_WORLD * 4;
 
 export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   const group = new Group();
-  // 넓은 초원과 원경 산맥이 또렷하게 보이도록 안개 농도를 완만하게 설정
-  const fog = new FogExp2(0xd6f0ff, 0.0044);
+  // 확장된 380m 지형·88m 초원 마을과 원경 산맥이 또렷하게 보이도록 대기 안개 농도를 여유 있게 튜닝
+  const fog = new FogExp2(0xd6f0ff, 0.0026);
   scene.fog = fog;
 
   const uSkyTop = new Color(0x3fa4f8);
@@ -400,7 +400,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   const sunDir = new Vector3(0.50, 0.84, 0.46).normalize();
   const avatarWorldTint = new Vector3(1.02, 1.01, 0.99);
 
-  const skyGeo = new SphereGeometry(185, 32, 20);
+  const skyGeo = new SphereGeometry(340, 32, 20);
   const skyMat = new ShaderMaterial({
     glslVersion: GLSL3,
     side: BackSide,
@@ -420,18 +420,18 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   skyMesh.frustumCulled = false;
   group.add(skyMesh);
 
-  // 주 태양/달 그림자 광원 (주시점 기준 텍셀 스냅 추적으로 260m 전역에서 선명한 그림자 유지)
+  // 주 태양/달 그림자 광원 (±95m 절두체 · 텍셀 스냅 추적으로 380m 확장 맵 외곽 마을까지 선명한 그림자 유지)
   const dirLight = new DirectionalLight(0xfff7e4, 1.95);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
   dirLight.shadow.camera.near = 2;
-  dirLight.shadow.camera.far = 130;
+  dirLight.shadow.camera.far = 260;
   dirLight.shadow.camera.left = -SHADOW_BOUNDS;
   dirLight.shadow.camera.right = SHADOW_BOUNDS;
   dirLight.shadow.camera.top = SHADOW_BOUNDS;
   dirLight.shadow.camera.bottom = -SHADOW_BOUNDS;
   dirLight.shadow.bias = -0.0005;
-  dirLight.shadow.normalBias = 0.025;
+  dirLight.shadow.normalBias = 0.032;
   group.add(dirLight);
   group.add(dirLight.target);
 
@@ -465,7 +465,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     return pl;
   });
 
-  // 야간·노을 황금-연두 반딧불이 (`THREE.Points` GPU 포인트 셰이더 96기, 강가·소나무 숲·마을 가장자리, 주간 visible=false)
+  // 야간·노을 황금-연두 반딧불이 (`THREE.Points` GPU 포인트 셰이더 128기, 88m 확장 초원·강가·숲 전역, 주간 visible=false)
   const ffPositions = new Float32Array(MAX_GOLDEN_FIREFLIES * 3);
   const ffSeedsAttr = new Float32Array(MAX_GOLDEN_FIREFLIES * 4);
   const ffColors = new Float32Array(MAX_GOLDEN_FIREFLIES * 3);
@@ -474,17 +474,17 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   for (let i = 0; i < MAX_GOLDEN_FIREFLIES; i += 1) {
     let baseX: number;
     let baseZ: number;
-    if (i < 34) {
-      // 시냇물 강가 주변 34기
-      const tStream = (i / 33) * 2 - 1;
-      baseX = tStream * 44 + Math.sin(i * 4.3) * 2.2;
+    if (i < 44) {
+      // 확장된 시냇물 강가 주변 44기 (|x| <= 80)
+      const tStream = (i / 43) * 2 - 1;
+      baseX = tStream * 80 + Math.sin(i * 4.3) * 2.4;
       const brookZ = 9.2 + Math.sin(baseX * 0.095) * 2.9 + Math.cos(baseX * 0.04) * 1.1;
-      baseZ = brookZ + ((i % 2 === 0 ? 1 : -1) * (2.4 + (i % 5) * 0.75));
+      baseZ = brookZ + ((i % 2 === 0 ? 1 : -1) * (2.4 + (i % 5) * 0.85));
     } else {
-      // 소나무 숲 · 마을 가장자리 62기
-      const idx = i - 34;
+      // 소나무 숲 · 외곽 마을 가장자리 84기 (반경 14..86m)
+      const idx = i - 44;
       const goldenAng = idx * 2.3999632297;
-      const rad = 12.0 + Math.sqrt((idx + 0.5) / (MAX_GOLDEN_FIREFLIES - 34)) * 44.0;
+      const rad = 14.0 + Math.sqrt((idx + 0.5) / (MAX_GOLDEN_FIREFLIES - 44)) * 72.0;
       baseX = Math.cos(goldenAng) * rad;
       baseZ = Math.sin(goldenAng) * rad;
     }
@@ -526,7 +526,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   group.add(fireflyPoints);
 
   // 배경 밤하늘 유성우 풀 (3기 풀링된 스트릭 메시, 주간·비활성 시 visible=false → Draw Call +0)
-  const meteorGeo = new PlaneGeometry(14.5, 0.52);
+  const meteorGeo = new PlaneGeometry(24.0, 0.85);
   interface SkyMeteorSlot {
     readonly mesh: Mesh;
     readonly mat: ShaderMaterial;
@@ -577,16 +577,16 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     if (!slot) return;
     const az = Math.random() * Math.PI * 2;
     const elev = 0.44 + Math.random() * 0.42; // 25°..50° 밤하늘 고도
-    const domeR = 156;
+    const domeR = 265;
     const cx = Math.cos(az) * Math.cos(elev) * domeR;
     const cy = Math.sin(elev) * domeR;
     const cz = Math.sin(az) * Math.cos(elev) * domeR;
-    // 접선 + 하강 대각선 궤적 (길이 ~44m)
+    // 접선 + 하강 대각선 궤적 (길이 ~72..102m)
     const tangX = -Math.sin(az);
     const tangZ = Math.cos(az);
     const sign = Math.random() < 0.5 ? 1 : -1;
     slot.dir.set(tangX * sign * 0.84, -0.46, tangZ * sign * 0.84).normalize();
-    const span = 42 + Math.random() * 18;
+    const span = 72 + Math.random() * 30;
     slot.startPos.set(cx - slot.dir.x * span * 0.5, cy - slot.dir.y * span * 0.5, cz - slot.dir.z * span * 0.5);
     slot.endPos.set(cx + slot.dir.x * span * 0.5, cy + slot.dir.y * span * 0.5, cz + slot.dir.z * span * 0.5);
     slot.age = 0;
@@ -610,9 +610,9 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   group.add(weatherInstanced);
 
   const weatherSeeds = Array.from({ length: MAX_WEATHER_PARTICLES }, (_, i) => ({
-    ox: (((i * 73) % 1000) / 1000 - 0.5) * 54,
-    oy: (((i * 41) % 1000) / 1000) * 22,
-    oz: (((i * 97) % 1000) / 1000 - 0.5) * 54,
+    ox: (((i * 73) % 1000) / 1000 - 0.5) * 72,
+    oy: (((i * 41) % 1000) / 1000) * 28,
+    oz: (((i * 97) % 1000) / 1000 - 0.5) * 72,
     phase: i * 1.37,
     speed: 0.78 + ((i * 29) % 10) * 0.055,
     sway: 0.55 + ((i * 17) % 8) * 0.12,
@@ -641,8 +641,8 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     if (weatherInstanced.instanceColor) weatherInstanced.instanceColor.needsUpdate = true;
   };
 
-  // 길드 회관 너머 하늘 3D 파스텔 무지개 아치 (1 draw call, 비활성 시 visible=false)
-  const rainbowGeo = new RingGeometry(25, 34, 64, 1, 0, Math.PI);
+  // 북쪽 외곽 마을 너머 하늘 3D 파스텔 무지개 아치 (1 draw call, 비활성 시 visible=false)
+  const rainbowGeo = new RingGeometry(42, 56, 64, 1, 0, Math.PI);
   const rainbowMat = new ShaderMaterial({
     glslVersion: GLSL3,
     transparent: true,
@@ -658,7 +658,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     fragmentShader: RAINBOW_FRAGMENT,
   });
   const rainbowMesh = new Mesh(rainbowGeo, rainbowMat);
-  rainbowMesh.position.set(0, -2.5, -34);
+  rainbowMesh.position.set(0, -3.0, -76);
   rainbowMesh.rotation.y = 0.06;
   rainbowMesh.renderOrder = 1;
   rainbowMesh.visible = false;
@@ -810,9 +810,9 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
       dirLight.target.position.set(shadowFocusX, 0, shadowFocusZ);
       dirLight.target.updateMatrixWorld();
       dirLight.position.set(
-        shadowFocusX + sunDir.x * 52,
-        sunDir.y * 52,
-        shadowFocusZ + sunDir.z * 52,
+        shadowFocusX + sunDir.x * 96,
+        sunDir.y * 96,
+        shadowFocusZ + sunDir.z * 96,
       );
       fog.color.copy(uSkyHorizon);
       skyMat.uniforms["uNight"]!.value = night;
@@ -903,12 +903,12 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
         slot.mat.uniforms["uAlpha"]!.value = env * Math.min(1, (night - 0.25) / 0.45);
       }
 
-      // 날씨 파티클 갱신 (단일 InstancedMesh 320기, clear 시 0 비용)
+      // 날씨 파티클 갱신 (단일 InstancedMesh 360기, clear 시 0 비용)
       if (currentWeather !== "clear") {
         weatherInstanced.visible = true;
-        const wrapSpan = 54;
-        const halfSpan = 27;
-        const heightSpan = 22;
+        const wrapSpan = 72;
+        const halfSpan = 36;
+        const heightSpan = 28;
         const cx = playerPos.x;
         const cz = playerPos.z;
 
