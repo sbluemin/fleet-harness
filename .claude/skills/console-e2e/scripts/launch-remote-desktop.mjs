@@ -223,13 +223,16 @@ export function checkWorktree(rawWorktree) {
 }
 
 /** The exact owned remote directory; the only remote path this tool may remove. */
-export function ownedRemoteDir(home, runId) {
-  if (!home.startsWith('/') || /[\0-\x1f\x7f]/.test(home) || home === '/') throw new ToolError(20, 'remote-home-unusable');
-  return `${home}/.fleet/${REMOTE_BASENAME(runId)}`;
+export function ownedRemoteDir(tempRoot, runId) {
+  const root = tempRoot.trim().replace(/\/+$/, '');
+  if (!root.startsWith('/') || /[\0-\x1f\x7f]/.test(root) || path.posix.normalize(root) !== root) {
+    throw new ToolError(20, 'remote-temp-root-unusable');
+  }
+  return `${root}/${REMOTE_BASENAME(runId)}`;
 }
 
-export function assertOwnedRemoteDir(home, runId, candidate) {
-  if (candidate !== ownedRemoteDir(home, runId)) throw new ToolError(20, 'remote-path-not-owned');
+export function assertOwnedRemoteDir(tempRoot, runId, candidate) {
+  if (candidate !== ownedRemoteDir(tempRoot, runId)) throw new ToolError(20, 'remote-path-not-owned');
 }
 
 /**
@@ -378,7 +381,7 @@ async function main() {
   }
 
   // ---- live state ----------------------------------------------------------
-  let home = null;
+  let tempRoot = null;
   let remoteDir = null;
   let stage = 'start'; // start < claimed < transferred < extracted < launched < ready
   let startedApp = false;
@@ -608,7 +611,7 @@ async function main() {
     }
     if (remoteDir) {
       try {
-        assertOwnedRemoteDir(home, runId, remoteDir);
+        assertOwnedRemoteDir(tempRoot, runId, remoteDir);
         const markerPath = `${remoteDir}/${MARKER}`;
         const { stdout: marker } = await execRemote(
           `cat ${shQuote(markerPath)} 2>/dev/null || true`, { timeout: 15_000 },
@@ -703,28 +706,25 @@ async function main() {
   try {
     // ---- claim (atomic mkdir + exclusive marker, verified in one step) -----
     {
-      let claimedHome;
       try {
-        claimedHome = (await execRemote('printf %s "$HOME"', { timeout: 15_000 })).stdout;
+        tempRoot = (await execRemote('/usr/bin/getconf DARWIN_USER_TEMP_DIR', { timeout: 15_000 })).stdout;
       } catch {
         throw new ToolError(20, 'ssh-unreachable');
       }
-      home = claimedHome;
-      remoteDir = ownedRemoteDir(home, runId);
+      remoteDir = ownedRemoteDir(tempRoot, runId);
       const q = shQuote(remoteDir);
       const markerJson = shQuote(JSON.stringify({ schema: 1, kind: 'e2e-remote-run', runId, nonce }));
       let claimOut;
       try {
         claimOut = await execRemote(
-          `mkdir -p ${shQuote(`${home}/.fleet`)} && mkdir ${q} && chmod 700 ${q} `
-          + `&& printf '%s' ${markerJson} > ${q}/${MARKER} && chmod 600 ${q}/${MARKER} `
-          + `&& cat ${q}/${MARKER}`,
+          `umask 077; mkdir ${q} || exit 1; `
+          + `if ! printf '%s' ${markerJson} > ${q}/${MARKER}; then rm -f ${q}/${MARKER}; rmdir ${q}; exit 1; fi; `
+          + `cat ${q}/${MARKER}`,
           { timeout: 30_000 },
         );
       } catch {
-        // mkdir without -p fails when the name is taken: never adopt it.
-        // A partial claim (dir without a verified marker) is removed only when
-        // empty; anything else is left alone and reported, never deleted.
+        // mkdir without -p fails when the name is taken. Never remove a
+        // directory unless the marker proves this invocation created it.
         let state = 'unknown';
         try {
           const { stdout } = await execRemote(
@@ -737,15 +737,9 @@ async function main() {
         let parsed = null;
         try { parsed = JSON.parse(state); } catch { parsed = null; }
         if (parsed && parsed.runId === runId && parsed.nonce === nonce) {
-          await execRemote(`rmdir ${q} 2>/dev/null || true`, { timeout: 15_000 }).catch(() => ({}));
           throw new ToolError(20, 'claim-retry-needed');
         }
-        try {
-          await execRemote(`rmdir ${q}`, { timeout: 15_000 });
-          throw new ToolError(20, 'claim-partial-cleaned-retry');
-        } catch {
-          throw new ToolError(20, 'remote-dir-exists');
-        }
+        throw new ToolError(20, 'remote-dir-exists');
       }
       let markerOk = false;
       try {

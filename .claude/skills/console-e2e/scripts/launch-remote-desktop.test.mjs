@@ -52,12 +52,12 @@ describe('ports and quoting', () => {
 
 describe('owned remote directory', () => {
   test('derives one fixed directory per run id', () => {
-    assert.equal(ownedRemoteDir('/Users/remote', 'abc-1'), '/Users/remote/.fleet/e2e-remote-abc-1');
+    assert.equal(ownedRemoteDir('/tmp/user/T/\n', 'abc-1'), '/tmp/user/T/e2e-remote-abc-1');
   });
   test('acts only on that exact directory', () => {
-    assert.throws(() => assertOwnedRemoteDir('/Users/remote', 'a', '/Users/remote/.fleet/e2e-remote-b'));
-    assert.throws(() => assertOwnedRemoteDir('/Users/remote', 'a', '/Users/remote'));
-    assert.throws(() => assertOwnedRemoteDir('/Users/remote', 'a', '/Users/remote/.fleet/e2e-remote-a/evil'));
+    assert.throws(() => assertOwnedRemoteDir('/tmp/user/T', 'a', '/tmp/user/T/e2e-remote-b'));
+    assert.throws(() => assertOwnedRemoteDir('/tmp/user/T', 'a', '/tmp/user/T'));
+    assert.throws(() => assertOwnedRemoteDir('/tmp/user/T', 'a', '/tmp/user/T/e2e-remote-a/other'));
   });
 });
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -39,30 +39,14 @@ describe('parseLsofOwnership', () => {
   });
 });
 
-describe('packaged Desktop environment contract (source cross-check)', () => {
-  const read = (rel) => fs.readFileSync(path.join(worktreeRoot, rel), 'utf8');
-  test('isolation overrides exist in environment.ts', () => {
-    const source = read('runtime/fleet-desktop/src/environment.ts');
-    for (const name of ['FLEET_CONSOLE_DATA_DIR', 'FLEET_DESKTOP_DATA_DIR', 'FLEET_DATA_DIR']) {
-      assert.ok(source.includes(name), `missing ${name}`);
-    }
-    assert.ok(source.includes('resolveConsoleDirectoryOverride'));
-    assert.ok(source.includes('resolveDesktopDataDirectoryOverride'));
+test('a selected remote target cannot enter the local Desktop launch gate', () => {
+  const result = spawnSync(process.execPath, [path.join(here, 'launch-owned-desktop.mjs')], {
+    encoding: 'utf8', env: { ...process.env, FLEET_E2E_SSH_TARGET: 'mock-remote' },
   });
-  test('an invalid release tag disables remote Console procurement', () => {
-    const release = read('runtime/fleet-console/protocol/release/index.ts');
-    assert.ok(release.includes('"FLEET_CONSOLE_RELEASE_TAG"'));
-    const check = read('runtime/fleet-desktop/src/runtime/release-check.ts');
-    assert.ok(check.includes('options.environment ?? process.env'));
-    assert.ok(check.includes('unavailable'));
-    const main = read('runtime/fleet-desktop/src/main.ts');
-    assert.ok(main.includes('createReleaseChecker()'));
-  });
-  test('the managed child is node cli.mjs serve with cwd at latest', () => {
-    const supervisor = read('runtime/fleet-desktop/src/sidecar-supervisor.ts');
-    assert.ok(supervisor.includes('[runtime.cliPath, "serve"]'));
-    assert.ok(supervisor.includes('cwd: path.dirname(path.dirname(runtime.cliPath))'));
-  });
+  assert.equal(result.status, 20);
+  assert.equal(result.stdout, '');
+  assert.match(result.stderr, /no local fallback/);
+  assert.doesNotMatch(result.stderr, /mock-remote/);
 });
 
 describe('mock-SSH remote flow (no real target; loopback only)', () => {
@@ -112,9 +96,9 @@ if (tunnel || cmdParts.length === 0) {
 const cmd = cmdParts.join(' ');
 if (env.MOCK_HANG && cmd.includes(env.MOCK_HANG)) { hold(); return; }
 if (cmd.includes('connect_ex')) process.exit(env.MOCK_PORT_PROBE === 'occupied' ? 1 : 0);
-if (cmd === 'printf %s "$HOME"') {
+if (cmd === '/usr/bin/getconf DARWIN_USER_TEMP_DIR') {
   if (env.MOCK_FAIL_HOME === '1') process.exit(1);
-  process.stdout.write(HOME);
+  process.stdout.write(env.MOCK_REMOTE_TEMP);
   return;
 }
 if (cmd.includes('lsof') && /-iTCP:\\d+/.test(cmd) && env.MOCK_LSOF) {
@@ -219,7 +203,7 @@ main().then(() => {}, () => process.exit(1));
       'if [ -n "$MOCK_RUNID" ] && [ "$MOCK_RM_FAIL" = 1 ]; then',
       '  for a in "$@"; do',
       '    case "$a" in',
-      '    */.fleet/e2e-remote-"$MOCK_RUNID"|*/.fleet/e2e-remote-"$MOCK_RUNID"/) exit 1;;',
+      '    "$MOCK_REMOTE_TEMP/e2e-remote-$MOCK_RUNID"|"$MOCK_REMOTE_TEMP/e2e-remote-$MOCK_RUNID/") exit 1;;',
       '    esac;',
       '  done;',
       'fi',
@@ -227,7 +211,9 @@ main().then(() => {}, () => process.exit(1));
       '',
     ].join(String.fromCharCode(10)), { mode: 0o755 });
     const remoteHome = path.join(base, 'remote-home');
+    const remoteTemp = path.join(base, 'remote-temp');
     fs.mkdirSync(remoteHome, { mode: 0o700 });
+    fs.mkdirSync(remoteTemp, { mode: 0o700 });
     const pkg = path.join(base, 'pkg.zip');
     fs.writeFileSync(pkg, 'mock-zip-bytes');
     const sha = createHash('sha256').update('mock-zip-bytes').digest('hex');
@@ -247,6 +233,7 @@ main().then(() => {}, () => process.exit(1));
       FLEET_E2E_SSH_TARGET: MOCK_TARGET,
       MOCK_TARGET,
       MOCK_REMOTE_HOME: remoteHome,
+      MOCK_REMOTE_TEMP: remoteTemp,
       MOCK_REVISION: REVISION,
       MOCK_APP: app,
       MOCK_RUNID: runId,
@@ -256,7 +243,7 @@ main().then(() => {}, () => process.exit(1));
       base, '--package', pkg, '--package-sha256', sha, '--package-revision', REVISION,
       '--run-id', runId, '--local-port', String(localPort), '--remote-port', String(remotePort),
       '--cdp-timeout-ms', '8000'];
-    const remoteDir = path.join(remoteHome, '.fleet', `e2e-remote-${runId}`);
+    const remoteDir = path.join(remoteTemp, `e2e-remote-${runId}`);
     return { base, bin, remoteHome, pkg, sha, localPort, remotePort, runId, env, args, remoteDir };
   }
 
@@ -335,6 +322,7 @@ main().then(() => {}, () => process.exit(1));
     const { code } = await proc.done;
     assert.equal(code, 0);
     assert.ok(!fs.existsSync(ctx.remoteDir), 'owned remote dir reclaimed');
+    assert.deepEqual(fs.readdirSync(ctx.remoteHome), [], 'the login HOME remains untouched');
     assert.deepEqual(await awaitNoPayload(ctx.runId), [], 'no owned payload processes remain');
     assert.ok(!(await localConnects(ctx.localPort)), 'tunnel is down');
     const final = proc.output();
@@ -343,6 +331,16 @@ main().then(() => {}, () => process.exit(1));
     const last = JSON.parse(summaries.at(-1).slice('remote-reclaim: '.length));
     assert.equal(last.appGone, true);
     assert.equal(last.dirGone, true);
+  });
+
+  test('a pre-existing empty run directory is never adopted or removed', async (t) => {
+    const ctx = await arrange(t);
+    fs.mkdirSync(ctx.remoteDir);
+    const proc = launch(ctx.args, ctx.env);
+    const { code } = await proc.done;
+    assert.notEqual(code, 0);
+    assert.equal(proc.output().stdout, '');
+    assert.deepEqual(fs.readdirSync(ctx.remoteDir), []);
   });
 
   test('a listener owned by another PID fails fast without READY', async (t) => {

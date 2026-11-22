@@ -8,7 +8,7 @@ Record the target worktree, OS/architecture, source SHA, Electron version, and t
 
 | Claim | Read before execution |
 |---|---|
-| Setup, ownership, window size, and viewport emulation for every Desktop run | [Setup](desktop/setup.md) |
+| Setup and ownership | **Local (no `FLEET_E2E_SSH_TARGET`):** follow [Setup](desktop/setup.md), including the host focus and cursor safeguards. **Remote Mac (SSH alias or `user@host`):** with recorded launch approval for the target Mac, use `node runtime/fleet-desktop/scripts/prepare-remote-mac-package.mjs` from the target worktree, then run `node .claude/skills/console-e2e/scripts/launch-remote-desktop.mjs <worktree> --package <archivePath> --package-sha256 <archiveSha256> --package-revision <sourceRevision> --run-id <unique-id> --local-port <n> --remote-port <n>`. Keep the launcher running, use its READY loopback port for CDP through the SSH tunnel, then terminate the launcher and verify its reclaim result. The local launch/stop gate does not apply to this remote run. Any required real OS input or OS-composited evidence is target-Mac only; SSH selection does not grant input authority. |
 | Entry-to-Console handoff, sandbox, navigation, reload | [Shell/CDP](desktop/shell-cdp.md) |
 | Menus, dialogs, tray, native Browser view visibility, quit/relaunch, sidecar/lock, the owned empty-lock recovery dialog, package/signing | Relevant lane in [Native and package](desktop/native-and-package.md) |
 | Windows ARM64, unavailable wrapper, platform-specific claim | [Platform automation](desktop/platform-automation.md) |
