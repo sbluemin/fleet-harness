@@ -4,6 +4,8 @@
  * 브라우저 번들과 호스트가 같은 리터럴을 쓰도록 여기 둔다.
  */
 
+/** 호스트 Desktop이 지금 쓰는 화면 밖 창의 스틸을 요청하는 루프백 전용 경로. */
+export const DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH = "/api/v1/desktop/computer-preview/still";
 /** 호스트 Desktop 렌더러가 정지 화면을 올리는 루프백 전용 경로. 원격 리스너에서는 404다. */
 export const DESKTOP_REMOTE_PREVIEW_FRAME_PATH = "/api/v1/desktop/computer-preview/frame";
 /** 원격 full 화면이 최신 정지 화면을 기다려 받는 경로(long-poll). 루프백에서는 404, monitoring은 403이다. */

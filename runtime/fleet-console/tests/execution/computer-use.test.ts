@@ -100,7 +100,7 @@ function setup(installed = true) {
       supported: () => true, inspectInstallation: async () => installed,
       createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use"),
       preparePaste, readPermissions, openPrivacySettings,
-      verifyWindow: async () => "matches", resolveApp: async (target) => ({ app: target }),
+      windowState: async () => ({ identity: "matches", onscreen: true }), captureStill: async () => null, resolveApp: async (target) => ({ app: target }),
       openApp: async () => ({ requestDispatched: true, windowReady: true }),
     },
   });

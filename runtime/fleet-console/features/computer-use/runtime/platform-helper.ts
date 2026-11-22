@@ -18,7 +18,7 @@ function exchange(spawn: Spawn, mode: "--platform" | "--paste-lease", bytes: Buf
   reply(row: Record<string, unknown>): void;
   close(exitCode: number | null): void;
   fail(): void;
-}) {
+}, maxReplyBytes = MAX_REPLY_BYTES) {
   const child = spawn([mode]);
   let received = 0;
   let output = "";
@@ -42,7 +42,7 @@ function exchange(spawn: Spawn, mode: "--platform" | "--paste-lease", bytes: Buf
   child.stdout?.setEncoding("utf8");
   child.stdout?.on("data", (chunk: string) => {
     received += Buffer.byteLength(chunk);
-    if (received > MAX_REPLY_BYTES) { handlers.fail(); return; }
+    if (received > maxReplyBytes) { handlers.fail(); return; }
     output += chunk;
     for (let newline; (newline = output.indexOf("\n")) !== -1;) {
       const line = output.slice(0, newline);
@@ -59,7 +59,7 @@ function exchange(spawn: Spawn, mode: "--platform" | "--paste-lease", bytes: Buf
   return finish;
 }
 
-export async function callPlatform(spawn: Spawn, method: string, params: object, timeout: number, signal?: AbortSignal): Promise<Record<string, unknown> | null> {
+export async function callPlatform(spawn: Spawn, method: string, params: object, timeout: number, signal?: AbortSignal, options?: { maxReplyBytes?: number; onUnsupported?: () => void }): Promise<Record<string, unknown> | null> {
   if (signal?.aborted) return null;
   try {
     const bytes = frame({ method, params }, 65_536);
@@ -74,13 +74,14 @@ export async function callPlatform(spawn: Spawn, method: string, params: object,
       const fail = () => { stop(0); settle(null); };
       const stop = exchange(spawn, "--platform", bytes, {
         reply: (row) => {
+          if (!received && row.ok === false && row.error === "unknown_method") options?.onUnsupported?.();
           if (received || row.ok !== true || !isRecord(row.result)) { fail(); return; }
           received = true;
           result = row.result;
         },
         close: (code) => settle(code === 0 ? result : null),
         fail,
-      });
+      }, options?.maxReplyBytes);
       const timer = setTimeout(fail, timeout);
       timer.unref();
       signal?.addEventListener("abort", fail, { once: true });

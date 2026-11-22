@@ -16,12 +16,12 @@ vi.mock("../core/client/src/integration/objective-records-sse.js", () => ({
 const emit = (channel: string, payload: unknown) => { for (const listener of channels.get(channel) ?? []) listener(payload); };
 
 const { ComputerScreenShare, ComputerScreenShareProvider } = await import("../features/computer-use/client/computer-screen-share.js");
-const { DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } = await import("../features/computer-use/shared/remote-preview.js");
+const { DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH, DESKTOP_REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_FRAME_PATH, REMOTE_PREVIEW_STATE_EVENT, REMOTE_PREVIEW_STATE_PATH, REMOTE_PREVIEW_VIEWERS_EVENT } = await import("../features/computer-use/shared/remote-preview.js");
 
 const target = { id: "target-1", ownerKind: "commodore", objectiveId: null, commodoreId: "commodore-1", actor: "commodore-1" };
 type Responder = (signal: AbortSignal) => Promise<Response>;
 let frames: Responder[] = [];
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: ReturnType<typeof vi.fn<(input: string, init?: RequestInit) => Promise<Response>>>;
 let objectUrls = 0;
 /** 1회 상태 읽기의 응답 — 없으면 로컬 화면처럼 404다. */
 let initialState: (() => Promise<Response>) | null = null;
@@ -180,6 +180,63 @@ it("on the host Desktop, shares the existing window track only while a remote de
   await flush(3000);
   expect(uploads()).toHaveLength(stopped);
   expect(card.querySelector(".computer-screen-share-remote")).toBeNull();
+});
+
+it("uses a still instead of a stream only while the host card is visible or a remote viewer is watching", async () => {
+  document.documentElement.dataset.desktopShell = "true";
+  const track = { readyState: "live", addEventListener: vi.fn(), stop: vi.fn(), getSettings: () => ({ width: 480, height: 300 }) };
+  const getDisplayMedia = vi.fn(async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }));
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getDisplayMedia } });
+  HTMLMediaElement.prototype.play = () => Promise.resolve();
+  let setInView: (visible: boolean) => void = () => undefined;
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: IntersectionObserverCallback) {
+      setInView = (isIntersecting) => callback([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+    }
+    observe() {}
+    disconnect() {}
+  });
+  const original = fetchMock.getMockImplementation()!;
+  fetchMock.mockImplementation(async (path: string, init?: RequestInit) => path.startsWith(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH)
+    ? frame()(init?.signal ?? new AbortController().signal) : original(path, init));
+  const requests = (prefix: string) => fetchMock.mock.calls.filter(([path]) => String(path).startsWith(prefix));
+  const stills = () => requests(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH);
+  const uploads = () => requests(DESKTOP_REMOTE_PREVIEW_FRAME_PATH);
+  const node = await mount();
+  const setOffscreen = (offscreen: boolean) => act(async () => { emit("computer-capture:state", { target: { ...target, title: "Fixture", offscreen } }); });
+  await setOffscreen(true);
+  await flush(2000);
+  expect(stills()).toHaveLength(0);
+  expect(getDisplayMedia).not.toHaveBeenCalled();
+
+  await act(async () => { setInView(true); });
+  await flush();
+  expect(node.querySelector(".computer-screen-share img")?.getAttribute("src")).toBe("blob:frame-1");
+  expect(stills()[0]).toEqual([`${DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH}?target=target-1`, expect.objectContaining({ method: "POST" })]);
+  expect(uploads()).toHaveLength(0);
+  expect(getDisplayMedia).not.toHaveBeenCalled();
+
+  await act(async () => { setInView(false); });
+  const stopped = stills().length;
+  await flush(2000);
+  expect(stills()).toHaveLength(stopped);
+  expect(node.querySelector(".computer-screen-share img")).toBeNull();
+
+  await act(async () => { emit(REMOTE_PREVIEW_VIEWERS_EVENT, { count: 1 }); });
+  await flush(1000);
+  expect(stills().length).toBeGreaterThan(stopped);
+  expect(uploads()[0]).toEqual([`${DESKTOP_REMOTE_PREVIEW_FRAME_PATH}?target=target-1`, expect.objectContaining({ method: "POST", body: expect.anything() })]);
+  expect(getDisplayMedia).not.toHaveBeenCalled();
+
+  await act(async () => { emit(REMOTE_PREVIEW_VIEWERS_EVENT, { count: 0 }); });
+  await setOffscreen(false);
+  await flush();
+  expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+  expect(node.querySelector(".computer-screen-share video")).not.toBeNull();
+  await setOffscreen(true);
+  expect(track.stop).toHaveBeenCalledTimes(1);
+  expect(node.querySelector(".computer-screen-share video")).toBeNull();
+  expect(getDisplayMedia).toHaveBeenCalledTimes(1);
 });
 
 it("recovers a preview that was already running when the screen subscribed after the stream's first state frame", async () => {

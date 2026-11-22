@@ -1,7 +1,7 @@
 import { marked } from "marked";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { FleetHelperError, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
-import type { ClipboardLease, ClipboardRestoration, ComputerUseCaptureFailure, ComputerUsePermissions, ComputerUsePlatform, ComputerUseResult, ComputerUseWindowIdentity, WindowIdentityResult } from "../runtime/platform.js";
+import type { ClipboardLease, ClipboardRestoration, ComputerUseCaptureFailure, ComputerUsePermissions, ComputerUsePlatform, ComputerUseResult, ComputerUseWindowIdentity, ComputerUseWindowState } from "../runtime/platform.js";
 import { COMPUTER_USE_PERMISSIONS, type ComputerUsePermission, type ComputerUseSettingsStatus } from "../shared/status.js";
 import { computerUseTools } from "./computer-use-tools.js";
 import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
@@ -135,8 +135,12 @@ export class ComputerUseService {
     const permissionHolder = permissions?.holder ?? hello?.permissionHolder ?? null;
     return { enabled, supported, helperAvailable, missingPermissions, permissionHolder, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
   }
-  async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<WindowIdentityResult> {
-    return this.deps.enabled() ? await this.deps.platform.verifyWindow(target) : "mismatch";
+  async captureWindowState(target: ComputerUseWindowIdentity): Promise<ComputerUseWindowState> {
+    return this.deps.enabled() ? this.deps.platform.windowState(target) : { identity: "mismatch", onscreen: false };
+  }
+
+  async captureStill(target: ComputerUseWindowIdentity, signal: AbortSignal): Promise<Buffer | null> {
+    return this.deps.enabled() && this.activeOwner() !== null ? this.deps.platform.captureStill(target, signal) : null;
   }
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }

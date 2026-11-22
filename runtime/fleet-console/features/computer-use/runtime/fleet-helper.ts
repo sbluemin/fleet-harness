@@ -3,6 +3,7 @@ import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
 import { isRecord, permissionHolderName, type ComputerUsePlatform } from "./platform.js";
 import { callPlatform, COMPUTER_USE_PLATFORM_VERSION, prepareClipboardLease } from "./platform-helper.js";
+import { REMOTE_PREVIEW_MAX_BYTES, REMOTE_PREVIEW_MAX_WIDTH } from "../shared/remote-preview.js";
 import type { ChildProcess } from "node:child_process";
 
 export interface Frame { x: number; y: number; w: number; h: number }
@@ -63,6 +64,7 @@ export function createFleetComputerUsePlatform(runtime: Runtime, config: {
     if (!executable) throw new FleetHelperError("helper_missing");
     return runtime.spawnProcess({ command: executable, args, env: runtime.childEnv() });
   };
+  let legacyWindowState = false;
   return {
     supported: () => config.supported,
     async inspectInstallation() {
@@ -79,9 +81,31 @@ export function createFleetComputerUsePlatform(runtime: Runtime, config: {
       const holder = permissionHolderName(result.holder);
       return { accessibility: result.accessibility, screenRecording: result.screenRecording, ...(holder ? { holder } : {}) };
     },
-    async verifyWindow({ pid, windowId, processStartedAt }) {
-      const result = await callPlatform(spawn, "verifyWindowIdentity", { pid, windowId, processStartedAt }, 3000);
-      return result?.identity === "matches" || result?.identity === "mismatch" ? result.identity : "unknown";
+    async windowState({ pid, windowId, processStartedAt }) {
+      const params = { pid, windowId, processStartedAt };
+      if (!legacyWindowState) {
+        const result = await callPlatform(spawn, "windowState", params, 3000, undefined, {
+          onUnsupported: () => { legacyWindowState = true; },
+        });
+        if ((result?.identity === "matches" || result?.identity === "mismatch") && typeof result.onscreen === "boolean") {
+          return { identity: result.identity, onscreen: result.onscreen };
+        }
+        if (!legacyWindowState) return { identity: "unknown", onscreen: false };
+      }
+      // Console과 Desktop 헬퍼의 업데이트 시점이 다르면 기존 판정을 유지한다.
+      const result = await callPlatform(spawn, "verifyWindowIdentity", params, 3000);
+      const identity = result?.identity === "matches" || result?.identity === "mismatch" ? result.identity : "unknown";
+      return { identity, onscreen: identity === "matches" };
+    },
+    async captureStill({ pid, windowId, processStartedAt }, signal) {
+      const maxEncoded = 4 * Math.ceil(REMOTE_PREVIEW_MAX_BYTES / 3);
+      // Foundation JSON은 base64의 /를 이스케이프할 수 있다.
+      const result = await callPlatform(spawn, "captureStill", { pid, windowId, processStartedAt }, 4500, signal, { maxReplyBytes: maxEncoded * 2 + 512 });
+      if (result?.mime !== "image/jpeg" || typeof result.data !== "string" || result.data.length > maxEncoded ||
+          typeof result.width !== "number" || !Number.isInteger(result.width) || result.width < 1 || result.width > REMOTE_PREVIEW_MAX_WIDTH ||
+          typeof result.height !== "number" || !Number.isInteger(result.height) || result.height < 1) return null;
+      const bytes = Buffer.from(result.data, "base64");
+      return bytes.length <= REMOTE_PREVIEW_MAX_BYTES && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff ? bytes : null;
     },
     async resolveApp(target, signal) {
       const result = await callPlatform(spawn, "resolveApp", { target }, 3000, signal);

@@ -113,7 +113,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       inspectInstallation: async () => true,
       createClient: () => new fleetHelper.FleetHelperClient({ childEnv: () => ({}), spawnProcess: spawnHelper }, process.execPath),
       readPermissions: async () => ({ accessibility: true, screenRecording: true }),
-      verifyWindow: async () => "unknown", resolveApp: async () => ({ error: "exact_target_required" }),
+      windowState: async () => ({ identity: "unknown", onscreen: false }), captureStill: async () => null, resolveApp: async () => ({ error: "exact_target_required" }),
       openApp: async () => ({ requestDispatched: false, windowReady: false }), openPrivacySettings: async () => false,
       preparePaste: async () => { throw new Error("unexpected clipboard request"); },
     });
