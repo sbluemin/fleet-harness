@@ -233,6 +233,18 @@ function readReceipt(file) {
   return validateReceiptShape(parsed);
 }
 
+/** Verify an open run for a fixture controller; does not identify a process or authorize OS input. */
+export function readOwnedRunReceipt(file, { objective, runDir, creator = callerHash() }) {
+  requireUid();
+  const receipt = readReceipt(file);
+  if (receipt.objective !== objective || receipt.runDir.path !== runDir || receipt.creator !== creator) {
+    throw new CliError('receipt_mismatch', 'receipt does not match the objective, run path and creating session');
+  }
+  const observed = observeRun(receipt, { identityOnly: true });
+  if (observed.status !== 'owned') throw new CliError(observed.reason, observed.detail);
+  return receipt;
+}
+
 function writeReceiptReplacing(file, receipt) {
   const temp = `${file}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
   fs.writeFileSync(temp, `${JSON.stringify(receipt, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
@@ -506,7 +518,7 @@ function relList(runDir, list) {
 }
 
 /** One run directory against its receipt: identity, lock, and contents. Reads only; never writes. */
-function observeRun(receipt, { deep, accept = null, flagNonce = null }) {
+function observeRun(receipt, { deep, accept = null, flagNonce = null, identityOnly = false }) {
   const runDir = receipt.runDir.path;
   const base = { kind: 'run-dir', path: runDir };
   const state = (status, reason, detail, extra = {}) => ({ ...base, status, reason, detail, ...extra });
@@ -560,6 +572,11 @@ function observeRun(receipt, { deep, accept = null, flagNonce = null }) {
     if (!ownerOk) return state('blocked', 'owner_mismatch', 'the directory belongs to another session; it was not touched', { reclaimable: false });
   }
 
+  if (identityOnly) {
+    return !closing && owner && !receipt.closing
+      ? state('owned', 'identity_verified', '')
+      : state('blocked', 'owner_or_marker_unavailable', 'the open run must have both its owner and marker');
+  }
   const lock = observeLock(runDir);
   const items = inventory(runDir, stat.dev, { flagNonce, runId: receipt.runId });
   const inv = deep ? {

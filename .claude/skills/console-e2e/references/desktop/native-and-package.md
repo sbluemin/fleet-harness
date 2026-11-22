@@ -14,6 +14,12 @@ Classify failures before blaming the product:
 
 For runtime ownership, record the lock PID/port and whether Desktop ownership metadata is present without printing tokens. Confirm the child and lock disappear after owned Quit. Read `desktop.log` for bootstrap, procurement, child stderr, and exit causes. A foreign Console must be acknowledged and left running.
 
+## Headed focus on macOS
+
+For an authorized two-window focus test, use only this run's foreground stand-in and target. Do not borrow TextEdit or any other ordinary app. [Register a fresh owned run](../setup.md#run-lifetime-and-reclamation), keep the existing [preflight and approval](setup.md#preflight-and-ownership), and run [`owned-focus-pair.mjs`](../../scripts/owned-focus-pair.mjs) from the target worktree (`--help` lists the arguments). It builds and launches two instances of a document-free AppKit fixture under the isolated run; no Console server is needed.
+
+Pass the same `--objective`, `--run-dir`, and `--receipt` to `check`, managed `start --allow-activate`, `status`, `focus`, `input`, and `stop`. From `status`, use the selected window's `identity` (`role`, `pid`, `startedAt`, `windowId`) for `focus --allow-activate` and `input`. Wait for that exact window to report `focused: true` before sending one unique `--marker`. A returned post is not delivery: compare both windows' own `text` and `receivedCount` before and after, then repeat in the other direction. If the window, focus, or existing OS permission cannot be confirmed, leave OS input unverified; do not substitute global input. Use `stop` and wait for the managed `start` to exit before normal run reclamation. Its stop record under the run's `tmp` is fixture state, not a reason to bypass reclamation checks.
+
 ## Main inspector observation lane
 
 Without Screen Recording, this lane observes whether a native Browser view moved behind Console and what Console itself shows. Report it as **view-composition observation**, never as **OS-composited pixel** evidence. It cannot verify the compositor's actual output, occlusion by other apps, focus, [pointer hit testing with the system cursor](os-mouse.md), or the look of native dialogs.
