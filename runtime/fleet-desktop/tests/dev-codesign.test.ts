@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { codesignWithFallback, describeDevCodesignIdentity, parseCodesignIdentities, resolveDevCodesignIdentity, selectDevCodesignIdentity } from "../scripts/dev-codesign.mjs";
+import { codesignWithFallback, describeDevCodesignIdentity, parseCodesignIdentities, resolveDevCodesignIdentity, selectDevCodesignIdentity, signingEnv } from "../scripts/dev-codesign.mjs";
 
 const DEVELOPMENT = "FB6B0877BBFAA3A61E2DE3E401D86AC161C6AF25";
 const SECOND = "0123456789ABCDEF0123456789ABCDEF01234567";
@@ -29,8 +29,14 @@ describe("development code signing identity", () => {
     expect(await resolveDevCodesignIdentity({ FLEET_DEV_CODESIGN_IDENTITY: "-" }, run)).toEqual({ identity: "-", label: "ad hoc", reason: "requested" });
     expect(run).not.toHaveBeenCalled();
     expect((await resolveDevCodesignIdentity({}, run)).identity).toBe(DEVELOPMENT);
-    expect(run).toHaveBeenCalledWith("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"]);
+    expect(run).toHaveBeenCalledWith("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"], { env: {} });
     expect(await resolveDevCodesignIdentity({}, async () => { throw new Error("no keychain"); })).toEqual({ identity: "-", label: "ad hoc", reason: "none" });
+  });
+
+  it("looks up and signs with the account home when HOME is overridden, as in isolated runs", () => {
+    expect(signingEnv({ HOME: "/Users/me", PATH: "/bin" }, "/Users/me")).toEqual({ HOME: "/Users/me", PATH: "/bin" });
+    expect(signingEnv({ HOME: "/run/home", PATH: "/bin" }, "/Users/me")).toEqual({ HOME: "/Users/me", PATH: "/bin" });
+    expect(signingEnv({ PATH: "/bin" }, "/Users/me")).toEqual({ PATH: "/bin" });
   });
 
   it("re-signs ad hoc when signing with the chosen identity fails and tells the developer to add the app with +", async () => {

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { userInfo } from "node:os";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -29,11 +30,19 @@ export function selectDevCodesignIdentity(identities, requested) {
   return { identity: development[0].hash, label: development[0].name, reason: development.length > 1 ? "first_of_many" : "found" };
 }
 
+/**
+ * 키체인 검색 목록과 신뢰 설정은 HOME을 따른다. HOME을 바꿔 띄운 개발 실행(격리 시험 등)에서는 로그인 키체인과 중간 인증서가 빠져
+ * 서명 ID가 무효로 보이므로, security·codesign만 계정 홈으로 돌려 실행한다.
+ */
+export function signingEnv(env = process.env, account = userInfo().homedir) {
+  return env.HOME === undefined || env.HOME === account ? env : { ...env, HOME: account };
+}
+
 export async function resolveDevCodesignIdentity(env = process.env, run = execFileAsync) {
   const requested = env[DEV_CODESIGN_IDENTITY_ENV]?.trim() || undefined;
   if (requested === "-") return selectDevCodesignIdentity([], requested);
   let identities = [];
-  try { identities = parseCodesignIdentities((await run("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"])).stdout); } catch { identities = []; }
+  try { identities = parseCodesignIdentities((await run("/usr/bin/security", ["find-identity", "-v", "-p", "codesigning"], { env: signingEnv(env) })).stdout); } catch { identities = []; }
   return selectDevCodesignIdentity(identities, requested);
 }
 

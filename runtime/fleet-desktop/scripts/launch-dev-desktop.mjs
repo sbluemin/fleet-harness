@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { codesignWithFallback, resolveDevCodesignIdentity } from "./dev-codesign.mjs";
+import { codesignWithFallback, resolveDevCodesignIdentity, signingEnv } from "./dev-codesign.mjs";
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
@@ -42,7 +42,7 @@ export async function createMacDevWrapper(input) {
   await copyFile(input.iconPath, wrapperIconPath);
   await codesignWithFallback(productName, signing, async (signer) => {
     await execFileAsync("/usr/bin/codesign", ["--force", "--deep", "--sign", signer, "--timestamp=none", "--identifier", bundleIdentifier,
-      "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath]);
+      "--entitlements", path.join(desktopDirectory, "build", "entitlements.mac.plist"), wrapperPath], { env: signingEnv() });
   }, input.log ?? ((message) => process.stderr.write(`${message}\n`)));
   await execFileAsync("/usr/bin/codesign", ["--verify", "--deep", "--strict", wrapperPath]);
   return { appPath: wrapperPath, executablePath };
