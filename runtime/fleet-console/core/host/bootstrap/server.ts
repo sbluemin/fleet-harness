@@ -881,7 +881,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,
-    localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
     onActiveOwnerChange: () => scheduleObjectiveUseBroadcast(),
   });
   // 패널 안 허용 요청 — 컴퓨터 사용 브로커. 메모리 전용이라 재시작하면 비어 있다.
@@ -2440,7 +2439,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 미리보기가 받는 상태 그대로. "unavailable"이 「관측한 창을 식별하지 못했습니다」 문구의 유일한 근거다.
     logComputerCapture({ captureReason: "preview_state", preview: snapshot.target ? "target" : snapshot.unavailableObjectiveId ? "unavailable" : "none", enabled: computerUse.status().enabled, ...(snapshot.unavailableReason ? { unavailableReason: snapshot.unavailableReason } : {}) });
     const data = encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, snapshot);
-    // Computer Use는 로컬 기계만 조작한다. 원격 Desktop의 셸 소유자에게 로컬 창을 넘기지 않는다.
+    // 원격 콘솔에서 Computer Use를 시작해도 호스트 창 미리보기는 로컬 Desktop에만 보낸다.
     for (const subscriber of objectiveRecordSseSubscribers) {
       if (subscriber.client === "desktop" && subscriber.audience === "local") writeObjectiveSse(subscriber, data);
     }
@@ -2527,7 +2526,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 서버는 아무것도 바뀌지 않았는데 화면만 틀린 것을 그리고 있는 자리에만 쓴다.
    */
   function broadcastControlChanged(resend = false): void {
-    if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) computerUse.stopDetached();
     // 제어 보유자는 브라우저 엔진과 무관하다. 원격이 붙거나 떠나도 관리 Desktop 의 탭은 닫지 않는다.
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.

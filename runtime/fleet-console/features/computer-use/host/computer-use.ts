@@ -87,7 +87,6 @@ export class ComputerUseService {
 
   constructor(private readonly deps: {
     readonly enabled: () => boolean;
-    readonly localControl: () => boolean;
     readonly platform: ReturnType<typeof createFleetComputerUsePlatform>;
     readonly openApp?: typeof openMacApp;
     readonly preparePaste?: typeof prepareMacPaste;
@@ -133,7 +132,7 @@ export class ComputerUseService {
     return { enabled, supported, helperAvailable, missingPermissions, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
   }
   async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
-    return this.deps.enabled() && this.deps.localControl() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
+    return this.deps.enabled() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
   }
 
   activeOwner(): string | null { return this.state === "stopping" ? null : this.owner; }
@@ -225,7 +224,6 @@ export class ComputerUseService {
     const reject = (code: string, hint?: string) => ({ result: gateResult(code, hint), code });
     if (!this.deps.platform.supported()) return reject("computer_use_platform_unsupported");
     if (!this.deps.enabled()) return reject("computer_use_disabled");
-    if (!this.deps.localControl()) return reject("computer_use_local_only");
     if (!owner || signal?.aborted) return reject("computer_use_session_unavailable");
     let args;
     try { args = parseDeviceInput(tool, input); }
@@ -305,7 +303,7 @@ export class ComputerUseService {
   }
 
   private assertActive(lifetime: AbortController) {
-    if (lifetime.signal.aborted || !this.deps.enabled() || !this.deps.localControl()) throw new FleetHelperError("computer_use_stopped");
+    if (lifetime.signal.aborted || !this.deps.enabled()) throw new FleetHelperError("computer_use_stopped");
   }
 
   private async startHelper(lifetime: AbortController) {
