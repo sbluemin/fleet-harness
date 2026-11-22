@@ -453,7 +453,7 @@ describe("Fleet Computer Use", () => {
     await f.invoke("computer_apps", {});
     await f.invoke("computer_state", { window: "w1" });
     const focusNote = "note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.";
-    const clickNote = "note: Sent a click to the target field before the shortcut; page handlers may run.";
+    const clickNote = "note: Sent a click to the target field before the shortcut; the app or page may react to the click.";
     const reply = { sent: true, via: "event+focus", changes: [], observation: "none", notes: ["focus_record_used", "key_window_click"] };
     f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ editable: true, focusedRef: "e2" }).mockResolvedValueOnce({ ...reply, verified: "value_contains_text" });
     expect(text(await f.action({ action: "paste", target: "e2", text: "XYZ" }))).toBe(`paste e2 via event+focus: verified: e2 value contains the pasted text\n${focusNote}\n${clickNote}\nclipboard: kept newer contents`);
