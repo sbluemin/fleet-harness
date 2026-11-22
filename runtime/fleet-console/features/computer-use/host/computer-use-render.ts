@@ -63,14 +63,15 @@ function errorHint(error: FleetHelperError): string {
   if (code === "window_unavailable") {
     const reason = details?.reason;
     if (reason === "closed") return "This window is closed. If it is reopened, get its new id with computer_apps.";
-    if (reason === "other_space") return "Window is on another Space: computer_state with image:true can view it; to control it, ask the user to bring it to the current Space.";
+    if (reason === "other_space") return "Window is on another Space. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current Space.";
     if (reason === "hidden" || reason === "minimized") {
       return `Window unavailable: ${reason}. If needed, ask the user to make the intended window visible on the current Space.`;
     }
     return "Window unavailable.";
   }
   if (code === "needs_visible_window") {
-    return `The window is ${details?.reason === "hidden" ? "hidden" : "minimized"}, so this input can't reach it (typing, keys, drag and some clicks need a visible window). Use set_value or element actions instead; if it must be shown, ask the user.`;
+    const state = details?.reason === "hidden" || details?.reason === "minimized" ? details.reason : "not on screen";
+    return `Window is ${state}. If it achieves the same result, use set_value to replace a whole field, click with an element target, or ax_action with a name listed for that target. If the original input is needed, ask the user to show the window.`;
   }
   if (code === "drag_unsupported") {
     return "Fleet does not support background drag for this target." + (details?.settableSlider === true
@@ -131,7 +132,7 @@ export function renderApps(lines: readonly string[], installed: HelperWindows["i
 export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, viewOnly = false) {
   const lines = [`${id} ${quoteApp(window.title)} ${size(window.frame)}`];
   if (view) lines.push(`view ${view} ${size(window.frame)}`);
-  if (viewOnly) lines.push("view-only: the window is on another Space, so it has no elements and takes no input. To control it, ask the user to bring it to the current Space.");
+  if (viewOnly) lines.push("view-only: screenshot from another Space. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current Space.");
   if (expand) {
     const element = elements.find((item) => item.ref === expand);
     if (element) lines.push(elementLine(element, true));

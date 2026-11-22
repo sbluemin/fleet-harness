@@ -542,6 +542,8 @@ export class ComputerUseService {
     let lease: ClipboardLease | undefined;
     let params: object;
     if (args.action === "paste") {
+      // paste는 cmd+v 키라 화면에 없는 창에는 닿지 않는다. 포커스와 클립보드를 건드리기 전에 거절한다.
+      if (window.hidden || window.minimized) throw new FleetHelperError("needs_visible_window", false, { reason: window.hidden ? "hidden" : "minimized" });
       const focus = await client.request("focus", target);
       if (!focus.editable) throw new FleetHelperError("no_editable_focus");
       this.assertActive(lifetime);

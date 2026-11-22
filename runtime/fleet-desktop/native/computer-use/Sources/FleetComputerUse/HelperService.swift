@@ -616,6 +616,8 @@ private struct Expectation {
     try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "ref"])
     let (pid, id, started) = try windowAddress(p)
     var win = try window(pid, id, started: started)
+    // 붙여넣기 앞의 포커스다. 화면에 없는 창에는 이어지는 단축키가 닿지 않으므로 포커스도 옮기지 않는다.
+    if !win.onscreen { throw HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"]) }
     let permissions = HelperPermissions()
     guard permissions.allowed else { throw permissions.error }
     let tree = read(&win)
