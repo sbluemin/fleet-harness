@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_CONSOLE_SOURCE_ENV, DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV } from "@fleet-console/protocol/desktop";
+import { CONSOLE_RELEASE_TAG_OVERRIDE_ENV } from "@fleet-console/protocol/release";
 
 import { createDesktopEnvironment, createHydratedDesktopEnvironment, desktopExecutableSearchPaths, migrateLegacyBrowserProfileRoot, readInteractiveLoginShellPath, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
 
@@ -39,8 +40,18 @@ describe("desktop environment", () => {
     expect(environment.serviceEnv[DESKTOP_DEVELOPMENT_ENV]).toBeUndefined();
     // Without this capability Console treats the shell as npm-only and holds every in-place update.
     expect(environment.serviceEnv[DESKTOP_CONSOLE_SOURCE_ENV]).toBe("github-release");
+    expect(environment.serviceEnv[CONSOLE_RELEASE_TAG_OVERRIDE_ENV]).toBeUndefined();
     expect(fs.existsSync(path.join(userDataDir, "desktop-owner-id"))).toBe(true);
     expect(resolveDesktopUserDataDirectory(userDataDir, "/packaged/resources/sidecar/fleet-console", true, {})).toBe(userDataDir);
+  });
+
+  it("forwards a non-release tag so the packaged Console does not follow the public latest", () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-source-tag-"));
+    TEMP_DIRS.push(userDataDir);
+    const environment = createDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/sidecar/fleet-console", true, {
+      [CONSOLE_RELEASE_TAG_OVERRIDE_ENV]: "source",
+    });
+    expect(environment.serviceEnv[CONSOLE_RELEASE_TAG_OVERRIDE_ENV]).toBe("source");
   });
 
   it("only passes a bundled computer use helper from the current macOS shell", () => {

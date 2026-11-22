@@ -107,6 +107,9 @@ export function isolatedLaunch(opts) {
 }
 
 function main() {
+  if (process.env.FLEET_E2E_SSH_TARGET !== undefined) {
+    throw new Error('FLEET_E2E_SSH_TARGET is set; use launch-remote-desktop.mjs (no local fallback)');
+  }
   const opts = parse(process.argv.slice(2));
   const checked = spawnSync(process.execPath, preflightArgs(opts), { stdio: 'inherit' });
   if (checked.error) throw checked.error;

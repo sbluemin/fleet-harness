@@ -43,7 +43,7 @@ import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
-import { createReleaseChecker, downloadVerifiedConsoleTarball } from "./runtime/release-check.js";
+import { createReleaseChecker, downloadVerifiedConsoleTarball, selectPackagedConsoleProcurement } from "./runtime/release-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
@@ -1028,8 +1028,9 @@ async function boot(): Promise<void> {
       return { version: metadata.version, tarball: async () => local };
     }
     const found = await releases.check("");
-    const release = found.release;
-    if (!release) throw new Error("console_release_unavailable");
+    const decision = selectPackagedConsoleProcurement(found, null);
+    if (decision.action !== "install") throw new Error("console_release_unavailable");
+    const release = decision.release;
     return { version: release.version, tarball: () => downloadVerifiedConsoleTarball(release, { directory: wslCache }) };
   };
   const wslConsoles = wslHost === null ? null : new WslConsoleManager({
@@ -1424,19 +1425,17 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     const installedVersion = readInstalledVersion(runtimePaths.latest);
     if (installedVersion) await repairConsoleNativeExecutables(runtimePaths.latest, process.platform, process.arch, createInstallerFileSystem());
     const result = await releases.check(installedVersion ?? "");
-    const version = result.release?.version ?? installedVersion;
-    if (!version) throw new Error("console_runtime_unavailable");
-    if (result.release) {
-      await progress("installing", `Fleet Console ${version}`, 0);
+    const decision = selectPackagedConsoleProcurement(result, installedVersion);
+    if (decision.action === "refuse") throw new Error("console_runtime_unavailable");
+    if (decision.action === "install") {
+      await progress("installing", `Fleet Console ${decision.release.version}`, 0);
       try {
-        await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, release: result.release, allowExperimentVersion: readConsoleReleaseTagOverride(process.env).kind === "tag", nodeRuntimeVersion: manifest.version, platform: process.platform });
+        await installConsole({ paths: runtimePaths, nodeRoot: runtimePaths.node, packageName: PACKAGE_NAME, release: decision.release, allowExperimentVersion: readConsoleReleaseTagOverride(process.env).kind === "tag", nodeRuntimeVersion: manifest.version, platform: process.platform });
       } catch (error) {
         if (!installedVersion) throw error;
         await progress("offline", "install-failed");
       }
-    } else if (!installedVersion) {
-      throw new Error("console_runtime_unavailable");
-    } else if (result.unavailable) {
+    } else if (decision.unavailable) {
       await progress("offline", "unreachable");
     }
     const serviceVersion = readInstalledVersion(runtimePaths.latest);
