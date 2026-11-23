@@ -78,6 +78,13 @@ export type FishingReelResult =
       readonly senderName?: string | undefined;
     };
 
+export interface FishingEnvContext {
+  readonly timeMode?: string | undefined;
+  readonly nightFactor?: number | undefined;
+  readonly weather?: string | undefined;
+  readonly nearBlossom?: boolean | undefined;
+}
+
 export interface CompanionAnglerPose {
   readonly id: string;
   readonly x: number;
@@ -89,8 +96,8 @@ export interface CompanionAnglerPose {
 
 export interface FishingController {
   isNearWater(px: number, pz: number): boolean;
-  startCast(px: number, pz: number, playerYaw: number, groundY?: number): boolean;
-  reelIn(isNight: boolean, commodoreNames?: readonly string[]): FishingReelResult;
+  startCast(px: number, pz: number, playerYaw: number, groundY?: number, env?: FishingEnvContext): boolean;
+  reelIn(isNight: boolean, commodoreNames?: readonly string[], env?: FishingEnvContext): FishingReelResult;
   cancel(): void;
   getPhase(): FishingInternalPhase;
   getUiPhase(): WorldFishingPhase;
@@ -121,16 +128,44 @@ const CAST_RELEASE_TIME = 0.28;
 const BITE_WINDOW_SEC = 1.8;
 const CAUGHT_DISPLAY_SEC = 1.8;
 
-function pickWeightedFish(isNight: boolean): WorldFishSpec {
+function computeFishWeight(s: WorldFishSpec, isNight: boolean, env?: FishingEnvContext): number {
+  const nightLevel = env?.nightFactor ?? (isNight ? 1 : 0);
+  const effectiveNight = isNight || nightLevel > 0.55 || env?.timeMode === "night";
+  const isRain = env?.weather === "rain";
+  const isSunset = env?.timeMode === "sunset" || (!effectiveNight && nightLevel >= 0.22 && nightLevel <= 0.55);
+  const isBlossom = Boolean(env?.nearBlossom) || env?.weather === "sakura";
+  const isSunnyDay = !effectiveNight && !isRain && !isSunset;
+
+  let w = s.weight + (effectiveNight ? (s.nightBonusWeight ?? 0) : 0);
+  if (effectiveNight && (s.id === "moon_jelly" || s.id === "starlight_trout")) {
+    w *= 2.6;
+  }
+  if (isRain && (s.id === "rainbow_carp" || s.id === "message_bottle")) {
+    w *= 2.2;
+  }
+  if (isSunset && s.id === "golden_koi") {
+    w *= 2.2;
+  }
+  if (isBlossom && s.id === "cherry_loach") {
+    w *= 2.2;
+  }
+  if (isSunnyDay && s.id === "meadow_minnow") {
+    w *= 1.45;
+  } else if (isSunnyDay && s.id === "star_shell") {
+    w *= 1.3;
+  }
+  return w;
+}
+
+function pickWeightedFish(isNight: boolean, env?: FishingEnvContext): WorldFishSpec {
   let total = 0;
   for (let i = 0; i < WORLD_FISH_SPECS.length; i += 1) {
-    const s = WORLD_FISH_SPECS[i]!;
-    total += s.weight + (isNight ? (s.nightBonusWeight ?? 0) : 0);
+    total += computeFishWeight(WORLD_FISH_SPECS[i]!, isNight, env);
   }
   let roll = Math.random() * total;
   for (let i = 0; i < WORLD_FISH_SPECS.length; i += 1) {
     const s = WORLD_FISH_SPECS[i]!;
-    roll -= s.weight + (isNight ? (s.nightBonusWeight ?? 0) : 0);
+    roll -= computeFishWeight(s, isNight, env);
     if (roll <= 0) return s;
   }
   return WORLD_FISH_SPECS[0]!;
@@ -553,6 +588,7 @@ export function createFishingController(scene: Scene): FishingController {
   let bobberZ = 14.0;
   let bobberBaseY = -0.06;
   let activeCatchKind: "fish" | "bottle" | "jelly" | "shell" = "fish";
+  let activeEnvContext: FishingEnvContext | undefined;
 
   function isNearWater(px: number, pz: number): boolean {
     if (distanceToBrookEdge(px, pz) <= 4.4) return true;
@@ -567,8 +603,15 @@ export function createFishingController(scene: Scene): FishingController {
     return false;
   }
 
-  function startCast(px: number, pz: number, playerYaw: number, groundY = 0.25): boolean {
+  function startCast(
+    px: number,
+    pz: number,
+    playerYaw: number,
+    groundY = 0.25,
+    env?: FishingEnvContext,
+  ): boolean {
     if (!isNearWater(px, pz)) return false;
+    activeEnvContext = env;
 
     const clampedX = Math.max(-BROOK_SPAN_HALF_X + 2, Math.min(BROOK_SPAN_HALF_X - 2, px));
     const bp = brookProfile(clampedX);
@@ -644,7 +687,11 @@ export function createFishingController(scene: Scene): FishingController {
     }
   }
 
-  function reelIn(isNight: boolean, commodoreNames: readonly string[] = []): FishingReelResult {
+  function reelIn(
+    isNight: boolean,
+    commodoreNames: readonly string[] = [],
+    env?: FishingEnvContext,
+  ): FishingReelResult {
     if (phase === "casting") {
       return { outcome: "none" };
     }
@@ -653,7 +700,7 @@ export function createFishingController(scene: Scene): FishingController {
       return { outcome: "missed" };
     }
     if (phase === "bite") {
-      const fish = pickWeightedFish(isNight);
+      const fish = pickWeightedFish(isNight, env ?? activeEnvContext);
       const senderName = fish.id === "message_bottle" && commodoreNames.length > 0
         ? commodoreNames[Math.floor(Math.random() * commodoreNames.length)]
         : undefined;

@@ -61,6 +61,7 @@ import { createChoreographyDirector } from "./choreography-director.js";
 import {
   createFishingController,
   type CompanionAnglerPose,
+  type FishingEnvContext,
   type FishingReelResult,
   type WorldFishingPhase,
 } from "./fishing-controller.js";
@@ -71,7 +72,7 @@ import {
   type SkyRingPositionOut,
   type WorkingVillageFxInput,
 } from "./living-workflow-fx.js";
-import { createMeadowScene, MAILBOX_POS, PARADE_BELL_POS } from "./meadow-scene.js";
+import { createMeadowScene, MAILBOX_POS, PARADE_BELL_POS, STARLIGHT_POND_POS } from "./meadow-scene.js";
 import {
   createMongleActorRig,
   type MongleActorRig,
@@ -224,6 +225,8 @@ export interface WorldRuntimeConfig {
   readonly onNearParadeBellChange?: ((near: boolean) => void) | undefined;
   /** 중앙 광장 함대 우체통 근접 여부가 바뀔 때 호출된다(edge-triggered). */
   readonly onNearMailboxChange?: ((near: boolean) => void) | undefined;
+  /** 중앙 광장 별빛 연못 근접 여부가 바뀔 때 호출된다(edge-triggered). */
+  readonly onNearPondChange?: ((near: boolean) => void) | undefined;
   /** 시냇가 낚시 가능 수변 근접 여부가 바뀔 때 호출된다(edge-triggered). */
   readonly onNearFishingWaterChange?: ((near: boolean) => void) | undefined;
   /** 힐링 낚시 단계가 바뀔 때 호출된다. */
@@ -266,6 +269,9 @@ export interface WorldRuntimeHandle {
   spawnJointMissionArch(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
   setMailboxUnread(hasUnread: boolean): void;
   pickMailboxAt(clientX: number, clientY: number): boolean;
+  setPondView(open: boolean): void;
+  pickPondAt(clientX: number, clientY: number): boolean;
+  setDialogueHasOpenAsk(hasOpenAsk: boolean): void;
   syncPondFish(speciesIds: readonly string[]): void;
   setOperationFlag(flag: OperationFlagFxInput | null, targetCommodoreId?: string | null): void;
   triggerVillageFirework(villageId?: string): void;
@@ -992,7 +998,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let workshopFxAccum = 0;
   let prevNearParadeBell = false;
   let prevNearMailbox = false;
+  let prevNearPond = false;
   let prevNearFishingWater = false;
+  let pondViewOpen = false;
   let lastDiveFromSky = false;
   let lastNotifiedFishingPhase: WorldFishingPhase = "idle";
   const notifyFishingPhase = (next: WorldFishingPhase): void => {
@@ -1378,6 +1386,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       && (
         interacting
         || customizerOpen
+        || pondViewOpen
         || cinemaActiveNow
         || playerCtrl.isOverviewMode()
         || playerCtrl.isSittingAtCampfire()
@@ -1400,7 +1409,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
-      inputLocked: interacting || customizerOpen || cinemaActiveNow || isFishingActive,
+      inputLocked: interacting || customizerOpen || cinemaActiveNow || isFishingActive || pondViewOpen,
       focusActorPos: focusedMotion ? focusActorPosScratch : null,
       focusFraming,
       cinemaTarget: activeCinemaTarget,
@@ -1705,6 +1714,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     if (nearMailboxNow !== prevNearMailbox) {
       prevNearMailbox = nearMailboxNow;
       config.onNearMailboxChange?.(nearMailboxNow);
+    }
+    const nearPondNow =
+      onGroundOpen
+      && !playerCtrl.isSittingAtCampfire()
+      && Math.hypot(playerCtrl.player.x - STARLIGHT_POND_POS.x, playerCtrl.player.z - STARLIGHT_POND_POS.z) <= STARLIGHT_POND_POS.radius + 1.35;
+    if (nearPondNow !== prevNearPond) {
+      prevNearPond = nearPondNow;
+      config.onNearPondChange?.(nearPondNow);
     }
     const nearWaterNow =
       onGroundOpen
@@ -2460,9 +2477,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       config.onLabelsStructureChanged(nextMetas);
     }
 
-    // 플레이어 라벨 투영 (하늘 조망·제독 드레스업 클로즈업·시네마 관전 중에는 숨김)
+    // 플레이어 라벨 투영 (하늘 조망·제독 드레스업 클로즈업·연못 구경·시네마 관전 중에는 숨김)
     const inOverview = playerCtrl.isOverviewMode();
-    if (isOpen && !inOverview && !customizerOpen && !cinemaMode && currentCameraMode === "follow" && currentInteractionMode === "closed") {
+    if (isOpen && !inOverview && !customizerOpen && !pondViewOpen && !cinemaMode && currentCameraMode === "follow" && currentInteractionMode === "closed") {
       tempPos.set(p.x, p.y + pHop + 1.54, p.z);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
@@ -2936,6 +2953,30 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const wz = origin.z + direction.z * t;
       return Math.hypot(wx - MAILBOX_POS.x, wz - MAILBOX_POS.z) <= MAILBOX_POS.radius + 0.45;
     },
+    setPondView(open) {
+      pondViewOpen = open;
+      if (open) cancelFishingInternal();
+      playerCtrl.setPondFraming(open ? STARLIGHT_POND_POS : null);
+    },
+    pickPondAt(clientX, clientY) {
+      const rect = config.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+      pickNdc.set((mx / rect.width) * 2 - 1, -(my / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pickNdc, camera);
+      const { origin, direction } = raycaster.ray;
+      if (Math.abs(direction.y) < 1e-4) return false;
+      const py = meadow.getGroundHeight(STARLIGHT_POND_POS.x, STARLIGHT_POND_POS.z) + 0.15;
+      const t = (py - origin.y) / direction.y;
+      if (t <= 0 || t > 180) return false;
+      const wx = origin.x + direction.x * t;
+      const wz = origin.z + direction.z * t;
+      return Math.hypot(wx - STARLIGHT_POND_POS.x, wz - STARLIGHT_POND_POS.z) <= STARLIGHT_POND_POS.radius + 0.45;
+    },
+    setDialogueHasOpenAsk(hasOpenAsk) {
+      playerCtrl.setDialogueHasOpenAsk(hasOpenAsk);
+    },
     syncPondFish(speciesIds) {
       meadow.syncPondFish(speciesIds);
     },
@@ -2993,18 +3034,42 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         || playerCtrl.player.flying
         || playerCtrl.player.diving
         || playerCtrl.isSittingAtCampfire()
+        || pondViewOpen
       ) {
         return false;
       }
       const gy = Math.max(0.05, meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z));
-      const started = fishing.startCast(playerCtrl.player.x, playerCtrl.player.z, playerCtrl.player.yaw, gy);
+      const nearBlossom =
+        currentWeather === "sakura"
+        || currentVillages.some(
+          (v) => v.biome === "sakura" && Math.hypot(playerCtrl.player.x - v.x, playerCtrl.player.z - v.z) <= v.radius + 12,
+        );
+      const env: FishingEnvContext = {
+        timeMode: currentTimeMode,
+        nightFactor: skyLighting.getNightFactor(),
+        weather: currentWeather,
+        nearBlossom,
+      };
+      const started = fishing.startCast(playerCtrl.player.x, playerCtrl.player.z, playerCtrl.player.yaw, gy, env);
       if (started) {
         notifyFishingPhase("waiting");
       }
       return started;
     },
     reelFishing(commodoreNames) {
-      const res = fishing.reelIn(skyLighting.getNightFactor() > 0.45, commodoreNames);
+      const nightFactor = skyLighting.getNightFactor();
+      const nearBlossom =
+        currentWeather === "sakura"
+        || currentVillages.some(
+          (v) => v.biome === "sakura" && Math.hypot(playerCtrl.player.x - v.x, playerCtrl.player.z - v.z) <= v.radius + 12,
+        );
+      const env: FishingEnvContext = {
+        timeMode: currentTimeMode,
+        nightFactor,
+        weather: currentWeather,
+        nearBlossom,
+      };
+      const res = fishing.reelIn(nightFactor > 0.45, commodoreNames, env);
       if (res.outcome === "caught") {
         playFishingCatch(res.fish.rarity);
         playerEmoteKind = "cheer";

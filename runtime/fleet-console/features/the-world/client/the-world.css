@@ -8860,8 +8860,10 @@
 
 .the-world-root.is-photo-mode .the-world-zone-badge,
 .the-world-root.is-photo-mode .the-world-onboarding-hint,
+.the-world-root.is-photo-mode .the-world-pond-card,
 .the-world-root.is-cinema-mode .the-world-zone-badge,
-.the-world-root.is-cinema-mode .the-world-onboarding-hint {
+.the-world-root.is-cinema-mode .the-world-onboarding-hint,
+.the-world-root.is-cinema-mode .the-world-pond-card {
   opacity: 0;
   pointer-events: none;
 }
@@ -8933,6 +8935,64 @@
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   line-height: 1;
+}
+
+/* ── Sprint 27: 광장 별빛 연못 구경하기 Starlight Glass 하단 중앙 카드 ── */
+
+.the-world-pond-card {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space-3) + 46px);
+  transform: translateX(-50%);
+  z-index: 12;
+  width: min(420px, calc(100vw - 28px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 13px 15px;
+  border-radius: var(--radius-lg);
+  background: oklch(14% 0.02 258 / 92%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 54%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.012 85 / 16%);
+  color: oklch(97% 0.006 85);
+  font-family: var(--font-ui);
+  pointer-events: auto;
+  animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-pond-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.the-world-pond-species-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.the-world-pond-species-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-teal) 16%, oklch(18% 0.02 258 / 88%));
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 44%, oklch(100% 0 0 / 12%));
+  color: oklch(95% 0.01 205);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.the-world-pond-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 /* 4종 마을 테마 바이옴 선택기 (2×2 그리드) */
@@ -9055,6 +9115,7 @@
   .the-world-fishing-hud,
   .the-world-fishing-bite,
   .the-world-fish-catch-card,
+  .the-world-pond-card,
   .the-world-ring-combo-pill,
   .the-world-ring-guide-arrow,
   .the-world-fast-travel-popover,
@@ -9087,6 +9148,7 @@
   .the-world-fish-pond-btn:focus-visible,
   .the-world-fish-release-btn:focus-visible,
   .the-world-fish-catch-close:focus-visible,
+  .the-world-pond-card button:focus-visible,
   .the-world-district-opflag-trigger:focus-visible,
   .the-world-stamp-customizer-btn:focus-visible,
   .the-world-field-review-chip:focus-visible,

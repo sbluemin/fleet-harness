@@ -94,6 +94,11 @@ export interface CinemaCameraTarget {
   readonly pitch: number;
 }
 
+export interface PondCameraTarget {
+  readonly x: number;
+  readonly z: number;
+}
+
 export interface PlayerAndCameraController {
   readonly player: PlayerState;
   readonly cameraTarget: Vector3;
@@ -109,6 +114,8 @@ export interface PlayerAndCameraController {
     readonly inputLocked: boolean;
     readonly focusActorPos: { readonly x: number; readonly z: number } | null;
     readonly focusFraming?: CameraFocusFraming | undefined;
+    /** RPG 대화창에 Ask 카드가 열려 있을 때 true — 카메라 주시점을 낮춰 캐릭터를 상단 열린 공간으로 보정한다. */
+    readonly dialogueHasOpenAsk?: boolean | undefined;
     readonly cinemaTarget?: CinemaCameraTarget | null | undefined;
     readonly companionCount?: number | undefined;
     readonly camera: PerspectiveCamera;
@@ -163,6 +170,11 @@ export interface PlayerAndCameraController {
   /** 광장 모닥불 벤치 불멍 모드 — 벤치 `(2.8, 2.55)`에 앉아 모닥불 `(2.8, 1.0)`을 바라보는 슬로우 오빗 카메라 가동. */
   setCampfireSit(sitting: boolean): void;
   isSittingAtCampfire(): boolean;
+  /** RPG 대화창 Ask 카드 활성 여부를 동기화한다 (`update({ dialogueHasOpenAsk })`와 동일 효과). */
+  setDialogueHasOpenAsk(hasOpenAsk: boolean): void;
+  /** 광장 「별빛 연못 구경하기」 감성 클로즈업 카메라 모드 (`null` 전달 시 원래 지상 카메라로 부드럽게 복귀). */
+  setPondFraming(target: PondCameraTarget | null): void;
+  isPondFraming(): boolean;
   onPointerRotate(dx: number, dy: number): void;
   onWheelZoom(deltaY: number): void;
   dispose(): void;
@@ -251,6 +263,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     dist: number;
     pitch: number;
   } | null = null;
+  let pondFocus: {
+    x: number;
+    z: number;
+    dist: number;
+    pitch: number;
+    manualOrbitTimer: number;
+  } | null = null;
+  let dialogueHasOpenAskState = false;
 
   let overviewMode = false;
   let chaseManualOrbitTimer = 0;
@@ -620,6 +640,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     },
     startMeteorDive(targetX, targetZ, getGroundHeight, resolveMovement, options) {
       autoWarpCam = null;
+      pondFocus = null;
       const landing = resolveLandingTarget(targetX, targetZ, "dive", getGroundHeight, resolveMovement, options);
       beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
       orbitAnchor.set(
@@ -629,6 +650,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       );
     },
     teleportTo(x, z, getGroundHeight, resolveMovement, options) {
+      pondFocus = null;
       const landing = resolveLandingTarget(x, z, "teleport", getGroundHeight, resolveMovement, options);
       const dist = Math.hypot(landing.x - player.x, landing.z - player.z);
       // 빠른 이동 도착 카메라: 마을·광장 정면 힌트(`landing.targetCamYaw`) 기반 약간 높은 후방 3/4 시점으로 자동 정렬
@@ -728,6 +750,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     focusDistrict(x, z, radius, getGroundHeight) {
       overviewMode = false;
       sittingAtCampfire = false;
+      pondFocus = null;
       autoLandingCamYaw = null;
       autoWarpCam = null;
       const clampedX = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x));
@@ -752,6 +775,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       overviewMode = enabled;
       if (enabled) {
         districtFocus = null;
+        pondFocus = null;
         sittingAtCampfire = false;
         diveState = null;
         pendingLandDive = false;
@@ -813,6 +837,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       player.campfireSitSec = 0;
       if (sitting) {
         districtFocus = null;
+        pondFocus = null;
         overviewMode = false;
         diveState = null;
         pendingLandDive = false;
@@ -844,6 +869,29 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     isSittingAtCampfire() {
       return sittingAtCampfire;
     },
+    setDialogueHasOpenAsk(hasOpenAsk) {
+      dialogueHasOpenAskState = hasOpenAsk;
+    },
+    setPondFraming(target) {
+      if (!target) {
+        pondFocus = null;
+        return;
+      }
+      districtFocus = null;
+      sittingAtCampfire = false;
+      autoWarpCam = null;
+      autoLandingCamYaw = null;
+      pondFocus = {
+        x: target.x,
+        z: target.z,
+        dist: 4.6,
+        pitch: 0.72,
+        manualOrbitTimer: 0,
+      };
+    },
+    isPondFraming() {
+      return pondFocus !== null;
+    },
     onPointerRotate(dx, dy) {
       autoDialogueYaw = null;
       autoLandingCamYaw = null;
@@ -852,6 +900,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       if (overviewMode) {
         chaseManualOrbitTimer = 2.4;
         chasePitch = Math.max(0.08, Math.min(0.85, chasePitch + dy * 0.0042));
+      } else if (pondFocus) {
+        pondFocus.manualOrbitTimer = 3.0;
+        pondFocus.pitch = Math.max(0.38, Math.min(1.15, pondFocus.pitch + dy * 0.0045));
       } else if (districtFocus) {
         districtFocus.pitch = Math.max(0.22, Math.min(1.16, districtFocus.pitch + dy * 0.0048));
       } else {
@@ -863,6 +914,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
         chaseDist = Math.max(7.5, Math.min(24.0, chaseDist * Math.exp(clamped * 0.0012)));
+      } else if (pondFocus) {
+        pondFocus.dist = Math.max(3.2, Math.min(7.5, pondFocus.dist * Math.exp(clamped * 0.0012)));
       } else if (districtFocus) {
         districtFocus.dist = Math.max(7.2, Math.min(34.0, districtFocus.dist * Math.exp(clamped * 0.0012)));
       } else {
@@ -1339,11 +1392,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const focusFraming = opts.focusFraming ?? "none";
       const customizerFraming = focusFraming === "customizer";
       const cinemaFraming = focusFraming === "cinema" && opts.cinemaTarget != null;
-      const hasFocusActor = !customizerFraming && !cinemaFraming && !overviewMode && !districtFocus && !sittingAtCampfire && opts.focusActorPos !== null;
+      const pondFraming = pondFocus !== null && !overviewMode && !customizerFraming && !cinemaFraming && !player.diving;
+      if (pondFocus && pondFocus.manualOrbitTimer > 0) {
+        pondFocus.manualOrbitTimer = Math.max(0, pondFocus.manualOrbitTimer - opts.dt);
+      }
+      const hasFocusActor = !customizerFraming && !cinemaFraming && !pondFraming && !overviewMode && !districtFocus && !sittingAtCampfire && opts.focusActorPos !== null;
       const focusDistToPlayer = hasFocusActor && opts.focusActorPos
         ? Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z)
         : Infinity;
       const dialogueFraming = hasFocusActor && focusFraming === "dialogue";
+      const dialogueHasAsk = dialogueFraming && (opts.dialogueHasOpenAsk ?? dialogueHasOpenAskState);
       const drawerFraming = hasFocusActor && focusFraming === "drawer";
 
       // 1단계 RPG 대화 진입 시 대화 축 우측·약간 높은 3/4 구도로 빼서 사령관 얼굴을 정면 개방, 드레스업 진입 시 제독 정면 클로즈업 (드래그 시 즉시 해제)
@@ -1391,6 +1449,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         } else {
           camYaw += landDiff * (1 - Math.exp(-opts.dt * 8.5));
         }
+      } else if (pondFraming && pondFocus && pondFocus.manualOrbitTimer <= 0 && !reduceMotion) {
+        // 별빛 연못 구경하기 모드: 수면과 방생 어류를 감상하는 느긋한 시네마틱 오빗 (드래그 시 잠시 멈춤)
+        camYaw += opts.dt * 0.13;
       } else if (cinemaFraming && !reduceMotion) {
         // 관전 / 작업 동반자 모드: 스포트라이트 대상을 중심으로 잔잔하고 영화적인 느린 오빗
         camYaw += opts.dt * 0.11;
@@ -1447,6 +1508,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = opts.cinemaTarget.x;
         desiredTargetY = opts.cinemaTarget.y;
         desiredTargetZ = opts.cinemaTarget.z;
+      } else if (pondFraming && pondFocus) {
+        // 별빛 연못 구경하기: 수면 중심(`y + 0.15`)을 감성적으로 내려다보는 클로즈업 프레이밍
+        const pondGy = Math.max(0.0, opts.getGroundHeight(pondFocus.x, pondFocus.z));
+        desiredTargetX = pondFocus.x;
+        desiredTargetY = pondGy + 0.15;
+        desiredTargetZ = pondFocus.z;
       } else if (aceChaseFraming || overviewMode) {
         // 에이스 추격 시점: 별 제독 중심 + 진행 방향 약간 전방(+0.9m)을 쫓는 박진감 있는 3인칭 비행 프레이밍
         desiredTargetX = player.x + Math.sin(player.yaw) * 0.9;
@@ -1459,12 +1526,13 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       } else if (dialogueFraming && opts.focusActorPos) {
         // 1단계 RPG 대화: 타깃을 사령관 상체 중심 쪽(blendT 0.78)으로 두고 우측·약간 높은 3/4 시점으로 빼서
         // 사령관 얼굴이 상단 중앙~우측에 가림 없이 또렷하게 잡히고 제독은 좌하단 가장자리에 아담하게 들어오도록 프레이밍
+        // Ask 카드가 열려 있으면 하단 50%를 피해 lookAt.y를 -0.55m 낮춰 캐릭터를 상단 42% 열린 공간 중앙으로 상향 보정
         const blendT = focusDistToPlayer < 12.0 ? 0.78 : 1.0;
         const midX = player.x + (opts.focusActorPos.x - player.x) * blendT;
         const midZ = player.z + (opts.focusActorPos.z - player.z) * blendT;
         const midGy = Math.max(-0.05, opts.getGroundHeight(midX, midZ));
         desiredTargetX = midX - Math.cos(camYaw) * 0.18;
-        desiredTargetY = midGy + 0.78;
+        desiredTargetY = midGy + (dialogueHasAsk ? 0.23 : 0.78);
         desiredTargetZ = midZ + Math.sin(camYaw) * 0.18;
       } else if (drawerFraming && opts.focusActorPos) {
         // 2단계 우측 사령관 수첩 드로어: 타깃을 카메라 우측 벡터(+cos(camYaw)*1.45, -sin(camYaw)*1.45)로 밀어
@@ -1486,7 +1554,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = player.x + (opts.focusActorPos.x - player.x) * 0.42;
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
       }
-      const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming;
+      const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming || pondFraming;
       const targetLerp = reduceMotion
         ? 1
         : 1 - Math.exp(-opts.dt * (takeoffCharging ? 15.0 : takeoffAscending ? 16.0 : player.diving ? 10.5 : aceChaseFraming ? 12.5 : cinemaFraming ? 2.2 : overviewMode ? 5.8 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
@@ -1499,7 +1567,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
-      // 줌 거리 및 추적↔조망↔2단계 이륙↔에이스 추격↔하늘 비행↔유성 급강하↔구역 포커스↔RPG/드로어/드레스업/시네마↔불멍 전환 보간
+      // 줌 거리 및 추적↔조망↔2단계 이륙↔에이스 추격↔하늘 비행↔유성 급강하↔구역 포커스↔RPG/드로어/드레스업/시네마/연못↔불멍 전환 보간
       const zoomLerp = reduceMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
 
@@ -1520,19 +1588,21 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                 ? Math.max(camDist, 12.5 + player.flightAlt * 0.95)
                 : cinemaFraming && opts.cinemaTarget
                   ? opts.cinemaTarget.dist
-                  : aceChaseFraming || overviewMode
-                    ? chaseDist
-                    : districtFocus && !opts.inputLocked
-                      ? districtFocus.dist
-                      : dialogueFraming
-                        ? 7.4
-                        : drawerFraming
-                          ? 7.2
-                          : sittingAtCampfire && !opts.inputLocked
-                            ? (campfireWithCompanions ? 4.9 + Math.min(3.3, (opts.companionCount ?? 0) * 0.44) : 4.45)
-                            : opts.cameraMode === "orbit"
-                              ? Math.max(28, camDist * 2.65)
-                              : focusDist;
+                  : pondFraming && pondFocus
+                    ? pondFocus.dist
+                    : aceChaseFraming || overviewMode
+                      ? chaseDist
+                      : districtFocus && !opts.inputLocked
+                        ? districtFocus.dist
+                        : dialogueFraming
+                          ? (dialogueHasAsk ? 8.1 : 7.4)
+                          : drawerFraming
+                            ? 7.2
+                            : sittingAtCampfire && !opts.inputLocked
+                              ? (campfireWithCompanions ? 4.9 + Math.min(3.3, (opts.companionCount ?? 0) * 0.44) : 4.45)
+                              : opts.cameraMode === "orbit"
+                                ? Math.max(28, camDist * 2.65)
+                                : focusDist;
       const desiredEffPitch =
         customizerFraming
           ? 0.24
@@ -1544,19 +1614,21 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                 ? Math.max(camPitch, 0.34 + Math.min(0.45, player.flightAlt * 0.028))
                 : cinemaFraming && opts.cinemaTarget
                   ? opts.cinemaTarget.pitch
-                  : aceChaseFraming || overviewMode
-                    ? chasePitch
-                    : districtFocus && !opts.inputLocked
-                      ? districtFocus.pitch
-                      : dialogueFraming
-                        ? 0.29
-                        : drawerFraming
-                          ? 0.25
-                          : sittingAtCampfire && !opts.inputLocked
-                            ? (campfireWithCompanions ? 0.37 : 0.26)
-                            : opts.cameraMode === "orbit"
-                              ? Math.max(0.54, camPitch)
-                              : camPitch;
+                  : pondFraming && pondFocus
+                    ? pondFocus.pitch
+                    : aceChaseFraming || overviewMode
+                      ? chasePitch
+                      : districtFocus && !opts.inputLocked
+                        ? districtFocus.pitch
+                        : dialogueFraming
+                          ? 0.29
+                          : drawerFraming
+                            ? 0.25
+                            : sittingAtCampfire && !opts.inputLocked
+                              ? (campfireWithCompanions ? 0.37 : 0.26)
+                              : opts.cameraMode === "orbit"
+                                ? Math.max(0.54, camPitch)
+                                : camPitch;
       const modeLerp = reduceMotion
         ? 1
         : 1 - Math.exp(-opts.dt * (takeoffCharging ? 12.5 : takeoffAscending ? 13.5 : player.diving ? 6.8 : aceChaseFraming || overviewMode ? 7.5 : cinemaFraming ? 2.2 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
@@ -1572,7 +1644,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             ? 42 + 18 * ascendEase
             : player.diving
               ? 54
-              : cinemaFraming
+              : cinemaFraming || pondFraming
                 ? 42
                 : aceChaseFraming || overviewMode
                   ? (player.sprinting && player.moveSpeed > 2 ? 68 : 60) + ringBurstFov
@@ -1630,6 +1702,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const useSpringArm =
         opts.lifecycle === "open"
         && !overviewMode
+        && !pondFraming
         && !player.diving
         && opts.cameraMode === "follow"
         && (hasCylinderOccluders || hasMeshOccluders);

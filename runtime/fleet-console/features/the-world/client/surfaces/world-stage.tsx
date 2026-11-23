@@ -284,7 +284,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [nearMailbox, setNearMailbox] = useState(false);
   const [nearParadeBell, setNearParadeBell] = useState(false);
   const [nearCampfire, setNearCampfire] = useState(false);
+  const [nearPond, setNearPond] = useState(false);
   const [nearFishingWater, setNearFishingWater] = useState(false);
+  const [pondViewOpen, setPondViewOpen] = useState(false);
   const [stampBookInitialTab, setStampBookInitialTab] = useState<WorldStampBookTab>("stamps");
   const companionShellRef = useRef<HTMLDivElement | null>(null);
   const ringGuideElRef = useRef<HTMLDivElement | null>(null);
@@ -297,12 +299,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const fishCatchOriginRef = useRef<{ x: number; z: number } | null>(null);
   const fastTravelOpenRef = useRef(store.quickJumpOpen);
   fastTravelOpenRef.current = store.quickJumpOpen;
+  const pondViewOpenRef = useRef(pondViewOpen);
+  pondViewOpenRef.current = pondViewOpen;
   const nearMailboxRef = useRef(nearMailbox);
   nearMailboxRef.current = nearMailbox;
   const nearParadeBellRef = useRef(nearParadeBell);
   nearParadeBellRef.current = nearParadeBell;
   const nearCampfireRef = useRef(nearCampfire);
   nearCampfireRef.current = nearCampfire;
+  const nearPondRef = useRef(nearPond);
+  nearPondRef.current = nearPond;
   const nearFishingWaterRef = useRef(nearFishingWater);
   nearFishingWaterRef.current = nearFishingWater;
   const fishCatchTimerRef = useRef<number | null>(null);
@@ -457,9 +463,30 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     clearLastFishCatch();
   }, []);
 
+  const handleTogglePondView = useCallback(() => {
+    setPondViewOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        dismissFishCatch();
+        if (getWorldStoreSnapshot().fishingPhase !== "idle") {
+          runtimeRef.current?.cancelFishing();
+        }
+        playPondSplash();
+      } else {
+        playDistrictSelect();
+      }
+      return next;
+    });
+  }, [dismissFishCatch]);
+
+  const handleClosePondView = useCallback(() => {
+    setPondViewOpen(false);
+  }, []);
+
   const handleWarpTo = useCallback((x: number, z: number, label: string) => {
     closeQuickJump();
     dismissFishCatch();
+    setPondViewOpen(false);
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
@@ -472,6 +499,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleWarpToDistrict = useCallback((district: WorldDistrictSpec, _village: WorldVillageSpec) => {
     closeQuickJump();
     dismissFishCatch();
+    setPondViewOpen(false);
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
@@ -593,6 +621,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       },
       onNearParadeBellChange: setNearParadeBell,
       onNearMailboxChange: setNearMailbox,
+      onNearPondChange: setNearPond,
       onNearFishingWaterChange: setNearFishingWater,
       onFishingPhaseChange: (phase) => setFishingState(phase),
       onFishingMissed: () => {
@@ -803,6 +832,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       flag.commodoreId,
     );
   }, [store.operationFlag]);
+
+  useEffect(() => {
+    runtimeRef.current?.setPondView(pondViewOpen);
+  }, [pondViewOpen]);
 
   useEffect(() => {
     runtimeRef.current?.setWeather(store.weatherMode);
@@ -1073,6 +1106,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [deps, handleOpenUrgentActor, pushToast]);
 
   const handleOpenMailbox = useCallback(() => {
+    setPondViewOpen(false);
     if (getWorldStoreSnapshot().fishingPhase !== "idle") {
       runtimeRef.current?.cancelFishing();
     }
@@ -1131,14 +1165,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     rootRef,
     controlsGuideOpenRef,
     fastTravelOpenRef,
+    pondViewOpenRef,
     nearMailboxRef,
     nearParadeBellRef,
     nearCampfireRef,
+    nearPondRef,
     nearFishingWaterRef,
     onToggleControlsGuide: handleToggleControlsGuide,
     onCloseControlsGuide: handleCloseControlsGuide,
     onToggleFastTravel: handleToggleFastTravel,
     onCloseFastTravel: handleCloseFastTravel,
+    onTogglePondView: handleTogglePondView,
+    onClosePondView: handleClosePondView,
     onToggleDebugPanel: handleToggleDebugPanel,
     onFocusNextUrgentActor: handleFocusNextUrgentActor,
     onOpenMailbox: handleOpenMailbox,
@@ -1172,6 +1210,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.gazetteOpen
       || snap.stampBookOpen
       || controlsGuideOpenRef.current
+      || pondViewOpenRef.current
       || snap.photoMode
       || snap.cinemaMode
     ) {
@@ -1348,7 +1387,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       deactivateChat();
     }
 
-    if (snap.admiralCustomizerOpen || snap.gazetteOpen || snap.stampBookOpen || snap.mailboxOpen || snap.cinemaMode) {
+    if (snap.admiralCustomizerOpen || snap.gazetteOpen || snap.stampBookOpen || snap.mailboxOpen || snap.cinemaMode || pondViewOpenRef.current) {
       return;
     }
 
@@ -1435,6 +1474,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       return;
     }
 
+    if (!snap.overviewMode && runtimeRef.current?.pickPondAt(e.clientX, e.clientY)) {
+      handleTogglePondView();
+      return;
+    }
+
     if (runtimeRef.current?.pickGuildHallAt(e.clientX, e.clientY)) {
       playDistrictSelect();
       openWarRoom();
@@ -1457,7 +1501,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       closeActorInteraction();
       return;
     }
-  }, [deps, handleOpenMailbox, handleReelFishing, pushToast]);
+  }, [deps, handleOpenMailbox, handleReelFishing, handleTogglePondView, pushToast]);
 
   // 모달 & HUD & 미니맵 콜백 (React.memo 안정성 유지)
   const handleCloseQuestBoard = useCallback(() => {
@@ -1486,6 +1530,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleWarpToVillage = useCallback((village: WorldVillageSpec) => {
     closeQuickJump();
     dismissFishCatch();
+    setPondViewOpen(false);
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
@@ -1502,6 +1547,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleToggleFlight = useCallback(() => {
     dismissFishCatch();
+    setPondViewOpen(false);
     const next = !getWorldStoreSnapshot().overviewMode;
     playOverviewToggle(next);
     toggleOverviewMode();
@@ -1621,6 +1667,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     setStampBookOpen(true);
     playDistrictSelect();
   }, []);
+
+  const handleOpenCodexFromPond = useCallback(() => {
+    setPondViewOpen(false);
+    handleOpenFishBook();
+  }, [handleOpenFishBook]);
 
   const handleOpenStampBookFromCustomizer = useCallback(() => {
     closeAdmiralCustomizer();
@@ -2175,6 +2226,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     || controlsGuideOpen;
   const isEnLocale = locale === "en";
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
+  const dialogueHasOpenAsk = useMemo(() => {
+    if (!dialogueOpen || !selectedActor || selectedActor.role !== "commodore" || !selectedActor.commodoreId) {
+      return false;
+    }
+    return questBoardData.asks.some((ask) => ask.commodoreId === selectedActor.commodoreId)
+      || (selectedActor.askCount ?? 0) > 0;
+  }, [dialogueOpen, questBoardData.asks, selectedActor]);
+
+  useEffect(() => {
+    runtimeRef.current?.setDialogueHasOpenAsk(dialogueHasOpenAsk);
+  }, [dialogueHasOpenAsk]);
+
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
   const playerLabelRevealed = !store.overviewMode && (playerHovered || store.admiralCustomizerOpen);
 
@@ -2215,12 +2278,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || store.chatActive
       || store.sittingAtCampfire
       || store.fishingPhase !== "idle"
+      || pondViewOpen
     ) {
       return null;
     }
     if (nearMailbox) return "mailbox";
     if (nearParadeBell) return "paradeBell";
     if (nearCampfire) return "campfire";
+    if (nearPond) return null;
     if (nearFishingWater) return "fishing";
     if (store.nearActorId) return "actor";
     return null;
@@ -2230,6 +2295,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     nearFishingWater,
     nearMailbox,
     nearParadeBell,
+    nearPond,
+    pondViewOpen,
     store.chatActive,
     store.cinemaMode,
     store.fishingPhase,
@@ -2241,11 +2308,54 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     store.sittingAtCampfire,
   ]);
 
+  const pondInteractActive =
+    store.lifecycle === "open"
+    && !store.overviewMode
+    && !store.photoMode
+    && !store.cinemaMode
+    && !anyModalOpen
+    && store.interactionMode === "closed"
+    && !store.chatActive
+    && !store.sittingAtCampfire
+    && store.fishingPhase === "idle"
+    && !pondViewOpen
+    && !nearMailbox
+    && !nearParadeBell
+    && !nearCampfire
+    && nearPond;
+
   const showDockInteractPrompt =
     activeInteractTarget === "mailbox"
     || activeInteractTarget === "paradeBell"
     || activeInteractTarget === "campfire"
+    || pondInteractActive
     || activeInteractTarget === "fishing";
+
+  useEffect(() => {
+    if (
+      pondViewOpen
+      && (
+        anyModalOpen
+        || store.overviewMode
+        || store.photoMode
+        || store.cinemaMode
+        || store.interactionMode !== "closed"
+        || store.sittingAtCampfire
+        || store.quickJumpOpen
+      )
+    ) {
+      setPondViewOpen(false);
+    }
+  }, [
+    anyModalOpen,
+    pondViewOpen,
+    store.cinemaMode,
+    store.interactionMode,
+    store.overviewMode,
+    store.photoMode,
+    store.quickJumpOpen,
+    store.sittingAtCampfire,
+  ]);
 
   useEffect(() => {
     if (store.lastFishCatch === null) {
@@ -2287,6 +2397,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     return null;
   }, [questBoardData.asks, questBoardData.reviewMissions, snapshot.actors, store.nearActorId]);
 
+  // 상단 긴급 캡슐이 이미 표시 중이거나 랜드마크 E 칩이 활성일 때는 좌하단 중복 Ask 칩을 숨겨 알림 피로도를 줄인다 (`review` 미션 검토 칩은 유지).
+  const showNearFieldReviewChip =
+    nearFieldReviewTarget !== null
+    && (
+      nearFieldReviewTarget.kind === "review"
+      || (!showDockInteractPrompt && questBoardData.totalUrgentCount === 0 && snapshot.attentionCount === 0)
+    );
+
   return (
     <div
       ref={rootRef}
@@ -2323,7 +2441,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         sittingAtCampfire={store.sittingAtCampfire || store.overviewMode}
         suppressInteractPrompts={store.fishingPhase !== "idle" || activeInteractTarget !== "actor"}
         activeInteractTarget={activeInteractTarget}
-        suppressAllLabels={store.admiralCustomizerOpen}
+        suppressAllLabels={store.admiralCustomizerOpen || pondViewOpen}
+        overviewMode={store.overviewMode}
         playerLabelRevealed={playerLabelRevealed}
         villages={snapshot.villages}
         labelMetas={visibleLabelMetas}
@@ -2579,10 +2698,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               ) : null}
             </div>
           ) : null}
-          {!store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed"
-            && (nearFieldReviewTarget !== null || showDockInteractPrompt) ? (
+          {!store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && !pondViewOpen && store.interactionMode === "closed"
+            && (showNearFieldReviewChip || showDockInteractPrompt) ? (
             <div className="the-world-proximity-dock">
-              {nearFieldReviewTarget ? (
+              {showNearFieldReviewChip && nearFieldReviewTarget ? (
                 <button
                   type="button"
                   className={`the-world-field-review-chip ${nearFieldReviewTarget.kind === "ask" ? "is-ask" : "is-review"}`}
@@ -2657,6 +2776,17 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
                   <span className="the-world-field-review-chip-label">
                     E · {t("theWorld.campfire.sitHint")}
                   </span>
+                </button>
+              ) : pondInteractActive ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-review"
+                  aria-label={t("theWorld.pond.aria")}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleTogglePondView}
+                >
+                  <WorldIcon name="sparkle" size={12} tone="teal" />
+                  <span className="the-world-field-review-chip-label">{t("theWorld.pond.prompt")}</span>
                 </button>
               ) : activeInteractTarget === "fishing" ? (
                 <button
@@ -2777,6 +2907,57 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               </div>
             </section>
           ) : null}
+          {pondViewOpen && !store.photoMode && !store.cinemaMode && !anyModalOpen ? (
+            <section
+              className="the-world-pond-card"
+              role="dialog"
+              aria-label={t("theWorld.pond.aria")}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="the-world-pond-card-head">
+                <span className="the-world-fish-catch-kicker">
+                  <WorldIcon name="sparkle" size={14} tone="teal" />
+                  <span>{t("theWorld.pond.title")}</span>
+                </span>
+                <span className="the-world-fish-rarity is-rare">
+                  {t("theWorld.pond.count", { count: releasedFishIds.length })}
+                </span>
+              </div>
+              {releasedFishIds.length === 0 ? (
+                <p className="the-world-fish-catch-desc">{t("theWorld.pond.empty")}</p>
+              ) : (
+                <div className="the-world-pond-species-list">
+                  {releasedFishIds.map((fid) => {
+                    const titleKey = FISH_TITLE_KEYS[fid as WorldFishId];
+                    return (
+                      <span key={fid} className="the-world-pond-species-chip">
+                        <WorldIcon name="sparkle" size={11} tone="teal" />
+                        <span>{titleKey ? t(titleKey) : fid}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="the-world-pond-card-actions">
+                <button
+                  type="button"
+                  className="the-world-fishing-hud-btn"
+                  onClick={handleOpenCodexFromPond}
+                >
+                  <WorldIcon name="trophy" size={11} tone="amber" />
+                  <span>{t("theWorld.pond.openCodex")}</span>
+                </button>
+                <button
+                  type="button"
+                  className="the-world-fishing-hud-btn"
+                  onClick={handleClosePondView}
+                >
+                  <WorldIcon name="close" size={11} />
+                  <span>{t("theWorld.pond.close")}</span>
+                </button>
+              </div>
+            </section>
+          ) : null}
           {store.sittingAtCampfire && !store.photoMode && !anyModalOpen ? (
             <button
               type="button"
@@ -2798,6 +2979,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               dialogueOpen
               || panelMode !== null
               || anyModalOpen
+              || pondViewOpen
               || store.sittingAtCampfire
               || store.cinemaMode
               || (store.overviewMode && !store.chatActive)
@@ -2863,7 +3045,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             <WorldChatLog
               actors={snapshot.actors}
               deps={deps}
-              hidden={dialogueOpen || (store.overviewMode && !store.chatActive)}
+              hidden={dialogueOpen || pondViewOpen || (store.overviewMode && !store.chatActive)}
               onStatusBanner={pushToast}
             />
           ) : null}

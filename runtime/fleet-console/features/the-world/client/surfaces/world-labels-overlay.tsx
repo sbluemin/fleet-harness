@@ -47,6 +47,8 @@ const SPEECH_HIDE_DISTANCE_M = 32;
 const VILLAGE_FADE_START_M = 36;
 const VILLAGE_FADE_END_M = 55;
 const VILLAGE_HIDE_DISTANCE_M = 80;
+const VILLAGE_GROUND_FADE_START_M = 20;
+const VILLAGE_GROUND_HIDE_DISTANCE_M = 28;
 const EDGE_SAFE_PADDING_PX = 14;
 const TOP_HUD_CLEARANCE_PX = 68;
 const TOP_HUD_HARD_HIDE_PX = 36;
@@ -156,6 +158,8 @@ export interface WorldLabelsOverlayProps {
   readonly activeInteractTarget?: WorldActiveInteractTarget | undefined;
   /** 제독 외형 꾸미기 등 클로즈업 화면에서 모든 3D 오버레이 이름표·푯말을 전면 숨길 때 `true`. */
   readonly suppressAllLabels?: boolean | undefined;
+  /** 별빛 비행 모드 여부 (`false` 지상 시점에서는 28m 초과 원경 타 마을 푯말을 숨김). */
+  readonly overviewMode?: boolean | undefined;
 }
 
 export const WorldLabelsOverlay = memo(
@@ -187,12 +191,15 @@ export const WorldLabelsOverlay = memo(
       suppressInteractPrompts = false,
       activeInteractTarget,
       suppressAllLabels = false,
+      overviewMode = false,
     },
     ref,
   ) {
     const t = getWorldT(locale);
     const villagesRef = useRef(villages);
     villagesRef.current = villages;
+    const overviewModeRef = useRef(overviewMode);
+    overviewModeRef.current = overviewMode;
     const plazaLabelRef = useRef("");
     plazaLabelRef.current = t("theWorld.projection.plazaLabel");
     const meadowLabelRef = useRef("");
@@ -559,30 +566,46 @@ export const WorldLabelsOverlay = memo(
         );
 
         const villageMap = villageAnchorRefs.current;
+        const isFlying = overviewModeRef.current;
+        const villageSpecs = villagesRef.current;
         for (let i = 0; i < positions.villageCount; i += 1) {
           const v = positions.villages[i]!;
           const el = villageMap.get(v.villageId);
           const isCurrentVillage = currentVillageId === v.villageId;
-          if (!v.visible || !el || (!isCurrentVillage && v.distance > VILLAGE_HIDE_DISTANCE_M)) {
+          // 플레이어 기준 실제 수평 거리(0-GC) 계산 — 지상 시점에서는 28m 초과 원경 타 마을 푯말을 숨김
+          let playerDist = v.distance;
+          for (let s = 0; s < villageSpecs.length; s += 1) {
+            const spec = villageSpecs[s]!;
+            if (spec.id === v.villageId) {
+              playerDist = Math.hypot(spec.x - positions.playerWorldX, spec.z - positions.playerWorldZ);
+              break;
+            }
+          }
+          if (
+            !v.visible
+            || !el
+            || (!isFlying && !isCurrentVillage && playerDist > VILLAGE_GROUND_HIDE_DISTANCE_M)
+          ) {
             applyAnchorPosition(`village:${v.villageId}`, el, v.x, v.y, false);
             continue;
           }
           let vOpacity = 1;
           let vScale = 1;
-          if (!isCurrentVillage && v.distance > VILLAGE_FADE_START_M) {
-            const tFade = Math.min(
+          if (!isFlying && !isCurrentVillage && playerDist > VILLAGE_GROUND_FADE_START_M) {
+            const tGroundFade = Math.min(
               1,
-              (v.distance - VILLAGE_FADE_START_M) / (VILLAGE_FADE_END_M - VILLAGE_FADE_START_M),
+              (playerDist - VILLAGE_GROUND_FADE_START_M)
+                / (VILLAGE_GROUND_HIDE_DISTANCE_M - VILLAGE_GROUND_FADE_START_M),
             );
-            vOpacity = 1 - tFade * 0.58;
-            vScale = 1 - tFade * 0.16;
-            if (v.distance > VILLAGE_FADE_END_M) {
-              const tFar = Math.min(
-                1,
-                (v.distance - VILLAGE_FADE_END_M) / (VILLAGE_HIDE_DISTANCE_M - VILLAGE_FADE_END_M),
-              );
-              vOpacity *= 1 - tFar * 0.72;
-            }
+            vOpacity = 1 - tGroundFade * 0.85;
+            vScale = 1 - tGroundFade * 0.12;
+          } else if (isFlying && !isCurrentVillage && v.distance > VILLAGE_FADE_END_M) {
+            const tFar = Math.min(
+              1,
+              (v.distance - VILLAGE_FADE_END_M) / Math.max(1, VILLAGE_HIDE_DISTANCE_M + 40 - VILLAGE_FADE_END_M),
+            );
+            vOpacity = 1 - tFar * 0.22;
+            vScale = 1 - tFar * 0.08;
           }
           pushSlot(
             `village:${v.villageId}`,
@@ -593,8 +616,8 @@ export const WorldLabelsOverlay = memo(
             COLLIDE_Y_THRESHOLD_PX * vScale,
             COLLIDE_MAX_SHIFT_PX,
             isCurrentVillage ? 0 : 4,
-            isCurrentVillage ? 0 : v.distance,
-            !isCurrentVillage && v.distance > VILLAGE_FADE_START_M,
+            isCurrentVillage ? 0 : playerDist,
+            !isFlying && !isCurrentVillage && playerDist > VILLAGE_GROUND_FADE_START_M,
             false,
             vOpacity,
             vScale,

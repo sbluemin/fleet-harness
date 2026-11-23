@@ -48,14 +48,18 @@ export interface UseWorldShortcutsOptions {
   readonly rootRef: RefObject<HTMLDivElement | null>;
   readonly controlsGuideOpenRef: RefObject<boolean>;
   readonly fastTravelOpenRef: RefObject<boolean>;
+  readonly pondViewOpenRef: RefObject<boolean>;
   readonly nearMailboxRef: RefObject<boolean>;
   readonly nearParadeBellRef: RefObject<boolean>;
   readonly nearCampfireRef: RefObject<boolean>;
+  readonly nearPondRef: RefObject<boolean>;
   readonly nearFishingWaterRef: RefObject<boolean>;
   readonly onToggleControlsGuide: () => void;
   readonly onCloseControlsGuide: () => void;
   readonly onToggleFastTravel: () => void;
   readonly onCloseFastTravel: () => void;
+  readonly onTogglePondView: () => void;
+  readonly onClosePondView: () => void;
   readonly onToggleDebugPanel: () => void;
   readonly onFocusNextUrgentActor: () => void;
   readonly onOpenMailbox: () => void;
@@ -69,14 +73,18 @@ export function useWorldShortcuts({
   rootRef,
   controlsGuideOpenRef,
   fastTravelOpenRef,
+  pondViewOpenRef,
   nearMailboxRef,
   nearParadeBellRef,
   nearCampfireRef,
+  nearPondRef,
   nearFishingWaterRef,
   onToggleControlsGuide,
   onCloseControlsGuide,
   onToggleFastTravel,
   onCloseFastTravel,
+  onTogglePondView,
+  onClosePondView,
   onToggleDebugPanel,
   onFocusNextUrgentActor,
   onOpenMailbox,
@@ -100,6 +108,8 @@ export function useWorldShortcuts({
             const current = getWorldStoreSnapshot();
             if (current.fishingPhase !== "idle") {
               onCancelFishing();
+            } else if (pondViewOpenRef.current) {
+              onClosePondView();
             } else if (hasOpenHudPopover(current)) {
               dismissTopOverlayLayer();
             } else if (controlsGuideOpenRef.current) {
@@ -312,6 +322,9 @@ export function useWorldShortcuts({
       ) {
         if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
           event.preventDefault();
+          if (pondViewOpenRef.current) {
+            onClosePondView();
+          }
           if (snap.fishingPhase !== "idle") {
             onCancelFishing();
           }
@@ -328,7 +341,7 @@ export function useWorldShortcuts({
         && !event.altKey
         && !event.shiftKey
       ) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.overviewMode && !snap.cinemaMode) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.overviewMode && !snap.cinemaMode && !pondViewOpenRef.current) {
           event.preventDefault();
           const emote = event.code === "Digit1" ? "wave" : event.code === "Digit2" ? "cheer" : "jump";
           requestPlayerEmote(emote);
@@ -336,7 +349,7 @@ export function useWorldShortcuts({
         }
       }
 
-      // E: 통합 상호작용 키 (낚시 중 차단/입질 릴 감기 → 방사형 닫기 → 불멍 기상 → 우체통 → 소집 종 → 모닥불 착석 → 시냇가 낚시 → 사령관 대화)
+      // E: 통합 상호작용 키 (연못 구경 종료 → 낚시 중 차단/입질 릴 감기 → 방사형 닫기 → 불멍 기상 → 우체통 → 소집 종 → 모닥불 착석 → 별빛 연못 구경 → 시냇가 낚시 → 사령관 대화)
       // 주의: 비행 중(`snap.overviewMode === true`)에는 `player-controller.ts`가 `KeyE`(상승)/`KeyQ`(하강)를 소유하므로 지상 상호작용 완전 차단.
       if (
         event.code === "KeyE"
@@ -350,6 +363,11 @@ export function useWorldShortcuts({
         && !snap.cinemaMode
         && !snap.overviewMode
       ) {
+        if (pondViewOpenRef.current) {
+          event.preventDefault();
+          onClosePondView();
+          return;
+        }
         if (snap.fishingPhase !== "idle") {
           event.preventDefault();
           if (snap.fishingPhase === "bite" && snap.interactionMode === "closed" && !snap.chatActive) {
@@ -384,6 +402,11 @@ export function useWorldShortcuts({
             setSittingAtCampfire(true);
             return;
           }
+          if (nearPondRef.current) {
+            event.preventDefault();
+            onTogglePondView();
+            return;
+          }
           if (nearFishingWaterRef.current) {
             event.preventDefault();
             onStartFishing();
@@ -405,6 +428,10 @@ export function useWorldShortcuts({
         if (hasExternalModal) return;
         event.preventDefault();
         event.stopPropagation();
+        if (pondViewOpenRef.current) {
+          onClosePondView();
+          return;
+        }
         if (snap.fishingPhase !== "idle") {
           onCancelFishing();
           return;
@@ -463,9 +490,11 @@ export function useWorldShortcuts({
     nearFishingWaterRef,
     nearMailboxRef,
     nearParadeBellRef,
+    nearPondRef,
     onCancelFishing,
     onCloseControlsGuide,
     onCloseFastTravel,
+    onClosePondView,
     onFocusNextUrgentActor,
     onOpenMailbox,
     onReelFishing,
@@ -474,6 +503,8 @@ export function useWorldShortcuts({
     onToggleControlsGuide,
     onToggleDebugPanel,
     onToggleFastTravel,
+    onTogglePondView,
+    pondViewOpenRef,
     rootRef,
   ]);
 }
