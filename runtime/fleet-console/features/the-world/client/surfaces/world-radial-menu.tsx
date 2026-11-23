@@ -10,6 +10,7 @@ import {
   closeActorInteraction,
   openActorDialogue,
   openActorPanel,
+  openAdmiralCustomizer,
   removeCompanionActorId,
   requestActorEmote,
   requestApproachActor,
@@ -58,12 +59,14 @@ export function WorldRadialMenu({
   isNear,
   deps,
   onStatusBanner,
+  onOpenGiftTab,
 }: {
   readonly actor: WorldActorSpec;
   readonly anchorLabel: WorldScreenLabel | null;
   readonly isNear: boolean;
   readonly deps: TheWorldClientDeps;
   readonly onStatusBanner: (msg: string) => void;
+  readonly onOpenGiftTab?: ((commodoreId: string) => void) | undefined;
 }) {
   const t = getWorldT(deps.commodore.language());
   const store = useWorldStore();
@@ -132,6 +135,25 @@ export function WorldRadialMenu({
           label: t("theWorld.radial.settings"),
           run: () => openActorPanel(actor.id, "settings"),
         },
+        ...(actor.commodoreId
+          ? [
+              {
+                id: "gift",
+                icon: "gift" as const,
+                iconTone: "rose" as const,
+                label: t("theWorld.radial.gift"),
+                run: () => {
+                  const targetCommodoreId = actor.commodoreId!;
+                  playDistrictSelect();
+                  if (onOpenGiftTab) {
+                    onOpenGiftTab(targetCommodoreId);
+                  } else {
+                    openAdmiralCustomizer({ tab: "gifts", focusCommodoreId: targetCommodoreId });
+                  }
+                },
+              },
+            ]
+          : []),
         isNear
           ? {
             id: "greet",
@@ -236,7 +258,7 @@ export function WorldRadialMenu({
         }
         : approachAction,
     ];
-  }, [actor, isCompanion, isNear, onStatusBanner, t]);
+  }, [actor, isCompanion, isNear, onOpenGiftTab, onStatusBanner, t]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -290,8 +312,8 @@ export function WorldRadialMenu({
   const cx = Math.max(240, Math.min(vw - 240, rawX));
   const cy = Math.max(195, Math.min(vh - 195, rawY));
 
-  const rx = actions.length >= 6 ? 172 : 158;
-  const ry = actions.length >= 6 ? 126 : 114;
+  const rx = actions.length >= 7 ? 184 : actions.length >= 6 ? 172 : 158;
+  const ry = actions.length >= 7 ? 136 : actions.length >= 6 ? 126 : 114;
 
   const petalCoords = actions.map((_, index) => {
     const angle = -Math.PI * 0.5 + (index / actions.length) * Math.PI * 2;

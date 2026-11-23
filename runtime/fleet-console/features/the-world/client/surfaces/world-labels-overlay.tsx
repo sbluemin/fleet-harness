@@ -18,28 +18,40 @@ import type {
   WorldActorLabelMeta,
   WorldFrameOverlayPositions,
 } from "../engine/world-runtime.js";
-import { getWorldT } from "../i18n/index.js";
+import { formatActorInteractAria, getWorldT } from "../i18n/index.js";
+import { resolvePlayerCurrentZone } from "../world-projection.js";
+import { setCurrentZone } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
 /**
  * Direct-DOM 3D 투영 라벨 오버레이 (`translate3d` 0Hz 갱신 + 거리 LOD `opacity`/`scale`).
  *
  * - 캐릭터 이름표·말풍선·상호작용 힌트, 사령관 마을 푯말, 길드 회관/모닥불/퀘스트 게시판 표식,
- *   Theater 구역 호버 툴팁을 렌더링한다.
- * - 제독(`나 (제독)`) 이름표는 기본 숨김 처리하여 중앙 시야를 가리지 않고,
- *   제독 캐릭터 호버 또는 커스터마이저 오픈 시에만 노출한다.
+ *   구역 호버 툴팁을 렌더링한다.
+ * - 원거리 말풍선(≥32m) 숨김, 원거리 마을 배지(≥55m) 페이드/축소, 화면 가장자리 안전 여백,
+ *   상단 HUD 침범 방지 페이드, 2D 바운딩 겹침 회피(근거리 우선)를 0-GC로 수행한다.
  */
 
 const POS_DEADZONE_PX = 0.5;
 const LOD_EPSILON = 0.02;
-const COLLIDE_X_THRESHOLD_PX = 116;
-const COLLIDE_Y_THRESHOLD_PX = 26;
-const SPEECH_EXTRA_HEIGHT_PX = 40;
-const SPEECH_BOX_WIDTH_PX = 176;
-const COLLIDE_MAX_SHIFT_PX = 28;
-const COLLIDE_SPEECH_MAX_SHIFT_PX = 68;
+const COLLIDE_X_THRESHOLD_PX = 122;
+const COLLIDE_Y_THRESHOLD_PX = 28;
+const SPEECH_EXTRA_HEIGHT_PX = 46;
+const SPEECH_BOX_WIDTH_PX = 210;
+const VILLAGE_BOX_WIDTH_PX = 168;
+const COLLIDE_MAX_SHIFT_PX = 30;
+const COLLIDE_SPEECH_MAX_SHIFT_PX = 72;
 const COLLIDE_FAR_DISTANCE_M = 18;
-const COLLIDE_FADED_OPACITY = 0.42;
+const COLLIDE_FADED_OPACITY = 0.24;
+const SPEECH_HIDE_DISTANCE_M = 32;
+const VILLAGE_FADE_START_M = 36;
+const VILLAGE_FADE_END_M = 55;
+const VILLAGE_HIDE_DISTANCE_M = 80;
+const EDGE_SAFE_PADDING_PX = 14;
+const TOP_HUD_CLEARANCE_PX = 68;
+const TOP_HUD_HARD_HIDE_PX = 36;
+const TOP_HUD_RIGHT_WIDTH_PX = 560;
+const TOP_HUD_LEFT_WIDTH_PX = 260;
 
 interface DeclutterSlot {
   key: string;
@@ -53,6 +65,7 @@ interface DeclutterSlot {
   priority: number;
   distance: number;
   distant: boolean;
+  hideSpeech: boolean;
   opacity: number;
   scale: number;
   speechOffsetY: number;
@@ -91,10 +104,19 @@ interface AppliedAnchorState {
   y: number;
   visible: boolean;
   distant: boolean;
+  hideSpeech: boolean;
   opacity: number;
   scale: number;
   speechOffsetY: number;
 }
+
+export type WorldActiveInteractTarget =
+  | "mailbox"
+  | "paradeBell"
+  | "actor"
+  | "campfire"
+  | "fishing"
+  | null;
 
 export interface WorldLabelsOverlayHandle {
   applyFramePositions(positions: WorldFrameOverlayPositions): void;
@@ -130,6 +152,8 @@ export interface WorldLabelsOverlayProps {
   readonly onOpenUrgentActor?: ((actorId: string) => void) | undefined;
   /** 낚시 중 등 액터 `[E] 상호작용` 배지 노출을 일시 억제할 때 `true`. */
   readonly suppressInteractPrompts?: boolean | undefined;
+  /** 현재 `E` 키 입력 시 실행될 단일 최우선 대상 (중복 `[E]` 프롬프트 방지). */
+  readonly activeInteractTarget?: WorldActiveInteractTarget | undefined;
 }
 
 export const WorldLabelsOverlay = memo(
@@ -159,10 +183,18 @@ export const WorldLabelsOverlay = memo(
       onInteractActor,
       onOpenUrgentActor,
       suppressInteractPrompts = false,
+      activeInteractTarget,
     },
     ref,
   ) {
     const t = getWorldT(locale);
+    const villagesRef = useRef(villages);
+    villagesRef.current = villages;
+    const plazaLabelRef = useRef("");
+    plazaLabelRef.current = t("theWorld.projection.plazaLabel");
+    const meadowLabelRef = useRef("");
+    meadowLabelRef.current = t("theWorld.hud.zoneMeadow");
+    const lastZoneIdRef = useRef<string>("");
 
     const actorAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const villageAnchorRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -314,14 +346,24 @@ export const WorldLabelsOverlay = memo(
       opacity = 1,
       scale = 1,
       speechOffsetY = 0,
+      hideSpeech = false,
     ) => {
       if (!el) return;
       const cache = appliedPosCacheRef.current;
       let prev = cache.get(key);
-      if (!visible) {
+      if (!visible || opacity <= 0.03) {
         if (!prev) {
           el.style.visibility = "hidden";
-          cache.set(key, { x: Number.NaN, y: Number.NaN, visible: false, distant: false, opacity: 1, scale: 1, speechOffsetY: 0 });
+          cache.set(key, {
+            x: Number.NaN,
+            y: Number.NaN,
+            visible: false,
+            distant: false,
+            hideSpeech: false,
+            opacity: 1,
+            scale: 1,
+            speechOffsetY: 0,
+          });
         } else if (prev.visible) {
           el.style.visibility = "hidden";
           prev.visible = false;
@@ -330,7 +372,16 @@ export const WorldLabelsOverlay = memo(
       }
 
       if (!prev) {
-        prev = { x: Number.NaN, y: Number.NaN, visible: false, distant: false, opacity: 1, scale: 1, speechOffsetY: 0 };
+        prev = {
+          x: Number.NaN,
+          y: Number.NaN,
+          visible: false,
+          distant: false,
+          hideSpeech: false,
+          opacity: 1,
+          scale: 1,
+          speechOffsetY: 0,
+        };
         cache.set(key, prev);
       }
 
@@ -371,6 +422,11 @@ export const WorldLabelsOverlay = memo(
         el.classList.toggle("is-distant", distant);
         prev.distant = distant;
       }
+
+      if (prev.hideSpeech !== hideSpeech || el.classList.contains("is-speech-hidden") !== hideSpeech) {
+        el.classList.toggle("is-speech-hidden", hideSpeech);
+        prev.hideSpeech = hideSpeech;
+      }
     }, []);
 
     useImperativeHandle(ref, () => ({
@@ -379,7 +435,24 @@ export const WorldLabelsOverlay = memo(
         const distMap = lastActorDistanceRef.current;
         const priorityActors = priorityActorIdsRef.current;
         const speechActors = speechActorIdsRef.current;
+        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const vh = typeof window !== "undefined" ? window.innerHeight : 800;
         let slotCount = 0;
+
+        // Edge-triggered current zone resolution (0-GC when zone ID unchanged).
+        const resolvedZone = resolvePlayerCurrentZone(
+          positions.playerWorldX,
+          positions.playerWorldZ,
+          villagesRef.current,
+          plazaLabelRef.current,
+          meadowLabelRef.current,
+        );
+        const currentVillageId = resolvedZone.villageId ?? null;
+        const zoneSignature = `${resolvedZone.id}|${resolvedZone.label}`;
+        if (lastZoneIdRef.current !== zoneSignature) {
+          lastZoneIdRef.current = zoneSignature;
+          setCurrentZone(resolvedZone);
+        }
 
         const pushSlot = (
           key: string,
@@ -392,6 +465,7 @@ export const WorldLabelsOverlay = memo(
           priority: number,
           distance: number,
           distant: boolean,
+          hideSpeech: boolean,
           opacity: number,
           scale: number,
           speechOffsetY: number,
@@ -410,6 +484,7 @@ export const WorldLabelsOverlay = memo(
               priority,
               distance,
               distant,
+              hideSpeech,
               opacity,
               scale,
               speechOffsetY,
@@ -427,6 +502,7 @@ export const WorldLabelsOverlay = memo(
             slot.priority = priority;
             slot.distance = distance;
             slot.distant = distant;
+            slot.hideSpeech = hideSpeech;
             slot.opacity = opacity;
             slot.scale = scale;
             slot.speechOffsetY = speechOffsetY;
@@ -443,19 +519,24 @@ export const WorldLabelsOverlay = memo(
             applyAnchorPosition(`actor:${p.actorId}`, el, p.x, p.y, false);
             continue;
           }
+          const isPriority = priorityActors.has(p.actorId);
           const hasSpeech = speechActors.has(p.actorId);
-          const prio = priorityActors.has(p.actorId) ? 0 : 1;
+          // 원거리(~32m 이상) 말풍선 숨김으로 원경 난립 방지
+          const hideSpeech = hasSpeech && !isPriority && p.distance >= SPEECH_HIDE_DISTANCE_M;
+          const activeSpeech = hasSpeech && !hideSpeech;
+          const prio = isPriority ? 0 : activeSpeech ? 1 : 3;
           pushSlot(
             `actor:${p.actorId}`,
             el,
             p.x,
             p.y,
-            hasSpeech ? SPEECH_BOX_WIDTH_PX : COLLIDE_X_THRESHOLD_PX,
-            hasSpeech ? COLLIDE_Y_THRESHOLD_PX + SPEECH_EXTRA_HEIGHT_PX : COLLIDE_Y_THRESHOLD_PX,
-            hasSpeech ? COLLIDE_SPEECH_MAX_SHIFT_PX : COLLIDE_MAX_SHIFT_PX,
+            activeSpeech ? SPEECH_BOX_WIDTH_PX : COLLIDE_X_THRESHOLD_PX,
+            activeSpeech ? COLLIDE_Y_THRESHOLD_PX + SPEECH_EXTRA_HEIGHT_PX : COLLIDE_Y_THRESHOLD_PX,
+            activeSpeech ? COLLIDE_SPEECH_MAX_SHIFT_PX : COLLIDE_MAX_SHIFT_PX,
             prio,
             p.distance,
             p.isDistant,
+            hideSpeech,
             p.opacity ?? 1,
             p.scale ?? 1,
             p.speechOffsetY ?? 0,
@@ -478,32 +559,54 @@ export const WorldLabelsOverlay = memo(
         for (let i = 0; i < positions.villageCount; i += 1) {
           const v = positions.villages[i]!;
           const el = villageMap.get(v.villageId);
-          if (!v.visible || !el) {
+          const isCurrentVillage = currentVillageId === v.villageId;
+          if (!v.visible || !el || (!isCurrentVillage && v.distance > VILLAGE_HIDE_DISTANCE_M)) {
             applyAnchorPosition(`village:${v.villageId}`, el, v.x, v.y, false);
             continue;
+          }
+          let vOpacity = 1;
+          let vScale = 1;
+          if (!isCurrentVillage && v.distance > VILLAGE_FADE_START_M) {
+            const tFade = Math.min(
+              1,
+              (v.distance - VILLAGE_FADE_START_M) / (VILLAGE_FADE_END_M - VILLAGE_FADE_START_M),
+            );
+            vOpacity = 1 - tFade * 0.58;
+            vScale = 1 - tFade * 0.16;
+            if (v.distance > VILLAGE_FADE_END_M) {
+              const tFar = Math.min(
+                1,
+                (v.distance - VILLAGE_FADE_END_M) / (VILLAGE_HIDE_DISTANCE_M - VILLAGE_FADE_END_M),
+              );
+              vOpacity *= 1 - tFar * 0.72;
+            }
           }
           pushSlot(
             `village:${v.villageId}`,
             el,
             v.x,
             v.y,
-            COLLIDE_X_THRESHOLD_PX,
-            COLLIDE_Y_THRESHOLD_PX,
+            VILLAGE_BOX_WIDTH_PX * vScale,
+            COLLIDE_Y_THRESHOLD_PX * vScale,
             COLLIDE_MAX_SHIFT_PX,
-            3,
-            v.distance,
-            v.distance > COLLIDE_FAR_DISTANCE_M,
-            1,
-            1,
+            isCurrentVillage ? 0 : 4,
+            isCurrentVillage ? 0 : v.distance,
+            !isCurrentVillage && v.distance > VILLAGE_FADE_START_M,
+            false,
+            vOpacity,
+            vScale,
             0,
           );
         }
 
+        // 호버 중인 구역 툴팁도 화면 가장자리에서 글자가 잘리지 않도록 안전 여백 보정
+        const tipX = Math.max(88, Math.min(vw - 88, positions.hoveredDistrict.x));
+        const tipY = Math.max(TOP_HUD_CLEARANCE_PX + 12, Math.min(vh - 20, positions.hoveredDistrict.y));
         applyAnchorPosition(
           "district-tooltip",
           districtTooltipRef.current,
-          positions.hoveredDistrict.x,
-          positions.hoveredDistrict.y,
+          tipX,
+          tipY,
           positions.hoveredDistrict.visible,
         );
 
@@ -527,6 +630,7 @@ export const WorldLabelsOverlay = memo(
               COLLIDE_MAX_SHIFT_PX,
               2,
               12 + i,
+              false,
               false,
               1,
               1,
@@ -560,6 +664,7 @@ export const WorldLabelsOverlay = memo(
           let stillColliding = false;
           for (let j = 0; j < i; j += 1) {
             const other = pool[j]!;
+            if (other.opacity <= 0.15) continue;
             const halfW = (curr.boxWidth + other.boxWidth) * 0.5;
             if (Math.abs(curr.x - other.x) >= halfW) continue;
 
@@ -586,23 +691,66 @@ export const WorldLabelsOverlay = memo(
               stillColliding = true;
             }
           }
-          if (stillColliding && (curr.distant || curr.distance > COLLIDE_FAR_DISTANCE_M || curr.priority >= 3)) {
-            curr.opacity = Math.min(curr.opacity, COLLIDE_FADED_OPACITY);
+          if (stillColliding) {
+            if (curr.priority >= 4 && curr.distance > 30) {
+              curr.opacity = 0;
+            } else if (curr.distant || curr.distance > COLLIDE_FAR_DISTANCE_M || curr.priority >= 3) {
+              curr.opacity = Math.min(curr.opacity, COLLIDE_FADED_OPACITY);
+            } else if (curr.priority >= 1) {
+              curr.opacity = Math.min(curr.opacity, 0.52);
+            }
           }
         }
 
+        // 화면 가장자리 안전 여백 & 상단 HUD 침범 방지 페이드 (글자 절단 금지)
         for (let i = 0; i < slotCount; i += 1) {
           const slot = pool[i]!;
+          const halfW = slot.boxWidth * 0.5;
+          const minSafeX = halfW + EDGE_SAFE_PADDING_PX;
+          const maxSafeX = vw - halfW - EDGE_SAFE_PADDING_PX;
+
+          // 화면 밖으로 완전히 벗어난 라벨은 숨기고, 가장자리 근처는 텍스트가 잘리지 않게 페이드·보정
+          if (slot.x < EDGE_SAFE_PADDING_PX || slot.x > vw - EDGE_SAFE_PADDING_PX || slot.y > vh - 10) {
+            slot.opacity = 0;
+          } else if (minSafeX < maxSafeX) {
+            if (slot.x < minSafeX) {
+              const ratio = Math.max(0, (slot.x - EDGE_SAFE_PADDING_PX) / halfW);
+              slot.x = minSafeX;
+              slot.opacity *= 0.25 + ratio * 0.75;
+            } else if (slot.x > maxSafeX) {
+              const ratio = Math.max(0, (vw - EDGE_SAFE_PADDING_PX - slot.x) / halfW);
+              slot.x = maxSafeX;
+              slot.opacity *= 0.25 + ratio * 0.75;
+            }
+          }
+
+          const boxTop = slot.y - slot.boxHeight;
+          const inTopRightHud = slot.x + halfW > vw - TOP_HUD_RIGHT_WIDTH_PX;
+          const inTopLeftHud = slot.x - halfW < TOP_HUD_LEFT_WIDTH_PX;
+          const hudCeiling = inTopRightHud
+            ? TOP_HUD_CLEARANCE_PX + 10
+            : inTopLeftHud
+              ? TOP_HUD_CLEARANCE_PX + 2
+              : TOP_HUD_CLEARANCE_PX - 12;
+
+          if (boxTop < TOP_HUD_HARD_HIDE_PX) {
+            slot.opacity = 0;
+          } else if (boxTop < hudCeiling) {
+            const topRatio = Math.max(0, (boxTop - TOP_HUD_HARD_HIDE_PX) / (hudCeiling - TOP_HUD_HARD_HIDE_PX));
+            slot.opacity *= topRatio;
+          }
+
           applyAnchorPosition(
             slot.key,
             slot.el,
             slot.x,
             slot.y,
-            true,
+            slot.opacity > 0.03,
             slot.distant,
             slot.opacity,
             slot.scale,
             slot.speechOffsetY,
+            slot.hideSpeech,
           );
         }
       },
@@ -716,7 +864,6 @@ export const WorldLabelsOverlay = memo(
               onClick={onSitAtCampfire}
             >
               <WorldIcon name="fire" size={13} tone="amber" />
-              <span className="the-world-keycap">E</span>
               <span>{t("theWorld.campfire.sitHint")}</span>
             </button>
           </div>
@@ -766,6 +913,14 @@ export const WorldLabelsOverlay = memo(
           const hideForRadial = interactionMode === "radial" && lbl.isSelected;
           const isBackground = interactionMode === "radial" && !lbl.isSelected;
           if (hideForRadial) return null;
+          const actorInteractAria = formatActorInteractAria(locale, lbl.name);
+          const showActorEPrompt =
+            !suppressInteractPrompts
+            && (activeInteractTarget === undefined || activeInteractTarget === "actor")
+            && lbl.isNearPlayer
+            && lbl.actorId === singleNearActorId
+            && interactionMode === "closed"
+            && !cinemaMode;
           return (
             <div
               key={lbl.actorId}
@@ -777,7 +932,7 @@ export const WorldLabelsOverlay = memo(
                 return (
                   <span className="the-world-speech">
                     {parsed.badge ? <WorldIcon name={parsed.badge.icon} size={13} tone={parsed.badge.tone} /> : null}
-                    <span>{parsed.text}</span>
+                    <span className="the-world-speech-text">{parsed.text}</span>
                   </span>
                 );
               })() : null}
@@ -791,11 +946,11 @@ export const WorldLabelsOverlay = memo(
                   <span aria-hidden="true">{lbl.role === "commodore" ? "?" : "!"}</span>
                 </button>
               ) : null}
-              {!suppressInteractPrompts && lbl.isNearPlayer && lbl.actorId === singleNearActorId && interactionMode === "closed" && !cinemaMode ? (
+              {showActorEPrompt ? (
                 <button
                   type="button"
                   className="the-world-interact-prompt"
-                  aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
+                  aria-label={actorInteractAria}
                   onClick={() => onInteractActor(lbl.actorId)}
                 >
                   <span className="the-world-keycap">E</span>
@@ -805,7 +960,7 @@ export const WorldLabelsOverlay = memo(
               <button
                 type="button"
                 className={`the-world-nametag${lbl.isSelected ? " is-selected" : ""}`}
-                aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
+                aria-label={actorInteractAria}
                 onClick={() => onInteractActor(lbl.actorId)}
               >
                 <span className="the-world-tone-dot" data-tone={lbl.tone} />

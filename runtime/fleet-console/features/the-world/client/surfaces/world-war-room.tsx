@@ -3,8 +3,10 @@ import { memo, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldSnapshot, WorldVillageSpec } from "../../shared/world-types.js";
+import type { TheWorldClientDeps } from "../deps.js";
 import { playDistrictHover, playDistrictSelect } from "../engine/world-audio.js";
 import { getWorldT } from "../i18n/index.js";
+import { exitTheWorld } from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
 
 export interface WorldWarRoomProps {
@@ -14,6 +16,8 @@ export interface WorldWarRoomProps {
   readonly onRallyAll: () => void;
   readonly onVisitVillage: (village: WorldVillageSpec) => void;
   readonly onBroadcastAll: (message: string) => Promise<number> | number | void;
+  readonly onOpenInConsole?: ((commodoreId: string) => void) | undefined;
+  readonly deps?: Pick<TheWorldClientDeps, "openCommodoreInConsole" | "isReducedMotion"> | undefined;
 }
 
 interface RankedVillage {
@@ -24,8 +28,8 @@ interface RankedVillage {
 /**
  * 다크 크리스탈 「함대 통합 상황실」 모달.
  *
- * 전 사령관 마을 발전도 KPI · 랭킹 워프 · 전 사령관 중앙 광장 긴급 소집 ·
- * `@all` 전체 사령관 공지 브로드캐스트를 한곳에서 제어한다.
+ * 전 사령관 마을 발전도 KPI · 실시간 운영 상태 · 랭킹 워프 · 콘솔에서 열기 ·
+ * 전 사령관 중앙 광장 긴급 소집 · `@all` 전체 사령관 공지 브로드캐스트를 한곳에서 제어한다.
  *
  * 보안 불변식: 원시 파일시스템 절대경로(`path`)는 절대 노출하지 않는다.
  */
@@ -36,6 +40,8 @@ export const WorldWarRoom = memo(function WorldWarRoom({
   onRallyAll,
   onVisitVillage,
   onBroadcastAll,
+  onOpenInConsole,
+  deps,
 }: WorldWarRoomProps) {
   const t = getWorldT(locale);
   const [broadcastDraft, setBroadcastDraft] = useState("");
@@ -108,6 +114,21 @@ export const WorldWarRoom = memo(function WorldWarRoom({
     }
   };
 
+  const handleOpenVillageInConsole = (commodoreId: string) => {
+    playDistrictSelect();
+    onClose();
+    if (onOpenInConsole) {
+      onOpenInConsole(commodoreId);
+      return;
+    }
+    if (deps) {
+      deps.openCommodoreInConsole(commodoreId, { tab: "log" });
+      exitTheWorld({ reducedMotion: deps.isReducedMotion() });
+      return;
+    }
+    exitTheWorld();
+  };
+
   return (
     <div
       className="the-world-panel-backdrop"
@@ -161,7 +182,9 @@ export const WorldWarRoom = memo(function WorldWarRoom({
             </div>
             <div className="the-world-wr-kpi">
               <span className="the-world-wr-kpi-label">{t("theWorld.warRoom.kpiEntries")}</span>
-              <span className="the-world-wr-kpi-val">{totalEntries.toLocaleString()}</span>
+              <span className="the-world-wr-kpi-val">
+                {t("theWorld.warRoom.entriesCount", { count: totalEntries.toLocaleString() })}
+              </span>
             </div>
             <div className="the-world-wr-kpi is-emphasis">
               <span className="the-world-wr-kpi-label">{t("theWorld.warRoom.kpiTopTier")}</span>
@@ -183,7 +206,7 @@ export const WorldWarRoom = memo(function WorldWarRoom({
             <span>{t("theWorld.warRoom.rallyBtn")}</span>
           </button>
 
-          {/* 마을 발전도 랭킹 리스트 (클릭 시 즉시 워프) */}
+          {/* 마을 발전도 랭킹 & 실시간 운영 현황 리스트 */}
           <section className="the-world-qb-section">
             <h3 className="the-world-qb-section-title">
               <WorldIcon name="trophy" size={13} tone="amber" />
@@ -198,52 +221,88 @@ export const WorldWarRoom = memo(function WorldWarRoom({
               <div className="the-world-wr-ranking">
                 {rankedVillages.map(({ village, totalEntries: vEntries }, idx) => {
                   const actor = actorByCommodoreId.get(village.commodoreId) ?? null;
+                  const statusKind = village.hasError
+                    ? "error"
+                    : village.needsAttention || village.openAsksCount > 0
+                      ? "attention"
+                      : village.workStep
+                        ? "working"
+                        : "idle";
+                  const statusLabel = statusKind === "error"
+                    ? t("theWorld.fastTravel.statusError")
+                    : statusKind === "attention"
+                      ? t("theWorld.fastTravel.statusAttention")
+                      : statusKind === "working"
+                        ? t("theWorld.fastTravel.statusWorking")
+                        : t("theWorld.fastTravel.statusIdle");
+                  const metaParts = [
+                    t("theWorld.warRoom.districtsCount", { count: village.districts.length }),
+                    ...(vEntries > 0
+                      ? [t("theWorld.warRoom.entriesCount", { count: vEntries.toLocaleString() })]
+                      : []),
+                    ...(village.activeObjectiveCount > 0
+                      ? [t("theWorld.warRoom.activeObjectivesCount", { count: village.activeObjectiveCount })]
+                      : []),
+                  ];
                   return (
-                    <button
+                    <div
                       key={village.id}
-                      type="button"
                       className="the-world-wr-rank-row"
                       data-tone={village.tone}
-                      aria-label={t("theWorld.warRoom.visitAria", { name: village.label })}
-                      onMouseEnter={() => playDistrictHover()}
-                      onClick={() => {
-                        playDistrictSelect();
-                        onVisitVillage(village);
-                        onClose();
-                      }}
                     >
-                      <span className={`the-world-wr-rank-num${idx === 0 ? " is-first" : ""}`}>
-                        #{idx + 1}
-                      </span>
-                      {actor ? (
-                        <MongleAvatar
-                          base={actor.baseId}
-                          tone={actor.tone}
-                          role={actor.role}
-                          state={actor.state}
-                          activity={actor.activity}
-                          size={26}
-                          label={actor.name}
-                          decorative
-                        />
-                      ) : (
-                        <span className="the-world-tone-dot" data-tone={village.tone} />
-                      )}
-                      <div className="the-world-wr-rank-main">
-                        <span className="the-world-wr-rank-name">{village.label}</span>
-                        <span className="the-world-wr-rank-meta">
-                          {t("theWorld.village.signSubtitle", {
-                            tier: village.overallTier,
-                            count: village.districts.length,
-                          })}
-                          {vEntries > 0 ? ` · ${vEntries.toLocaleString()}` : ""}
+                      <button
+                        type="button"
+                        className="the-world-wr-rank-visit"
+                        aria-label={t("theWorld.warRoom.visitAria", { name: village.label })}
+                        onMouseEnter={() => playDistrictHover()}
+                        onClick={() => {
+                          playDistrictSelect();
+                          onVisitVillage(village);
+                          onClose();
+                        }}
+                      >
+                        <span className={`the-world-wr-rank-num${idx === 0 ? " is-first" : ""}`}>
+                          #{idx + 1}
                         </span>
-                      </div>
-                      <span className="the-world-district-tier-pill" data-tone={village.tone}>
-                        {t("theWorld.tier.badge", { tier: village.overallTier })}
-                      </span>
-                      <WorldIcon name="compass" size={13} tone="cerulean" />
-                    </button>
+                        {actor ? (
+                          <MongleAvatar
+                            base={actor.baseId}
+                            tone={actor.tone}
+                            role={actor.role}
+                            state={actor.state}
+                            activity={actor.activity}
+                            size={26}
+                            label={actor.name}
+                            decorative
+                          />
+                        ) : (
+                          <span className="the-world-tone-dot" data-tone={village.tone} />
+                        )}
+                        <div className="the-world-wr-rank-main">
+                          <span className="the-world-wr-rank-name">{village.label}</span>
+                          <span className="the-world-wr-rank-meta">
+                            {metaParts.join(" · ")}
+                          </span>
+                        </div>
+                        <span className={`the-world-fast-travel-status is-${statusKind}`}>
+                          {statusLabel}
+                        </span>
+                        <span className="the-world-district-tier-pill" data-tone={village.tone}>
+                          {t("theWorld.tier.badge", { tier: village.overallTier })}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="the-world-wr-rank-console-btn"
+                        aria-label={t("theWorld.warRoom.openConsoleAria", { name: village.label })}
+                        title={t("theWorld.action.openInConsole")}
+                        onClick={() => handleOpenVillageInConsole(village.commodoreId)}
+                      >
+                        <WorldIcon name="portalExit" size={12} tone="cerulean" />
+                        <span>{t("theWorld.action.openInConsole")}</span>
+                      </button>
+                    </div>
                   );
                 })}
               </div>

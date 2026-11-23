@@ -186,10 +186,10 @@ export const theWorldEn = {
   "theWorld.district.noteInputAria": "Admiral memo for {name} district",
   "theWorld.emote.wave": "Wave",
   "theWorld.emote.cheer": "Cheer!",
-  "theWorld.emote.jump": "Hop (3)",
+  "theWorld.emote.jump": "360° Spin (3)",
   "theWorld.emote.waveToast": "You waved to nearby Commodores!",
   "theWorld.emote.cheerToast": "You cheered on the fleet!",
-  "theWorld.emote.jumpToast": "You hopped with joy!",
+  "theWorld.emote.jumpToast": "You performed a joyful 360° spin!",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[Joint: {from} ↔ {to}] ",
   "theWorld.hud.envAria": "Open weather and time quick menu",
@@ -503,7 +503,7 @@ export const theWorldEn = {
   "theWorld.emote.twirl": "Star Twirl",
   "theWorld.emote.stardust": "Stardust",
   "theWorld.emote.sit": "Campfire Sit",
-  "theWorld.hud.emoteBtn": "Emotes (B)",
+  "theWorld.hud.emoteBtn": "Emotes",
   // Sprint 21: Starlight Voyage Stamp Book · Welcome Briefing · Sky Rings · Joint Arch · Field Review
   "theWorld.stamps.hudLabel": "Voyage Book",
   "theWorld.stamps.hudAria": "Open Starlight Voyage Stamp Book",
@@ -557,7 +557,7 @@ export const theWorldEn = {
   "theWorld.controls.skyDiveDesc": "Meteor dive landing anywhere",
   "theWorld.controls.skyQuickKeys": "Right-Click Village (Flying)",
   "theWorld.controls.skyQuickDesc": "Sky Quick Command popover",
-  "theWorld.controls.companionKeys": "E → Walk",
+  "theWorld.controls.companionKeys": "E → Walk Together",
   "theWorld.controls.companionDesc": "Multi-Commodore walk & V-squadron flight",
   "theWorld.controls.stampBookKeys": "Voyage Book",
   "theWorld.controls.stampBookDesc": "Starlight Voyage Stamp Book & rewards",
@@ -603,6 +603,65 @@ export const theWorldEn = {
   "theWorld.controls.flightAltKeys": "Q / E (Flying)",
   "theWorld.controls.flightAltDesc": "Adjust flight altitude (descend / ascend)",
   "theWorld.controls.fastTravelDesc": "Fast travel to Plaza or Commodore villages",
+  // Round 1 Commercial UX Polish
+  "theWorld.action.openInConsole": "Open in Console",
+  "theWorld.action.openInConsoleAria": "Open {name} in Fleet Console",
+  "theWorld.hud.zoneAria": "Current location: {zone}. Click for fast travel (G)",
+  "theWorld.hud.zoneMeadow": "Starlight Meadow",
+  "theWorld.hud.fastTravelLabel": "Fast Travel",
+  "theWorld.hud.fastTravelAria": "Open fast travel search (G)",
+  "theWorld.hud.toolsLabel": "Tools",
+  "theWorld.hud.toolsAria": "Open fleet tools menu",
+  "theWorld.hud.mailboxLabel": "Fleet Mailbox",
+  "theWorld.hud.mailboxAria": "Open Fleet Mailbox",
+  "theWorld.hud.soundOnLabel": "Sound On",
+  "theWorld.hud.soundOffLabel": "Sound Off",
+  "theWorld.hud.recruitLabel": "Recruit Commodore",
+  "theWorld.hud.guideTitle": "Controls Guide (? / H)",
+  "theWorld.hud.emoteWaveAria": "Wave (1)",
+  "theWorld.hud.emoteCheerAria": "Cheer (2)",
+  "theWorld.hud.emoteSpinAria": "360° Spin (3)",
+  "theWorld.hud.resetTrigger": "Reset Meadow Progress",
+  "theWorld.hud.resetQuestion": "Reset all local progress?",
+  "theWorld.hud.resetDetail": "Stamps, fish log, notes, biomes, and look will be cleared.",
+  "theWorld.hud.resetConfirm": "Reset Now",
+  "theWorld.hud.resetCancel": "Cancel",
+  "theWorld.hud.resetToast": "Meadow progress (stamps, fish, notes, look) has been reset.",
+  "theWorld.onboarding.aria": "Quick movement and controls hint",
+  "theWorld.onboarding.hint": "WASD Move · Drag Rotate · G Fast Travel · ? Guide",
+  "theWorld.onboarding.dismissAria": "Dismiss controls hint",
+  "theWorld.fastTravel.searchPlaceholder": "Search commodores or districts...",
+  "theWorld.fastTravel.searchAria": "Search commodores and districts",
+  "theWorld.fastTravel.clearSearchAria": "Clear search",
+  "theWorld.fastTravel.summaryCount": "{villages} Commodores · {districts} Districts",
+  "theWorld.fastTravel.noResults": "No matching commodores or districts",
+  "theWorld.fastTravel.plazaSub": "Guild Hall · Mailbox · Starlight Pond",
+  "theWorld.fastTravel.districtCount": "{count} districts",
+  "theWorld.fastTravel.districtCountWithGoals": "{count} districts · {goals} active",
+  "theWorld.fastTravel.expandDistrictsAria": "Show {name} districts",
+  "theWorld.fastTravel.collapseDistrictsAria": "Hide {name} districts",
+  "theWorld.fastTravel.moreBelow": "Scroll for more",
+  "theWorld.fastTravel.statusWorking": "Working",
+  "theWorld.fastTravel.statusAttention": "Needs Input",
+  "theWorld.fastTravel.statusError": "Error",
+  "theWorld.fastTravel.statusIdle": "Idle",
+  "theWorld.district.actionOrder": "Order",
+  "theWorld.district.plantFlagOrder": "Plant Flag & Order",
+  "theWorld.district.plantFlagOrderAria": "Write a directive and plant an operational flag on {name}",
+  "theWorld.district.plantFlagQuick": "Quick Plant",
+  "theWorld.district.plantFlagQuickAria": "Immediately plant an operational flag on {name}",
+  "theWorld.district.opFlagActive": "Operation Flag Active",
+  "theWorld.district.opFlagClear": "Clear Flag",
+  "theWorld.district.opFlagPlaceholder": "1-line directive (optional)...",
+  "theWorld.district.opFlagDeploy": "Deploy",
+  "theWorld.district.biomeToggleAria": "Toggle village biome theme options",
+  "theWorld.warRoom.entriesCount": "{count} items",
+  "theWorld.warRoom.districtsCount": "{count} districts",
+  "theWorld.warRoom.activeObjectivesCount": "{count} active",
+  "theWorld.warRoom.openConsoleAria": "Open {name} in Console",
+  "theWorld.flight.ringGuideLabel": "Starlight Ring",
+  "theWorld.flight.ringGuideDist": "Starlight Ring {meters}m",
+  "theWorld.radial.gift": "Gift Hat",
 };
 
 export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
@@ -617,10 +676,10 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.hud.debugTitle": "디버그 · 환경 도구 (시간대 · 카메라 · 연출 테스트)",
   "theWorld.radial.aria": "{name} 상호작용 메뉴",
   "theWorld.radial.closeAria": "상호작용 메뉴 닫기",
-  "theWorld.dialogue.aria": "{name}과의 대화창",
+  "theWorld.dialogue.aria": "{name}{particle}의 대화창",
   "theWorld.dialogue.closeAria": "대화창 닫기",
   "theWorld.dialogue.inputPlaceholder": "{name}에게 말 걸기 또는 지시 입력...",
-  "theWorld.actor.interactAria": "{name}와 상호작용",
+  "theWorld.actor.interactAria": "{name}{particle} 상호작용",
   "theWorld.chat.aria": "월드 전체 채팅 및 시스템 로그",
   "theWorld.chat.tabsAria": "채팅 채널 필터",
   "theWorld.chat.toggleAria": "채팅창 접기/펼치기",
@@ -751,7 +810,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.warRoom.subtitle": "전 사령관 마을 발전도 랭킹 · 긴급 소집 · 전체 공지",
   "theWorld.warRoom.closeAria": "함대 통합 상황실 닫기",
   "theWorld.warRoom.kpiVillages": "사령관 마을",
-  "theWorld.warRoom.kpiDistricts": "Theater 구역",
+  "theWorld.warRoom.kpiDistricts": "전체 구역",
   "theWorld.warRoom.kpiEntries": "총 파일·폴더",
   "theWorld.warRoom.kpiTopTier": "최고 발전도",
   "theWorld.warRoom.rallyBtn": "전 사령관 긴급 소집",
@@ -790,10 +849,10 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.district.noteInputAria": "{name} 구역 제독 메모 입력",
   "theWorld.emote.wave": "손흔들기",
   "theWorld.emote.cheer": "화이팅!",
-  "theWorld.emote.jump": "깡충 점프 (3)",
+  "theWorld.emote.jump": "360° 회전 (3)",
   "theWorld.emote.waveToast": "주변 사령관들에게 손을 흔들었습니다!",
   "theWorld.emote.cheerToast": "함대 사령관들에게 환호를 보냈습니다!",
-  "theWorld.emote.jumpToast": "기분 좋게 깡충 뛰었습니다!",
+  "theWorld.emote.jumpToast": "기분 좋게 360° 빙글 돌았습니다!",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[합동: {from} ↔ {to}] ",
   "theWorld.hud.envAria": "날씨 및 시간대 퀵 메뉴 열기",
@@ -830,7 +889,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.guide.emoteDesc": "인사 · 환호 · 360° 회전",
   "theWorld.guide.overviewDesc": "별빛 비행 (이륙/착지)",
   "theWorld.guide.quickMenuKeys": "구역 우클릭",
-  "theWorld.guide.quickMenuDesc": "Theater 구역 빠른 명령 메뉴",
+  "theWorld.guide.quickMenuDesc": "구역 빠른 명령 메뉴",
   "theWorld.guide.chatDesc": "월드 채팅 열기 / 입력",
   "theWorld.guide.guideDesc": "조작 가이드 열기 / 닫기",
   "theWorld.guide.debugDesc": "개발자 디버그 도구 표시 전환",
@@ -978,7 +1037,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.bridge.phaseIdle": "대기 중",
   "theWorld.bridge.aliasLabel": "사령관 이름 (별칭)",
   "theWorld.bridge.saveBtn": "저장",
-  "theWorld.bridge.districtsHeading": "관할 Theater 구역 ({count})",
+  "theWorld.bridge.districtsHeading": "관할 구역 ({count})",
   "theWorld.bridge.clickToWarp": "클릭해 3D 이동",
   "theWorld.bridge.memoryHeading": "사령관 기억 ({count})",
   "theWorld.bridge.memoryEmpty": "기록된 기억이 아직 없습니다.",
@@ -1107,7 +1166,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.emote.twirl": "별빛 빙글",
   "theWorld.emote.stardust": "별가루 뿌리기",
   "theWorld.emote.sit": "불멍 앉기",
-  "theWorld.hud.emoteBtn": "이모트 (B)",
+  "theWorld.hud.emoteBtn": "이모트",
   // Sprint 21: 별빛 항해 수첩 · 웰컴 브리핑 · 하늘 링 · 합동 아치 · 정문 원클릭 결재
   "theWorld.stamps.hudLabel": "항해 수첩",
   "theWorld.stamps.hudAria": "별빛 항해 수첩 열기",
@@ -1161,7 +1220,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.controls.skyDiveDesc": "초원 어디든 유성 급강하 착지",
   "theWorld.controls.skyQuickKeys": "마을 우클릭 (비행 중)",
   "theWorld.controls.skyQuickDesc": "공중 퀵 지시 팝오버",
-  "theWorld.controls.companionKeys": "E → 동행",
+  "theWorld.controls.companionKeys": "E → 함께 산책하기",
   "theWorld.controls.companionDesc": "N명 편대 동행 산책 & V자 하늘 비행",
   "theWorld.controls.stampBookKeys": "항해 수첩",
   "theWorld.controls.stampBookDesc": "별빛 항해 수첩 (스탬프 · 외형 보상)",
@@ -1207,6 +1266,65 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.controls.flightAltKeys": "Q / E (비행 중)",
   "theWorld.controls.flightAltDesc": "비행 고도 하강 / 상승",
   "theWorld.controls.fastTravelDesc": "빠른 마을 이동 (광장 · 사령관 마을)",
+  // Round 1 커머셜 UX 폴리싱
+  "theWorld.action.openInConsole": "콘솔에서 열기",
+  "theWorld.action.openInConsoleAria": "{name} 콘솔에서 열기",
+  "theWorld.hud.zoneAria": "현재 위치: {zone}. 클릭하여 빠른 이동 열기 (G)",
+  "theWorld.hud.zoneMeadow": "별빛 초원",
+  "theWorld.hud.fastTravelLabel": "빠른 이동",
+  "theWorld.hud.fastTravelAria": "빠른 마을·구역 이동 열기 (G)",
+  "theWorld.hud.toolsLabel": "도구",
+  "theWorld.hud.toolsAria": "함대 도구 메뉴 열기",
+  "theWorld.hud.mailboxLabel": "함대 우체통",
+  "theWorld.hud.mailboxAria": "함대 우체통 열기",
+  "theWorld.hud.soundOnLabel": "음향 켜짐",
+  "theWorld.hud.soundOffLabel": "음향 꺼짐",
+  "theWorld.hud.recruitLabel": "사령관 영입",
+  "theWorld.hud.guideTitle": "조작 가이드 (? / H)",
+  "theWorld.hud.emoteWaveAria": "손흔들기 인사 (1)",
+  "theWorld.hud.emoteCheerAria": "함대 환호 (2)",
+  "theWorld.hud.emoteSpinAria": "360° 회전 (3)",
+  "theWorld.hud.resetTrigger": "초원 기록 초기화",
+  "theWorld.hud.resetQuestion": "초원 로컬 기록을 초기화할까요?",
+  "theWorld.hud.resetDetail": "스탬프 · 어류 도감 · 구역 메모 · 바이옴 · 외형이 초기화됩니다.",
+  "theWorld.hud.resetConfirm": "초기화 실행",
+  "theWorld.hud.resetCancel": "취소",
+  "theWorld.hud.resetToast": "초원 진행 기록(스탬프 · 도감 · 메모 · 외형)을 초기화했습니다.",
+  "theWorld.onboarding.aria": "기본 이동 및 조작 안내",
+  "theWorld.onboarding.hint": "WASD 이동 · 드래그 회전 · G 빠른 이동 · ? 가이드",
+  "theWorld.onboarding.dismissAria": "조작 안내 닫기",
+  "theWorld.fastTravel.searchPlaceholder": "사령관 또는 구역 검색...",
+  "theWorld.fastTravel.searchAria": "사령관 및 구역 검색",
+  "theWorld.fastTravel.clearSearchAria": "검색어 지우기",
+  "theWorld.fastTravel.summaryCount": "{villages}개 사령관 · {districts}개 구역",
+  "theWorld.fastTravel.noResults": "일치하는 사령관 또는 구역이 없습니다",
+  "theWorld.fastTravel.plazaSub": "길드 회관 · 우체통 · 별빛 연못",
+  "theWorld.fastTravel.districtCount": "구역 {count}곳",
+  "theWorld.fastTravel.districtCountWithGoals": "구역 {count}곳 · 목표 {goals}개",
+  "theWorld.fastTravel.expandDistrictsAria": "{name} 구역 목록 펼치기",
+  "theWorld.fastTravel.collapseDistrictsAria": "{name} 구역 목록 접기",
+  "theWorld.fastTravel.moreBelow": "아래로 스크롤",
+  "theWorld.fastTravel.statusWorking": "작업 중",
+  "theWorld.fastTravel.statusAttention": "확인 필요",
+  "theWorld.fastTravel.statusError": "오류",
+  "theWorld.fastTravel.statusIdle": "대기 중",
+  "theWorld.district.actionOrder": "지시하기",
+  "theWorld.district.plantFlagOrder": "작전 깃발 꽂고 지시",
+  "theWorld.district.plantFlagOrderAria": "{name} 구역에 지시문을 적어 작전 깃발 꽂기",
+  "theWorld.district.plantFlagQuick": "바로 꽂기",
+  "theWorld.district.plantFlagQuickAria": "{name} 구역에 작전 깃발 즉시 꽂기",
+  "theWorld.district.opFlagActive": "작전 깃발 활성",
+  "theWorld.district.opFlagClear": "깃발 회수",
+  "theWorld.district.opFlagPlaceholder": "1줄 지시 입력 (비워두고 바로 배치 가능)...",
+  "theWorld.district.opFlagDeploy": "배치",
+  "theWorld.district.biomeToggleAria": "마을 테마 바이옴 선택 펼치기/접기",
+  "theWorld.warRoom.entriesCount": "{count}개",
+  "theWorld.warRoom.districtsCount": "구역 {count}곳",
+  "theWorld.warRoom.activeObjectivesCount": "목표 {count}개",
+  "theWorld.warRoom.openConsoleAria": "{name} 콘솔에서 열기",
+  "theWorld.flight.ringGuideLabel": "별빛 링",
+  "theWorld.flight.ringGuideDist": "별빛 링 {meters}m",
+  "theWorld.radial.gift": "선물",
 };
 
 export type TheWorldMessageKey = keyof typeof theWorldEn;
@@ -1217,6 +1335,46 @@ const translators: Record<ConsoleLocale, Translate<TheWorldMessageKey>> = {
   en: createTranslator(messages, "en"),
   ko: createTranslator(messages, "ko"),
 };
+
+/**
+ * 한국어 단어 끝 음절의 받침(종성) 유무에 따라 자연스러운 조사(`과/와`, `을/를`, `이/가` 등)를 선택한다.
+ * 예: `koParticle("별빛 개척단", "과", "와")` → `"과"`, `koParticle("아틀라스 본부", "과", "와")` → `"와"`.
+ */
+export function koParticle(word: string, withBatchim: string, withoutBatchim: string): string {
+  const trimmed = word.trim().replace(/[\s)\]}"'.,!?]+$/g, "");
+  if (!trimmed) return withoutBatchim;
+  const lastChar = trimmed[trimmed.length - 1]!;
+  const code = lastChar.charCodeAt(0);
+  // 한글 완성형 음절 (가~힣)
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    return (code - 0xac00) % 28 !== 0 ? withBatchim : withoutBatchim;
+  }
+  // 숫자 발음 기준 받침 (0 영, 1 일, 3 삼, 6 육, 7 칠, 8 팔)
+  if (lastChar >= "0" && lastChar <= "9") {
+    return "013678".includes(lastChar) ? withBatchim : withoutBatchim;
+  }
+  // 영문 끝 글자 근사 (l, m, n, r 등 받침 음가)
+  if ((lastChar >= "a" && lastChar <= "z") || (lastChar >= "A" && lastChar <= "Z")) {
+    return "lmnrLMNR".includes(lastChar) ? withBatchim : withoutBatchim;
+  }
+  return withoutBatchim;
+}
+
+export function formatActorInteractAria(locale: ConsoleLocale | undefined, name: string): string {
+  const t = getWorldT(locale);
+  return t("theWorld.actor.interactAria", {
+    name,
+    particle: koParticle(name, "과", "와"),
+  });
+}
+
+export function formatDialogueAria(locale: ConsoleLocale | undefined, name: string): string {
+  const t = getWorldT(locale);
+  return t("theWorld.dialogue.aria", {
+    name,
+    particle: koParticle(name, "과", "와"),
+  });
+}
 
 export function getWorldT(locale: ConsoleLocale | undefined): Translate<TheWorldMessageKey> {
   if (locale === "ko" || locale === "en") return translators[locale];

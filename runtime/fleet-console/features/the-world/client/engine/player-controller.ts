@@ -1,4 +1,13 @@
-import { PerspectiveCamera, Vector3 } from "three";
+import {
+  Box3,
+  InstancedMesh,
+  Mesh,
+  Object3D,
+  PerspectiveCamera,
+  Raycaster,
+  Vector3,
+  type Intersection,
+} from "three";
 
 import type { WorldCameraMode, WorldLifecycleState } from "../../shared/world-types.js";
 
@@ -55,6 +64,24 @@ export interface CameraOccluder {
   readonly z: number;
   readonly radius: number;
   readonly height: number;
+  /** 선택적 하단 높이 (예: 지면에서 떠 있는 대형 수목 수관). 미지정 시 지면 높이를 사용한다. */
+  readonly minY?: number | undefined;
+}
+
+export interface LandingVillageHint {
+  readonly x: number;
+  readonly z: number;
+  readonly radius: number;
+  readonly gateAngle: number;
+}
+
+export interface LandingTargetOptions {
+  /** 착지 후 아바타와 카메라가 정면으로 바라볼 월드 목표 X (예: 마을 광장 중심·랜드마크). */
+  readonly lookAtX?: number | undefined;
+  /** 착지 후 아바타와 카메라가 정면으로 바라볼 월드 목표 Z. */
+  readonly lookAtZ?: number | undefined;
+  /** true이면 추가 진입 오프셋 없이 지정 좌표에 직접 착지(충돌 슬라이딩만 보정). */
+  readonly exactLanding?: boolean | undefined;
 }
 
 export type CameraFocusFraming = "none" | "dialogue" | "drawer" | "customizer" | "cinema";
@@ -70,6 +97,10 @@ export interface CinemaCameraTarget {
 export interface PlayerAndCameraController {
   readonly player: PlayerState;
   readonly cameraTarget: Vector3;
+  /** 3인칭 카메라 차폐 회피(Spring-Arm)용 3D 메시/그룹(석문 기둥·담장·대형 수목 수관 등)을 등록한다 (프레임 루프 0-GC). */
+  setCameraOccluders(objects: readonly Object3D[]): void;
+  /** 마을 텔레포트·유성 착지 시 석문 기둥 뒤를 피해 탁 트인 광장 진입 지점과 정면 카메라 각도를 계산할 마을 배치 힌트를 동기화한다. */
+  setVillageHints(villages: readonly LandingVillageHint[]): void;
   update(options: {
     readonly dt: number;
     readonly lifecycle: WorldLifecycleState;
@@ -103,12 +134,14 @@ export interface PlayerAndCameraController {
     targetZ: number,
     getGroundHeight: (x: number, z: number) => number,
     resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+    options?: LandingTargetOptions,
   ): void;
   teleportTo(
     x: number,
     z: number,
     getGroundHeight: (x: number, z: number) => number,
     resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+    options?: LandingTargetOptions,
   ): void;
   approachPoint(
     targetX: number,
@@ -242,6 +275,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     duration: number;
     elapsed: number;
     faceYaw: number;
+    targetCamYaw: number;
   }
   let diveState: MeteorDiveState | null = null;
   let pendingTakeoffCue = false;
@@ -258,12 +292,240 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let barrelRollDir = 1;
   let prevSpacePressed = false;
   let prevBoostActive = false;
+  let autoLandingCamYaw: number | null = null;
+  let snapSpringArmOnNextFrame = false;
+
+  // 0-GC 3인칭 스프링-암(Spring-Arm) 3D 메시 차폐 회피 스크래치 풀
+  const MIN_SPRING_ARM_DIST = 2.45;
+  const occSourceObjects: Object3D[] = [];
+  const occTraverseStack: Object3D[] = [];
+  const occMeshList: Object3D[] = [];
+  const occMeshBounds: Box3[] = [];
+  const occCandidates: Object3D[] = [];
+  const occHits: Intersection<Object3D>[] = [];
+  const occRaycaster = new Raycaster();
+  const occRayOrigin = new Vector3();
+  const occRayDir = new Vector3();
+  const occDesiredCam = new Vector3();
+  const occSegmentBox = new Box3();
+  let occBoundsDirty = false;
+
+  // 마을 텔레포트·유성 착지 시 석문 기둥 뒤 회피 및 광장 정면 카메라 보정용 힌트 캐시
+  let villageHints: readonly LandingVillageHint[] = [];
+
+  function normalizeAngle(angle: number): number {
+    let a = angle;
+    while (a > Math.PI) a -= Math.PI * 2;
+    while (a < -Math.PI) a += Math.PI * 2;
+    return a;
+  }
+
+  function rebuildOccluderCache(): void {
+    occMeshList.length = 0;
+    occTraverseStack.length = 0;
+    for (let i = 0; i < occSourceObjects.length; i += 1) {
+      const root = occSourceObjects[i]!;
+      root.updateWorldMatrix(true, true);
+      occTraverseStack.push(root);
+      while (occTraverseStack.length > 0) {
+        const node = occTraverseStack.pop()!;
+        if (!node.visible) continue;
+        if (node instanceof InstancedMesh) {
+          if (node.count > 0 && node.geometry) {
+            node.computeBoundingBox();
+            if (node.boundingBox && !node.boundingBox.isEmpty()) {
+              const idx = occMeshList.length;
+              occMeshList.push(node);
+              let box = occMeshBounds[idx];
+              if (!box) {
+                box = new Box3();
+                occMeshBounds[idx] = box;
+              }
+              box.copy(node.boundingBox).applyMatrix4(node.matrixWorld);
+            }
+          }
+        } else if (node instanceof Mesh && node.geometry) {
+          if (!node.geometry.boundingBox) {
+            node.geometry.computeBoundingBox();
+          }
+          if (node.geometry.boundingBox && !node.geometry.boundingBox.isEmpty()) {
+            const idx = occMeshList.length;
+            occMeshList.push(node);
+            let box = occMeshBounds[idx];
+            if (!box) {
+              box = new Box3();
+              occMeshBounds[idx] = box;
+            }
+            box.copy(node.geometry.boundingBox).applyMatrix4(node.matrixWorld);
+          }
+        }
+        const children = node.children;
+        for (let ci = 0; ci < children.length; ci += 1) {
+          occTraverseStack.push(children[ci]!);
+        }
+      }
+    }
+    occBoundsDirty = false;
+  }
+
+  function findContainingVillage(x: number, z: number): LandingVillageHint | null {
+    let best: LandingVillageHint | null = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < villageHints.length; i += 1) {
+      const v = villageHints[i]!;
+      const d = Math.hypot(x - v.x, z - v.z);
+      if (d <= v.radius + 2.4 && d < bestDist) {
+        bestDist = d;
+        best = v;
+      }
+    }
+    return best;
+  }
+
+  interface ResolvedLanding {
+    readonly x: number;
+    readonly z: number;
+    readonly endGy: number;
+    readonly faceYaw: number;
+    readonly targetCamYaw: number;
+    readonly orbitX: number;
+    readonly orbitZ: number;
+  }
+
+  function resolveLandingTarget(
+    x: number,
+    z: number,
+    mode: "teleport" | "dive",
+    getGroundHeight: (gx: number, gz: number) => number,
+    resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+    options?: LandingTargetOptions,
+  ): ResolvedLanding {
+    const village = findContainingVillage(x, z);
+    let fromX = x;
+    let fromZ = z;
+    let desiredX = x;
+    let desiredZ = z;
+    let lookX = options?.lookAtX;
+    let lookZ = options?.lookAtZ;
+    let orbitX = x;
+    let orbitZ = z;
+
+    if (options?.exactLanding) {
+      if (village && lookX === undefined && lookZ === undefined) {
+        lookX = village.x;
+        lookZ = village.z;
+      }
+    } else if (village) {
+      const gateCos = Math.cos(village.gateAngle);
+      const gateSin = Math.sin(village.gateAngle);
+      // 사령관 NPC(1.15m) 앞쪽이자 석문 기둥(radius - 0.25m) 안쪽의 탁 트인 광장 진입 지점
+      const entryDist = Math.max(2.35, Math.min(village.radius - 2.65, village.radius * 0.42));
+      const idealPlazaX = village.x + gateCos * entryDist;
+      const idealPlazaZ = village.z + gateSin * entryDist;
+      const gateX = village.x + gateCos * (village.radius - 0.25);
+      const gateZ = village.z + gateSin * (village.radius - 0.25);
+
+      const relX = x - village.x;
+      const relZ = z - village.z;
+      const distCenter = Math.hypot(relX, relZ);
+      const dotAlongGate = relX * gateCos + relZ * gateSin;
+      const perpDist = Math.abs(-relX * gateSin + relZ * gateCos);
+      const distToGate = Math.hypot(x - gateX, z - gateZ);
+
+      fromX = village.x;
+      fromZ = village.z;
+
+      if (mode === "teleport") {
+        // 마을 중심 또는 정문 진입축 지정 → 석문 기둥 뒤를 피한 광장 정면 진입점으로 보정
+        if (distCenter < 1.85 || (dotAlongGate > 0 && perpDist < 2.35) || distToGate < 2.8) {
+          desiredX = idealPlazaX;
+          desiredZ = idealPlazaZ;
+          if (lookX === undefined && lookZ === undefined) {
+            lookX = village.x;
+            lookZ = village.z;
+          }
+          orbitX = village.x;
+          orbitZ = village.z;
+        } else {
+          // 마을 내부 개별 구역 건물로 이동 → 건물 정면이 바라보는 마을 중심 방향으로 한 걸음 앞 광장에 착지
+          const toCenterX = village.x - x;
+          const toCenterZ = village.z - z;
+          const dCenter = Math.hypot(toCenterX, toCenterZ) || 1;
+          const step = Math.min(2.6, dCenter * 0.55);
+          desiredX = x + (toCenterX / dCenter) * step;
+          desiredZ = z + (toCenterZ / dCenter) * step;
+          if (lookX === undefined && lookZ === undefined) {
+            lookX = x;
+            lookZ = z;
+          }
+        }
+      } else {
+        // 유성 급강하 착지: 석문 기둥·외곽 담장 바로 뒤를 클릭한 경우 안쪽 탁 트인 광장 진입 지점으로 보정
+        if (distToGate < 2.8 || distCenter > village.radius - 2.0) {
+          desiredX = idealPlazaX;
+          desiredZ = idealPlazaZ;
+        } else {
+          desiredX = x;
+          desiredZ = z;
+        }
+        if (lookX === undefined && lookZ === undefined) {
+          lookX = village.x;
+          lookZ = village.z;
+        }
+        orbitX = village.x;
+        orbitZ = village.z;
+      }
+    } else if (mode === "teleport") {
+      // 중앙 길드 광장 인근(원점 반경 9m 이내): 길드 회관 남쪽 앞마당에서 정면(-Z) 바라보도록 배치
+      if (Math.hypot(x, z) < 9.0) {
+        desiredX = x;
+        desiredZ = z + 3.0;
+        if (lookX === undefined && lookZ === undefined) {
+          lookX = x;
+          lookZ = z;
+        }
+      } else {
+        // 마을 힌트 미동기화 폴백: Z+3.0 맹목 오프셋 금지(석문 뒤 착지 방지), 원점 바깥쪽(마을 내부 방향)을 정면으로 정렬
+        desiredX = x;
+        desiredZ = z;
+      }
+    }
+
+    const safe = resolveMovement(fromX, fromZ, desiredX, desiredZ, 0.55);
+    const endGy = Math.max(0.05, getGroundHeight(safe.x, safe.z));
+
+    let faceYaw: number;
+    if (lookX !== undefined && lookZ !== undefined && Math.hypot(lookX - safe.x, lookZ - safe.z) > 0.35) {
+      faceYaw = Math.atan2(lookX - safe.x, lookZ - safe.z);
+    } else if (village) {
+      // 마을 중심 정중앙에 착지한 경우 정문 반대편(랜드마크 정면)을 바라보도록 정렬
+      faceYaw = Math.atan2(-Math.cos(village.gateAngle), -Math.sin(village.gateAngle));
+    } else if (mode === "teleport" && Math.hypot(safe.x, safe.z) >= 9.0) {
+      faceYaw = Math.atan2(safe.x, safe.z);
+    } else {
+      const dx = safe.x - player.x;
+      const dz = safe.z - player.z;
+      faceYaw = Math.hypot(dx, dz) > 0.25 ? Math.atan2(dx, dz) : player.yaw;
+    }
+
+    const targetCamYaw = normalizeAngle(faceYaw + Math.PI);
+    return {
+      x: safe.x,
+      z: safe.z,
+      endGy,
+      faceYaw,
+      targetCamYaw,
+      orbitX,
+      orbitZ,
+    };
+  }
 
   function beginMeteorDiveTo(
     safeX: number,
     safeZ: number,
     endGy: number,
     faceYaw: number,
+    targetCamYaw = normalizeAngle(faceYaw + Math.PI),
   ): void {
     const startX = player.x;
     const startY = player.y;
@@ -281,6 +543,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     overviewMode = false;
     sittingAtCampfire = false;
     pendingLandDive = false;
+    autoLandingCamYaw = null;
     skyBoostBurstTimer = 0;
     player.takeoffPhase = "none";
     player.takeoffProgress = 0;
@@ -309,6 +572,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       duration,
       elapsed: 0,
       faceYaw,
+      targetCamYaw,
     };
     pendingDiveCue = true;
   }
@@ -334,29 +598,34 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   return {
     player,
     cameraTarget,
-    startMeteorDive(targetX, targetZ, getGroundHeight, resolveMovement) {
-      const safe = resolveMovement(targetX, targetZ, targetX, targetZ, 0.55);
-      const endGy = Math.max(0.05, getGroundHeight(safe.x, safe.z));
-      const dx = safe.x - player.x;
-      const dz = safe.z - player.z;
-      const faceYaw = Math.hypot(dx, dz) > 0.25 ? Math.atan2(dx, dz) : player.yaw;
-      beginMeteorDiveTo(safe.x, safe.z, endGy, faceYaw);
+    setCameraOccluders(objects) {
+      occSourceObjects.length = 0;
+      for (let i = 0; i < objects.length; i += 1) {
+        const obj = objects[i];
+        if (obj) occSourceObjects.push(obj);
+      }
+      occMeshList.length = 0;
+      occCandidates.length = 0;
+      occHits.length = 0;
+      occBoundsDirty = occSourceObjects.length > 0;
+    },
+    setVillageHints(villages) {
+      villageHints = villages;
+    },
+    startMeteorDive(targetX, targetZ, getGroundHeight, resolveMovement, options) {
+      const landing = resolveLandingTarget(targetX, targetZ, "dive", getGroundHeight, resolveMovement, options);
+      beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
       orbitAnchor.set(
-        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, safe.x)),
-        Math.max(0.5, endGy) + 0.8,
-        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, safe.z)),
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, landing.orbitX)),
+        Math.max(0.5, getGroundHeight(landing.orbitX, landing.orbitZ)) + 0.8,
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, landing.orbitZ)),
       );
     },
-    teleportTo(x, z, getGroundHeight, resolveMovement) {
-      // 캠프·마을 앞마당(남쪽 입구) 안전한 오솔길 지점으로 유성 급강하 착지
-      const rawX = x;
-      const rawZ = z + 3.0;
-      const safe = resolveMovement(x, z, rawX, rawZ, 0.55);
-      const endGy = Math.max(0.05, getGroundHeight(safe.x, safe.z));
-      const faceYaw = Math.atan2(x - safe.x, z - safe.z);
-      const dist = Math.hypot(safe.x - player.x, safe.z - player.z);
+    teleportTo(x, z, getGroundHeight, resolveMovement, options) {
+      const landing = resolveLandingTarget(x, z, "teleport", getGroundHeight, resolveMovement, options);
+      const dist = Math.hypot(landing.x - player.x, landing.z - player.z);
       if (overviewMode || player.flying || player.flightAlt > 1.5 || dist > 3.5) {
-        beginMeteorDiveTo(safe.x, safe.z, endGy, faceYaw);
+        beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
       } else {
         districtFocus = null;
         overviewMode = false;
@@ -369,11 +638,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.flightAlt = 0;
         player.flightRoll = 0;
         player.flightPitch = 0;
-        player.x = safe.x;
-        player.z = safe.z;
+        player.x = landing.x;
+        player.z = landing.z;
         player.vx = 0;
         player.vz = 0;
-        player.y = endGy + 0.35;
+        player.y = landing.endGy + 0.35;
         player.vy = 0;
         player.playerJumpY = 0;
         player.jumpVel = 0;
@@ -381,12 +650,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.moveSpeed = 0;
         player.campfireSitSec = 0;
         jumpedFromGround = false;
-        player.yaw = faceYaw;
+        player.yaw = landing.faceYaw;
+        autoLandingCamYaw = landing.targetCamYaw;
+        snapSpringArmOnNextFrame = true;
       }
       orbitAnchor.set(
-        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x)),
-        Math.max(0.5, getGroundHeight(x, z)) + 0.8,
-        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, z)),
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, landing.orbitX)),
+        Math.max(0.5, getGroundHeight(landing.orbitX, landing.orbitZ)) + 0.8,
+        Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, landing.orbitZ)),
       );
     },
     approachPoint(targetX, targetZ, getGroundHeight, resolveMovement) {
@@ -395,6 +666,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       sittingAtCampfire = false;
       diveState = null;
       pendingLandDive = false;
+      autoLandingCamYaw = null;
+      snapSpringArmOnNextFrame = true;
       skyBoostBurstTimer = 0;
       player.flying = false;
       player.diving = false;
@@ -439,6 +712,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     focusDistrict(x, z, radius, getGroundHeight) {
       overviewMode = false;
       sittingAtCampfire = false;
+      autoLandingCamYaw = null;
       const clampedX = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x));
       const clampedZ = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, z));
       const gy = Math.max(0.25, getGroundHeight(clampedX, clampedZ));
@@ -464,6 +738,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         sittingAtCampfire = false;
         diveState = null;
         pendingLandDive = false;
+        autoLandingCamYaw = null;
         skyBoostBurstTimer = 0;
         chaseManualOrbitTimer = 0;
         chaseDist = 11.4;
@@ -523,6 +798,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         overviewMode = false;
         diveState = null;
         pendingLandDive = false;
+        autoLandingCamYaw = null;
         skyBoostBurstTimer = 0;
         player.flying = false;
         player.diving = false;
@@ -551,6 +827,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     },
     onPointerRotate(dx, dy) {
       autoDialogueYaw = null;
+      autoLandingCamYaw = null;
       camYaw -= dx * 0.0062;
       if (overviewMode) {
         chaseManualOrbitTimer = 2.4;
@@ -599,9 +876,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
       if (pendingLandDive) {
         pendingLandDive = false;
-        const safe = opts.resolveMovement(0, 2.2, player.x, player.z, 0.55);
-        const endGy = Math.max(0.05, opts.getGroundHeight(safe.x, safe.z));
-        beginMeteorDiveTo(safe.x, safe.z, endGy, player.yaw);
+        const landing = resolveLandingTarget(player.x, player.z, "dive", opts.getGroundHeight, opts.resolveMovement);
+        beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
       }
       if (pendingDiveCue) {
         pendingDiveCue = false;
@@ -654,9 +930,19 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.flightPitch += (0.78 - player.flightPitch) * Math.min(1, opts.dt * 12);
         prevBoostActive = false;
 
+        // 착지 아크 동안 카메라 yaw를 마을 광장·랜드마크 정면(아바타 등 뒤)으로 부드럽게 정렬
+        if (reduceMotion) {
+          camYaw = diveState.targetCamYaw;
+        } else {
+          const diveYawDiff = normalizeAngle(diveState.targetCamYaw - camYaw);
+          camYaw += diveYawDiff * (1 - Math.exp(-opts.dt * 7.5));
+          camPitch += (0.28 - camPitch) * (1 - Math.exp(-opts.dt * 3.5));
+        }
+
         if (rawT >= 1) {
           const impactX = diveState.endX;
           const impactZ = diveState.endZ;
+          const settleYaw = diveState.targetCamYaw;
           player.x = impactX;
           player.z = impactZ;
           player.y = diveState.endY;
@@ -676,6 +962,13 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           player.landSquash = 1.0;
           player.heroLandTimer = HERO_LAND_SEC;
           diveState = null;
+          if (reduceMotion) {
+            camYaw = settleYaw;
+            autoLandingCamYaw = null;
+          } else {
+            autoLandingCamYaw = Math.abs(normalizeAngle(settleYaw - camYaw)) > 0.02 ? settleYaw : null;
+          }
+          snapSpringArmOnNextFrame = true;
           opts.onMeteorImpact?.(impactX, impactZ);
         }
       } else if (overviewMode && player.takeoffPhase !== "none") {
@@ -769,8 +1062,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         }
 
         if (ix !== 0 || iz !== 0) {
-          // WASD/방향키 이동 시작 시 구역 포커스·히어로 착지 포즈 해제 (비행 중 WASD는 슈퍼맨 자유 비행!)
+          // WASD/방향키 이동 시작 시 구역 포커스·히어로 착지 포즈·자동 착지 카메라 정렬 해제 (비행 중 WASD는 슈퍼맨 자유 비행!)
           districtFocus = null;
+          autoLandingCamYaw = null;
           player.heroLandTimer = 0;
         }
 
@@ -1043,14 +1337,20 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         prevFocusFraming = focusFraming;
       }
       if (autoDialogueYaw !== null && (dialogueFraming || customizerFraming)) {
-        let yawDiff = autoDialogueYaw - camYaw;
-        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
-        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-        if (Math.abs(yawDiff) < 0.015 || opts.reducedMotion) {
+        const yawDiff = normalizeAngle(autoDialogueYaw - camYaw);
+        if (Math.abs(yawDiff) < 0.015 || reduceMotion) {
           camYaw = autoDialogueYaw;
           autoDialogueYaw = null;
         } else {
           camYaw += yawDiff * (1 - Math.exp(-opts.dt * 6.5));
+        }
+      } else if (autoLandingCamYaw !== null && !overviewMode && !player.diving && !cinemaFraming && !sittingAtCampfire) {
+        const landDiff = normalizeAngle(autoLandingCamYaw - camYaw);
+        if (Math.abs(landDiff) < 0.015 || reduceMotion) {
+          camYaw = autoLandingCamYaw;
+          autoLandingCamYaw = null;
+        } else {
+          camYaw += landDiff * (1 - Math.exp(-opts.dt * 8.5));
         }
       } else if (cinemaFraming && !opts.reducedMotion) {
         // 관전 / 작업 동반자 모드: 스포트라이트 대상을 중심으로 잔잔하고 영화적인 느린 오빗
@@ -1281,55 +1581,168 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         opts.camera.updateProjectionMatrix();
       }
 
-      // 카메라 스프링-암(Spring-Arm) 가림 방지: 가로등·나무·건물 실린더 관통 시 부드럽게 안쪽으로 당김
+      // 카메라 스프링-암(Spring-Arm) 0-GC 차폐 회피:
+      // 1) 경량 실린더 차폐체(가로등·나무·건물·석문 기둥) 3-위스커(중앙/좌/우 프러스텀 여백) 스윕
+      // 2) setCameraOccluders(objects)로 등록된 3D 메시/InstancedMesh(석문·담장·대형 수관) Box3 브로드페이즈 + 4-위스커 레이캐스트
       let finalDist = effDist;
+      const hasCylinderOccluders = opts.getCameraOccluders !== undefined;
+      const hasMeshOccluders = occSourceObjects.length > 0;
       const useSpringArm =
         opts.lifecycle === "open"
         && !overviewMode
+        && !player.diving
         && opts.cameraMode === "follow"
-        && opts.getCameraOccluders !== undefined;
+        && (hasCylinderOccluders || hasMeshOccluders);
       if (useSpringArm) {
-        const occluders = opts.getCameraOccluders!();
-        const dirX = Math.sin(effYaw) * Math.cos(effPitch);
+        const cosPitch = Math.cos(effPitch);
+        const dirX = Math.sin(effYaw) * cosPitch;
         const dirY = Math.sin(effPitch);
-        const dirZ = Math.cos(effYaw) * Math.cos(effPitch);
-        const segDx = dirX * effDist;
-        const segDz = dirZ * effDist;
-        const aQuad = segDx * segDx + segDz * segDz;
+        const dirZ = Math.cos(effYaw) * cosPitch;
+        const rightX = Math.cos(effYaw);
+        const rightZ = -Math.sin(effYaw);
+        const baseCamX = cameraTarget.x + dirX * effDist;
+        const baseCamY = cameraTarget.y + dirY * effDist;
+        const baseCamZ = cameraTarget.z + dirZ * effDist;
         let minAllowedDist = effDist;
 
-        if (aQuad > 1e-4 && occluders.length > 0) {
-          for (let i = 0; i < occluders.length; i += 1) {
-            const occ = occluders[i]!;
-            const fx = cameraTarget.x - occ.x;
-            const fz = cameraTarget.z - occ.z;
-            const padR = occ.radius + 0.36;
-            const cQuad = fx * fx + fz * fz - padR * padR;
-            // 이미 타깃 자체가 실린더 안에 있는 특수 경우(예: 벤치 바로 옆)는 건너뜀
-            if (cQuad <= 0) continue;
-            const bQuad = 2 * (fx * segDx + fz * segDz);
-            const disc = bQuad * bQuad - 4 * aQuad * cQuad;
-            if (disc < 0) continue;
-            const tHit = (-bQuad - Math.sqrt(disc)) / (2 * aQuad);
-            if (tHit <= 0.08 || tHit >= 1.0) continue;
-            const yHit = cameraTarget.y + dirY * (tHit * effDist);
-            const occBaseY = opts.getGroundHeight(occ.x, occ.z);
-            if (yHit <= occBaseY + occ.height + 0.35) {
-              const pulled = Math.max(2.35, tHit * effDist - 0.38);
-              if (pulled < minAllowedDist) {
-                minAllowedDist = pulled;
+        if (hasCylinderOccluders) {
+          const occluders = opts.getCameraOccluders!();
+          if (occluders.length > 0) {
+            for (let i = 0; i < occluders.length; i += 1) {
+              const occ = occluders[i]!;
+              const occBaseY = opts.getGroundHeight(occ.x, occ.z);
+              const occMinY = occ.minY ?? occBaseY;
+              const occMaxY = occBaseY + occ.height + 0.42;
+              const coreR2 = occ.radius * occ.radius * 0.68;
+
+              // w = 0 (중앙), -1 (좌 프러스텀), +1 (우 프러스텀)
+              for (let w = -1; w <= 1; w += 1) {
+                const origLat = w * 0.14;
+                const endLat = w * 0.62;
+                const ox = cameraTarget.x + rightX * origLat;
+                const oz = cameraTarget.z + rightZ * origLat;
+                const ex = baseCamX + rightX * endLat;
+                const ez = baseCamZ + rightZ * endLat;
+                const segDx = ex - ox;
+                const segDz = ez - oz;
+                const aQuad = segDx * segDx + segDz * segDz;
+                if (aQuad <= 1e-4) continue;
+
+                const fx = ox - occ.x;
+                const fz = oz - occ.z;
+                const distSqOrigin = fx * fx + fz * fz;
+                if (distSqOrigin <= coreR2) continue;
+
+                const padR = occ.radius + (w === 0 ? 0.42 : 0.24);
+                const padR2 = padR * padR;
+                const cQuad = distSqOrigin - padR2;
+
+                if (cQuad <= 0) {
+                  // 위스커 시작점이 외곽 패딩 경계 바로 옆에 있고 카메라 쪽이 차폐체 내부로 향할 때
+                  const camDx = ex - occ.x;
+                  const camDz = ez - occ.z;
+                  if (fx * segDx + fz * segDz < 0 || camDx * camDx + camDz * camDz < padR2) {
+                    if (baseCamY >= occMinY - 0.35 && baseCamY <= occMaxY) {
+                      const pulled = Math.min(effDist, MIN_SPRING_ARM_DIST);
+                      if (pulled < minAllowedDist) {
+                        minAllowedDist = pulled;
+                      }
+                    }
+                  }
+                  continue;
+                }
+
+                const bQuad = 2 * (fx * segDx + fz * segDz);
+                const disc = bQuad * bQuad - 4 * aQuad * cQuad;
+                if (disc < 0) continue;
+                const tHit = (-bQuad - Math.sqrt(disc)) / (2 * aQuad);
+                if (tHit <= 0.02 || tHit >= 1.0) continue;
+                const yHit = cameraTarget.y + dirY * (tHit * effDist);
+                if (yHit >= occMinY - 0.35 && yHit <= occMaxY) {
+                  const pulled = Math.min(effDist, Math.max(MIN_SPRING_ARM_DIST, tHit * effDist - 0.42));
+                  if (pulled < minAllowedDist) {
+                    minAllowedDist = pulled;
+                  }
+                }
               }
             }
           }
         }
 
-        const armLerp = reduceMotion
-          ? 1
-          : 1 - Math.exp(-opts.dt * (minAllowedDist < springArmDist ? 18.0 : 5.2));
-        springArmDist += (minAllowedDist - springArmDist) * armLerp;
+        if (hasMeshOccluders) {
+          if (occBoundsDirty) {
+            rebuildOccluderCache();
+          }
+          if (occMeshList.length > 0) {
+            occDesiredCam.set(baseCamX, baseCamY, baseCamZ);
+            occSegmentBox.makeEmpty();
+            occSegmentBox.expandByPoint(cameraTarget);
+            occSegmentBox.expandByPoint(occDesiredCam);
+            occSegmentBox.expandByScalar(0.85);
+
+            occCandidates.length = 0;
+            for (let i = 0; i < occMeshList.length; i += 1) {
+              const mesh = occMeshList[i]!;
+              if (!mesh.visible) continue;
+              const box = occMeshBounds[i];
+              if (box && occSegmentBox.intersectsBox(box)) {
+                occCandidates.push(mesh);
+              }
+            }
+
+            if (occCandidates.length > 0) {
+              // 4-위스커: 중앙(0), 좌(-0.62), 우(+0.62), 상단(+0.34m, 석문 상인방·수목 수관 감지)
+              for (let p = 0; p < 4; p += 1) {
+                const origLat = p === 1 ? -0.14 : p === 2 ? 0.14 : 0;
+                const endLat = p === 1 ? -0.62 : p === 2 ? 0.62 : 0;
+                const endLiftY = p === 3 ? 0.34 : 0;
+
+                occRayOrigin.set(
+                  cameraTarget.x + rightX * origLat,
+                  cameraTarget.y,
+                  cameraTarget.z + rightZ * origLat,
+                );
+                occRayDir.set(
+                  baseCamX + rightX * endLat - occRayOrigin.x,
+                  baseCamY + endLiftY - occRayOrigin.y,
+                  baseCamZ + rightZ * endLat - occRayOrigin.z,
+                );
+                const probeLen = occRayDir.length();
+                if (probeLen <= 0.3) continue;
+                occRayDir.multiplyScalar(1 / probeLen);
+
+                occRaycaster.near = 0.25;
+                occRaycaster.far = Math.min(probeLen, minAllowedDist + 0.45);
+                occRaycaster.set(occRayOrigin, occRayDir);
+                occHits.length = 0;
+                occRaycaster.intersectObjects(occCandidates, false, occHits);
+                if (occHits.length > 0) {
+                  const hitDist = occHits[0]!.distance;
+                  const pulled = Math.min(effDist, Math.max(MIN_SPRING_ARM_DIST, hitDist - 0.44));
+                  if (pulled < minAllowedDist) {
+                    minAllowedDist = pulled;
+                  }
+                }
+              }
+              occHits.length = 0;
+              occCandidates.length = 0;
+            }
+          }
+        }
+
+        if (snapSpringArmOnNextFrame) {
+          springArmDist = Math.min(effDist, minAllowedDist);
+          snapSpringArmOnNextFrame = false;
+        } else {
+          const armLerp = reduceMotion
+            ? 1
+            : 1 - Math.exp(-opts.dt * (minAllowedDist < springArmDist ? 22.0 : 4.8));
+          springArmDist += (minAllowedDist - springArmDist) * armLerp;
+        }
         finalDist = Math.min(effDist, springArmDist);
       } else {
         springArmDist = effDist;
+        snapSpringArmOnNextFrame = false;
       }
 
       const cxPos = cameraTarget.x + Math.sin(effYaw) * Math.cos(effPitch) * finalDist;
@@ -1348,6 +1761,13 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         reducedMotionMq.removeEventListener("change", onReducedMotionChange);
         reducedMotionMq = null;
       }
+      occSourceObjects.length = 0;
+      occTraverseStack.length = 0;
+      occMeshList.length = 0;
+      occMeshBounds.length = 0;
+      occCandidates.length = 0;
+      occHits.length = 0;
+      villageHints = [];
     },
   };
 }

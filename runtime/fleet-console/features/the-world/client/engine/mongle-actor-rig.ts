@@ -1702,7 +1702,7 @@ export interface MongleActorRig {
 const sharedCubeGeo = new BoxGeometry(2, 2, 2);
 sharedCubeGeo.computeBoundingSphere();
 const sharedShadowSphereGeo = new SphereGeometry(0.55, 10, 8);
-const sharedContactGeo = new CircleGeometry(0.68, 24);
+const sharedContactGeo = new CircleGeometry(0.86, 28);
 sharedContactGeo.rotateX(-Math.PI * 0.5);
 const sharedTargetRingGeo = new RingGeometry(0.66, 0.80, 28);
 sharedTargetRingGeo.rotateX(-Math.PI * 0.5);
@@ -1718,25 +1718,23 @@ void main() {
 `;
 
 const CONTACT_AO_FRAGMENT = /* glsl */ `
+uniform float uOpacity;
 in vec2 vUv;
 out vec4 fragColor;
 void main() {
   float r = length(vUv * 2.0 - 1.0);
-  float a = pow(clamp(1.0 - r, 0.0, 1.0), 1.85) * 0.34;
-  if (a < 0.005) discard;
-  fragColor = vec4(0.03, 0.06, 0.04, a);
+  if (r >= 1.0) discard;
+  // 중심 접지 코어 + 외곽 부드러운 가우시안 블롭 그림자 (광장 석판·오솔길·초원 모두에서 붕 뜸 해소)
+  float core = exp(-r * r * 5.8) * 0.42;
+  float penumbra = pow(clamp(1.0 - r, 0.0, 1.0), 1.65) * 0.28;
+  float a = (core + penumbra) * uOpacity;
+  if (a < 0.004) discard;
+  fragColor = vec4(0.02, 0.045, 0.035, a);
 }
 `;
 
 // 모든 액터가 완전히 동일하게 사용하는 보조 머티리얼은 모듈 스코프에서 1회 공유한다.
 const sharedShadowMat = new MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-const sharedContactMat = new ShaderMaterial({
-  glslVersion: GLSL3,
-  transparent: true,
-  depthWrite: false,
-  vertexShader: CONTACT_AO_VERTEX,
-  fragmentShader: CONTACT_AO_FRAGMENT,
-});
 const sharedCrateMat = new MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.55, roughness: 0.35 });
 const sharedBeaconMat = new MeshStandardMaterial({ color: 0xfde047, emissive: 0xfacc15, emissiveIntensity: 1.45, roughness: 0.22 });
 
@@ -1921,10 +1919,23 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
   shadowCaster.scale.setScalar(params.scale);
   group.add(shadowCaster);
 
-  // 발밑 소프트 그라데이션 밀착 접지 그림자 (Contact AO — 각진 테두리 없음)
-  const contactDisc = new Mesh(sharedContactGeo, sharedContactMat);
+  // 발밑 소프트 그라데이션 밀착 접지 그림자 (Blob Shadow — 석판/도로 위에서도 Z-가림 없이 안정 접지, 고도 감쇠)
+  const contactMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+    uniforms: {
+      uOpacity: { value: 0.88 },
+    },
+    vertexShader: CONTACT_AO_VERTEX,
+    fragmentShader: CONTACT_AO_FRAGMENT,
+  });
+  const contactDisc = new Mesh(sharedContactGeo, contactMat);
   contactDisc.scale.setScalar(params.scale);
-  contactDisc.renderOrder = 2;
+  contactDisc.renderOrder = 4;
   group.add(contactDisc);
 
   // 발밑 3D 타깃/선택 링
@@ -2007,11 +2018,14 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       charCenter.set(opts.x, centerY, opts.z);
       volumeMesh.position.copy(charCenter);
       shadowCaster.position.set(opts.x, centerY - 0.08 * params.scale, opts.z);
-      const showContact = opts.liftY < 2.2;
+      const showContact = opts.liftY < 2.4;
       contactDisc.visible = showContact;
       if (showContact) {
-        contactDisc.position.set(opts.x, opts.groundY + 0.025, opts.z);
-        const shrink = Math.max(0.35, 1 - opts.liftY * 0.35);
+        contactDisc.position.set(opts.x, opts.groundY + 0.058, opts.z);
+        const landBoost = (opts.landSquash ?? 0) * 0.14;
+        const shrink = Math.max(0.42, 1 - opts.liftY * 0.24 + landBoost);
+        const heightFade = Math.max(0, Math.min(1, 1 - opts.liftY / 2.2));
+        contactMat.uniforms["uOpacity"]!.value = (0.86 + landBoost * 0.4) * heightFade * heightFade;
         contactDisc.scale.set(params.scale * shrink, params.scale * shrink, params.scale * shrink);
       }
 
@@ -2119,6 +2133,7 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
     },
     dispose() {
       mat.dispose();
+      contactMat.dispose();
       ringMat.dispose();
     },
   };

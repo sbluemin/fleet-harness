@@ -28,7 +28,7 @@ import type {
 import type { TheWorldClientDeps } from "./deps.js";
 import { BROOK_SPAN_HALF_X, brookProfile } from "./engine/brook-geometry.js";
 import { getWorldT } from "./i18n/index.js";
-import { useVillageBiomes, useWorldActive } from "./world-store.js";
+import { useVillageBiomes, useWorldActive, type WorldCurrentZoneInfo } from "./world-store.js";
 
 /**
  * 실시간 플릿 콘솔 상태(사령관 목록 · Theater 발전도 지표 · Objective 클러스터 · 아바타 북)
@@ -41,7 +41,64 @@ import { useVillageBiomes, useWorldActive } from "./world-store.js";
 
 const PLAZA_X = 0;
 const PLAZA_Z = -1.5;
+const PLAZA_ZONE_RADIUS = 12.5;
+const VILLAGE_ZONE_MARGIN = 2.6;
 const MAX_DISTRICTS_PER_VILLAGE = 12;
+
+/**
+ * 플레이어의 월드 좌표 `(playerX, playerZ)`가 속한 현재 체류 구역(사령관 마을 · 중앙 길드 광장 · 별빛 초원)을 판별한다.
+ * 프레임 루프에서 호출 가능하도록 배열 할당 없이 선형 탐색만 수행한다.
+ */
+export function resolvePlayerCurrentZone(
+  playerX: number,
+  playerZ: number,
+  villages: readonly WorldVillageSpec[],
+  plazaLabel: string,
+  meadowLabel: string,
+): WorldCurrentZoneInfo {
+  let matchedVillage: WorldVillageSpec | null = null;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < villages.length; i += 1) {
+    const v = villages[i]!;
+    const dx = playerX - v.x;
+    const dz = playerZ - v.z;
+    const distSq = dx * dx + dz * dz;
+    const enterRadius = v.radius + VILLAGE_ZONE_MARGIN;
+    if (distSq <= enterRadius * enterRadius && distSq < bestDistSq) {
+      bestDistSq = distSq;
+      matchedVillage = v;
+    }
+  }
+
+  if (matchedVillage) {
+    return {
+      id: matchedVillage.id,
+      kind: "village",
+      label: matchedVillage.label,
+      tone: matchedVillage.tone,
+      villageId: matchedVillage.id,
+    };
+  }
+
+  const pdx = playerX - PLAZA_X;
+  const pdz = playerZ - PLAZA_Z;
+  if (pdx * pdx + pdz * pdz <= PLAZA_ZONE_RADIUS * PLAZA_ZONE_RADIUS) {
+    return {
+      id: "plaza-main",
+      kind: "plaza",
+      label: plazaLabel,
+      tone: "amber",
+    };
+  }
+
+  return {
+    id: "starlight-meadow",
+    kind: "meadow",
+    label: meadowLabel,
+    tone: "teal",
+  };
+}
 const MAX_VISIBLE_OUTPOSTS = 8;
 const MAX_WORLD_PLACE_RADIUS = 78.0;
 

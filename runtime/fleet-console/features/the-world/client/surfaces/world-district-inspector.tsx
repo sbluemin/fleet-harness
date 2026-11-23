@@ -10,10 +10,12 @@ import type {
   WorldVillageBiome,
   WorldVillageSpec,
 } from "../../shared/world-types.js";
-import { playDistrictHover, playFlagPlant } from "../engine/world-audio.js";
+import type { TheWorldClientDeps } from "../deps.js";
+import { playDistrictHover, playDistrictSelect, playFlagPlant } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   clearDispatchFlag,
+  exitTheWorld,
   placeDispatchFlag,
   setDistrictNote,
   setOperationFlag,
@@ -55,6 +57,8 @@ export interface WorldDistrictInspectorProps {
   readonly operationFlag?: WorldOperationFlag | null | undefined;
   readonly onDeployOperationFlag?: ((input: WorldOperationFlagDeployInput) => void) | undefined;
   readonly onClearOperationFlag?: (() => void) | undefined;
+  readonly onOpenInConsole?: ((commodoreId: string, objectiveId?: string | null) => void) | undefined;
+  readonly deps?: Pick<TheWorldClientDeps, "openCommodoreInConsole" | "openObjectiveInConsole" | "isReducedMotion"> | undefined;
 }
 
 const VILLAGE_BIOMES: readonly {
@@ -91,10 +95,13 @@ function formatNumber(n: number): string {
 }
 
 /**
- * 다크 크리스탈 스타일 「Theater 구역 정보 카드 (SimCity Inspector)」.
+ * 다크 크리스탈 스타일 「구역 정보 카드 (District Inspector)」.
  *
- * 보안 불변식: 원시 파일시스템 절대경로(`path`)는 절대 표시하지 않고
- * `label` · `status` · 짧은 `theaterId` 뱃지만 노출한다.
+ * - 상단 핵심 정보 우선 배치: 규모(파일/폴더/Tier) · 연결된 목표 · 제독 메모 · 작전 깃발.
+ * - 장식용 마을 테마 바이옴은 하단 접이식 섹션으로 정리.
+ * - 하단 풋터는 2열 2버튼(`지시하기`, `콘솔에서 열기`)으로 깔끔히 통일.
+ * - 보안 불변식: 원시 파일시스템 절대경로(`path`)는 절대 표시하지 않고
+ *   `label` · `status` · 짧은 `theaterId` 뱃지만 노출한다.
  */
 export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   district,
@@ -109,7 +116,6 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   onRefreshMetrics,
   onMentionCommodore,
   onTeleportToDistrict,
-  onOpenDialogue,
   onFocusCommodore,
   onOpenObjective,
   onPlantDispatchFlag,
@@ -119,10 +125,10 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   operationFlag: operationFlagProp,
   onDeployOperationFlag,
   onClearOperationFlag,
+  onOpenInConsole,
+  deps,
 }: WorldDistrictInspectorProps) {
   const t = getWorldT(locale);
-  const isEn = locale === "en";
-  const bi = (ko: string, en: string) => (isEn ? en : ko);
   const storeOpFlag = useOperationFlag();
   const activeOpFlag = operationFlagProp !== undefined ? operationFlagProp : storeOpFlag;
   const isOpFlagHere = Boolean(
@@ -139,9 +145,11 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   const progressPct = Math.round(Math.max(0, Math.min(1, district.progress01)) * 100);
   const isScanning = refreshing || (!district.metricsLoaded && district.status === "available");
   const activeBiome: WorldVillageBiome = village?.biome ?? "meadow";
+  const activeBiomeMeta = VILLAGE_BIOMES.find((b) => b.id === activeBiome) ?? VILLAGE_BIOMES[0]!;
   const [noteDraft, setNoteDraft] = useState(districtNote);
   const [opFlagFormOpen, setOpFlagFormOpen] = useState(false);
   const [opFlagDirective, setOpFlagDirective] = useState("");
+  const [biomeExpanded, setBiomeExpanded] = useState(false);
 
   useEffect(() => {
     setNoteDraft(districtNote);
@@ -170,6 +178,20 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
     } else {
       setVillageBiome(district.commodoreId, biome);
     }
+  };
+
+  const handleOpenInConsole = () => {
+    playDistrictSelect();
+    if (onOpenInConsole) {
+      onOpenInConsole(district.commodoreId, null);
+      return;
+    }
+    if (deps) {
+      deps.openCommodoreInConsole(district.commodoreId, { tab: "info" });
+      exitTheWorld({ reducedMotion: deps.isReducedMotion() });
+      return;
+    }
+    exitTheWorld();
   };
 
   const hasFlagHere = isOpFlagHere || hasDispatchFlag;
@@ -254,6 +276,15 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
         <div className="the-world-district-head-actions">
           <button
             type="button"
+            className="the-world-chat-icon-btn"
+            aria-label={t("theWorld.district.teleportAria", { name: district.label })}
+            title={t("theWorld.district.actionTeleport")}
+            onClick={() => onTeleportToDistrict(district.x, district.z, district.label)}
+          >
+            <WorldIcon name="compass" size={14} tone="cerulean" />
+          </button>
+          <button
+            type="button"
             className={`the-world-chat-icon-btn${isScanning ? " is-spinning" : ""}`}
             aria-label={t("theWorld.district.refreshAria")}
             title={t("theWorld.district.refreshTitle")}
@@ -310,35 +341,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           <WorldIcon name="approach" size={13} tone="cerulean" />
         </button>
 
-        {/* 마을 분위기(바이옴) 4종 테마 선택 필 */}
-        {village ? (
-          <div className="the-world-district-biome-block">
-            <span className="the-world-district-section-label">{t("theWorld.biome.pickerLabel")}</span>
-            <div
-              className="the-world-district-biome-pills the-world-biome-picker"
-              role="group"
-              aria-label={t("theWorld.biome.groupAria")}
-            >
-              {VILLAGE_BIOMES.map((item) => {
-                const active = activeBiome === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`the-world-district-biome-pill${active ? " is-active" : ""}`}
-                    aria-pressed={active}
-                    onClick={() => handleSelectBiome(item.id)}
-                  >
-                    <WorldIcon name={item.icon} size={12} tone={active ? "amber" : item.tone} />
-                    <span>{t(item.key)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-
-        {/* 파일 · 폴더 · 총 항목 3열 규모 카드 */}
+        {/* 1) 규모(파일 · 폴더 · 총 항목) 3열 카드 — 최상단 운영 지표 */}
         <div className="the-world-district-metrics">
           <div className="the-world-district-metric-tile">
             <span className="the-world-district-metric-label">{t("theWorld.district.filesLabel")}</span>
@@ -362,7 +365,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           </div>
         </div>
 
-        {/* 심시티 발전도 5단계 게이지 */}
+        {/* 2) Tier 발전도 5단계 게이지 */}
         <div className="the-world-district-progress-block">
           <div className="the-world-district-progress-head">
             <span className="the-world-district-section-label">{t("theWorld.district.progressLabel")}</span>
@@ -406,7 +409,35 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           ) : null}
         </div>
 
-        {/* 제독 메모 (인라인 저장 — localStorage 영속 + 3D 노란 메모핀 연동) */}
+        {/* 3) 연결된 목표 목록 (상단 우선 배치) */}
+        <div className="the-world-district-objectives">
+          <div className="the-world-district-objectives-head">
+            <span className="the-world-district-section-label">{t("theWorld.district.objectivesHeading")}</span>
+            <span className="the-world-district-objectives-count">{linkedObjectives.length}</span>
+          </div>
+          {linkedObjectives.length === 0 ? (
+            <div className="the-world-district-objectives-empty">
+              {t("theWorld.district.objectivesEmpty")}
+            </div>
+          ) : (
+            <div className="the-world-district-objectives-list">
+              {linkedObjectives.map((obj) => (
+                <button
+                  key={obj.id}
+                  type="button"
+                  className="the-world-district-objective-chip"
+                  aria-label={t("theWorld.district.objectiveAria", { title: obj.title })}
+                  onClick={() => onOpenObjective(commodoreActorId, obj.id)}
+                >
+                  <WorldIcon name="questMap" size={12} tone="moss" />
+                  <span className="the-world-district-objective-title">{obj.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* 4) 제독 메모 (인라인 저장 — localStorage 영속 + 3D 노란 메모핀 연동) */}
         <form className="the-world-district-note-block" onSubmit={handleNoteSubmit}>
           <span className="the-world-district-note-head">
             <WorldIcon name="note" size={11} tone="amber" />
@@ -450,7 +481,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           </div>
         </form>
 
-        {/* 통합 작전 깃발 블록: 1줄 지시 배치 · 즉시 깃발 꽂기 · 활성 시 깃발 회수 */}
+        {/* 5) 통합 작전 깃발 블록 (고유 aria-label 분리) */}
         <div className="the-world-district-opflag-block">
           {hasFlagHere ? (
             <div className="the-world-district-opflag-active">
@@ -458,7 +489,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                 <WorldIcon name="flag" size={13} tone="amber" />
                 <div className="the-world-district-opflag-copy">
                   <span className="the-world-district-opflag-kicker">
-                    {bi("작전 깃발 활성", "Operation Flag Active")}
+                    {t("theWorld.district.opFlagActive")}
                   </span>
                   <span className="the-world-district-opflag-text">
                     {activeOpFlag?.directive || district.label}
@@ -470,7 +501,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                 className="the-world-district-note-btn is-opflag-clear"
                 onClick={handleClearUnifiedFlag}
               >
-                {bi("깃발 회수", "Clear Flag")}
+                {t("theWorld.district.opFlagClear")}
               </button>
             </div>
           ) : (
@@ -479,20 +510,20 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                 <button
                   type="button"
                   className={`the-world-district-opflag-trigger${opFlagFormOpen ? " is-active" : ""}`}
-                  aria-label={t("theWorld.district.plantFlagAria", { name: district.label })}
+                  aria-label={t("theWorld.district.plantFlagOrderAria", { name: district.label })}
                   aria-expanded={opFlagFormOpen}
                   onClick={() => setOpFlagFormOpen((prev) => !prev)}
                 >
                   <WorldIcon name="flag" size={13} tone="amber" />
-                  <span>{bi("작전 깃발 꽂고 지시", "Plant Flag & Order")}</span>
+                  <span>{t("theWorld.district.plantFlagOrder")}</span>
                 </button>
                 <button
                   type="button"
                   className="the-world-district-note-btn is-save"
-                  aria-label={t("theWorld.district.plantFlagAria", { name: district.label })}
+                  aria-label={t("theWorld.district.plantFlagQuickAria", { name: district.label })}
                   onClick={() => handleDeployUnifiedFlag("")}
                 >
-                  {bi("바로 꽂기", "Plant")}
+                  {t("theWorld.district.plantFlagQuick")}
                 </button>
               </div>
               {opFlagFormOpen ? (
@@ -508,7 +539,8 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                     className="the-world-district-note-input"
                     value={opFlagDirective}
                     maxLength={240}
-                    placeholder={bi("1줄 지시 입력 (비워두고 바로 배치 가능)...", "1-line directive (optional)...")}
+                    placeholder={t("theWorld.district.opFlagPlaceholder")}
+                    aria-label={t("theWorld.district.plantFlagOrderAria", { name: district.label })}
                     onKeyDown={(e) => {
                       e.stopPropagation();
                       if (e.key === "Escape") setOpFlagFormOpen(false);
@@ -519,7 +551,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
                     type="submit"
                     className="the-world-district-note-btn is-save"
                   >
-                    {bi("배치", "Deploy")}
+                    {t("theWorld.district.opFlagDeploy")}
                   </button>
                 </form>
               ) : null}
@@ -527,36 +559,57 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           )}
         </div>
 
-        {/* 연결된 목표 목록 */}
-        <div className="the-world-district-objectives">
-          <div className="the-world-district-objectives-head">
-            <span className="the-world-district-section-label">{t("theWorld.district.objectivesHeading")}</span>
-            <span className="the-world-district-objectives-count">{linkedObjectives.length}</span>
+        {/* 6) 마을 테마 바이옴 — 하단 접이식 섹션 */}
+        {village ? (
+          <div className="the-world-district-biome-block the-world-district-biome-collapsible">
+            <button
+              type="button"
+              className="the-world-district-biome-toggle"
+              aria-expanded={biomeExpanded}
+              aria-label={t("theWorld.district.biomeToggleAria")}
+              onClick={() => {
+                playDistrictHover();
+                setBiomeExpanded((prev) => !prev);
+              }}
+            >
+              <span className="the-world-district-biome-toggle-left">
+                <WorldIcon name={activeBiomeMeta.icon} size={12} tone={activeBiomeMeta.tone} />
+                <span className="the-world-district-section-label">{t("theWorld.biome.pickerLabel")}</span>
+              </span>
+              <span className="the-world-district-biome-toggle-right">
+                <span className="the-world-district-biome-current">{t(activeBiomeMeta.key)}</span>
+                <span className="the-world-tools-caret" aria-hidden="true">{biomeExpanded ? "▴" : "▾"}</span>
+              </span>
+            </button>
+
+            {biomeExpanded ? (
+              <div
+                className="the-world-district-biome-pills the-world-biome-picker"
+                role="group"
+                aria-label={t("theWorld.biome.groupAria")}
+              >
+                {VILLAGE_BIOMES.map((item) => {
+                  const active = activeBiome === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`the-world-district-biome-pill${active ? " is-active" : ""}`}
+                      aria-pressed={active}
+                      onClick={() => handleSelectBiome(item.id)}
+                    >
+                      <WorldIcon name={item.icon} size={12} tone={active ? "amber" : item.tone} />
+                      <span>{t(item.key)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-          {linkedObjectives.length === 0 ? (
-            <div className="the-world-district-objectives-empty">
-              {t("theWorld.district.objectivesEmpty")}
-            </div>
-          ) : (
-            <div className="the-world-district-objectives-list">
-              {linkedObjectives.map((obj) => (
-                <button
-                  key={obj.id}
-                  type="button"
-                  className="the-world-district-objective-chip"
-                  aria-label={t("theWorld.district.objectiveAria", { title: obj.title })}
-                  onClick={() => onOpenObjective(commodoreActorId, obj.id)}
-                >
-                  <WorldIcon name="questMap" size={12} tone="moss" />
-                  <span className="the-world-district-objective-title">{obj.title}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        ) : null}
       </div>
 
-      {/* 하단 액션 바: @멘션 바로 지시 · 구역 이동 · 대화창 */}
+      {/* 하단 2열 2버튼 액션 바: 지시하기 · 콘솔에서 열기 */}
       <footer className="the-world-district-actions">
         <button
           type="button"
@@ -566,27 +619,17 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
           onClick={() => onMentionCommodore(commodoreActorId)}
         >
           <WorldIcon name="chat" size={13} tone="amber" />
-          <span>{t("theWorld.district.actionMention", { name: district.commodoreName })}</span>
+          <span>{t("theWorld.district.actionOrder")}</span>
         </button>
 
         <button
           type="button"
           className="the-world-district-action"
-          aria-label={t("theWorld.district.teleportAria", { name: district.label })}
-          onClick={() => onTeleportToDistrict(district.x, district.z, district.label)}
+          aria-label={t("theWorld.action.openInConsoleAria", { name: district.commodoreName })}
+          onClick={handleOpenInConsole}
         >
-          <WorldIcon name="compass" size={13} tone="cerulean" />
-          <span>{t("theWorld.district.actionTeleport")}</span>
-        </button>
-
-        <button
-          type="button"
-          className="the-world-district-action"
-          aria-label={t("theWorld.district.dialogueAria", { name: district.commodoreName })}
-          onClick={() => onOpenDialogue(commodoreActorId)}
-        >
-          <WorldIcon name="inspect" size={13} tone="teal" />
-          <span>{t("theWorld.district.actionDialogue")}</span>
+          <WorldIcon name="portalExit" size={13} tone="cerulean" />
+          <span>{t("theWorld.action.openInConsole")}</span>
         </button>
       </footer>
     </aside>

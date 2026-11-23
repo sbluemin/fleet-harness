@@ -1,5 +1,5 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef } from "react";
 
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import type {
@@ -14,6 +14,7 @@ import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   COSMETIC_UNLOCK_THRESHOLDS,
   isCosmeticUnlocked,
+  setAdmiralCustomizerTab,
   setCommodoreGift,
   setStampBookOpen,
   useWorldStore,
@@ -141,7 +142,9 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
   onOpenStampBook,
 }: WorldAdmiralCustomizerProps) {
   const store = useWorldStore();
-  const [tab, setTab] = useState<CustomizerTab>("self");
+  const tab: CustomizerTab = store.admiralCustomizerTab;
+  const focusedCommodoreId = store.admiralCustomizerFocusCommodoreId;
+  const focusedGiftCardRef = useRef<HTMLDivElement | null>(null);
   const t = getWorldT(locale);
   const unlockedStampCount = store.unlockedStamps.length;
   const activeHatMeta = ADMIRAL_HATS.find((h) => h.id === style.hat) ?? ADMIRAL_HATS[0]!;
@@ -150,6 +153,14 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
     (actor): actor is WorldActorSpec & { readonly commodoreId: string } =>
       actor.role === "commodore" && typeof actor.commodoreId === "string" && actor.commodoreId.length > 0,
   );
+
+  useEffect(() => {
+    if (tab !== "gifts" || !focusedCommodoreId) return;
+    const id = window.requestAnimationFrame(() => {
+      focusedGiftCardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [focusedCommodoreId, tab]);
 
   const handleLockedCosmeticClick = (requiredCount: number) => {
     playDistrictHover();
@@ -224,7 +235,7 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
           className={`the-world-customizer-tab${tab === "self" ? " is-active" : ""}`}
           onClick={() => {
             playDistrictHover();
-            setTab("self");
+            setAdmiralCustomizerTab("self");
           }}
         >
           <WorldIcon name="hat" size={13} tone={tab === "self" ? "amber" : "cerulean"} />
@@ -237,7 +248,7 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
           className={`the-world-customizer-tab${tab === "gifts" ? " is-active" : ""}`}
           onClick={() => {
             playDistrictHover();
-            setTab("gifts");
+            setAdmiralCustomizerTab("gifts");
           }}
         >
           <WorldIcon name="gift" size={13} tone={tab === "gifts" ? "amber" : "rose"} />
@@ -445,8 +456,14 @@ export const WorldAdmiralCustomizer = memo(function WorldAdmiralCustomizer({
             <div className="the-world-gift-list">
               {giftableCommodores.map((actor) => {
                 const currentGift = effectiveGifts[actor.commodoreId] ?? null;
+                const isFocused = focusedCommodoreId === actor.commodoreId;
                 return (
-                  <div key={actor.id} className="the-world-gift-card" data-tone={actor.tone}>
+                  <div
+                    key={actor.id}
+                    ref={isFocused ? focusedGiftCardRef : undefined}
+                    className={`the-world-gift-card${isFocused ? " is-focused" : ""}`}
+                    data-tone={actor.tone}
+                  >
                     <div className="the-world-gift-card-head">
                       <span className="the-world-gazette-tone-dot" data-tone={actor.tone} aria-hidden="true" />
                       <span className="the-world-gift-card-name">{actor.name}</span>

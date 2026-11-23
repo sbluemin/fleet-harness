@@ -9,24 +9,14 @@ import {
 import {
   activateChat,
   closeActorInteraction,
-  closeAdmiralCustomizer,
-  closeDistrictContextMenu,
-  closeGazette,
-  closeMailbox,
-  closeQuestBoard,
-  closeSkyQuickMenu,
-  closeWarRoom,
-  deactivateChat,
-  exitTheWorld,
+  dismissTopOverlayLayer,
   getWorldStoreSnapshot,
+  hasOpenHudPopover,
   openActorRadialMenu,
   requestPlayerEmote,
   setCinemaMode,
   setEmoteWheelOpen,
-  setOverviewMode,
-  setPhotoMode,
   setSittingAtCampfire,
-  setStampBookOpen,
   toggleCinemaMode,
   toggleEmoteWheel,
   toggleOverviewMode,
@@ -47,7 +37,7 @@ import {
  * - `1` / `2` / `3`: 제독 퀵 감정표현(`wave` / `cheer` / `jump`)
  * - `?` / `H`: 조작 가이드 모달 토글
  * - `Shift+D`: 디버그 패널 노출 토글
- * - `Escape`: 낚시 → 포토 → 시네마 → 빠른 이동 → 모달 → 불멍 → 채팅 → 상호작용 → 별빛 비행 → 월드 탈출 우선순위 해제
+ * - `Escape`: 낚시 → HUD 팝오버 → 포토 → 시네마 → 조작 가이드 → 모달/채팅/상호작용/별빛 비행 최상위 1겹만 해제 (유휴 상태에서 더 월드 전체 종료 금지)
  */
 
 /** 모닥불 벤치 `E` 키 우선 판정 반경 (`world-stage.tsx` 근접 칩과 단일 기준 공유). */
@@ -72,7 +62,6 @@ export interface UseWorldShortcutsOptions {
   readonly onStartFishing: () => void;
   readonly onReelFishing: () => void;
   readonly onCancelFishing: () => void;
-  readonly isReducedMotion: () => boolean;
 }
 
 export function useWorldShortcuts({
@@ -94,7 +83,6 @@ export function useWorldShortcuts({
   onStartFishing,
   onReelFishing,
   onCancelFishing,
-  isReducedMotion,
 }: UseWorldShortcutsOptions): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -102,31 +90,21 @@ export function useWorldShortcuts({
         const tag = event.target.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || event.target.isContentEditable) {
           if (event.key === "Escape") {
+            const hasExternalModal = Array.from(document.querySelectorAll('[aria-modal="true"]:not([hidden])'))
+              .some((el) => !rootRef.current?.contains(el));
+            if (hasExternalModal) return;
             event.preventDefault();
+            event.stopPropagation();
             event.target.blur();
             const current = getWorldStoreSnapshot();
-            if (current.skyQuickMenu) {
-              closeSkyQuickMenu();
-            } else if (fastTravelOpenRef.current) {
-              onCloseFastTravel();
-            } else if (current.chatActive) {
-              deactivateChat();
+            if (current.fishingPhase !== "idle") {
+              onCancelFishing();
+            } else if (hasOpenHudPopover(current)) {
+              dismissTopOverlayLayer();
             } else if (controlsGuideOpenRef.current) {
               onCloseControlsGuide();
-            } else if (current.warRoomOpen) {
-              closeWarRoom();
-            } else if (current.admiralCustomizerOpen) {
-              closeAdmiralCustomizer();
-            } else if (current.questBoardOpen) {
-              closeQuestBoard();
-            } else if (current.mailboxOpen) {
-              closeMailbox();
-            } else if (current.gazetteOpen) {
-              closeGazette();
-            } else if (current.stampBookOpen) {
-              setStampBookOpen(false);
-            } else if (current.interactionMode !== "closed" || current.selectedDistrictId !== null) {
-              closeActorInteraction();
+            } else {
+              dismissTopOverlayLayer();
             }
           }
           return;
@@ -206,7 +184,7 @@ export function useWorldShortcuts({
         && !event.altKey
         && !event.shiftKey
       ) {
-        if (fastTravelOpenRef.current) {
+        if (snap.quickJumpOpen || fastTravelOpenRef.current) {
           event.preventDefault();
           onCloseFastTravel();
           return;
@@ -428,82 +406,49 @@ export function useWorldShortcuts({
           .some((el) => !rootRef.current?.contains(el));
         if (hasExternalModal) return;
         event.preventDefault();
+        event.stopPropagation();
         if (snap.fishingPhase !== "idle") {
           onCancelFishing();
           return;
         }
+        if (hasOpenHudPopover(snap)) {
+          dismissTopOverlayLayer();
+          return;
+        }
         if (snap.photoMode) {
           playPhotoShutter();
-          setPhotoMode(false);
+          dismissTopOverlayLayer();
           return;
         }
         if (snap.cinemaMode) {
           playOverviewToggle(false);
-          setCinemaMode(false);
+          dismissTopOverlayLayer();
           return;
         }
         if (guideOpen) {
           onCloseControlsGuide();
           return;
         }
-        if (fastTravelOpenRef.current) {
-          onCloseFastTravel();
-          return;
-        }
-        if (snap.sittingAtCampfire) {
-          setSittingAtCampfire(false);
-          return;
-        }
-        if (snap.emoteWheelOpen) {
-          setEmoteWheelOpen(false);
-          return;
-        }
-        if (snap.skyQuickMenu) {
-          closeSkyQuickMenu();
-          return;
-        }
-        if (snap.districtContextMenu) {
-          closeDistrictContextMenu();
-          return;
-        }
-        if (snap.mailboxOpen) {
-          closeMailbox();
-          return;
-        }
-        if (snap.gazetteOpen) {
-          closeGazette();
-          return;
-        }
-        if (snap.stampBookOpen) {
-          setStampBookOpen(false);
-          return;
-        }
-        if (snap.warRoomOpen) {
-          closeWarRoom();
-          return;
-        }
-        if (snap.admiralCustomizerOpen) {
-          closeAdmiralCustomizer();
-          return;
-        }
-        if (snap.questBoardOpen) {
-          closeQuestBoard();
-          return;
-        }
-        if (snap.chatActive) {
-          deactivateChat();
-          return;
-        }
-        if (snap.interactionMode !== "closed" || snap.selectedDistrictId !== null) {
-          closeActorInteraction();
-          return;
-        }
-        if (snap.overviewMode) {
+        const willExitOverview =
+          !snap.sittingAtCampfire
+          && !snap.emoteWheelOpen
+          && !snap.skyQuickMenu
+          && !snap.districtContextMenu
+          && !snap.mailboxOpen
+          && !snap.gazetteOpen
+          && !snap.stampBookOpen
+          && !snap.warRoomOpen
+          && !snap.admiralCustomizerOpen
+          && !snap.questBoardOpen
+          && !snap.chatActive
+          && snap.interactionMode === "closed"
+          && snap.selectedDistrictId === null
+          && snap.overviewMode;
+        if (willExitOverview) {
           playOverviewToggle(false);
-          setOverviewMode(false);
-          return;
         }
-        exitTheWorld({ reducedMotion: isReducedMotion() });
+        // 통합 Esc 스택 최상위 1겹만 해제 — 유휴 상태에서 더 월드 전체를 절대 닫지 않는다.
+        dismissTopOverlayLayer();
       }
     };
 
@@ -512,7 +457,6 @@ export function useWorldShortcuts({
   }, [
     controlsGuideOpenRef,
     fastTravelOpenRef,
-    isReducedMotion,
     nearCampfireRef,
     nearFishingWaterRef,
     nearMailboxRef,

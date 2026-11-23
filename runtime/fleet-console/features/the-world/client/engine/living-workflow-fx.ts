@@ -73,6 +73,17 @@ export interface OperationFlagFxInput {
   readonly accentHex?: number | undefined;
 }
 
+export interface LandingPreviewInput {
+  readonly x: number;
+  readonly z: number;
+  /** 선택적 지면 높이. 미지정 시 `getGroundHeight(x, z)`를 자동 샘플링한다. */
+  readonly y?: number | undefined;
+  /** 선택적 강조색 (기본값: 별빛 골드 `0xfde047`). */
+  readonly accentHex?: number | undefined;
+  /** 선택적 반경 스케일 (기본값: `1.0`). */
+  readonly scale?: number | undefined;
+}
+
 export interface LivingWorkflowFx {
   /** 두 지점 사이로 포물선(2차 베지어) 별빛 전령 구슬을 발사한다. */
   spawnCourier(from: LivingWorkflowPoint, to: LivingWorkflowPoint, colorHex?: number): void;
@@ -90,6 +101,8 @@ export interface LivingWorkflowFx {
   triggerVillageFirework(x: number, z: number, accentHex?: number): void;
   /** 3D 작전 깃발(웨이포인트)과 사령관 출동 별빛 궤적을 배치하거나(`null`로) 즉시 해제한다. */
   setOperationFlag(flag: OperationFlagFxInput | null): void;
+  /** 별빛 비행(`F`) 중 마우스 호버 지면/마을 착지 지점에 부드럽게 맥동하는 0-GC 유성 착지 예고 링을 배치하거나(`null`로) 해제한다. */
+  setLandingPreview(position: LandingPreviewInput | null): void;
   /** 두 마을 사이를 잇는 빛나는 포물선 합동 작전 별빛 아치를 6.5초간 연출한다. */
   spawnJointMissionArch(fromX: number, fromZ: number, toX: number, toZ: number, colorHex?: number): void;
   /** 매 프레임 리빙 워크플로우 FX를 갱신한다 (비활성 FX는 visible=false로 Draw Call 0 유지). */
@@ -382,6 +395,83 @@ void main() {
   vec3 col = mix(uAccentColor, gold, 0.55);
   float alpha = clamp((ring1 + ring2) * 0.78 + outerRim + centerGlow, 0.0, 0.86);
   if (alpha < 0.01) discard;
+  fragColor = vec4(col, alpha);
+}
+`;
+
+const LANDING_PREVIEW_RING_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uOpacity;
+uniform vec3 uAccentColor;
+in vec2 vUv;
+out vec4 fragColor;
+
+void main() {
+  if (uOpacity <= 0.004) discard;
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  if (r > 1.0) discard;
+
+  float ang = atan(p.y, p.x);
+
+  // 안쪽으로 수렴하는 유성 착지 락온 파동 2겹
+  float w1 = 1.0 - fract(uTime * 0.74);
+  float w2 = 1.0 - fract(uTime * 0.74 + 0.5);
+  float wave1 = (1.0 - smoothstep(0.0, 0.058, abs(r - w1 * 0.92))) * smoothstep(0.0, 0.16, w1) * (1.0 - w1 * 0.52);
+  float wave2 = (1.0 - smoothstep(0.0, 0.058, abs(r - w2 * 0.92))) * smoothstep(0.0, 0.16, w2) * (1.0 - w2 * 0.52);
+
+  // 회전하는 외곽 별빛 조준 링 + 8분할 나침반 대시
+  float pulse = 0.86 + 0.14 * sin(uTime * 4.2);
+  float outerBand = 1.0 - smoothstep(0.0, 0.052, abs(r - 0.86));
+  float dash = smoothstep(0.16, 0.54, 0.5 + 0.5 * sin(ang * 8.0 + uTime * 2.3));
+  float outerRing = outerBand * (0.48 + 0.52 * dash) * pulse;
+
+  // 내측 보조 링
+  float innerRing = (1.0 - smoothstep(0.0, 0.032, abs(r - 0.44))) * 0.54;
+
+  // 중앙 회전 4각 별빛 십자 레티클 + 코어 글로우
+  float rot = uTime * 0.88;
+  float cs = cos(rot);
+  float sn = sin(rot);
+  vec2 rp = vec2(p.x * cs - p.y * sn, p.x * sn + p.y * cs);
+  float crossX = (1.0 - smoothstep(0.012, 0.036, abs(rp.y))) * (1.0 - smoothstep(0.06, 0.24, abs(rp.x)));
+  float crossY = (1.0 - smoothstep(0.012, 0.036, abs(rp.x))) * (1.0 - smoothstep(0.06, 0.24, abs(rp.y)));
+  float starCore = (1.0 - smoothstep(0.0, 0.19, r)) * 0.58;
+  float reticle = clamp(max(crossX, crossY) * 0.84 + starCore, 0.0, 1.0);
+
+  // 부드러운 외곽 오라 채움
+  float softFill = (1.0 - smoothstep(0.18, 0.96, r)) * 0.15 * pulse;
+
+  vec3 warmCream = vec3(1.0, 0.96, 0.78);
+  vec3 col = mix(uAccentColor, warmCream, clamp(reticle * 0.62 + outerRing * 0.34, 0.0, 1.0));
+  float alpha = clamp((wave1 + wave2) * 0.74 + outerRing * 0.92 + innerRing + reticle * 0.84 + softFill, 0.0, 0.92) * uOpacity;
+  if (alpha < 0.008) discard;
+  fragColor = vec4(col, alpha);
+}
+`;
+
+const LANDING_PREVIEW_BEAM_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uOpacity;
+uniform vec3 uAccentColor;
+in vec2 vUv;
+in vec3 vNormalView;
+in vec3 vViewDir;
+out vec4 fragColor;
+
+void main() {
+  if (uOpacity <= 0.004) discard;
+  float h = clamp(vUv.y, 0.0, 1.0);
+  float vFade = smoothstep(0.0, 0.08, h) * pow(1.0 - h, 1.75);
+  float ang = vUv.x * 6.2831853;
+  float stream = 0.55 + 0.45 * sin(h * 11.0 + uTime * 5.2 + sin(ang * 3.0) * 0.5);
+  float ndv = abs(dot(normalize(vNormalView), normalize(vViewDir)));
+  float edge = pow(clamp(ndv, 0.0, 1.0), 1.15);
+
+  vec3 warmCream = vec3(1.0, 0.95, 0.75);
+  vec3 col = mix(uAccentColor, warmCream, clamp(0.25 + (1.0 - h) * 0.45, 0.0, 1.0));
+  float alpha = vFade * edge * (0.18 + 0.24 * stream) * uOpacity;
+  if (alpha < 0.006) discard;
   fragColor = vec4(col, alpha);
 }
 `;
@@ -867,6 +957,73 @@ export function createLivingWorkflowFx(
   opTrajInst.renderOrder = 9;
   root.add(opTrajInst);
 
+  // 10. 별빛 비행(`F`) 중 지면/마을 호버 유성 착지 예고 링 + 별빛 낙하 비콘 (0-GC)
+  const landingPreviewGroup = new Group();
+  landingPreviewGroup.visible = false;
+  const landingRingGeo = new PlaneGeometry(6.4, 6.4);
+  landingRingGeo.rotateX(-Math.PI * 0.5);
+  const landingRingMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uAccentColor: { value: new Color(0xfde047) },
+    },
+    vertexShader: OP_RING_VERTEX,
+    fragmentShader: LANDING_PREVIEW_RING_FRAGMENT,
+  });
+  const landingRingMesh = new Mesh(landingRingGeo, landingRingMat);
+  landingRingMesh.position.y = 0.14;
+  landingRingMesh.frustumCulled = false;
+  landingRingMesh.renderOrder = 11;
+
+  const landingBeamGeo = new CylinderGeometry(0.16, 0.78, 6.8, 16, 1, true);
+  landingBeamGeo.translate(0, 3.4, 0);
+  const landingBeamMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uAccentColor: { value: new Color(0xfde047) },
+    },
+    vertexShader: AURORA_PILLAR_VERTEX,
+    fragmentShader: LANDING_PREVIEW_BEAM_FRAGMENT,
+  });
+  const landingBeamMesh = new Mesh(landingBeamGeo, landingBeamMat);
+  landingBeamMesh.position.y = 0.12;
+  landingBeamMesh.frustumCulled = false;
+  landingBeamMesh.renderOrder = 11;
+
+  landingPreviewGroup.add(landingRingMesh, landingBeamMesh);
+  root.add(landingPreviewGroup);
+
+  const landingPreviewState = {
+    active: false,
+    targetX: 0,
+    targetY: 0,
+    targetZ: 0,
+    currentX: 0,
+    currentY: 0,
+    currentZ: 0,
+    hasExplicitY: false,
+    targetScale: 1.0,
+    currentScale: 1.0,
+    opacity: 0,
+    accentHex: 0xfde047,
+  };
+  const coveredCommodores = new Set<string>();
+
   const skyRings: SkyRingState[] = Array.from({ length: SKY_RING_COUNT }, (_, idx) => {
     const angle = (idx / SKY_RING_COUNT) * Math.PI * 2;
     const rx = 50.0;
@@ -1174,6 +1331,36 @@ export function createLivingWorkflowFx(
     (opRingMat.uniforms["uAccentColor"]!.value as Color).setHex(activeOpFlag.accentHex);
   }
 
+  function setLandingPreview(position: LandingPreviewInput | null): void {
+    if (!position) {
+      landingPreviewState.active = false;
+      return;
+    }
+    const nextY = position.y !== undefined ? position.y : getGroundHeight(position.x, position.z);
+    const nextScale = position.scale !== undefined ? Math.max(0.45, Math.min(2.2, position.scale)) : 1.0;
+    const nextAccent = position.accentHex ?? 0xfde047;
+    const wasHidden = landingPreviewState.opacity <= 0.01;
+
+    landingPreviewState.active = true;
+    landingPreviewState.targetX = position.x;
+    landingPreviewState.targetY = nextY;
+    landingPreviewState.targetZ = position.z;
+    landingPreviewState.hasExplicitY = position.y !== undefined;
+    landingPreviewState.targetScale = nextScale;
+
+    if (wasHidden) {
+      landingPreviewState.currentX = position.x;
+      landingPreviewState.currentY = nextY;
+      landingPreviewState.currentZ = position.z;
+      landingPreviewState.currentScale = nextScale;
+    }
+    if (landingPreviewState.accentHex !== nextAccent) {
+      landingPreviewState.accentHex = nextAccent;
+      (landingRingMat.uniforms["uAccentColor"]!.value as Color).setHex(nextAccent);
+      (landingBeamMat.uniforms["uAccentColor"]!.value as Color).setHex(nextAccent);
+    }
+  }
+
   function spawnJointMissionArch(
     fromX: number,
     fromZ: number,
@@ -1323,7 +1510,7 @@ export function createLivingWorkflowFx(
     innerPillarMat.uniforms["uTime"]!.value = elapsed;
 
     let pillarCount = 0;
-    const coveredCommodores = new Set<string>();
+    coveredCommodores.clear();
     for (let i = 0; i < villages.length && pillarCount < MAX_PILLARS; i += 1) {
       const v = villages[i]!;
       if (!v.needsAttention && v.openAsksCount <= 0) continue;
@@ -1380,17 +1567,34 @@ export function createLivingWorkflowFx(
       prevActorSig.set(a.id, sig);
     }
 
-    // 작업 중인 팀이 살아 움직이도록 주기적 전령 펄스
+    // 작업 중인 팀이 살아 움직이도록 주기적 전령 펄스 (0-GC 카운팅 선택)
     autoPulseTimer -= safeDt;
     if (autoPulseTimer <= 0) {
       autoPulseTimer = 2.8 + Math.random() * 1.8;
-      const workingActors = actors.filter((a) => a.state === "running" || a.activity !== null);
-      if (workingActors.length > 0) {
-        const picked = workingActors[Math.floor(Math.random() * workingActors.length)]!;
-        const peer = findPeerForCourier(picked, actors, villages);
-        if (peer) {
-          const colorHex = Math.random() < 0.55 ? 0x38bdf8 : resolveActorHex(picked);
-          spawnCourier({ x: picked.homeX, z: picked.homeZ }, peer, colorHex);
+      let workingCount = 0;
+      for (let i = 0; i < actors.length; i += 1) {
+        const a = actors[i]!;
+        if (a.state === "running" || a.activity !== null) workingCount += 1;
+      }
+      if (workingCount > 0) {
+        let pickIdx = Math.floor(Math.random() * workingCount);
+        let picked: WorldActorSpec | null = null;
+        for (let i = 0; i < actors.length; i += 1) {
+          const a = actors[i]!;
+          if (a.state === "running" || a.activity !== null) {
+            if (pickIdx === 0) {
+              picked = a;
+              break;
+            }
+            pickIdx -= 1;
+          }
+        }
+        if (picked) {
+          const peer = findPeerForCourier(picked, actors, villages);
+          if (peer) {
+            const colorHex = Math.random() < 0.55 ? 0x38bdf8 : resolveActorHex(picked);
+            spawnCourier({ x: picked.homeX, z: picked.homeZ }, peer, colorHex);
+          }
         }
       }
     }
@@ -1968,6 +2172,41 @@ export function createLivingWorkflowFx(
       opTrajInst.visible = false;
     }
 
+    // 10) 별빛 비행(`F`) 유성 착지 예고 링 갱신 (0-GC 부드러운 위치 추적 + 페이드 인/아웃)
+    const targetPreviewOpacity = landingPreviewState.active ? 1.0 : 0.0;
+    const opacitySpeed = landingPreviewState.active ? 14.0 : 10.5;
+    landingPreviewState.opacity +=
+      (targetPreviewOpacity - landingPreviewState.opacity) * (1 - Math.exp(-safeDt * opacitySpeed));
+    if (landingPreviewState.opacity > 0.005) {
+      const followAlpha = 1 - Math.exp(-safeDt * 24.0);
+      landingPreviewState.currentX += (landingPreviewState.targetX - landingPreviewState.currentX) * followAlpha;
+      landingPreviewState.currentZ += (landingPreviewState.targetZ - landingPreviewState.currentZ) * followAlpha;
+      const resolvedY = landingPreviewState.hasExplicitY
+        ? landingPreviewState.targetY
+        : getGroundHeight(landingPreviewState.currentX, landingPreviewState.currentZ);
+      landingPreviewState.currentY += (resolvedY - landingPreviewState.currentY) * followAlpha;
+      landingPreviewState.currentScale +=
+        (landingPreviewState.targetScale - landingPreviewState.currentScale) * (1 - Math.exp(-safeDt * 12.0));
+
+      const breath = 1.0 + Math.sin(elapsed * 4.2) * 0.045;
+      const ringScale = landingPreviewState.currentScale * breath;
+      landingPreviewGroup.position.set(
+        landingPreviewState.currentX,
+        landingPreviewState.currentY,
+        landingPreviewState.currentZ,
+      );
+      landingRingMesh.scale.set(ringScale, 1.0, ringScale);
+      landingBeamMesh.scale.set(landingPreviewState.currentScale, 1.0, landingPreviewState.currentScale);
+      landingRingMat.uniforms["uTime"]!.value = elapsed;
+      landingRingMat.uniforms["uOpacity"]!.value = landingPreviewState.opacity;
+      landingBeamMat.uniforms["uTime"]!.value = elapsed;
+      landingBeamMat.uniforms["uOpacity"]!.value = landingPreviewState.opacity;
+      landingPreviewGroup.visible = true;
+    } else {
+      landingPreviewState.opacity = 0;
+      landingPreviewGroup.visible = false;
+    }
+
     initializedSnapshot = true;
   }
 
@@ -1975,6 +2214,7 @@ export function createLivingWorkflowFx(
     prevActorSig.clear();
     prevCompletedByVillage.clear();
     villageFlashTimer.clear();
+    coveredCommodores.clear();
     outerPillarInst.dispose();
     innerPillarInst.dispose();
     orbInst.dispose();
@@ -2034,6 +2274,10 @@ export function createLivingWorkflowFx(
     opRingMat.dispose();
     opTrajGeo.dispose();
     opTrajMat.dispose();
+    landingRingGeo.dispose();
+    landingRingMat.dispose();
+    landingBeamGeo.dispose();
+    landingBeamMat.dispose();
     scene.remove(root);
   }
 
@@ -2046,6 +2290,7 @@ export function createLivingWorkflowFx(
     syncWorkingVillages,
     triggerVillageFirework,
     setOperationFlag,
+    setLandingPreview,
     spawnJointMissionArch,
     update,
     dispose,

@@ -86,6 +86,8 @@ export interface InstancedSlotTransform {
   readonly scaleZ?: number | undefined;
   /** `RoofTint` 서브메시에 per-instance `setColorAt` 틴팅을 적용할 색상(선택). */
   readonly roofTintHex?: number | undefined;
+  /** 레이캐스트 식별용 인스턴스 메타데이터(`districtId`/`theaterId` 등, 선택). */
+  readonly userData?: Record<string, unknown> | undefined;
 }
 
 export interface MountSlotOptions {
@@ -336,7 +338,34 @@ export function createWorldAssetRegistry(): WorldAssetRegistry {
     return cached;
   }
 
-  function registerTemplateResources(root: Object3D): LoadedTemplate {
+  function applySlotGeometryPolish(slot: WorldModelSlot, root: Object3D): void {
+    if (slot !== "district-tier1") return;
+    // Tier 1 캠프 텐트 주변 모닥불·통나무 벤치 파고듦 보정 + 텐트 바닥판 경계 완화
+    const campfireNodes = new Set(["EmberCore", "Part_BarkDark", "Part_StoneDark", "Part_StoneMid"]);
+    root.traverse((child) => {
+      if (campfireNodes.has(child.name)) {
+        child.position.x += 0.38;
+        child.position.z += 0.26;
+      } else if (child.name === "LogBench") {
+        child.position.x += 0.18;
+        child.position.y -= 0.015;
+        child.position.z += 0.44;
+      } else if (child.name === "CampPad") {
+        child.scale.y *= 0.45;
+        child.position.y -= 0.022;
+        if (child instanceof Mesh && child.material instanceof MeshStandardMaterial) {
+          child.material.roughness = 0.96;
+          child.material.color.setHex(0xc7c2b8);
+          child.material.polygonOffset = true;
+          child.material.polygonOffsetFactor = 1;
+          child.material.polygonOffsetUnits = 1;
+        }
+      }
+    });
+  }
+
+  function registerTemplateResources(slot: WorldModelSlot, root: Object3D): LoadedTemplate {
+    // 정규화 바운드는 원본 텐트/바닥판 기준을 유지해 소품 보정 후에도 스케일·중심이 흔들리지 않게 한다.
     root.updateMatrixWorld(true);
     const box = new Box3().setFromObject(root);
     const size = new Vector3();
@@ -345,6 +374,9 @@ export function createWorldAssetRegistry(): WorldAssetRegistry {
       box.getSize(size);
       box.getCenter(center);
     }
+
+    applySlotGeometryPolish(slot, root);
+    root.updateMatrixWorld(true);
 
     const subMeshes: TemplateSubMesh[] = [];
     root.traverse((child) => {
@@ -400,7 +432,7 @@ export function createWorldAssetRegistry(): WorldAssetRegistry {
           disposeFullTemplate(gltf.scene);
           return null;
         }
-        const registered = registerTemplateResources(gltf.scene);
+        const registered = registerTemplateResources(slot, gltf.scene);
         const entry: LoadedTemplate = {
           ...registered,
           animations: gltf.animations ?? [],
@@ -503,6 +535,8 @@ export function createWorldAssetRegistry(): WorldAssetRegistry {
     TMP_NORM_MAT.multiply(TMP_TRANS_MAT);
 
     const hasPerInstanceTint = opts.transforms.some((t) => t.roofTintHex !== undefined);
+    const hasInstanceMeta = opts.transforms.some((t) => t.userData !== undefined);
+    const instanceMeta = hasInstanceMeta ? opts.transforms.map((t) => t.userData ?? null) : null;
     const meshes: InstancedMesh[] = [];
 
     for (const sub of template.subMeshes) {
@@ -522,6 +556,10 @@ export function createWorldAssetRegistry(): WorldAssetRegistry {
       const inst = new InstancedMesh(sub.geometry, mat, count);
       inst.castShadow = castShadow;
       inst.receiveShadow = receiveShadow;
+      inst.userData["slot"] = opts.slot;
+      if (instanceMeta) {
+        inst.userData["instanceMeta"] = instanceMeta;
+      }
 
       const subNormMat = new Matrix4().multiplyMatrices(TMP_NORM_MAT, sub.localMatrix);
 

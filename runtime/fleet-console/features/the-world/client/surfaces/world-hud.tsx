@@ -1,9 +1,11 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { ApprovalCapsule } from "../../../execution/client/approval/panel.js";
+import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import type {
   WorldCameraMode,
+  WorldDistrictSpec,
   WorldPlayerEmote,
   WorldSnapshot,
   WorldTimeMode,
@@ -14,23 +16,27 @@ import {
   playDistrictHover,
   playDistrictSelect,
   playOverviewToggle,
-  playParadeBell,
   playPhotoShutter,
   playWarp,
   setWorldAudioMuted,
 } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
+  closeAllHudPopovers,
   exitTheWorld,
   openAdmiralCustomizer,
   openMailbox,
   openQuestBoard,
   openWarRoom,
   requestPlayerEmote,
-  requestRallyAll,
   requestWorldTeleport,
   resetWorldProgressData,
+  selectDistrict,
+  setDebugPopoverOpen,
+  setQuickJumpOpen,
+  setToolsMenuOpen,
   setWeatherMode,
+  setWeatherPopoverOpen,
   setWorldCameraMode,
   setWorldTimeMode,
   toggleAuroraEnabled,
@@ -43,10 +49,31 @@ import {
   toggleSoundMuted,
   toggleStampBook,
   triggerWorldChoreography,
+  useCurrentZone,
   useWorldStore,
   WORLD_STAMP_IDS,
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
+
+const ONBOARDING_HINT_DISMISSED_KEY = "fleet.theWorld.onboardingHintDismissed.v1";
+
+function readOnboardingHintDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(ONBOARDING_HINT_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function persistOnboardingHintDismissed(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ONBOARDING_HINT_DISMISSED_KEY, "1");
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
 
 const TIME_MODES: readonly {
   readonly id: WorldTimeMode;
@@ -83,6 +110,39 @@ const WEATHER_MODES: readonly {
   { id: "snow", key: "theWorld.weather.snow", icon: "snow", tone: "teal" },
 ];
 
+export interface WorldFlightRingGuideProps {
+  readonly containerRef: RefObject<HTMLDivElement | null>;
+  readonly chevronRef: RefObject<HTMLSpanElement | null>;
+  readonly distRef: RefObject<HTMLSpanElement | null>;
+  readonly locale: ConsoleLocale | undefined;
+}
+
+/**
+ * 별빛 비행 중 화면 가장자리에 표시되는 다음 황금 별빛 링 방향·거리 가이드.
+ * Wave 2 `world-stage.tsx`에서 `ringGuideElRef` / `ringGuideChevronRef` / `ringGuideDistRef`를 연결해 사용한다.
+ */
+export const WorldFlightRingGuide = memo(function WorldFlightRingGuide({
+  containerRef,
+  chevronRef,
+  distRef,
+  locale,
+}: WorldFlightRingGuideProps) {
+  const t = getWorldT(locale);
+  return (
+    <div
+      ref={containerRef}
+      className="the-world-ring-guide-arrow"
+      style={{ opacity: 0 }}
+      aria-hidden="true"
+    >
+      <span ref={chevronRef} className="the-world-ring-guide-chevron">➤</span>
+      <WorldIcon name="sparkle" size={12} tone="amber" />
+      <span className="the-world-ring-guide-label">{t("theWorld.flight.ringGuideLabel")}</span>
+      <span ref={distRef} className="the-world-ring-guide-dist">0m</span>
+    </div>
+  );
+});
+
 export interface WorldHudProps {
   readonly snapshot: WorldSnapshot;
   readonly locale: ConsoleLocale | undefined;
@@ -104,6 +164,7 @@ export interface WorldHudProps {
   readonly onOpenCustomizer?: (() => void) | undefined;
   readonly onTriggerEmote?: ((emote: WorldPlayerEmote) => void) | undefined;
   readonly onToggleControlsGuide?: (() => void) | undefined;
+  readonly controlsGuideOpen?: boolean | undefined;
   readonly onOpenGazette?: (() => void) | undefined;
   readonly onToggleCinemaMode?: (() => void) | undefined;
   readonly onToggleBgm?: (() => void) | undefined;
@@ -112,19 +173,23 @@ export interface WorldHudProps {
   readonly onRingParadeBell?: (() => void) | undefined;
   readonly villages?: readonly WorldVillageSpec[] | undefined;
   readonly onWarpTo?: ((x: number, z: number, label: string) => void) | undefined;
+  readonly onWarpToDistrict?: ((district: WorldDistrictSpec, village: WorldVillageSpec) => void) | undefined;
   readonly fastTravelOpen?: boolean | undefined;
   readonly onToggleFastTravel?: (() => void) | undefined;
   readonly onResetWorldLocalData?: (() => void) | undefined;
   readonly debugPanelVisible?: boolean | undefined;
+  readonly currentZoneLabel?: string | null | undefined;
+  readonly currentZoneTone?: IdentityTone | null | undefined;
 }
 
 /**
- * 다이어트된 미니멀 게임 HUD.
+ * 고대비 Starlight Glass 미니멀 게임 HUD.
  *
- * - 우상단: 핵심 액션(`상황실` · `퀘스트` · `별빛 비행`) + 미확인 우편 배지(있을 때만) + `도구` 통합 드롭다운 + `콘솔`
- * - 부가 도구(우체통·환경·항해 수첩·제독 외형·포토·함대 일지·소집 종·음향·시네마·감정 표현·영입·가이드)는 `도구` 팝오버에 수납한다.
- * - `디버그` 버튼은 평소 숨겨 두고 `debugPanelVisible` (`Shift+D`)이 켜질 때만 노출한다.
- * - 하단 좌측: 누구나 바로 클릭하거나 `1/2/3` 키로 실행할 수 있는 컴팩트 이모트·외형 미니 필.
+ * - 좌상단: 현재 체류 구역명 배지(클릭 시 빠른 이동 `G`)
+ * - 우상단: 핵심 액션(`상황실` · `퀘스트` · `별빛 비행`) + 미확인 우편 배지 + `빠른 이동 [G]` + `도구 ▾` + `?` 가이드 + `콘솔`
+ * - 모든 HUD 팝오버(`quickJump` · `tools` · `weather` · `debug`)는 `world-store.ts` 상태로 통합 관리되어
+ *   `Esc` 입력 시 최상위 1겹만 닫고 더 월드 전체를 종료하지 않는다.
+ * - 최초 진입 1회성 경량 조작 힌트(`localStorage` 닫기 기억)와 하단 좌측 이모트(1·2·3)·외형 퀵 바 제공.
  */
 export const WorldHud = memo(function WorldHud({
   snapshot,
@@ -147,42 +212,72 @@ export const WorldHud = memo(function WorldHud({
   onOpenCustomizer,
   onTriggerEmote,
   onToggleControlsGuide,
+  controlsGuideOpen = false,
   onOpenGazette,
   onToggleCinemaMode,
   onToggleBgm,
   unreadMailCount = 0,
   onOpenMailbox,
-  onRingParadeBell,
   villages: villagesProp,
   onWarpTo,
+  onWarpToDistrict,
   fastTravelOpen: fastTravelOpenProp,
   onToggleFastTravel,
   onResetWorldLocalData,
   debugPanelVisible = false,
+  currentZoneLabel: currentZoneLabelProp,
+  currentZoneTone: currentZoneToneProp,
 }: WorldHudProps) {
   const store = useWorldStore();
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [internalFastTravelOpen, setInternalFastTravelOpen] = useState(false);
+  const currentZone = useCurrentZone();
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
-  const [envOpen, setEnvOpen] = useState(false);
-  const [debugOpen, setDebugOpen] = useState(false);
+  const [fastTravelQuery, setFastTravelQuery] = useState("");
+  const [expandedVillageIds, setExpandedVillageIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [listHasMoreBelow, setListHasMoreBelow] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState<boolean>(readOnboardingHintDismissed);
   const hudTopRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const fastTravelListRef = useRef<HTMLDivElement | null>(null);
   const t = getWorldT(locale);
-  const isEn = locale === "en";
-  const bi = (ko: string, en: string) => (isEn ? en : ko);
+
+  const toolsOpen = store.toolsMenuOpen;
+  const envOpen = store.weatherPopoverOpen;
+  const debugOpen = store.debugPopoverOpen;
+  const isFastTravelOpen = fastTravelOpenProp !== undefined
+    ? (fastTravelOpenProp || store.quickJumpOpen)
+    : store.quickJumpOpen;
+
   const effectiveUrgentCount = urgentQuestCount ?? snapshot.attentionCount;
   const effectiveUnreadMail = Math.max(0, unreadMailCount);
   const effectiveVillages = villagesProp ?? snapshot.villages;
-  const isFastTravelOpen = fastTravelOpenProp !== undefined ? fastTravelOpenProp : internalFastTravelOpen;
   const attentionActor = snapshot.actors.find((a) => a.needsAttention) ?? null;
 
   const activeWeather = weatherModeProp ?? store.weatherMode;
   const activeTime = timeModeProp ?? store.timeMode;
   const activeWeatherMeta = WEATHER_MODES.find((w) => w.id === activeWeather) ?? WEATHER_MODES[0]!;
+  const plazaLabel = t("theWorld.projection.plazaLabel");
+
+  const resolvedZoneLabel = currentZoneLabelProp ?? currentZone?.label ?? plazaLabel;
+  const resolvedZoneTone = currentZoneToneProp ?? currentZone?.tone ?? "amber";
+
+  const totalDistrictCount = useMemo(
+    () => effectiveVillages.reduce((acc, v) => acc + v.districts.length, 0),
+    [effectiveVillages],
+  );
+
+  // Prop-driven fastTravelOpen과 스토어 quickJumpOpen 동기화
+  useEffect(() => {
+    if (fastTravelOpenProp === undefined) return;
+    if (fastTravelOpenProp && !store.quickJumpOpen) {
+      setQuickJumpOpen(true);
+    } else if (!fastTravelOpenProp && store.quickJumpOpen) {
+      setQuickJumpOpen(false);
+    }
+  }, [fastTravelOpenProp, store.quickJumpOpen]);
 
   useEffect(() => {
     if (!debugPanelVisible && debugOpen) {
-      setDebugOpen(false);
+      setDebugPopoverOpen(false);
     }
   }, [debugOpen, debugPanelVisible]);
 
@@ -194,11 +289,37 @@ export const WorldHud = memo(function WorldHud({
 
   useEffect(() => {
     if (isFastTravelOpen) {
-      setToolsOpen(false);
-      setEnvOpen(false);
-      setDebugOpen(false);
+      const id = window.requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+      return () => window.cancelAnimationFrame(id);
     }
+    setFastTravelQuery("");
+    return undefined;
   }, [isFastTravelOpen]);
+
+  const closeAllPopovers = useCallback(() => {
+    const hadFastTravelProp = fastTravelOpenProp === true;
+    closeAllHudPopovers();
+    if (hadFastTravelProp && onToggleFastTravel) {
+      onToggleFastTravel();
+    }
+  }, [fastTravelOpenProp, onToggleFastTravel]);
+
+  const handleToggleFastTravel = useCallback(() => {
+    playDistrictHover();
+    if (isFastTravelOpen) {
+      setQuickJumpOpen(false);
+      if (fastTravelOpenProp === true && onToggleFastTravel) {
+        onToggleFastTravel();
+      }
+    } else {
+      setQuickJumpOpen(true);
+      if (fastTravelOpenProp === false && onToggleFastTravel) {
+        onToggleFastTravel();
+      }
+    }
+  }, [fastTravelOpenProp, isFastTravelOpen, onToggleFastTravel]);
 
   useEffect(() => {
     if (!toolsOpen && !envOpen && !debugOpen && !isFastTravelOpen) return;
@@ -210,24 +331,18 @@ export const WorldHud = memo(function WorldHud({
       ) {
         return;
       }
-      setToolsOpen(false);
-      setEnvOpen(false);
-      setDebugOpen(false);
-      if (isFastTravelOpen) {
-        if (onToggleFastTravel) onToggleFastTravel();
-        else setInternalFastTravelOpen(false);
-      }
+      closeAllPopovers();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setToolsOpen(false);
-        setEnvOpen(false);
-        setDebugOpen(false);
-        if (isFastTravelOpen) {
-          if (onToggleFastTravel) onToggleFastTravel();
-          else setInternalFastTravelOpen(false);
-        }
+      if (event.key !== "Escape") return;
+      // 최상위 HUD 팝오버만 닫고 이벤트 전파를 차단해 더 월드 전체가 닫히지 않도록 보장한다.
+      event.preventDefault();
+      event.stopPropagation();
+      if (isFastTravelOpen && fastTravelQuery.trim().length > 0) {
+        setFastTravelQuery("");
+        return;
       }
+      closeAllPopovers();
     };
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown, true);
@@ -235,26 +350,62 @@ export const WorldHud = memo(function WorldHud({
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [toolsOpen, envOpen, debugOpen, isFastTravelOpen, onToggleFastTravel]);
+  }, [closeAllPopovers, debugOpen, envOpen, fastTravelQuery, isFastTravelOpen, toolsOpen]);
 
-  const closeAllPopovers = () => {
-    setToolsOpen(false);
-    setEnvOpen(false);
-    setDebugOpen(false);
-    if (isFastTravelOpen) {
-      if (onToggleFastTravel) onToggleFastTravel();
-      else setInternalFastTravelOpen(false);
+  // 빠른 이동 검색 필터링 (광장 + 사령관 + 개별 구역 통합 검색)
+  const normalizedQuery = fastTravelQuery.trim().toLowerCase();
+  const showPlazaResult = normalizedQuery.length === 0
+    || plazaLabel.toLowerCase().includes(normalizedQuery)
+    || "hq".includes(normalizedQuery)
+    || "plaza".includes(normalizedQuery);
+
+  const filteredVillages = useMemo(() => {
+    if (!normalizedQuery) {
+      return effectiveVillages.map((village) => ({
+        village,
+        matchedDistricts: village.districts,
+        villageMatched: true,
+      }));
     }
-  };
+    const results: {
+      readonly village: WorldVillageSpec;
+      readonly matchedDistricts: readonly WorldDistrictSpec[];
+      readonly villageMatched: boolean;
+    }[] = [];
+    for (const village of effectiveVillages) {
+      const villageMatched = village.label.toLowerCase().includes(normalizedQuery);
+      const matchedDistricts = village.districts.filter((d) =>
+        d.label.toLowerCase().includes(normalizedQuery)
+        || d.theaterId.toLowerCase().includes(normalizedQuery),
+      );
+      if (villageMatched || matchedDistricts.length > 0) {
+        results.push({
+          village,
+          matchedDistricts: villageMatched && matchedDistricts.length === 0 ? village.districts : matchedDistricts,
+          villageMatched,
+        });
+      }
+    }
+    return results;
+  }, [effectiveVillages, normalizedQuery]);
 
-  const handleToggleFastTravel = () => {
-    setToolsOpen(false);
-    setEnvOpen(false);
-    setDebugOpen(false);
-    playDistrictHover();
-    if (onToggleFastTravel) onToggleFastTravel();
-    else setInternalFastTravelOpen((prev) => !prev);
-  };
+  const updateListScrollHint = useCallback(() => {
+    const el = fastTravelListRef.current;
+    if (!el) {
+      setListHasMoreBelow(false);
+      return;
+    }
+    setListHasMoreBelow(el.scrollHeight - el.clientHeight - el.scrollTop > 6);
+  }, []);
+
+  useEffect(() => {
+    if (!isFastTravelOpen) {
+      setListHasMoreBelow(false);
+      return;
+    }
+    const id = window.requestAnimationFrame(updateListScrollHint);
+    return () => window.cancelAnimationFrame(id);
+  }, [expandedVillageIds, filteredVillages, isFastTravelOpen, updateListScrollHint]);
 
   const handleWarpDestination = (x: number, z: number, label: string, toastText?: string) => {
     closeAllPopovers();
@@ -267,18 +418,41 @@ export const WorldHud = memo(function WorldHud({
     }
   };
 
+  const handleWarpDistrict = (district: WorldDistrictSpec, village: WorldVillageSpec) => {
+    closeAllPopovers();
+    playWarp();
+    if (onWarpToDistrict) {
+      onWarpToDistrict(district, village);
+      return;
+    }
+    const approachX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.42);
+    const approachZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.42);
+    if (onWarpTo) {
+      onWarpTo(approachX, approachZ, `${village.label} · ${district.label}`);
+    } else {
+      requestWorldTeleport(approachX, approachZ);
+      onStatusBanner(t("theWorld.stage.warpVillageToast", { name: `${village.label} · ${district.label}` }));
+    }
+    selectDistrict(district.id);
+  };
+
+  const toggleVillageDistricts = (villageId: string) => {
+    playDistrictHover();
+    setExpandedVillageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(villageId)) next.delete(villageId);
+      else next.add(villageId);
+      return next;
+    });
+  };
+
   const handleConfirmResetProgress = () => {
     resetWorldProgressData();
     onResetWorldLocalData?.();
     setResetConfirmOpen(false);
     closeAllPopovers();
     playDistrictSelect();
-    onStatusBanner(
-      bi(
-        "초원 진행 기록(스탬프 · 도감 · 메모 · 외형)을 초기화했습니다.",
-        "Meadow progress (stamps, fish, notes, look) has been reset.",
-      ),
-    );
+    onStatusBanner(t("theWorld.hud.resetToast"));
   };
 
   const handleOpenMailbox = () => {
@@ -286,17 +460,6 @@ export const WorldHud = memo(function WorldHud({
     playDistrictSelect();
     if (onOpenMailbox) onOpenMailbox();
     else openMailbox();
-  };
-
-  const handleRingParadeBell = () => {
-    closeAllPopovers();
-    playParadeBell();
-    if (onRingParadeBell) {
-      onRingParadeBell();
-    } else {
-      requestRallyAll();
-      onStatusBanner(bi("중앙 광장 소집 종을 울렸습니다!", "Rang the plaza rally bell!"));
-    }
   };
 
   const handleSelectWeather = (mode: WorldWeatherMode) => {
@@ -324,24 +487,39 @@ export const WorldHud = memo(function WorldHud({
     else requestPlayerEmote(emote);
   };
 
-  const toolsMenuLabel = bi("도구", "Tools");
-  const toolsMenuAria = bi("함대 도구 메뉴 열기", "Open fleet tools menu");
-  const mailboxLabel = bi("함대 우체통", "Fleet Mailbox");
-  const mailboxAria = bi("함대 우체통 열기", "Open Fleet Mailbox");
-  const rallyBellLabel = bi("소집 종 울리기", "Ring Rally Bell");
-  const soundLabel = store.soundMuted ? bi("음향 꺼짐", "Sound Off") : bi("음향 켜짐", "Sound On");
-  const guideShortLabel = bi("조작 가이드", "Controls");
-  const recruitShortLabel = bi("사령관 영입", "Recruit");
-  const fastTravelLabel = bi("빠른 이동", "Fast Travel");
-  const fastTravelAria = bi("빠른 마을 이동 목록 열기 (G)", "Open fast travel village list (G)");
-  const plazaLabel = t("theWorld.projection.plazaLabel");
-  const resetBtnLabel = bi("초원 기록 초기화", "Reset Meadow Progress");
-  const resetConfirmQuestion = bi("정말 초기화할까요?", "Reset all local progress?");
-  const resetConfirmCta = bi("초기화 실행", "Reset");
-  const resetCancelCta = bi("취소", "Cancel");
+  const handleDismissOnboarding = () => {
+    setOnboardingDismissed(true);
+    persistOnboardingHintDismissed();
+  };
+
+  const isAnyPopoverOpen = toolsOpen || envOpen || debugOpen || isFastTravelOpen;
+  const showOnboardingHint =
+    !onboardingDismissed
+    && !hideBottom
+    && !store.photoMode
+    && !store.cinemaMode
+    && !store.overviewMode
+    && !store.chatActive
+    && !isAnyPopoverOpen;
 
   return (
     <>
+      {/* 좌상단 현재 체류 구역 배지 (항상 깔끔히 표시 · 클릭 시 빠른 이동 G) */}
+      {!store.photoMode && !store.cinemaMode ? (
+        <button
+          type="button"
+          className="the-world-zone-badge"
+          aria-label={t("theWorld.hud.zoneAria", { zone: resolvedZoneLabel })}
+          title={t("theWorld.hud.fastTravelAria")}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleToggleFastTravel}
+        >
+          <span className="the-world-tone-dot" data-tone={resolvedZoneTone} />
+          <span className="the-world-zone-badge-name">{resolvedZoneLabel}</span>
+          <kbd className="the-world-keycap">G</kbd>
+        </button>
+      ) : null}
+
       {toastMessage ? (
         <div
           className={`the-world-toast${toastKind === "celebration" ? " is-celebration" : ""}`}
@@ -446,9 +624,9 @@ export const WorldHud = memo(function WorldHud({
               <button
                 type="button"
                 className={`the-world-btn is-attention${store.mailboxOpen ? " is-active" : ""}`}
-                aria-label={mailboxAria}
+                aria-label={t("theWorld.hud.mailboxAria")}
                 aria-pressed={store.mailboxOpen}
-                title={mailboxLabel}
+                title={t("theWorld.hud.mailboxLabel")}
                 onClick={handleOpenMailbox}
               >
                 <WorldIcon name="mail" size={14} tone="amber" />
@@ -456,39 +634,56 @@ export const WorldHud = memo(function WorldHud({
               </button>
             ) : null}
 
-            {/* 빠른 마을 이동 (G) 콤팩트 나침반 버튼 */}
+            {/* 빠른 이동 (G) — 명확한 라벨 + G 키캡 */}
             <button
               type="button"
-              className={`the-world-btn is-icon-only${isFastTravelOpen ? " is-active" : ""}`}
-              aria-label={fastTravelAria}
+              className={`the-world-btn${isFastTravelOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.fastTravelAria")}
               aria-expanded={isFastTravelOpen}
-              title={fastTravelAria}
+              title={t("theWorld.hud.fastTravelAria")}
               onClick={handleToggleFastTravel}
             >
               <WorldIcon name="compass" size={14} tone={isFastTravelOpen ? "amber" : "cerulean"} />
+              <span>{t("theWorld.hud.fastTravelLabel")}</span>
+              <kbd className="the-world-keycap">G</kbd>
             </button>
 
             {/* 통합 도구 드롭다운 버튼 */}
             <button
               type="button"
               className={`the-world-btn${toolsOpen || envOpen ? " is-active" : ""}`}
-              aria-label={toolsMenuAria}
+              aria-label={t("theWorld.hud.toolsAria")}
               aria-expanded={toolsOpen}
-              title={toolsMenuLabel}
+              title={t("theWorld.hud.toolsLabel")}
               onClick={() => {
-                setEnvOpen(false);
-                setDebugOpen(false);
-                if (isFastTravelOpen) {
-                  if (onToggleFastTravel) onToggleFastTravel();
-                  else setInternalFastTravelOpen(false);
+                const next = !toolsOpen;
+                if (fastTravelOpenProp === true && onToggleFastTravel) {
+                  onToggleFastTravel();
                 }
                 playDistrictHover();
-                setToolsOpen((prev) => !prev);
+                setToolsMenuOpen(next);
               }}
             >
               <WorldIcon name="settings" size={14} tone={toolsOpen || envOpen ? "amber" : "cerulean"} />
-              <span>{toolsMenuLabel}</span>
+              <span>{t("theWorld.hud.toolsLabel")}</span>
               <span className="the-world-tools-caret" aria-hidden="true">{toolsOpen ? "▴" : "▾"}</span>
+            </button>
+
+            {/* 독립 도움말(?) 조작 가이드 버튼 */}
+            <button
+              type="button"
+              className={`the-world-btn the-world-help-btn${controlsGuideOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.guideAria")}
+              aria-pressed={controlsGuideOpen}
+              title={t("theWorld.hud.guideTitle")}
+              onClick={() => {
+                closeAllPopovers();
+                playDistrictSelect();
+                onToggleControlsGuide?.();
+              }}
+            >
+              <WorldIcon name="question" size={14} tone={controlsGuideOpen ? "amber" : "cerulean"} />
+              <kbd className="the-world-keycap">?</kbd>
             </button>
 
             {debugPanelVisible ? (
@@ -499,9 +694,11 @@ export const WorldHud = memo(function WorldHud({
                 aria-expanded={debugOpen}
                 title={t("theWorld.hud.debugTitle")}
                 onClick={() => {
-                  setToolsOpen(false);
-                  setEnvOpen(false);
-                  setDebugOpen((prev) => !prev);
+                  const next = !debugOpen;
+                  if (fastTravelOpenProp === true && onToggleFastTravel) {
+                    onToggleFastTravel();
+                  }
+                  setDebugPopoverOpen(next);
                 }}
               >
                 <WorldIcon name="tool" size={14} tone={debugOpen ? "amber" : "cerulean"} />
@@ -521,12 +718,12 @@ export const WorldHud = memo(function WorldHud({
           </div>
         </div>
 
-        {/* 빠른 이동 (G) Starlight Glass 팝오버 */}
+        {/* 빠른 이동 (G) Starlight Glass 팝오버 — 통합 검색 · 카운트 · 스크롤 힌트 · 단일 Tier */}
         {isFastTravelOpen ? (
           <section
             className="the-world-debug-popover the-world-fast-travel-popover"
             role="dialog"
-            aria-label={fastTravelAria}
+            aria-label={t("theWorld.hud.fastTravelAria")}
             onPointerDown={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
           >
@@ -534,8 +731,14 @@ export const WorldHud = memo(function WorldHud({
             <header className="the-world-debug-head">
               <span className="the-world-debug-title">
                 <WorldIcon name="compass" size={13} tone="amber" />
-                <span>{fastTravelLabel}</span>
+                <span>{t("theWorld.hud.fastTravelLabel")}</span>
                 <kbd className="the-world-keycap">G</kbd>
+              </span>
+              <span className="the-world-fast-travel-count">
+                {t("theWorld.fastTravel.summaryCount", {
+                  villages: effectiveVillages.length,
+                  districts: totalDistrictCount,
+                })}
               </span>
               <button
                 type="button"
@@ -547,77 +750,192 @@ export const WorldHud = memo(function WorldHud({
               </button>
             </header>
 
-            <div className="the-world-fast-travel-list" role="menu" aria-label={fastTravelAria}>
-              <button
-                type="button"
-                role="menuitem"
-                className="the-world-fast-travel-item is-plaza"
-                onClick={() => handleWarpDestination(0, -1.5, plazaLabel, t("theWorld.stage.warpPlazaToast"))}
-              >
-                <span className="the-world-fast-travel-icon" aria-hidden="true">
-                  <WorldIcon name="warRoom" size={13} tone="amber" />
-                </span>
-                <span className="the-world-fast-travel-main">
-                  <span className="the-world-fast-travel-name">{plazaLabel}</span>
-                  <span className="the-world-fast-travel-sub">
-                    {bi("길드 회관 · 우체통 · 별빛 연못", "Guild Hall · Mailbox · Starlight Pond")}
-                  </span>
-                </span>
-                <span className="the-world-fast-travel-badge">HQ</span>
-              </button>
+            <div className="the-world-fast-travel-search">
+              <WorldIcon name="inspect" size={13} tone="cerulean" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="the-world-fast-travel-search-input"
+                value={fastTravelQuery}
+                onChange={(e) => setFastTravelQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (fastTravelQuery.trim().length > 0) {
+                      setFastTravelQuery("");
+                    } else {
+                      closeAllPopovers();
+                    }
+                  } else {
+                    e.stopPropagation();
+                  }
+                }}
+                placeholder={t("theWorld.fastTravel.searchPlaceholder")}
+                aria-label={t("theWorld.fastTravel.searchAria")}
+              />
+              {fastTravelQuery.length > 0 ? (
+                <button
+                  type="button"
+                  className="the-world-fast-travel-search-clear"
+                  aria-label={t("theWorld.fastTravel.clearSearchAria")}
+                  onClick={() => {
+                    setFastTravelQuery("");
+                    searchInputRef.current?.focus();
+                  }}
+                >
+                  <WorldIcon name="close" size={11} />
+                </button>
+              ) : null}
+            </div>
 
-              {effectiveVillages.map((village) => {
-                const warpX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
-                const warpZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
-                const statusKind = village.hasError
-                  ? "error"
-                  : village.needsAttention || village.openAsksCount > 0
-                    ? "attention"
-                    : village.workStep
-                      ? "working"
-                      : "idle";
-                const statusLabel = statusKind === "error"
-                  ? bi("오류", "Error")
-                  : statusKind === "attention"
-                    ? bi("확인 필요", "Needs input")
-                    : statusKind === "working"
-                      ? bi("작업 중", "Working")
-                      : bi("여유", "Idle");
-                return (
+            <div className={`the-world-fast-travel-scroll-wrap${listHasMoreBelow ? " is-scrollable-bottom" : ""}`}>
+              <div
+                ref={fastTravelListRef}
+                className="the-world-fast-travel-list"
+                role="menu"
+                aria-label={t("theWorld.hud.fastTravelAria")}
+                onScroll={updateListScrollHint}
+              >
+                {showPlazaResult ? (
                   <button
-                    key={village.id}
                     type="button"
                     role="menuitem"
-                    className="the-world-fast-travel-item"
-                    onClick={() => handleWarpDestination(warpX, warpZ, village.label)}
+                    className="the-world-fast-travel-item is-plaza"
+                    onClick={() => handleWarpDestination(0, -1.5, plazaLabel, t("theWorld.stage.warpPlazaToast"))}
                   >
-                    <span className="the-world-tone-dot" data-tone={village.tone} />
+                    <span className="the-world-fast-travel-icon" aria-hidden="true">
+                      <WorldIcon name="warRoom" size={13} tone="amber" />
+                    </span>
                     <span className="the-world-fast-travel-main">
-                      <span className="the-world-fast-travel-name">{village.label}</span>
+                      <span className="the-world-fast-travel-name">{plazaLabel}</span>
                       <span className="the-world-fast-travel-sub">
-                        {t("theWorld.village.signSubtitle", {
-                          tier: village.overallTier,
-                          count: village.districts.length,
-                        })}
+                        {t("theWorld.fastTravel.plazaSub")}
                       </span>
                     </span>
-                    <span className={`the-world-fast-travel-status is-${statusKind}`}>
-                      {statusLabel}
-                    </span>
-                    <span className="the-world-fast-travel-badge">T{village.overallTier}</span>
+                    <span className="the-world-fast-travel-badge">HQ</span>
                   </button>
-                );
-              })}
+                ) : null}
+
+                {filteredVillages.map(({ village, matchedDistricts }) => {
+                  const warpX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
+                  const warpZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
+                  const statusKind = village.hasError
+                    ? "error"
+                    : village.needsAttention || village.openAsksCount > 0
+                      ? "attention"
+                      : village.workStep
+                        ? "working"
+                        : "idle";
+                  const statusLabel = statusKind === "error"
+                    ? t("theWorld.fastTravel.statusError")
+                    : statusKind === "attention"
+                      ? t("theWorld.fastTravel.statusAttention")
+                      : statusKind === "working"
+                        ? t("theWorld.fastTravel.statusWorking")
+                        : t("theWorld.fastTravel.statusIdle");
+                  const isExpanded =
+                    (normalizedQuery.length > 0 && matchedDistricts.length > 0)
+                    || expandedVillageIds.has(village.id);
+                  const subText = village.activeObjectiveCount > 0
+                    ? t("theWorld.fastTravel.districtCountWithGoals", {
+                        count: village.districts.length,
+                        goals: village.activeObjectiveCount,
+                      })
+                    : t("theWorld.fastTravel.districtCount", {
+                        count: village.districts.length,
+                      });
+                  return (
+                    <div key={village.id} className="the-world-fast-travel-group">
+                      <div className="the-world-fast-travel-row">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="the-world-fast-travel-item"
+                          onClick={() => handleWarpDestination(warpX, warpZ, village.label)}
+                        >
+                          <span className="the-world-tone-dot" data-tone={village.tone} />
+                          <span className="the-world-fast-travel-main">
+                            <span className="the-world-fast-travel-name">{village.label}</span>
+                            <span className="the-world-fast-travel-sub">{subText}</span>
+                          </span>
+                          <span className={`the-world-fast-travel-status is-${statusKind}`}>
+                            {statusLabel}
+                          </span>
+                          <span className="the-world-fast-travel-badge">
+                            {t("theWorld.tier.badge", { tier: village.overallTier })}
+                          </span>
+                        </button>
+                        {village.districts.length > 0 && normalizedQuery.length === 0 ? (
+                          <button
+                            type="button"
+                            className={`the-world-fast-travel-expand-btn${isExpanded ? " is-expanded" : ""}`}
+                            aria-expanded={isExpanded}
+                            aria-label={t(
+                              isExpanded
+                                ? "theWorld.fastTravel.collapseDistrictsAria"
+                                : "theWorld.fastTravel.expandDistrictsAria",
+                              { name: village.label },
+                            )}
+                            onClick={() => toggleVillageDistricts(village.id)}
+                          >
+                            <span aria-hidden="true">{isExpanded ? "▴" : "▾"}</span>
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {isExpanded && matchedDistricts.length > 0 ? (
+                        <div className="the-world-fast-travel-districts">
+                          {matchedDistricts.map((district) => (
+                            <button
+                              key={district.id}
+                              type="button"
+                              role="menuitem"
+                              className="the-world-fast-travel-district-item"
+                              onClick={() => handleWarpDistrict(district, village)}
+                            >
+                              <span className="the-world-tone-dot" data-tone={district.tone} />
+                              <span className="the-world-fast-travel-district-name">{district.label}</span>
+                              {district.needsAttention ? (
+                                <span className="the-world-fast-travel-status is-attention">
+                                  {t("theWorld.fastTravel.statusAttention")}
+                                </span>
+                              ) : district.activeWorkStep ? (
+                                <span className="the-world-fast-travel-status is-working">
+                                  {t("theWorld.fastTravel.statusWorking")}
+                                </span>
+                              ) : null}
+                              <span className="the-world-fast-travel-badge">T{district.tier}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
+                {!showPlazaResult && filteredVillages.length === 0 ? (
+                  <div className="the-world-fast-travel-empty">
+                    {t("theWorld.fastTravel.noResults")}
+                  </div>
+                ) : null}
+              </div>
+
+              {listHasMoreBelow ? (
+                <div className="the-world-fast-travel-fade" aria-hidden="true">
+                  <span>{t("theWorld.fastTravel.moreBelow")} ▾</span>
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
 
-        {/* 통합 도구 2열 콤팩트 드롭다운 팝오버 (Starlight Glass) */}
+        {/* 통합 도구 2열 콤팩트 드롭다운 팝오버 (HUD 중복 제거 · 일관된 키캡 · 위험 스타일 초기화) */}
         {toolsOpen ? (
           <section
             className="the-world-debug-popover the-world-tools-popover"
             role="dialog"
-            aria-label={toolsMenuAria}
+            aria-label={t("theWorld.hud.toolsAria")}
             onPointerDown={(e) => e.stopPropagation()}
             onWheel={(e) => e.stopPropagation()}
           >
@@ -625,13 +943,13 @@ export const WorldHud = memo(function WorldHud({
             <header className="the-world-debug-head">
               <span className="the-world-debug-title">
                 <WorldIcon name="settings" size={13} tone="amber" />
-                <span>{toolsMenuLabel}</span>
+                <span>{t("theWorld.hud.toolsLabel")}</span>
               </span>
               <button
                 type="button"
                 className="the-world-chat-icon-btn"
                 aria-label={t("theWorld.panel.closeAria")}
-                onClick={() => setToolsOpen(false)}
+                onClick={() => setToolsMenuOpen(false)}
               >
                 <WorldIcon name="close" size={14} />
               </button>
@@ -640,23 +958,12 @@ export const WorldHud = memo(function WorldHud({
             <div className="the-world-tools-grid">
               <button
                 type="button"
-                className={`the-world-tools-item is-full-row${isFastTravelOpen ? " is-active" : ""}`}
-                aria-label={fastTravelAria}
-                onClick={handleToggleFastTravel}
-              >
-                <WorldIcon name="compass" size={14} tone="cerulean" />
-                <span className="the-world-tools-item-label">{fastTravelLabel}</span>
-                <kbd className="the-world-keycap">G</kbd>
-              </button>
-
-              <button
-                type="button"
                 className={`the-world-tools-item${store.mailboxOpen ? " is-active" : ""}${effectiveUnreadMail > 0 ? " is-attention" : ""}`}
-                aria-label={mailboxAria}
+                aria-label={t("theWorld.hud.mailboxAria")}
                 onClick={handleOpenMailbox}
               >
                 <WorldIcon name="mail" size={14} tone="amber" />
-                <span className="the-world-tools-item-label">{mailboxLabel}</span>
+                <span className="the-world-tools-item-label">{t("theWorld.hud.mailboxLabel")}</span>
                 {effectiveUnreadMail > 0 ? (
                   <span className="the-world-hud-badge">{effectiveUnreadMail}</span>
                 ) : null}
@@ -667,10 +974,8 @@ export const WorldHud = memo(function WorldHud({
                 className={`the-world-tools-item${envOpen ? " is-active" : ""}`}
                 aria-label={t("theWorld.hud.envAria")}
                 onClick={() => {
-                  setToolsOpen(false);
-                  setDebugOpen(false);
                   playDistrictHover();
-                  setEnvOpen(true);
+                  setWeatherPopoverOpen(true);
                 }}
               >
                 <WorldIcon
@@ -700,16 +1005,6 @@ export const WorldHud = memo(function WorldHud({
 
               <button
                 type="button"
-                className={`the-world-tools-item${store.admiralCustomizerOpen ? " is-active" : ""}`}
-                aria-label={t("theWorld.hud.admiralStyleAria")}
-                onClick={handleOpenCustomizer}
-              >
-                <WorldIcon name="hat" size={14} tone="amber" />
-                <span className="the-world-tools-item-label">{t("theWorld.hud.admiralStyleBtn")}</span>
-              </button>
-
-              <button
-                type="button"
                 className={`the-world-tools-item${store.photoMode ? " is-active" : ""}`}
                 aria-label={t("theWorld.hud.photoModeAria")}
                 onClick={() => {
@@ -720,6 +1015,7 @@ export const WorldHud = memo(function WorldHud({
               >
                 <WorldIcon name="camera" size={14} tone="cerulean" />
                 <span className="the-world-tools-item-label">{t("theWorld.hud.photoModeLabel")}</span>
+                <kbd className="the-world-keycap">P</kbd>
               </button>
 
               <button
@@ -739,16 +1035,6 @@ export const WorldHud = memo(function WorldHud({
 
               <button
                 type="button"
-                className="the-world-tools-item"
-                aria-label={rallyBellLabel}
-                onClick={handleRingParadeBell}
-              >
-                <WorldIcon name="bell" size={14} tone="amber" />
-                <span className="the-world-tools-item-label">{rallyBellLabel}</span>
-              </button>
-
-              <button
-                type="button"
                 className={`the-world-tools-item${!store.soundMuted ? " is-active" : ""}`}
                 aria-label={store.soundMuted ? t("theWorld.hud.soundOffAria") : t("theWorld.hud.soundOnAria")}
                 aria-pressed={!store.soundMuted}
@@ -764,7 +1050,9 @@ export const WorldHud = memo(function WorldHud({
                   size={14}
                   tone={store.soundMuted ? "inherit" : "teal"}
                 />
-                <span className="the-world-tools-item-label">{soundLabel}</span>
+                <span className="the-world-tools-item-label">
+                  {store.soundMuted ? t("theWorld.hud.soundOffLabel") : t("theWorld.hud.soundOnLabel")}
+                </span>
               </button>
 
               <button
@@ -780,12 +1068,13 @@ export const WorldHud = memo(function WorldHud({
               >
                 <WorldIcon name="cinema" size={14} tone="teal" />
                 <span className="the-world-tools-item-label">{t("theWorld.hud.cinemaLabel")}</span>
+                <kbd className="the-world-keycap">C</kbd>
               </button>
 
               <button
                 type="button"
                 className={`the-world-tools-item${store.emoteWheelOpen ? " is-active" : ""}`}
-                aria-label={t("theWorld.hud.emoteBtn")}
+                aria-label={t("theWorld.emote.wheelAria")}
                 onClick={() => {
                   closeAllPopovers();
                   playDistrictSelect();
@@ -794,11 +1083,12 @@ export const WorldHud = memo(function WorldHud({
               >
                 <WorldIcon name="cheer" size={14} tone="rose" />
                 <span className="the-world-tools-item-label">{t("theWorld.hud.emoteBtn")}</span>
+                <kbd className="the-world-keycap">B</kbd>
               </button>
 
               <button
                 type="button"
-                className="the-world-tools-item"
+                className="the-world-tools-item is-full-row"
                 aria-label={t("theWorld.hud.createCommodoreAria")}
                 onClick={() => {
                   closeAllPopovers();
@@ -806,59 +1096,47 @@ export const WorldHud = memo(function WorldHud({
                 }}
               >
                 <WorldIcon name="recruit" size={14} tone="amber" />
-                <span className="the-world-tools-item-label">{recruitShortLabel}</span>
-              </button>
-
-              <button
-                type="button"
-                className="the-world-tools-item"
-                aria-label={t("theWorld.hud.guideAria")}
-                onClick={() => {
-                  closeAllPopovers();
-                  playDistrictSelect();
-                  onToggleControlsGuide?.();
-                }}
-              >
-                <WorldIcon name="question" size={14} tone="amber" />
-                <span className="the-world-tools-item-label">{guideShortLabel}</span>
-                <kbd className="the-world-keycap">?</kbd>
+                <span className="the-world-tools-item-label">{t("theWorld.hud.recruitLabel")}</span>
               </button>
             </div>
 
-            {/* 2단계 안전 확인: 초원 진행 기록 초기화 */}
+            {/* 2단계 위험 확인 구역: 초원 진행 기록 초기화 */}
             <div className="the-world-tools-footer">
               {resetConfirmOpen ? (
                 <div className="the-world-tools-reset-confirm" role="alert">
-                  <span className="the-world-tools-reset-question">{resetConfirmQuestion}</span>
+                  <div className="the-world-tools-reset-copy">
+                    <span className="the-world-tools-reset-question">{t("theWorld.hud.resetQuestion")}</span>
+                    <span className="the-world-tools-reset-detail">{t("theWorld.hud.resetDetail")}</span>
+                  </div>
                   <div className="the-world-tools-reset-actions">
                     <button
                       type="button"
                       className="the-world-tools-reset-btn is-danger"
                       onClick={handleConfirmResetProgress}
                     >
-                      {resetConfirmCta}
+                      {t("theWorld.hud.resetConfirm")}
                     </button>
                     <button
                       type="button"
                       className="the-world-tools-reset-btn"
                       onClick={() => setResetConfirmOpen(false)}
                     >
-                      {resetCancelCta}
+                      {t("theWorld.hud.resetCancel")}
                     </button>
                   </div>
                 </div>
               ) : (
                 <button
                   type="button"
-                  className="the-world-tools-reset-trigger"
-                  aria-label={resetBtnLabel}
+                  className="the-world-tools-reset-trigger is-danger"
+                  aria-label={t("theWorld.hud.resetTrigger")}
                   onClick={() => {
                     playDistrictHover();
                     setResetConfirmOpen(true);
                   }}
                 >
-                  <WorldIcon name="retry" size={12} tone="rose" />
-                  <span>{resetBtnLabel}</span>
+                  <WorldIcon name="warning" size={13} tone="rose" />
+                  <span>{t("theWorld.hud.resetTrigger")}</span>
                 </button>
               )}
             </div>
@@ -884,7 +1162,7 @@ export const WorldHud = memo(function WorldHud({
                 type="button"
                 className="the-world-chat-icon-btn"
                 aria-label={t("theWorld.hud.envCloseAria")}
-                onClick={() => setEnvOpen(false)}
+                onClick={() => setWeatherPopoverOpen(false)}
               >
                 <WorldIcon name="close" size={14} />
               </button>
@@ -989,7 +1267,7 @@ export const WorldHud = memo(function WorldHud({
                 type="button"
                 className="the-world-chat-icon-btn"
                 aria-label={t("theWorld.hud.debugAria")}
-                onClick={() => setDebugOpen(false)}
+                onClick={() => setDebugPopoverOpen(false)}
               >
                 <WorldIcon name="close" size={14} />
               </button>
@@ -1099,6 +1377,27 @@ export const WorldHud = memo(function WorldHud({
         ) : null}
       </div>
 
+      {/* 최초 진입 1회성 경량 조작 힌트 (localStorage 닫기 기억) */}
+      {showOnboardingHint ? (
+        <div
+          className="the-world-onboarding-hint"
+          role="note"
+          aria-label={t("theWorld.onboarding.aria")}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <WorldIcon name="sparkle" size={12} tone="amber" />
+          <span className="the-world-onboarding-hint-text">{t("theWorld.onboarding.hint")}</span>
+          <button
+            type="button"
+            className="the-world-onboarding-hint-close"
+            aria-label={t("theWorld.onboarding.dismissAria")}
+            onClick={handleDismissOnboarding}
+          >
+            <WorldIcon name="close" size={11} />
+          </button>
+        </div>
+      ) : null}
+
       {/* 관전 / 작업 동반자 모드 하단 중앙 미니 종료 필 */}
       {store.cinemaMode ? (
         <div
@@ -1143,8 +1442,8 @@ export const WorldHud = memo(function WorldHud({
             <button
               type="button"
               className="the-world-btn the-world-quick-btn"
-              aria-label={t("theWorld.emote.wave")}
-              title={t("theWorld.emote.wave")}
+              aria-label={t("theWorld.hud.emoteWaveAria")}
+              title={t("theWorld.hud.emoteWaveAria")}
               onClick={() => handleTriggerEmote("wave")}
             >
               <span className="the-world-keycap">1</span>
@@ -1155,8 +1454,8 @@ export const WorldHud = memo(function WorldHud({
             <button
               type="button"
               className="the-world-btn the-world-quick-btn"
-              aria-label={t("theWorld.emote.cheer")}
-              title={t("theWorld.emote.cheer")}
+              aria-label={t("theWorld.hud.emoteCheerAria")}
+              title={t("theWorld.hud.emoteCheerAria")}
               onClick={() => handleTriggerEmote("cheer")}
             >
               <span className="the-world-keycap">2</span>
@@ -1167,8 +1466,8 @@ export const WorldHud = memo(function WorldHud({
             <button
               type="button"
               className="the-world-btn the-world-quick-btn"
-              aria-label={t("theWorld.emote.jump")}
-              title={t("theWorld.emote.jump")}
+              aria-label={t("theWorld.hud.emoteSpinAria")}
+              title={t("theWorld.hud.emoteSpinAria")}
               onClick={() => handleTriggerEmote("jump")}
             >
               <span className="the-world-keycap">3</span>

@@ -60,7 +60,6 @@ const GUIDE_GROUPS: readonly {
       { keysKey: "theWorld.controls.stampBookKeys", descKey: "theWorld.controls.stampBookDesc", icon: "trophy", tone: "amber" },
       { keys: "Enter", descKey: "theWorld.guide.chatDesc", icon: "chat", tone: "teal" },
       { keys: "? / H", descKey: "theWorld.guide.guideDesc", icon: "question", tone: "amber" },
-      { keys: "Shift+D", descKey: "theWorld.guide.debugDesc", icon: "tool", tone: "indigo" },
     ],
   },
 ];

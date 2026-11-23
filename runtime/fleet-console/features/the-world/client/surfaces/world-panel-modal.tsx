@@ -12,6 +12,7 @@ import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   addCompanionActorId,
   closeActorInteraction,
+  exitTheWorld,
   openActorDialogue,
   openActorPanel,
   removeCompanionActorId,
@@ -61,6 +62,8 @@ export interface WorldPanelModalProps {
   readonly districts?: readonly WorldDistrictSpec[] | undefined;
   readonly onJumpToDistrict?: ((theaterId: string) => void) | undefined;
   readonly onStatusBanner?: ((msg: string) => void) | undefined;
+  readonly onOpenInConsole?: ((commodoreId: string, objectiveId?: string | null) => void) | undefined;
+  readonly onExitWorld?: (() => void) | undefined;
 }
 
 /**
@@ -77,6 +80,8 @@ export const WorldPanelModal = memo(function WorldPanelModal({
   districts,
   onJumpToDistrict,
   onStatusBanner,
+  onOpenInConsole,
+  onExitWorld,
 }: WorldPanelModalProps) {
   const t = getWorldT(deps.commodore.language());
   const store = useWorldStore();
@@ -102,6 +107,32 @@ export const WorldPanelModal = memo(function WorldPanelModal({
   const handleOpenObjectiveFromChat = (objectiveId: string) => {
     setSubObjectiveTab("goal");
     openActorPanel(actor.id, "goals", objectiveId);
+  };
+
+  const handleOpenInConsole = () => {
+    if (!actor.commodoreId) return;
+    playDistrictSelect();
+    if (onOpenInConsole) {
+      onOpenInConsole(actor.commodoreId, activeObjectiveId);
+      return;
+    }
+    if (activeObjectiveId) {
+      deps.openObjectiveInConsole(actor.commodoreId, activeObjectiveId);
+    } else {
+      const consoleTab = mode === "chat"
+        ? "log"
+        : mode === "goals"
+          ? "goals"
+          : mode === "settings"
+            ? "settings"
+            : "info";
+      deps.openCommodoreInConsole(actor.commodoreId, { tab: consoleTab });
+    }
+    if (onExitWorld) {
+      onExitWorld();
+    } else {
+      exitTheWorld({ reducedMotion: deps.isReducedMotion() });
+    }
   };
 
   return (
@@ -164,6 +195,18 @@ export const WorldPanelModal = memo(function WorldPanelModal({
             >
               <WorldIcon name={isCompanion ? "close" : "approach"} size={13} tone={isCompanion ? "amber" : "teal"} />
               <span>{isCompanion ? t("theWorld.companion.endWalk") : t("theWorld.companion.walkTogether")}</span>
+            </button>
+          ) : null}
+          {actor.commodoreId ? (
+            <button
+              type="button"
+              className="the-world-btn"
+              aria-label={t("theWorld.action.openInConsoleAria", { name: actor.name })}
+              title={t("theWorld.action.openInConsole")}
+              onClick={handleOpenInConsole}
+            >
+              <WorldIcon name="portalExit" size={13} tone="cerulean" />
+              <span>{t("theWorld.action.openInConsole")}</span>
             </button>
           ) : null}
           <button

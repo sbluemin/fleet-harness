@@ -53,9 +53,11 @@ import {
   closeGazette,
   closeMailbox,
   closeQuestBoard,
+  closeQuickJump,
   closeSkyQuickMenu,
   closeWarRoom,
   deactivateChat,
+  exitTheWorld,
   getWorldStoreSnapshot,
   openActorDialogue,
   openActorPanel,
@@ -91,6 +93,7 @@ import {
   setOperationFlag,
   setOverviewMode,
   setPhotoMode,
+  setQuickJumpOpen,
   setSittingAtCampfire,
   setStampBookOpen,
   setVillageBiome,
@@ -101,6 +104,7 @@ import {
   toggleOverviewMode,
   toggleReleasedFish,
   unlockStamp,
+  useCurrentZone,
   useMailboxReadKeys,
   useReleasedFishIds,
   useWorldStore,
@@ -116,9 +120,13 @@ import { WorldDistrictInspector, type WorldDistrictLinkedObjective } from "./wor
 import { WorldDistrictQuickMenu } from "./world-district-quick-menu.js";
 import { WorldEmoteWheel, type WorldAdmiralEmoteKind } from "./world-emote-wheel.js";
 import { WorldGazette } from "./world-gazette.js";
-import { WorldHud } from "./world-hud.js";
+import { WorldFlightRingGuide, WorldHud } from "./world-hud.js";
 import { WorldIcon } from "./world-icons.js";
-import { WorldLabelsOverlay, type WorldLabelsOverlayHandle } from "./world-labels-overlay.js";
+import {
+  WorldLabelsOverlay,
+  type WorldActiveInteractTarget,
+  type WorldLabelsOverlayHandle,
+} from "./world-labels-overlay.js";
 import { computeMailboxUnreadCount, WorldMailbox } from "./world-mailbox.js";
 import { WorldPanelModal } from "./world-panel-modal.js";
 import { WorldPhotoStudio } from "./world-photo-studio.js";
@@ -218,6 +226,7 @@ function findDistrictInVillages(
 
 export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps }) {
   const store = useWorldStore();
+  const currentZone = useCurrentZone();
   const mailboxReadKeys = useMailboxReadKeys();
   const releasedFishIds = useReleasedFishIds();
   const snapshot = useWorldSnapshot(deps);
@@ -245,7 +254,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [celebrationToast, setCelebrationToast] = useState<string | null>(null);
   const [controlsGuideOpen, setControlsGuideOpen] = useState(false);
-  const [fastTravelOpen, setFastTravelOpen] = useState(false);
   const [debugPanelVisible, setDebugPanelVisible] = useState(false);
   const [playerHovered, setPlayerHovered] = useState(false);
   const [skyHoverTarget, setSkyHoverTarget] = useState<WorldSkyHoverTarget | null>(null);
@@ -262,8 +270,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const ringGuideDistRef = useRef<HTMLSpanElement | null>(null);
   const lastRingGuideVisibleRef = useRef(false);
   const lastRingGuideDistRef = useRef(-1);
-  const fastTravelOpenRef = useRef(fastTravelOpen);
-  fastTravelOpenRef.current = fastTravelOpen;
+  const fastTravelOpenRef = useRef(store.quickJumpOpen);
+  fastTravelOpenRef.current = store.quickJumpOpen;
   const nearMailboxRef = useRef(nearMailbox);
   nearMailboxRef.current = nearMailbox;
   const nearParadeBellRef = useRef(nearParadeBell);
@@ -387,22 +395,24 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, []);
 
   const handleToggleFastTravel = useCallback(() => {
-    setFastTravelOpen((prev) => {
-      const next = !prev;
-      if (next && getWorldStoreSnapshot().fishingPhase !== "idle") {
-        runtimeRef.current?.cancelFishing();
-      }
-      return next;
-    });
+    const next = !getWorldStoreSnapshot().quickJumpOpen;
+    if (next && getWorldStoreSnapshot().fishingPhase !== "idle") {
+      runtimeRef.current?.cancelFishing();
+    }
+    setQuickJumpOpen(next);
   }, []);
 
   const handleCloseFastTravel = useCallback(() => {
-    setFastTravelOpen(false);
+    closeQuickJump();
   }, []);
 
   const handleWarpTo = useCallback((x: number, z: number, label: string) => {
-    setFastTravelOpen(false);
+    closeQuickJump();
     const wasFlying = getWorldStoreSnapshot().overviewMode;
+    if (wasFlying) {
+      runtimeRef.current?.setLandingPreview(null);
+      setOverviewMode(false);
+    }
     requestWorldTeleport(x, z);
     const tNow = getWorldT(deps.commodore.language());
     pushToast(
@@ -412,11 +422,37 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     );
   }, [deps, pushToast]);
 
+  const handleWarpToDistrict = useCallback((district: WorldDistrictSpec, _village: WorldVillageSpec) => {
+    closeQuickJump();
+    const wasFlying = getWorldStoreSnapshot().overviewMode;
+    if (wasFlying) {
+      runtimeRef.current?.setLandingPreview(null);
+      setOverviewMode(false);
+    }
+    requestWorldTeleport(district.x, district.z);
+    selectDistrict(district.id);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(
+      wasFlying
+        ? tNow("theWorld.flight.diveToast", { label: district.label })
+        : tNow("theWorld.district.teleportAria", { name: district.label }),
+    );
+  }, [deps, pushToast]);
+
+  const handleOpenInConsole = useCallback((commodoreId: string, objectiveId?: string | null) => {
+    if (objectiveId) {
+      deps.openObjectiveInConsole(commodoreId, objectiveId);
+    } else {
+      deps.openCommodoreInConsole(commodoreId);
+    }
+    exitTheWorld({ reducedMotion: deps.isReducedMotion() });
+  }, [deps]);
+
   const handleResetWorldLocalData = useCallback(() => {
     resetWorldProgressData();
     runtimeRef.current?.syncPondFish([]);
     runtimeRef.current?.setOperationFlag(null);
-    setFastTravelOpen(false);
+    closeQuickJump();
     const isEnNow = deps.commodore.language() === "en";
     pushToast(
       isEnNow
@@ -638,10 +674,29 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [store.choreography, store.lifecycle, triggerStamp]);
 
-  // 실시간 월드 스냅샷 동기화
+  // 실시간 월드 스냅샷 동기화 + 콘솔에서 보고 있던 사령관 마을로 최초 진입 포커스 (#4)
+  const initialViewedFocusAppliedRef = useRef(false);
   useEffect(() => {
-    runtimeRef.current?.applySnapshot(snapshot);
-  }, [snapshot]);
+    if (store.lifecycle === "closed") {
+      initialViewedFocusAppliedRef.current = false;
+    }
+  }, [store.lifecycle]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    if (!runtime) return;
+    runtime.applySnapshot(snapshot);
+    if (!initialViewedFocusAppliedRef.current && snapshot.villages.length > 0) {
+      initialViewedFocusAppliedRef.current = true;
+      const viewedCommodoreId = deps.getViewedCommodoreId();
+      if (viewedCommodoreId) {
+        const targetVillage = snapshot.villages.find((v) => v.commodoreId === viewedCommodoreId) ?? null;
+        if (targetVillage) {
+          runtime.spawnAtVillage(targetVillage);
+        }
+      }
+    }
+  }, [deps, snapshot]);
 
   // 전환/시간/카메라/상호작용 상태 동기화
   useEffect(() => {
@@ -657,6 +712,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   useEffect(() => {
     runtimeRef.current?.setOverviewMode(store.overviewMode);
     if (!store.overviewMode) {
+      runtimeRef.current?.setLandingPreview(null);
       setSkyHoverTarget(null);
       closeSkyQuickMenu();
       if (ringComboTimerRef.current !== null) {
@@ -668,6 +724,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       lastRingGuideDistRef.current = -1;
     }
   }, [store.overviewMode]);
+
+  useEffect(() => {
+    if (store.quickJumpOpen && getWorldStoreSnapshot().fishingPhase !== "idle") {
+      runtimeRef.current?.cancelFishing();
+    }
+  }, [store.quickJumpOpen]);
 
   useEffect(() => {
     runtimeRef.current?.setCompanionActors(store.companionActorIds);
@@ -891,6 +953,44 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [snapshot.actors, store.selectedActorId]);
 
+  // 더 월드가 열려 있는 동안 하부 콘솔 영역을 inert/aria-hidden으로 격리해 포커스·스크린리더 누수를 차단한다 (#1).
+  useEffect(() => {
+    const rootEl = rootRef.current;
+    const shell = rootEl?.closest(".console-shell") ?? rootEl?.parentElement ?? null;
+    if (!shell) return;
+
+    const targets = Array.from(
+      shell.querySelectorAll<HTMLElement>(":scope > .console-route-content, :scope > .console-shell-bars"),
+    ).filter((el) => !rootEl || !el.contains(rootEl));
+
+    const saved = targets.map((el) => ({
+      el,
+      inert: el.inert,
+      ariaHidden: el.getAttribute("aria-hidden"),
+    }));
+
+    for (const { el } of saved) {
+      el.inert = true;
+      el.setAttribute("aria-hidden", "true");
+    }
+
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && (!rootEl || !rootEl.contains(active))) {
+      active.blur();
+    }
+
+    return () => {
+      for (const item of saved) {
+        item.el.inert = item.inert;
+        if (item.ariaHidden === null) {
+          item.el.removeAttribute("aria-hidden");
+        } else {
+          item.el.setAttribute("aria-hidden", item.ariaHidden);
+        }
+      }
+    };
+  }, []);
+
   // 더 월드 진입 시 배경 콘솔에 남은 포커스를 해제해 즉시 `Enter` 채팅이 동작하도록 한다.
   useEffect(() => {
     if (store.lifecycle !== "open" && store.lifecycle !== "diving") return;
@@ -1000,7 +1100,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     onStartFishing: handleStartFishing,
     onReelFishing: handleReelFishing,
     onCancelFishing: handleCancelFishing,
-    isReducedMotion: deps.isReducedMotion,
   });
 
   // 우클릭 브라우저 기본 컨텍스트 메뉴 차단 (텍스트 입력창 내부만 예외 허용)
@@ -1070,6 +1169,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const handleCanvasPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.button !== 0) return;
     pointerDownRef.current = { x: e.clientX, y: e.clientY };
+    if (getWorldStoreSnapshot().overviewMode) {
+      runtimeRef.current?.setLandingPreview(null);
+    }
   }, []);
 
   const handleCanvasPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1092,18 +1194,20 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
       if (playerHoveredRef.current) setPlayerHovered(false);
       if (skyHoverTargetRef.current !== null) setSkyHoverTarget(null);
+      runtimeRef.current?.setLandingPreview(null);
       return;
     }
     const now = performance.now();
     if (now - lastHoverPickRef.current < HOVER_PICK_THROTTLE_MS) return;
     lastHoverPickRef.current = now;
 
-    // 하늘 비행(`overviewMode`) 중 공중 호버 스캔 카드 갱신
+    // 하늘 비행(`overviewMode`) 중 공중 호버 스캔 카드 & 3D 유성 착지 예고 링 갱신 (#11)
     if (snap.overviewMode) {
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
       if (playerHoveredRef.current) setPlayerHovered(false);
       if (snap.skyQuickMenu) {
         if (skyHoverTargetRef.current !== null) setSkyHoverTarget(null);
+        runtimeRef.current?.setLandingPreview(null);
         return;
       }
       const hitDistrict = runtimeRef.current?.pickDistrictAt(e.clientX, e.clientY) ?? null;
@@ -1121,8 +1225,34 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
           x: e.clientX,
           y: e.clientY,
         });
-      } else if (skyHoverTargetRef.current !== null) {
-        setSkyHoverTarget(null);
+        if (hitDistrict) {
+          runtimeRef.current?.setLandingPreview({
+            x: hitDistrict.x,
+            z: hitDistrict.z,
+            scale: 1.15,
+          });
+        } else {
+          const entryDist = Math.max(2.35, Math.min(hitVillage.radius - 2.65, hitVillage.radius * 0.42));
+          runtimeRef.current?.setLandingPreview({
+            x: hitVillage.x + Math.cos(hitVillage.gateAngle) * entryDist,
+            z: hitVillage.z + Math.sin(hitVillage.gateAngle) * entryDist,
+            scale: 1.35,
+          });
+        }
+      } else {
+        if (skyHoverTargetRef.current !== null) {
+          setSkyHoverTarget(null);
+        }
+        const groundPt = runtimeRef.current?.pickGroundPointAt(e.clientX, e.clientY) ?? null;
+        if (groundPt) {
+          runtimeRef.current?.setLandingPreview({
+            x: groundPt.x,
+            z: groundPt.z,
+            scale: 1.0,
+          });
+        } else {
+          runtimeRef.current?.setLandingPreview(null);
+        }
       }
       return;
     }
@@ -1158,6 +1288,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (skyHoverTargetRef.current !== null) {
       setSkyHoverTarget(null);
     }
+    runtimeRef.current?.setLandingPreview(null);
   }, []);
 
   const handleCanvasPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1204,16 +1335,22 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       }
       const hitVillage = runtimeRef.current?.pickVillageAt(e.clientX, e.clientY) ?? null;
       if (hitVillage) {
-        const landX = hitVillage.x + Math.cos(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
-        const landZ = hitVillage.z + Math.sin(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
-        requestWorldTeleport(landX, landZ);
+        runtimeRef.current?.diveToPoint(hitVillage.x, hitVillage.z, {
+          lookAtX: hitVillage.x,
+          lookAtZ: hitVillage.z,
+        });
+        setOverviewMode(false);
         const tNow = getWorldT(deps.commodore.language());
         pushToast(tNow("theWorld.flight.diveToast", { label: hitVillage.label }));
         return;
       }
       const hitFlightDistrict = runtimeRef.current?.pickDistrictAt(e.clientX, e.clientY) ?? null;
       if (hitFlightDistrict) {
-        requestWorldTeleport(hitFlightDistrict.x, hitFlightDistrict.z);
+        runtimeRef.current?.diveToPoint(hitFlightDistrict.x, hitFlightDistrict.z, {
+          lookAtX: hitFlightDistrict.x,
+          lookAtZ: hitFlightDistrict.z,
+        });
+        setOverviewMode(false);
         const tNow = getWorldT(deps.commodore.language());
         pushToast(tNow("theWorld.flight.diveToast", { label: hitFlightDistrict.label }));
         return;
@@ -1301,10 +1438,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, []);
 
   const handleWarpToVillage = useCallback((village: WorldVillageSpec) => {
+    closeQuickJump();
     const wasFlying = getWorldStoreSnapshot().overviewMode;
-    const landX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
-    const landZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
-    requestWorldTeleport(landX, landZ);
+    if (wasFlying) {
+      runtimeRef.current?.setLandingPreview(null);
+      setOverviewMode(false);
+    }
+    requestWorldTeleport(village.x, village.z);
     const tNow = getWorldT(deps.commodore.language());
     pushToast(
       wasFlying
@@ -1796,6 +1936,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     openAdmiralCustomizer();
   }, []);
 
+  const handleOpenGiftTab = useCallback((commodoreId: string) => {
+    closeActorInteraction();
+    playDistrictSelect();
+    openAdmiralCustomizer({ tab: "gifts", focusCommodoreId: commodoreId });
+  }, []);
+
   const handleCloseAdmiralCustomizer = useCallback(() => {
     closeAdmiralCustomizer();
   }, []);
@@ -2007,12 +2153,60 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   useEffect(() => {
     if (
-      fastTravelOpen
+      store.quickJumpOpen
       && (anyModalOpen || store.photoMode || store.cinemaMode || store.interactionMode !== "closed")
     ) {
-      setFastTravelOpen(false);
+      closeQuickJump();
     }
-  }, [anyModalOpen, fastTravelOpen, store.cinemaMode, store.interactionMode, store.photoMode]);
+  }, [anyModalOpen, store.cinemaMode, store.interactionMode, store.photoMode, store.quickJumpOpen]);
+
+  // `E` 키 단일 최우선 대상 산출 (`use-world-shortcuts.ts`의 KeyE 우선순위와 1:1 일치, 중복 `[E]` 배지 차단)
+  const activeInteractTarget = useMemo<WorldActiveInteractTarget>(() => {
+    if (
+      store.lifecycle !== "open"
+      || store.overviewMode
+      || store.photoMode
+      || store.cinemaMode
+      || anyModalOpen
+      || store.interactionMode !== "closed"
+      || store.chatActive
+      || store.sittingAtCampfire
+      || store.fishingPhase !== "idle"
+    ) {
+      return null;
+    }
+    if (nearMailbox) return "mailbox";
+    if (nearParadeBell) return "paradeBell";
+    if (store.nearActorId && !store.companionActorIds.includes(store.nearActorId)) {
+      return "actor";
+    }
+    if (nearCampfire) return "campfire";
+    if (nearFishingWater) return "fishing";
+    if (store.nearActorId) return "actor";
+    return null;
+  }, [
+    anyModalOpen,
+    nearCampfire,
+    nearFishingWater,
+    nearMailbox,
+    nearParadeBell,
+    store.chatActive,
+    store.cinemaMode,
+    store.companionActorIds,
+    store.fishingPhase,
+    store.interactionMode,
+    store.lifecycle,
+    store.nearActorId,
+    store.overviewMode,
+    store.photoMode,
+    store.sittingAtCampfire,
+  ]);
+
+  const showDockInteractPrompt =
+    activeInteractTarget === "mailbox"
+    || activeInteractTarget === "paradeBell"
+    || activeInteractTarget === "campfire"
+    || activeInteractTarget === "fishing";
 
   // 근처 사령관/마을 정문 원클릭 결재·질문 퀵 액션 해소
   const nearFieldReviewTarget = useMemo(() => {
@@ -2068,14 +2262,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         photoMode={store.photoMode}
         cinemaMode={store.cinemaMode}
         sittingAtCampfire={store.sittingAtCampfire || store.overviewMode}
-        suppressInteractPrompts={
-          store.fishingPhase !== "idle"
-          || (
-            store.nearActorId !== null
-            && store.companionActorIds.includes(store.nearActorId)
-            && (nearMailbox || nearParadeBell || nearCampfire || nearFishingWater)
-          )
-        }
+        suppressInteractPrompts={store.fishingPhase !== "idle" || activeInteractTarget !== "actor"}
+        activeInteractTarget={activeInteractTarget}
         playerLabelRevealed={playerLabelRevealed}
         villages={snapshot.villages}
         labelMetas={visibleLabelMetas}
@@ -2145,15 +2333,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             </button>
           ) : null}
           {store.overviewMode && !anyModalOpen && !store.photoMode && !store.cinemaMode ? (
-            <div
-              ref={ringGuideElRef}
-              className="the-world-ring-guide-arrow"
-              style={{ opacity: 0 }}
-              aria-hidden="true"
-            >
-              <span ref={ringGuideChevronRef} className="the-world-ring-guide-chevron">➤</span>
-              <span ref={ringGuideDistRef} className="the-world-ring-guide-dist">0m</span>
-            </div>
+            <WorldFlightRingGuide
+              containerRef={ringGuideElRef}
+              chevronRef={ringGuideChevronRef}
+              distRef={ringGuideDistRef}
+              locale={locale}
+            />
           ) : null}
           {store.overviewMode && ringComboHud && !anyModalOpen && !store.photoMode && !store.cinemaMode ? (
             <div
@@ -2334,10 +2519,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             </div>
           ) : null}
           {!store.photoMode && !store.cinemaMode && !store.overviewMode && !anyModalOpen && store.interactionMode === "closed"
-            && (
-              nearFieldReviewTarget !== null
-              || (store.fishingPhase === "idle" && !store.sittingAtCampfire && (nearMailbox || nearParadeBell || (!store.nearActorId && (nearCampfire || nearFishingWater))))
-            ) ? (
+            && (nearFieldReviewTarget !== null || showDockInteractPrompt) ? (
             <div className="the-world-proximity-dock">
               {nearFieldReviewTarget ? (
                 <button
@@ -2374,59 +2556,57 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
                   </span>
                 </button>
               ) : null}
-              {store.fishingPhase === "idle" && !store.sittingAtCampfire ? (
-                nearMailbox ? (
-                  <button
-                    type="button"
-                    className="the-world-field-review-chip is-ask"
-                    aria-label={isEnLocale ? "Check Fleet Mailbox" : "함대 우체통 확인"}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleOpenMailbox}
-                  >
-                    <WorldIcon name="bell" size={12} tone="amber" />
-                    <span className="the-world-field-review-chip-label">
-                      {isEnLocale
-                        ? `E · Check Fleet Mailbox${unreadMailCount > 0 ? ` (${unreadMailCount})` : ""}`
-                        : `E · 함대 우체통 확인${unreadMailCount > 0 ? ` (${unreadMailCount})` : ""}`}
-                    </span>
-                  </button>
-                ) : nearParadeBell ? (
-                  <button
-                    type="button"
-                    className="the-world-field-review-chip is-ask"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleRingParadeBell}
-                  >
-                    <WorldIcon name="bell" size={12} tone="amber" />
-                    <span className="the-world-field-review-chip-label">{t("theWorld.bell.prompt")}</span>
-                  </button>
-                ) : !(store.nearActorId && !store.companionActorIds.includes(store.nearActorId)) && nearCampfire ? (
-                  <button
-                    type="button"
-                    className="the-world-field-review-chip is-ask"
-                    aria-label={t("theWorld.campfire.sitAria")}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => {
-                      playDistrictSelect();
-                      setSittingAtCampfire(true);
-                    }}
-                  >
-                    <WorldIcon name="fire" size={12} tone="amber" />
-                    <span className="the-world-field-review-chip-label">
-                      E · {t("theWorld.campfire.sitHint")}
-                    </span>
-                  </button>
-                ) : !(store.nearActorId && !store.companionActorIds.includes(store.nearActorId)) && nearFishingWater ? (
-                  <button
-                    type="button"
-                    className="the-world-field-review-chip is-review"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleStartFishing}
-                  >
-                    <WorldIcon name="sparkle" size={12} tone="teal" />
-                    <span className="the-world-field-review-chip-label">{t("theWorld.fishing.castPrompt")}</span>
-                  </button>
-                ) : null
+              {activeInteractTarget === "mailbox" ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-ask"
+                  aria-label={t("theWorld.hud.mailboxAria")}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleOpenMailbox}
+                >
+                  <WorldIcon name="bell" size={12} tone="amber" />
+                  <span className="the-world-field-review-chip-label">
+                    {isEnLocale
+                      ? `E · Check Fleet Mailbox${unreadMailCount > 0 ? ` (${unreadMailCount})` : ""}`
+                      : `E · 함대 우체통 확인${unreadMailCount > 0 ? ` (${unreadMailCount})` : ""}`}
+                  </span>
+                </button>
+              ) : activeInteractTarget === "paradeBell" ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-ask"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleRingParadeBell}
+                >
+                  <WorldIcon name="bell" size={12} tone="amber" />
+                  <span className="the-world-field-review-chip-label">{t("theWorld.bell.prompt")}</span>
+                </button>
+              ) : activeInteractTarget === "campfire" ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-ask"
+                  aria-label={t("theWorld.campfire.sitAria")}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    playDistrictSelect();
+                    setSittingAtCampfire(true);
+                  }}
+                >
+                  <WorldIcon name="fire" size={12} tone="amber" />
+                  <span className="the-world-field-review-chip-label">
+                    E · {t("theWorld.campfire.sitHint")}
+                  </span>
+                </button>
+              ) : activeInteractTarget === "fishing" ? (
+                <button
+                  type="button"
+                  className="the-world-field-review-chip is-review"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={handleStartFishing}
+                >
+                  <WorldIcon name="sparkle" size={12} tone="teal" />
+                  <span className="the-world-field-review-chip-label">{t("theWorld.fishing.castPrompt")}</span>
+                </button>
               ) : null}
             </div>
           ) : null}
@@ -2557,8 +2737,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             unreadMailCount={unreadMailCount}
             villages={snapshot.villages}
             onWarpTo={handleWarpTo}
-            fastTravelOpen={fastTravelOpen}
-            onToggleFastTravel={handleToggleFastTravel}
+            onWarpToDistrict={handleWarpToDistrict}
             onResetWorldLocalData={handleResetWorldLocalData}
             weatherMode={store.weatherMode}
             onSelectWeather={handleSelectWeather}
@@ -2578,7 +2757,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             onOpenCustomizer={handleOpenAdmiralCustomizer}
             onTriggerEmote={handleTriggerEmote}
             onToggleControlsGuide={handleToggleControlsGuide}
+            controlsGuideOpen={controlsGuideOpen}
             debugPanelVisible={debugPanelVisible}
+            currentZoneLabel={currentZone?.label ?? null}
+            currentZoneTone={currentZone?.tone ?? null}
           />
           {snapshot.villages.length === 0 && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode && store.interactionMode === "closed" ? (
             <section
@@ -2656,10 +2838,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             <WorldWarRoom
               snapshot={snapshot}
               locale={locale}
+              deps={deps}
               onClose={handleCloseWarRoom}
               onRallyAll={handleRallyAll}
               onVisitVillage={handleVisitVillageFromWarRoom}
               onBroadcastAll={handleBroadcastAll}
+              onOpenInConsole={handleOpenInConsole}
             />
           ) : null}
           {store.stampBookOpen ? (
@@ -2712,6 +2896,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               operationFlag={store.operationFlag}
               onDeployOperationFlag={handleDeployOperationFlag}
               onClearOperationFlag={handleClearOperationFlag}
+              onOpenInConsole={handleOpenInConsole}
+              deps={deps}
             />
           ) : null}
           {store.districtContextMenu && contextMenuDistrict && !store.photoMode && !store.cinemaMode && !anyModalOpen ? (
@@ -2768,6 +2954,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               isNear={store.nearActorId === selectedActor.id}
               deps={deps}
               onStatusBanner={pushToast}
+              onOpenGiftTab={handleOpenGiftTab}
             />
           ) : null}
           {dialogueOpen && selectedActor ? (
@@ -2785,6 +2972,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               deps={deps}
               districts={selectedActorDistricts}
               onJumpToDistrict={handleJumpToPanelDistrict}
+              onOpenInConsole={handleOpenInConsole}
               onStatusBanner={pushToast}
             />
           ) : null}

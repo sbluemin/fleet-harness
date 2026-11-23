@@ -5,7 +5,7 @@ import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar
 import type { WorldActorSpec, WorldChatFeedEntry } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
 import { playCompanionCall, playDistrictSelect, playMongleChirp } from "../engine/world-audio.js";
-import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
+import { formatDialogueAria, getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   addCompanionActorId,
   closeActorInteraction,
@@ -226,7 +226,7 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
       data-tone={actor.tone}
       data-has-asks={hasOpenAsks ? "true" : undefined}
       role="dialog"
-      aria-label={t("theWorld.dialogue.aria", { name: actor.name })}
+      aria-label={formatDialogueAria(deps.commodore.language(), actor.name)}
       onPointerDown={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >

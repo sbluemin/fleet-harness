@@ -3,6 +3,7 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -12,6 +13,7 @@ import {
   GLSL3,
   Group,
   InstancedMesh,
+  type Intersection,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
@@ -19,6 +21,7 @@ import {
   Object3D,
   PlaneGeometry,
   Quaternion,
+  type Raycaster,
   RingGeometry,
   Scene,
   ShaderMaterial,
@@ -66,7 +69,12 @@ import {
   ROAD_RIBBON_FRAGMENT,
   ROAD_RIBBON_VERTEX,
 } from "./meadow-shaders.js";
-import { createMeadowTexturePack } from "./meadow-textures.js";
+import {
+  createGateBannerTexture,
+  createGatePlaqueTexture,
+  createMeadowTexturePack,
+  createVillageSignTexture,
+} from "./meadow-textures.js";
 import {
   createWorldAssetRegistry,
   type InstancedSlotTransform,
@@ -109,7 +117,31 @@ export interface VillageBiomeParticleTarget {
   readonly x: number;
   readonly z: number;
   readonly radius: number;
-  readonly biome: WorldVillageBiome;
+  readonly biome: WorldVillageBiome | "snow";
+  readonly label?: string | undefined;
+}
+
+export type EffectiveVillageTheme = WorldVillageBiome | "snow";
+
+const SNOW_THEME_RE = /설원|눈꽃|겨울|빙하|극지|설산|snow|winter|frost|glacier|ice|arctic/iu;
+const AUTUMN_THEME_RE = /가을|단풍|낙엽|황혼|autumn|fall|maple|harvest/iu;
+const SAKURA_THEME_RE = /벚꽃|사쿠라|봄꽃|화원|sakura|blossom|cherry/iu;
+const CITADEL_THEME_RE = /성채|요새|시타델|citadel|fortress|castle|bastion/iu;
+
+/**
+ * 사용자 수동 바이옴 지정(`sakura`/`autumn`/`citadel`)이 없을 때(`meadow`),
+ * 마을·사령관 이름 키워드와 조화되는 기본 테마 팔레트를 도출한다(수동 전환 100% 호환).
+ */
+export function resolveEffectiveVillageTheme(
+  village: Pick<WorldVillageSpec, "biome" | "label">,
+): EffectiveVillageTheme {
+  if (village.biome !== "meadow") return village.biome;
+  const label = village.label;
+  if (SNOW_THEME_RE.test(label)) return "snow";
+  if (AUTUMN_THEME_RE.test(label)) return "autumn";
+  if (SAKURA_THEME_RE.test(label)) return "sakura";
+  if (CITADEL_THEME_RE.test(label)) return "citadel";
+  return "meadow";
 }
 
 const TONE_ROOF_HEX: Readonly<Record<IdentityTone, number>> = {
@@ -149,6 +181,15 @@ export interface CameraOccluder {
   readonly z: number;
   readonly radius: number;
   readonly height: number;
+  /** 차폐 하단 시작 높이(m, 예: 수목 수관·성문 상인방). 미지정 시 0. */
+  readonly minY?: number | undefined;
+  readonly kind?: "gate" | "wall" | "tree" | "building" | "prop" | undefined;
+}
+
+export interface FishingSpotAnchor {
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
 }
 
 export type LiveWorkshopFxKind = "smoke" | "spark" | "pulse" | "alert" | "ask";
@@ -165,6 +206,14 @@ export interface MeadowSceneHandle {
   readonly streetlampAnchors: readonly Vector3[];
   syncZones(zones: readonly WorldZoneSpec[], villages?: readonly WorldVillageSpec[]): void;
   setDistrictHighlight(hovered: WorldDistrictSpec | null, selected: WorldDistrictSpec | null): void;
+  /** `theaterId`(또는 `districtId`) 기준으로 구역 호버 하이라이트 링·은은한 발광을 부드럽게 켜고 끈다. */
+  setHoveredDistrict(theaterIdOrDistrictId: string | null): void;
+  /** Tier 0~5 전 구역 건물 3D 레이캐스트용 히트 그룹(각 메시 `userData`에 `districtId`/`theaterId`/`district` 포함). */
+  getDistrictHitGroup(): Group;
+  /** Tier 0~5 전 구역 히트 타깃 목록(`Raycaster.intersectObjects` 직접 전달용). */
+  getDistrictHitTargets(): readonly Object3D[];
+  /** 사전 할당 버퍼로 0-GC 3D 구역 건물 레이캐스트를 수행한다. */
+  raycastDistrict(raycaster: Raycaster): WorldDistrictSpec | null;
   /** 중앙 광장 3D 퀘스트 게시판의 긴급 알림 비콘(질문·승인·검토 > 0) 표시를 씬 리빌드 없이 전환한다. */
   setQuestBoardAlert(urgentCount: number): void;
   /** 우클릭/인스펙터로 꽂힌 RTS 홀로그램 작전 깃발을 씬 리빌드 없이 동기화한다. */
@@ -179,8 +228,12 @@ export interface MeadowSceneHandle {
   getSurfaceType(x: number, z: number): MeadowSurfaceType;
   /** 발소리 SFX용 지면 재질을 판별한다 (4개 목교=`"wood"`, 중앙 광장 석판·돌길·마을 석조 광장=`"stone"`, 초원=`"grass"`). */
   getSurfaceMaterial(x: number, z: number): MeadowFootstepSurface;
-  /** 카메라 스프링-암 가림 방지용 경량 수직 실린더 목록(가로등·나무·건물·문주)을 반환한다. */
+  /** 카메라 스프링-암 가림 방지용 경량 수직 실린더 목록(가로등·나무 수관·건물·성문·담장)을 반환한다. */
   getCameraOccluders(): readonly CameraOccluder[];
+  /** `Raycaster` 기반 3인칭 카메라 차폐 회피(`setCameraOccluders`)에 등록할 경량 차폐 오브젝트 목록(0 렌더 비용). */
+  getCameraOccluderObjects(): readonly Object3D[];
+  /** 시냇가 상시 3D 낚시 포인트 표식 좌표 목록을 반환한다. */
+  getFishingSpotAnchors(): readonly FishingSpotAnchor[];
   /** 실시간 작업/경보/질문 상태인 마을·구역의 3D 공방 FX 에미터 좌표를 반환한다. */
   getLiveWorkshopEmitters(): readonly LiveWorkshopEmitter[];
   /** 좌표에서 가장 가까운 시냇물 강변까지의 거리(m, 공간 음향용)를 반환한다. */
@@ -475,6 +528,72 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   const matSmoke = ownMat(new MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.95, transparent: true, opacity: 0.52 }));
   const matPad = ownMat(new MeshStandardMaterial({ color: 0x3da352, roughness: 0.75 }));
   const matLotus = ownMat(new MeshStandardMaterial({ color: 0xf9a8d4, roughness: 0.65 }));
+  const matSnowCap = ownMat(new MeshStandardMaterial({
+    color: 0xf0f7ff,
+    map: textures.plasterMap,
+    roughness: 0.80,
+    metalness: 0.02,
+  }));
+  const matFishingSign = ownMat(new MeshStandardMaterial({
+    map: textures.fishingSignMap,
+    roughness: 0.68,
+    side: DoubleSide,
+  }));
+  const matBlueprintEasel = ownMat(new MeshStandardMaterial({
+    map: textures.blueprintEaselMap,
+    roughness: 0.62,
+  }));
+  const matPlazaSignRight = ownMat(new MeshStandardMaterial({
+    map: textures.plazaSignRightMap,
+    roughness: 0.74,
+    side: DoubleSide,
+  }));
+  const matPlazaSignLeft = ownMat(new MeshStandardMaterial({
+    map: textures.plazaSignLeftMap,
+    roughness: 0.74,
+    side: DoubleSide,
+  }));
+  const matRoadSignRight = ownMat(new MeshStandardMaterial({
+    map: textures.roadSignRightMap,
+    roughness: 0.74,
+    side: DoubleSide,
+  }));
+  const matRoadSignLeft = ownMat(new MeshStandardMaterial({
+    map: textures.roadSignLeftMap,
+    roughness: 0.74,
+    side: DoubleSide,
+  }));
+  const matInvisibleHit = ownMat(new MeshBasicMaterial({ visible: false }));
+
+  // 공용 표지판/배너 쿼드 · 구역 레이캐스트 히트 프록시 실린더 지오메트리 (dispose 시 일괄 해제)
+  const signPlaqueGeo = markSharedGeometry(new PlaneGeometry(1, 1));
+  const districtHitGeo = markSharedGeometry(new CylinderGeometry(1, 1, 1, 10));
+  districtHitGeo.translate(0, 0.5, 0);
+  const dynamicSignTextures: CanvasTexture[] = [];
+  const dynamicSignMaterials: MeshStandardMaterial[] = [];
+
+  function disposeDynamicSignResources(): void {
+    for (const mat of dynamicSignMaterials) mat.dispose();
+    dynamicSignMaterials.length = 0;
+    for (const tex of dynamicSignTextures) tex.dispose();
+    dynamicSignTextures.length = 0;
+  }
+
+  function createOwnedSignMaterial(tex: CanvasTexture, doubleSided = false): MeshStandardMaterial {
+    dynamicSignTextures.push(tex);
+    const mat = new MeshStandardMaterial({
+      map: tex,
+      roughness: 0.68,
+      metalness: 0.04,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+      ...(doubleSided ? { side: DoubleSide } : {}),
+    });
+    markSharedMaterial(mat);
+    dynamicSignMaterials.push(mat);
+    return mat;
+  }
 
   // 1. 초원 지형 메쉬 (380m x 380m 연속 지형, 이동 반경 88m + 정점 컬러 포장도로/마을 테라스/원경 산맥)
   const TERRAIN_SIZE = 380;
@@ -1607,7 +1726,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     let count = 0;
     for (let vi = 0; vi < villages.length && count < MAX_BIOME_PARTICLES; vi += 1) {
       const v = villages[vi]!;
-      const kind = resolveBiomeParticleKind(v.biome);
+      let resolvedBiome: string = v.biome;
+      if (v.biome === "meadow") {
+        if (v.label) {
+          resolvedBiome = resolveEffectiveVillageTheme({ biome: "meadow", label: v.label });
+        } else {
+          const matched = currentVillages.find((cv) => Math.hypot(cv.x - v.x, cv.z - v.z) < 0.5);
+          if (matched) resolvedBiome = resolveEffectiveVillageTheme(matched);
+        }
+      }
+      const kind = resolveBiomeParticleKind(resolvedBiome);
       const palette = BIOME_PARTICLE_PALETTES[kind];
       const limit = vi === villages.length - 1
         ? MAX_BIOME_PARTICLES - count
@@ -1628,7 +1756,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     if (biomeParticleInst.instanceColor) biomeParticleInst.instanceColor.needsUpdate = true;
   }
 
-  // 심시티 구역 호버/선택 공유 하이라이트 링 2개
+  // 심시티 구역 호버/선택 공유 하이라이트 링 + 부드러운 호버 발광 아우라 (0-GC)
   const highlightGeo = new PlaneGeometry(2, 2);
   highlightGeo.rotateX(-Math.PI * 0.5);
   const hoverHighlightMat = new ShaderMaterial({
@@ -1655,13 +1783,28 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     vertexShader: HIGHLIGHT_VERTEX,
     fragmentShader: HIGHLIGHT_FRAGMENT,
   });
+  const hoverAuraGeo = markSharedGeometry(new CylinderGeometry(0.96, 1.04, 0.44, 24, 1, true));
+  hoverAuraGeo.translate(0, 0.22, 0);
+  const hoverAuraMat = ownMat(new MeshBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    depthWrite: false,
+  }));
   const hoverHighlightMesh = new Mesh(highlightGeo, hoverHighlightMat);
   hoverHighlightMesh.visible = false;
   hoverHighlightMesh.renderOrder = 3;
+  const hoverAuraMesh = new Mesh(hoverAuraGeo, hoverAuraMat);
+  hoverAuraMesh.visible = false;
+  hoverAuraMesh.renderOrder = 3;
   const selectedHighlightMesh = new Mesh(highlightGeo, selectedHighlightMat);
   selectedHighlightMesh.visible = false;
   selectedHighlightMesh.renderOrder = 4;
-  root.add(hoverHighlightMesh, selectedHighlightMesh);
+  root.add(hoverHighlightMesh, hoverAuraMesh, selectedHighlightMesh);
+  let hoverFadeAlpha = 0;
+  let hoverDisplayedDistrict: WorldDistrictSpec | null = null;
 
   // 5. GPU 바람 파동(Wind Gust) 인스탄싱 풀잎(13,500개) & 들꽃(2,600개) & 야간 반딧불이(84개)
   const MAX_GRASS = 13500;
@@ -1916,10 +2059,27 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     readonly isBridgeDeck?: boolean | undefined;
   }
 
+  interface OrientedBoxClearZone {
+    readonly cx: number;
+    readonly cz: number;
+    readonly halfW: number;
+    readonly halfD: number;
+    readonly cosY: number;
+    readonly sinY: number;
+  }
+
   let roadSegments: RoadSegment[] = [];
   let colliders: CircleCollider[] = [];
   let grassClearZones: CircleCollider[] = [];
+  let grassClearBoxes: OrientedBoxClearZone[] = [];
   let cameraOccluders: CameraOccluder[] = [];
+  let cameraOccluderObjects: Object3D[] = [];
+  const districtHitGroup = new Group();
+  districtHitGroup.name = "the-world-district-hit-group";
+  districtHitGroup.userData["kind"] = "district-hit-group";
+  let districtHitTargets: Object3D[] = [];
+  const districtRaycastScratch: Intersection[] = [];
+  let fishingSpotAnchors: FishingSpotAnchor[] = [];
   let forestAudioAnchors: { readonly x: number; readonly z: number }[] = [];
   const streetlampAnchors: Vector3[] = [];
   let lastHoveredDistrict: WorldDistrictSpec | null = null;
@@ -2320,8 +2480,87 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     grassClearZones.push({ x, z, r });
   }
 
-  function addCameraOccluder(x: number, z: number, radius: number, height: number): void {
-    cameraOccluders.push({ x, z, radius, height });
+  function addGrassClearBox(cx: number, cz: number, halfW: number, halfD: number, rotY = 0): void {
+    grassClearBoxes.push({
+      cx,
+      cz,
+      halfW,
+      halfD,
+      cosY: Math.cos(rotY),
+      sinY: Math.sin(rotY),
+    });
+  }
+
+  function isPointInGrassClearBoxes(x: number, z: number, extraPad = 0): boolean {
+    for (let i = 0; i < grassClearBoxes.length; i += 1) {
+      const box = grassClearBoxes[i]!;
+      const dx = x - box.cx;
+      const dz = z - box.cz;
+      const localX = dx * box.cosY - dz * box.sinY;
+      const localZ = dx * box.sinY + dz * box.cosY;
+      if (Math.abs(localX) <= box.halfW + extraPad && Math.abs(localZ) <= box.halfD + extraPad) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function addCameraOccluder(
+    x: number,
+    z: number,
+    radius: number,
+    height: number,
+    minY?: number,
+    kind?: CameraOccluder["kind"],
+  ): void {
+    cameraOccluders.push({
+      x,
+      z,
+      radius,
+      height,
+      ...(minY !== undefined ? { minY } : {}),
+      ...(kind !== undefined ? { kind } : {}),
+    });
+  }
+
+  /**
+   * 8개 사령관 마을(`도리` 포함) 입구·스폰·착지 직후 3인칭 카메라 후방/측면 시야 회랑 판정.
+   * 이 회랑 안에 대형 수목·벚나무를 심지 않아 착지 직후 시야 가림을 원천 차단한다.
+   */
+  function isInVillageEntranceSightCorridor(tx: number, tz: number, extraLat = 0): boolean {
+    for (let i = 0; i < currentVillages.length; i += 1) {
+      const v = currentVillages[i]!;
+      const gCos = Math.cos(v.gateAngle);
+      const gSin = Math.sin(v.gateAngle);
+      const dx = tx - v.x;
+      const dz = tz - v.z;
+      const along = dx * gCos + dz * gSin;
+      const lateral = -dx * gSin + dz * gCos;
+      if (along >= v.radius - 2.6 && along <= v.radius + 11.4 && Math.abs(lateral) < 5.6 + extraLat) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function mountTexturedPlaque(
+    parent: Group,
+    mat: MeshStandardMaterial,
+    x: number,
+    y: number,
+    z: number,
+    width: number,
+    height: number,
+    rotY: number,
+    rotX = 0,
+  ): Mesh {
+    const m = new Mesh(signPlaqueGeo, mat);
+    m.position.set(x, y, z);
+    m.rotation.set(rotX, rotY, 0, "YXZ");
+    m.scale.set(width, height, 1);
+    m.receiveShadow = true;
+    parent.add(m);
+    return m;
   }
 
   function addContactShadow(
@@ -2359,12 +2598,12 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     });
   }
 
-  function addTree(b: InstancedBucketBuilder, _parent: Group, tx: number, tz: number, scale: number, kind: "oak" | "pine" | "blossom" | "autumn", addCollider = true): void {
+  function addTree(b: InstancedBucketBuilder, _parent: Group, tx: number, tz: number, scale: number, kind: "oak" | "pine" | "blossom" | "autumn" | "snow-pine", addCollider = true): void {
     const gy = getTerrainBaseHeight(tx, tz);
     if (gy < 0.08) return;
     const rotY = hash2(tx, tz) * Math.PI * 2;
     const slot: WorldModelSlot | null =
-      kind === "autumn"
+      kind === "autumn" || kind === "snow-pine"
         ? null
         : kind === "pine"
           ? "tree-pine"
@@ -2376,21 +2615,36 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       queueInstancedSlot(slot, { x: tx, y: gy, z: tz, rotationY: rotY, scale });
     } else {
       b.withFrame(tx, gy, tz, rotY, scale, () => {
-        if (kind === "pine") {
+        if (kind === "pine" || kind === "snow-pine") {
+          const isSnowPine = kind === "snow-pine";
           b.addCylinder(matBark, [0, 0.18, 0], [0.60, 0.42, 0.60], undefined, { tapered: true, castShadow: true, receiveShadow: true });
           b.addCylinder(matBark, [0, 0.68, 0], [0.40, 1.35, 0.40], undefined, { tapered: true, castShadow: true, receiveShadow: true });
-          const tiers: readonly [number, number, number, number][] = [
-            [2.48, 1.35, 1.36, 0x2f854b],
-            [2.08, 1.24, 2.02, 0x2f854b],
-            [1.60, 1.15, 2.66, 0x45a05a],
-            [1.00, 0.98, 3.24, 0x45a05a],
-          ];
+          const tiers: readonly [number, number, number, number][] = isSnowPine
+            ? [
+                [2.48, 1.35, 1.36, 0x2a6668],
+                [2.08, 1.24, 2.02, 0x34757a],
+                [1.60, 1.15, 2.66, 0x458b92],
+                [1.00, 0.98, 3.24, 0x5ea3aa],
+              ]
+            : [
+                [2.48, 1.35, 1.36, 0x2f854b],
+                [2.08, 1.24, 2.02, 0x2f854b],
+                [1.60, 1.15, 2.66, 0x45a05a],
+                [1.00, 0.98, 3.24, 0x45a05a],
+              ];
           tiers.forEach(([diam, h, py, hex], tierIdx) => {
             b.addCone(matFoliageBase, [0, py, 0], [diam, h, diam], [0, tierIdx * 0.42, 0], {
               color: hex,
               castShadow: true,
               receiveShadow: true,
             });
+            if (isSnowPine) {
+              // 설원 소나무 층별 눈 모자(Snow Cap)
+              b.addCone(matSnowCap, [0, py + h * 0.16, 0], [diam * 0.82, h * 0.68, diam * 0.82], [0, tierIdx * 0.42 + 0.15, 0], {
+                castShadow: true,
+                receiveShadow: true,
+              });
+            }
           });
         } else {
           b.addCylinder(matBark, [0, 0.18, 0], [0.74, 0.44, 0.74], undefined, { tapered: true, castShadow: true, receiveShadow: true });
@@ -2422,8 +2676,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     addContactShadow(b, tx, tz, 1.44 * scale, 1.44 * scale);
-    addGrassClearZone(tx, tz, 1.15 * scale);
-    addCameraOccluder(tx, tz, 0.52 * scale, 4.6 * scale);
+    addGrassClearZone(tx, tz, 1.22 * scale);
+    // 줄기 + 대형 수관(카메라 고도 1.2~4.6m) 모두 차폐 대상으로 등록해 나뭇잎 카메라 침범 방지
+    addCameraOccluder(tx, tz, 0.44 * scale, 1.65 * scale, 0, "tree");
+    const canopyR = (kind === "pine" || kind === "snow-pine" ? 1.12 : 1.32) * scale;
+    addCameraOccluder(tx, tz, canopyR, 4.55 * scale, 1.15 * scale, "tree");
     if (addCollider) {
       colliders.push({ x: tx, z: tz, r: 0.42 * scale });
     }
@@ -2461,6 +2718,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (py < 0.05) continue;
 
       b.addBox(matWood, [px, py + 0.36, pz], [0.12, 0.78, 0.12], [0, yaw, 0]);
+      addGrassClearZone(px, pz, 0.42);
       if (i < posts - 1) {
         const mx = ax + (bx - ax) * ((i + 0.5) / (posts - 1));
         const mz = az + (bz - az) * ((i + 0.5) / (posts - 1));
@@ -2493,7 +2751,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     });
     addContactShadow(b, lx, lz, 0.44, 0.44);
     addGrassClearZone(lx, lz, 0.68);
-    addCameraOccluder(lx, lz, 0.30, 2.65);
+    addCameraOccluder(lx, lz, 0.30, 2.65, 0, "prop");
   }
 
   function addWoodenBench(b: InstancedBucketBuilder, bx: number, bz: number, yaw: number): void {
@@ -2511,7 +2769,14 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addGrassClearZone(bx, bz, 1.35);
   }
 
-  function addWoodenSignpost(b: InstancedBucketBuilder, sx: number, sz: number, yaw: number): void {
+  function addWoodenSignpost(
+    b: InstancedBucketBuilder,
+    parent: Group,
+    sx: number,
+    sz: number,
+    yaw: number,
+    isPlaza = false,
+  ): void {
     const sy = getTerrainBaseHeight(sx, sz);
     if (sy < 0.08) return;
     b.withFrame(sx, sy, sz, yaw, 1, () => {
@@ -2520,8 +2785,25 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       b.addBox(matWood, [-0.20, 1.22, 0], [0.86, 0.20, 0.06], [0, -0.44, 0]);
       b.addSphere(matBrass, [0, 1.80, 0], [0.14, 0.14, 0.14]);
     });
+    // 빈 나무 판자 방지: 양쪽 방향 화살표 안내 캔버스 텍스처 부착
+    const cosY = Math.cos(yaw);
+    const sinY = Math.sin(yaw);
+    const topMat = isPlaza ? matPlazaSignRight : matRoadSignRight;
+    const botMat = isPlaza ? matPlazaSignLeft : matRoadSignLeft;
+    const placeArmDecals = (lx: number, ly: number, width: number, armRotY: number, mat: MeshStandardMaterial) => {
+      const worldX = sx + lx * cosY;
+      const worldZ = sz - lx * sinY;
+      const totalYaw = yaw + armRotY;
+      const nX = Math.sin(totalYaw) * 0.036;
+      const nZ = Math.cos(totalYaw) * 0.036;
+      mountTexturedPlaque(parent, mat, worldX + nX, sy + ly, worldZ + nZ, width, 0.17, totalYaw);
+      mountTexturedPlaque(parent, mat, worldX - nX, sy + ly, worldZ - nZ, width, 0.17, totalYaw + Math.PI);
+    };
+    placeArmDecals(0.22, 1.50, 0.88, 0.34, topMat);
+    placeArmDecals(-0.20, 1.22, 0.80, -0.44, botMat);
+
     addContactShadow(b, sx, sz, 0.52, 0.52);
-    addGrassClearZone(sx, sz, 0.86);
+    addGrassClearZone(sx, sz, 0.90);
     colliders.push({ x: sx, z: sz, r: 0.34 });
   }
 
@@ -2648,8 +2930,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     addContactShadow(b, hx, hz + 0.15, 3.55, 2.75);
-    addGrassClearZone(hx, hz + 0.15, 3.75);
-    addCameraOccluder(hx, hz + 0.15, 2.85, 5.4);
+    addGrassClearZone(hx, hz + 0.15, 3.95);
+    addGrassClearBox(hx, hz + 0.15, 3.35, 2.55, 0);
+    addCameraOccluder(hx, hz + 0.15, 2.85, 5.4, 0, "building");
     colliders.push({ x: hx, z: hz + 0.15, r: 2.95 });
 
     // 우측 풍차 시계탑 (길드 회관·퀘스트 게시판과 1.7~2.2m+ 개방 통로 확보)
@@ -2688,14 +2971,15 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     parent.add(windmillBlades);
     addContactShadow(b, mx, mz, 2.05, 2.05);
-    addGrassClearZone(mx, mz, 2.25);
-    addCameraOccluder(mx, mz, 1.65, 6.4);
+    addGrassClearZone(mx, mz, 2.45);
+    addCameraOccluder(mx, mz, 1.65, 6.4, 0, "building");
     colliders.push({ x: mx, z: mz, r: 1.55 });
   }
 
   /** 중앙 광장 우물 · 모닥불 · 이정표 · 벤치 · 길드 퀘스트 게시판 */
   function buildPlazaCommons(b: InstancedBucketBuilder, parent: Group): void {
     const courtY = getTerrainBaseHeight(0, -1.6);
+    addGrassClearZone(0, -1.6, 5.45);
     for (let ring = 0; ring < 12; ring += 1) {
       const ang = (ring / 12) * Math.PI * 2;
       b.addCylinder(
@@ -2773,18 +3057,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addWoodenBench(b, fx + 1.95, fz - 0.15, -Math.PI * 0.45);
     addWoodenBench(b, fx - 0.25, fz + 1.95, Math.PI);
 
-    // 나무 이정표 (-2.2, 1.9)
-    const sx = -2.2;
-    const sz = 1.9;
-    const sy = getTerrainBaseHeight(sx, sz);
-    b.withFrame(sx, sy, sz, 0, 1, () => {
-      b.addCylinder(matBark, [0, 0.86, 0], [0.18, 1.75, 0.18], undefined, { tapered: true });
-      b.addBox(matWoodLight, [0.22, 1.48, 0], [0.92, 0.20, 0.06], [0, 0.35, 0]);
-      b.addBox(matWood, [-0.20, 1.20, 0], [0.86, 0.20, 0.06], [0, -0.45, 0]);
-    });
-    addContactShadow(b, sx, sz, 0.55, 0.55);
-    addGrassClearZone(sx, sz, 0.88);
-    colliders.push({ x: sx, z: sz, r: 0.38 });
+    // 나무 이정표 (-2.2, 1.9 — 방향 안내 캔버스 텍스처 적용)
+    addWoodenSignpost(b, parent, -2.2, 1.9, 0, true);
 
     // 5. 중앙 광장 3D 길드 퀘스트 게시판 (WORLD_NOTICE_BOARD_POS: 북동쪽 가로등 옆, 풍차 비충돌)
     const nbx = WORLD_NOTICE_BOARD_POS.x;
@@ -3146,9 +3420,75 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
   }
 
+  /** 시냇가 상시 3D 낚시 포인트 표식 (나무 말뚝 + 작은 낚시 팻말 + 물결 랜턴 찌, 멀리서도 인지 가능) */
+  function buildFishingSpotMarkers(b: InstancedBucketBuilder, parent: Group): void {
+    const spots: readonly [number, number][] = [
+      [1.4, -1],   // 중앙 광장 남측 정면 시냇가 대표 낚시 포인트
+      [17.8, -1],  // 동부 연못 낚시 포인트
+      [-23.5, -1], // 서부 강변 낚시 포인트
+    ];
+    for (const [fx, bankSide] of spots) {
+      if (BRIDGES.some((br) => Math.abs(fx - br.x) < 4.0)) continue;
+      const bp = brookProfile(fx);
+      const fz = bp.centerZ + bankSide * (bp.halfWidth + 1.05);
+      const fy = getTerrainBaseHeight(fx, fz);
+      if (fy < 0.14) continue;
+      const rd = minRoadDistance(fx, fz);
+      if (rd.dist < rd.halfWidth + 0.85) continue;
+      if (currentVillages.some((v) => Math.hypot(fx - v.x, fz - v.z) < v.radius + 1.8)) continue;
+
+      // 광장/산책로 방향을 향해 팻말이 잘 보이도록 정렬 (북안은 -Z 쪽을 바라봄)
+      const signYaw = bankSide < 0 ? Math.PI : 0;
+      const cosY = Math.cos(signYaw);
+      const sinY = Math.sin(signYaw);
+
+      b.withFrame(fx, fy, fz, signYaw, 1, () => {
+        // 강변 나무 데크 발판 + 2개의 짧은 계류 말뚝 + 로프 감김
+        b.addBox(matWood, [0, 0.06, -0.52], [1.32, 0.10, 0.62], undefined, { receiveShadow: true });
+        b.addBox(matWoodLight, [0, 0.06, -0.84], [1.26, 0.09, 0.24], undefined, { receiveShadow: true });
+        b.addCylinder(matBark, [-0.56, 0.34, -0.68], [0.16, 0.72, 0.16], undefined, { tapered: true, castShadow: true });
+        b.addCylinder(matBark, [0.56, 0.28, -0.62], [0.15, 0.58, 0.15], undefined, { tapered: true, castShadow: true });
+        b.addTorus(matBellRope, [-0.56, 0.54, -0.68], [0.18, 0.22, 0.18]);
+        // 높은 낚시 표식 나무 기둥 + 횡목 + 황동 걸이 고리 + 팻말 프레임
+        b.addCylinder(matTimber, [0.02, 0.96, 0.05], [0.15, 1.94, 0.15], undefined, { tapered: true, castShadow: true });
+        b.addSphere(matBrass, [0.02, 1.96, 0.05], [0.15, 0.15, 0.15]);
+        b.addBox(matTimber, [0.34, 1.76, 0.05], [0.84, 0.09, 0.09], undefined, { castShadow: true });
+        b.addBox(matWood, [0.16, 1.56, 0.05], [0.34, 0.07, 0.07], [0, 0, 0.72]);
+        // 매달린 작은 낚시 팻말 목재 판 + 쇠고리 2개
+        b.addCylinder(matIron, [0.22, 1.66, 0.05], [0.025, 0.16, 0.025]);
+        b.addCylinder(matIron, [0.62, 1.66, 0.05], [0.025, 0.16, 0.025]);
+        b.addBox(matWoodLight, [0.42, 1.38, 0.05], [0.74, 0.46, 0.055], undefined, { castShadow: true });
+        // 횡목 끝 미니 야간 발광 찌 랜턴 (멀리서도 낚시 포인트 인지)
+        b.addCylinder(matIron, [0.74, 1.66, 0.05], [0.02, 0.18, 0.02]);
+        b.addCylinder(matLanternGlass, [0.74, 1.50, 0.05], [0.14, 0.18, 0.14]);
+        b.addSphere(matAccentBase, [0.74, 1.59, 0.05], [0.13, 0.08, 0.13], undefined, { color: 0xef4444 });
+      });
+
+      // 앞/뒤 양면에 선명한 낚시터 캔버스 텍스처 팻말 부착
+      const pLocalX = 0.42;
+      const pLocalZ = 0.05;
+      const px = fx + pLocalX * cosY + pLocalZ * sinY;
+      const pz = fz - pLocalX * sinY + pLocalZ * cosY;
+      const nX = sinY * 0.032;
+      const nZ = cosY * 0.032;
+      mountTexturedPlaque(parent, matFishingSign, px + nX, fy + 1.38, pz + nZ, 0.68, 0.42, signYaw);
+      mountTexturedPlaque(parent, matFishingSign, px - nX, fy + 1.38, pz - nZ, 0.68, 0.42, signYaw + Math.PI);
+
+      addContactShadow(b, fx, fz - 0.35, 0.95, 0.78, signYaw);
+      addGrassClearZone(fx, fz - 0.35, 1.25);
+      colliders.push({ x: fx, z: fz + 0.05, r: 0.36 });
+      fishingSpotAnchors.push({ x: fx, z: fz, yaw: signYaw });
+    }
+  }
+
   // ─── 심시티 스타일 사령관 마을(Village) & Theater 구역(District Tier 0~5) 빌더 ──
 
-  function buildDistrict(b: InstancedBucketBuilder, parent: Group, d: WorldDistrictSpec): void {
+  function buildDistrict(
+    b: InstancedBucketBuilder,
+    parent: Group,
+    d: WorldDistrictSpec,
+    villageTheme: EffectiveVillageTheme = "meadow",
+  ): void {
     const gy = getTerrainBaseHeight(d.x, d.z);
     if (gy < 0.05) return;
 
@@ -3164,6 +3504,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
                 : null;
     const hasCustomDistrict = Boolean(districtSlot && assetRegistry.hasCustomModel(districtSlot));
 
+    const districtMeta: Record<string, unknown> = {
+      kind: "district",
+      districtId: d.id,
+      theaterId: d.theaterId,
+      villageId: d.villageId,
+      commodoreId: d.commodoreId,
+      tier: d.tier,
+      district: d,
+    };
+
     if (hasCustomDistrict && districtSlot) {
       queueInstancedSlot(districtSlot, {
         x: d.x,
@@ -3172,54 +3522,89 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         rotationY: d.rotationY,
         scale: fitScale,
         roofTintHex: toneHex,
+        userData: districtMeta,
       });
     } else b.withFrame(d.x, gy, d.z, d.rotationY, fitScale, () => {
       if (d.tier === 0) {
-        // Tier 0 (미개척 초원): 코너 말뚝 4개 + 작은 깃대 + 이끼 바위
+        // Tier 0 (확장 예정지): 코너 말뚝 4개 + 경계 로프 + 청사진 이젤 안내판 + 작은 깃대 + 이끼 바위
         const corner = 1.65;
         for (const cx of [-corner, corner]) {
           for (const cz of [-corner, corner]) {
-            b.addCylinder(matBark, [cx, 0.28, cz], [0.11, 0.58, 0.11], undefined, { tapered: true });
+            b.addCylinder(matBark, [cx, 0.30, cz], [0.12, 0.62, 0.12], undefined, { tapered: true, castShadow: true });
+            b.addTorus(matBellRope, [cx, 0.50, cz], [0.13, 0.16, 0.13]);
           }
         }
+        // 4개 말뚝을 잇는 자연스러운 처짐 경계 로프 (정면 +Z 중앙만 개방해 진입 가능한 확장 예정지 연출)
+        const addRopeSpan = (ax: number, az: number, bx: number, bz: number) => {
+          const midX = (ax + bx) * 0.5;
+          const midZ = (az + bz) * 0.5;
+          const halfLen = Math.hypot(bx - ax, bz - az) * 0.5;
+          const segYaw = Math.atan2(bx - ax, bz - az);
+          const sag = 0.085;
+          const slope = Math.atan2(sag, halfLen);
+          const lenSeg = Math.hypot(halfLen, sag) + 0.03;
+          // 전반부(하강) + 후반부(상승) 2단 로프 처짐
+          b.addBox(matBellRope, [(ax + midX) * 0.5, 0.50 - sag * 0.5, (az + midZ) * 0.5], [0.036, 0.036, lenSeg], [slope, segYaw, 0]);
+          b.addBox(matBellRope, [(midX + bx) * 0.5, 0.50 - sag * 0.5, (midZ + bz) * 0.5], [0.036, 0.036, lenSeg], [-slope, segYaw, 0]);
+        };
+        addRopeSpan(-corner, corner, -corner, -corner); // 좌측
+        addRopeSpan(-corner, -corner, corner, -corner); // 후면
+        addRopeSpan(corner, -corner, corner, corner);   // 우측
+        // 정면 입구 좌/우 짧은 보조 말뚝 + 개방 입구 로프 날개
+        b.addCylinder(matBark, [-0.72, 0.27, corner], [0.10, 0.54, 0.10], undefined, { tapered: true });
+        b.addCylinder(matBark, [0.72, 0.27, corner], [0.10, 0.54, 0.10], undefined, { tapered: true });
+        addRopeSpan(-corner, corner, -0.72, corner);
+        addRopeSpan(0.72, corner, corner, corner);
+
+        // 목재 A-프레임 청사진 이젤 (좌중앙, 정면 광장을 향함)
+        const ex = -0.48;
+        const ez = -0.18;
+        b.addBox(matTimber, [ex - 0.30, 0.62, ez + 0.14], [0.06, 1.32, 0.06], [-0.18, 0, -0.06], { castShadow: true });
+        b.addBox(matTimber, [ex + 0.30, 0.62, ez + 0.14], [0.06, 1.32, 0.06], [-0.18, 0, 0.06], { castShadow: true });
+        b.addBox(matTimber, [ex, 0.58, ez - 0.26], [0.06, 1.24, 0.06], [0.34, 0, 0], { castShadow: true });
+        b.addBox(matWood, [ex, 0.66, ez + 0.16], [0.92, 0.07, 0.10], [-0.18, 0, 0]);
+        b.addBox(matWoodLight, [ex, 0.96, ez + 0.09], [0.88, 0.64, 0.055], [-0.18, 0, 0], { castShadow: true });
+
         // 작은 페넌트 깃대
-        b.addCylinder(matWood, [0.45, 0.95, -0.35], [0.09, 1.9, 0.09], undefined, { tapered: true });
-        b.addSphere(matBrass, [0.45, 1.92, -0.35], [0.14, 0.14, 0.14]);
-        // 바위 & 수풀 소품
-        b.addDodeca(matStone, [-0.55, 0.16, 0.25], [0.68, 0.36, 0.56], [0.2, 0.7, 0.1], { flat: true, receiveShadow: true });
-        b.addDodeca(matFoliageBase, [-0.92, 0.22, -0.15], [0.62, 0.44, 0.58], undefined, { color: 0x5cc458 });
+        b.addCylinder(matWood, [0.58, 0.95, -0.42], [0.09, 1.9, 0.09], undefined, { tapered: true });
+        b.addSphere(matBrass, [0.58, 1.92, -0.42], [0.14, 0.14, 0.14]);
+        // 바위 & 수풀 소품 (이젤과 비충돌)
+        b.addDodeca(villageTheme === "snow" ? matSnowCap : matStone, [0.78, 0.16, 0.45], [0.64, 0.34, 0.52], [0.2, 0.7, 0.1], { flat: true, receiveShadow: true });
+        b.addDodeca(matFoliageBase, [-1.05, 0.22, -0.78], [0.58, 0.42, 0.54], undefined, {
+          color: villageTheme === "autumn" ? 0xe87b22 : villageTheme === "snow" ? 0x6ea8b0 : 0x5cc458,
+        });
         return;
       }
 
       if (d.tier === 1) {
-        // Tier 1 (개척 캠프): 사령관 색 줄무늬 삼각 천막 + 모닥불 + 나무 표지판 + 통나무 의자
+        // Tier 1 (개척 캠프): 사령관 색 줄무늬 삼각 천막 + 모닥불(천막과 충분한 간격) + 나무 표지판 + 통나무 의자
         b.addPitchedRoof(matRoofBase, matCanvas, matTimber, {
-          x: -0.15,
+          x: -0.22,
           y: 0.02,
-          z: -0.35,
-          width: 2.05,
+          z: -0.42,
+          width: 2.02,
           height: 1.48,
-          depth: 1.95,
+          depth: 1.92,
           roofColor: toneHex,
           includeGableWall: true,
           castShadow: true,
           receiveShadow: true,
         });
         // 천막 입구 개구부
-        b.addBox(matTimber, [-0.15, 0.55, 0.64], [0.64, 1.04, 0.08]);
+        b.addBox(matTimber, [-0.22, 0.55, 0.56], [0.64, 1.04, 0.08]);
         // 나무 표지판 (좌전면)
-        b.addCylinder(matBark, [-1.15, 0.58, 0.95], [0.11, 1.18, 0.11], undefined, { tapered: true });
-        b.addBox(matWoodLight, [-0.98, 0.96, 0.95], [0.68, 0.20, 0.06], [0, 0.24, 0]);
-        // 모닥불 돌 테두리 + 장작 (우전면)
+        b.addCylinder(matBark, [-1.22, 0.58, 0.96], [0.11, 1.18, 0.11], undefined, { tapered: true });
+        b.addBox(matWoodLight, [-1.05, 0.96, 0.96], [0.68, 0.20, 0.06], [0, 0.24, 0]);
+        // 모닥불 돌 테두리 + 장작 (우전면, 천막·통나무 의자와 비충돌)
         for (let i = 0; i < 6; i += 1) {
           const a = (i / 6) * Math.PI * 2;
-          b.addDodeca(i % 2 === 0 ? matStone : matStoneDark, [0.95 + Math.cos(a) * 0.42, 0.07, 0.85 + Math.sin(a) * 0.42], [0.26, 0.16, 0.24], undefined, { flat: true });
+          b.addDodeca(i % 2 === 0 ? matStone : matStoneDark, [1.08 + Math.cos(a) * 0.40, 0.07, 0.88 + Math.sin(a) * 0.40], [0.25, 0.15, 0.23], undefined, { flat: true });
         }
-        b.addCylinder(matBark, [0.95, 0.09, 0.85], [0.11, 0.58, 0.11], [0, 0.4, Math.PI * 0.5]);
-        b.addCylinder(matBark, [0.95, 0.09, 0.85], [0.11, 0.58, 0.11], [0, -0.5, Math.PI * 0.5]);
+        b.addCylinder(matBark, [1.08, 0.09, 0.88], [0.11, 0.56, 0.11], [0, 0.4, Math.PI * 0.5]);
+        b.addCylinder(matBark, [1.08, 0.09, 0.88], [0.11, 0.56, 0.11], [0, -0.5, Math.PI * 0.5]);
         // 통나무 의자 + 보급 상자
-        b.addCylinder(matWood, [0.18, 0.18, 1.25], [0.34, 0.36, 0.34]);
-        b.addBox(matWood, [-1.18, 0.22, -0.35], [0.46, 0.44, 0.44]);
+        b.addCylinder(matWood, [0.12, 0.18, 1.42], [0.34, 0.36, 0.34]);
+        b.addBox(matWood, [-1.24, 0.22, -0.42], [0.46, 0.44, 0.44]);
         return;
       }
 
@@ -3428,7 +3813,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       b.addBox(matRoofBase, [0, 1.66, 1.48], [1.72, 0.16, 0.52], undefined, { color: toneHex });
     });
 
-    // 프레임 바깥 월드 좌표 기반 동적 소품 등록 (깃발 · 불꽃 · 가로등 · 크리스탈 등대)
+    // 프레임 바깥 월드 좌표 기반 동적 소품 등록 (깃발 · 불꽃 · 가로등 · 크리스탈 등대 · Tier 0 청사진)
     const cosY = Math.cos(d.rotationY);
     const sinY = Math.sin(d.rotationY);
     const toWorld = (lx: number, ly: number, lz: number) => ({
@@ -3438,12 +3823,38 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     });
 
     if (d.tier === 0) {
-      const fPos = toWorld(0.45, 1.68, -0.35);
+      const fPos = toWorld(0.58, 1.68, -0.42);
       registerBanner(fPos.x, fPos.y, fPos.z, d.rotationY + 0.2, toneHex, 0.58 * fitScale, 0.30 * fitScale);
+      // 이젤 정면에 청사진 캔버스 텍스처 부착
+      const bpPos = toWorld(-0.48, 0.96, -0.055);
+      mountTexturedPlaque(
+        parent,
+        matBlueprintEasel,
+        bpPos.x,
+        bpPos.y,
+        bpPos.z,
+        0.78 * fitScale,
+        0.56 * fitScale,
+        d.rotationY,
+        -0.18,
+      );
     } else if (d.tier === 1) {
-      // district-tier1.glb EmberCore 중심 (0.88, 0.22, 0.82) × (2.15 / 2.78) ≈ (0.68, 0.17, 0.63)
-      const fl = hasCustomDistrict ? toWorld(0.68, 0.17, 0.63) : toWorld(0.95, 0.12, 0.85);
-      registerFlame(fl.x, fl.y, fl.z, (hasCustomDistrict ? 0.58 : 0.62) * fitScale);
+      // world-asset-registry.ts에서 보정된 EmberCore 중심 (0.88+0.38, 0.22, 0.82+0.26) × (2.15 / 2.785) ≈ (0.97, 0.17, 0.83)
+      const fl = hasCustomDistrict ? toWorld(0.97, 0.17, 0.83) : toWorld(1.08, 0.12, 0.88);
+      registerFlame(fl.x, fl.y, fl.z, (hasCustomDistrict ? 0.56 : 0.60) * fitScale);
+      // 텐트 바닥판 경계 완화용 저채도 자연 자갈/눈 가장자리 톤 완충 링
+      const skirtMat = villageTheme === "snow" ? matSnowCap : matStoneDark;
+      for (let si = 0; si < 8; si += 1) {
+        const ang = (si / 8) * Math.PI * 2 + 0.35;
+        const sp = toWorld(Math.cos(ang) * 1.54, 0.03, Math.sin(ang) * 1.54);
+        b.addDodeca(
+          skirtMat,
+          [sp.x, sp.y, sp.z],
+          [0.44 * fitScale, 0.07, 0.36 * fitScale],
+          [0, ang, 0],
+          { flat: true, receiveShadow: true },
+        );
+      }
     } else if (d.tier === 3 && !hasCustomDistrict) {
       const lp = toWorld(1.38, 0, 1.18);
       addHangingStreetlamp(b, lp.x, lp.z, d.rotationY - 0.6, false);
@@ -3455,24 +3866,43 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       streetlampAnchors.push(new Vector3(cp.x, gy + 2.8, cp.z));
     }
 
-    addContactShadow(b, d.x, d.z, d.radius * 0.78, d.radius * 0.78);
-    addGrassClearZone(d.x, d.z, d.radius * 0.85);
+    // Tier 0~5 전 구역 안정적 3D 레이캐스트 히트 프록시 (GLB·폴백 모두 일관 피킹, 0 렌더 비용)
+    const hitHeight =
+      d.tier === 0 ? 1.95
+        : d.tier === 1 ? 2.45
+          : d.tier === 2 ? 3.40
+            : d.tier === 3 ? 4.45
+              : d.tier === 4 ? 6.05
+                : 6.55;
+    const hitRadius = Math.max(1.85, d.radius * 0.98);
+    const hitMesh = new Mesh(districtHitGeo, matInvisibleHit);
+    hitMesh.name = `district-hit:${d.theaterId}`;
+    hitMesh.position.set(d.x, gy, d.z);
+    hitMesh.scale.set(hitRadius, hitHeight * fitScale, hitRadius);
+    hitMesh.userData = districtMeta;
+    districtHitGroup.add(hitMesh);
+    districtHitTargets.push(hitMesh);
+
+    const padHalf = (d.tier >= 5 ? 2.38 : d.tier >= 4 ? 2.24 : d.tier >= 3 ? 2.08 : 1.92) * fitScale;
+    addContactShadow(b, d.x, d.z, d.radius * 0.84, d.radius * 0.84);
+    addGrassClearZone(d.x, d.z, Math.max(d.radius * 0.98, padHalf + 0.35));
+    addGrassClearBox(d.x, d.z, padHalf + 0.45, padHalf + 0.45, d.rotationY);
     if (d.tier >= 1) {
       colliders.push({ x: d.x, z: d.z, r: d.radius * 0.42 });
-      addCameraOccluder(d.x, d.z, d.radius * 0.62, districtRoofHeight(d.tier) + 0.6);
+      addCameraOccluder(d.x, d.z, d.radius * 0.62, districtRoofHeight(d.tier) + 0.6, 0, "building");
     }
-    void parent;
   }
 
-  /** 사령관별 마을(Village) — 경계 울타리/석조 담장 · Blender 정문 아치/푯말 · 자갈길 · 바이옴(meadow/sakura/citadel) · 내부 Theater 구역 */
+  /** 사령관별 마을(Village) — 경계 울타리/석조 담장 · Blender 정문 아치/푯말/배너 · 자갈길 · 바이옴(meadow/sakura/autumn/citadel/snow) · 내부 Theater 구역 */
   function buildVillage(b: InstancedBucketBuilder, parent: Group, v: WorldVillageSpec): void {
     const gy = getTerrainBaseHeight(v.x, v.z);
     if (gy < 0.05) return;
 
-    const biome = v.biome ?? "meadow";
-    const isCitadelBiome = biome === "citadel";
-    const isSakuraBiome = biome === "sakura";
-    const isAutumnBiome = biome === "autumn";
+    const theme = resolveEffectiveVillageTheme(v);
+    const isCitadelBiome = theme === "citadel";
+    const isSakuraBiome = theme === "sakura";
+    const isAutumnBiome = theme === "autumn";
+    const isSnowTheme = theme === "snow";
     const toneHex = TONE_ROOF_HEX[v.tone];
     const gateCos = Math.cos(v.gateAngle);
     const gateSin = Math.sin(v.gateAngle);
@@ -3480,7 +3910,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     // 1. 마을 중앙 광장 원형 문장 디스크 (#21 폴리싱: 구역 이중 선택 링과 겹치지 않게 콤팩트 비율 적용)
     b.addCylinder(
-      isCitadelBiome || v.overallTier >= 4 ? matMarble : v.overallTier >= 2 ? matStone : matStoneDark,
+      isSnowTheme || isCitadelBiome || v.overallTier >= 4 ? matMarble : v.overallTier >= 2 ? matStone : matStoneDark,
       [v.x, gy + 0.03, v.z],
       [2.05, 0.06, 2.05],
       undefined,
@@ -3510,6 +3940,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           if (isGrandWall) {
             b.addSphere(matBrass, [px, py + 1.06, pz], [0.16, 0.16, 0.16]);
           }
+          addCameraOccluder(px, pz, 0.46, 1.45, 0, "wall");
         }
       } else {
         b.addBox(matWood, [px, py + 0.36, pz], [0.13, 0.76, 0.13], [0, tangYaw, 0]);
@@ -3530,6 +3961,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           if (isGrandWall) {
             b.addBox(matMarble, [mx, my + 0.63, mz], [0.28, 0.08, segLen + 0.10], [0, segYaw, 0]);
           }
+          addCameraOccluder(mx, mz, 0.42, 1.15, 0, "wall");
         } else {
           b.addBox(matWoodLight, [mx, my + 0.52, mz], [0.07, 0.08, segLen + 0.06], [0, segYaw, 0]);
           b.addBox(matWoodLight, [mx, my + 0.28, mz], [0.07, 0.08, segLen + 0.06], [0, segYaw, 0]);
@@ -3537,17 +3969,25 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     }
 
-    // 3. 마을 입구 문주(Blender 정문 아치 GLB 우선, 폴백 유지) + 마을 푯말
+    // 3. 마을 입구 문주(Blender 정문 아치 GLB 우선, 폴백 유지) + 성문 배너/현판 텍스처 + 마을 푯말
     const gateDist = v.radius - 0.25;
     const gx = v.x + gateCos * gateDist;
     const gz = v.z + gateSin * gateDist;
     const perpX = -gateSin;
     const perpZ = gateCos;
     const gateHalfW = 1.95;
+    const gateCosYaw = Math.cos(gateFaceYaw);
+    const gateSinYaw = Math.sin(gateFaceYaw);
+    const toGateWorld = (ox: number, oy: number, oz: number, lx: number, ly: number, lz: number) => ({
+      x: ox + lx * gateCosYaw + lz * gateSinYaw,
+      y: oy + ly,
+      z: oz - lx * gateSinYaw + lz * gateCosYaw,
+    });
 
     const gateSlot: WorldModelSlot = isStoneWall ? "village-gate-stone" : "village-gate-wood";
-    if (assetRegistry.hasCustomModel(gateSlot)) {
-      const gpy = getTerrainBaseHeight(gx, gz);
+    const hasCustomGate = assetRegistry.hasCustomModel(gateSlot);
+    const gpy = getTerrainBaseHeight(gx, gz);
+    if (hasCustomGate) {
       if (gpy >= 0.05) {
         queueInstancedSlot(gateSlot, {
           x: gx,
@@ -3581,23 +4021,63 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
       // Tier 3+ 마을 입구 아치 횡목 / 석조 아치 상인방
       if (isStoneWall) {
-        const gpy = getTerrainBaseHeight(gx, gz);
         b.addBox(isGrandWall ? matMarble : matTimber, [gx, gpy + 2.26, gz], [gateHalfW * 2 + 0.72, 0.26, 0.38], [0, gateFaceYaw, 0], { castShadow: true });
         b.addBox(matRoofBase, [gx, gpy + 2.48, gz], [gateHalfW * 2 + 0.94, 0.18, 0.54], [0, gateFaceYaw, 0], { color: toneHex });
       }
     }
-    // 마을 정문 양쪽 문주 카메라 가림 방지 및 입구 잔디 정리
-    addGrassClearZone(gx, gz, 2.55);
-    for (const side of [-1, 1]) {
-      addCameraOccluder(gx + perpX * gateHalfW * side, gz + perpZ * gateHalfW * side, 0.46, isStoneWall ? 3.8 : 3.2);
+
+    // 성문 중앙 현판 & 좌/우 문장 배너 캔버스 텍스처 부착 (빈 판자/단색 천 제거, path/cwd 절대 미포함)
+    if (gpy >= 0.05) {
+      const gatePlaqueMat = createOwnedSignMaterial(
+        createGatePlaqueTexture(v.label, toneHex, v.overallTier),
+        true,
+      );
+      const gateBannerMat = createOwnedSignMaterial(
+        createGateBannerTexture(v.label, toneHex, theme),
+        true,
+      );
+
+      if (hasCustomGate && isStoneWall) {
+        // village-gate-stone.glb 상인방 정면(z=+0.27) + 좌우 기둥 배너(x=±2.22, y=1.82)
+        const plaquePos = toGateWorld(gx, gpy, gz, 0, 2.74, 0.27);
+        mountTexturedPlaque(parent, gatePlaqueMat, plaquePos.x, plaquePos.y, plaquePos.z, 1.38, 0.42, gateFaceYaw);
+        for (const side of [-1, 1]) {
+          const bFront = toGateWorld(gx, gpy, gz, side * 2.22, 1.82, 0.005);
+          mountTexturedPlaque(parent, gateBannerMat, bFront.x, bFront.y, bFront.z, 0.38, 1.18, gateFaceYaw);
+          const bBack = toGateWorld(gx, gpy, gz, side * 2.22, 1.82, -0.14);
+          mountTexturedPlaque(parent, gateBannerMat, bBack.x, bBack.y, bBack.z, 0.38, 1.18, gateFaceYaw + Math.PI);
+        }
+      } else if (hasCustomGate && !isStoneWall) {
+        // village-gate-wood.glb CenterPlaque 정면(z=+0.205, y=2.52) + 좌우 목재 문주 배너(x=±1.70, y=1.75)
+        const plaquePos = toGateWorld(gx, gpy, gz, 0, 2.52, 0.205);
+        mountTexturedPlaque(parent, gatePlaqueMat, plaquePos.x, plaquePos.y, plaquePos.z, 0.72, 0.28, gateFaceYaw);
+        for (const side of [-1, 1]) {
+          const bFront = toGateWorld(gx, gpy, gz, side * 1.70, 1.75, 0.11);
+          mountTexturedPlaque(parent, gateBannerMat, bFront.x, bFront.y, bFront.z, 0.28, 0.84, gateFaceYaw);
+        }
+      } else if (isStoneWall) {
+        const plaquePos = toGateWorld(gx, gpy, gz, 0, 2.26, 0.21);
+        mountTexturedPlaque(parent, gatePlaqueMat, plaquePos.x, plaquePos.y, plaquePos.z, 1.32, 0.38, gateFaceYaw);
+      }
     }
 
-    // 마을 입구 푯말 (오른쪽 바깥, Blender village-signpost.glb 우선)
+    // 마을 정문 양쪽 문주·상인방 카메라 가림 방지 및 입구 잔디/꽃 정리
+    addGrassClearZone(gx, gz, 2.85);
+    addGrassClearBox(gx, gz, 2.85, 1.65, gateFaceYaw);
+    for (const side of [-1, 1]) {
+      addCameraOccluder(gx + perpX * gateHalfW * side, gz + perpZ * gateHalfW * side, 0.72, isStoneWall ? 4.0 : 3.4, 0, "gate");
+    }
+    if (isStoneWall) {
+      addCameraOccluder(gx, gz, 1.70, 4.0, 2.25, "gate");
+    }
+
+    // 마을 입구 푯말 (오른쪽 바깥, Blender village-signpost.glb 우선 + 사령관 약칭/문양 캔버스 텍스처)
     const signX = gx + perpX * (gateHalfW + 1.05) + gateCos * 0.45;
     const signZ = gz + perpZ * (gateHalfW + 1.05) + gateSin * 0.45;
     const signY = getTerrainBaseHeight(signX, signZ);
     if (signY >= 0.05) {
-      if (assetRegistry.hasCustomModel("village-signpost")) {
+      const hasCustomSignpost = assetRegistry.hasCustomModel("village-signpost");
+      if (hasCustomSignpost) {
         queueInstancedSlot("village-signpost", {
           x: signX,
           y: signY,
@@ -3613,18 +4093,30 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           b.addBox(matAccentBase, [0, 1.40, 0.04], [1.18, 0.08, 0.10], undefined, { color: toneHex });
         });
       }
+      const villageSignMat = createOwnedSignMaterial(
+        createVillageSignTexture(v.label, toneHex, v.overallTier, theme),
+        false,
+      );
+      if (hasCustomSignpost) {
+        // village-signpost.glb SignFace 정면 (center 0.01, 1.11, z=+0.132)
+        const sp = toGateWorld(signX, signY, signZ, 0.01, 1.11, 0.132);
+        mountTexturedPlaque(parent, villageSignMat, sp.x, sp.y, sp.z, 0.80, 0.37, gateFaceYaw);
+      } else {
+        const sp = toGateWorld(signX, signY, signZ, 0, 1.18, 0.09);
+        mountTexturedPlaque(parent, villageSignMat, sp.x, sp.y, sp.z, 1.02, 0.36, gateFaceYaw);
+      }
       addContactShadow(b, signX, signZ, 0.56, 0.56);
-      addGrassClearZone(signX, signZ, 1.12);
+      addGrassClearZone(signX, signZ, 1.18);
     }
 
-    // 입구 가로등 1기 (성채·가을 단풍 바이옴이면 입구 양쪽 따뜻한 랜턴 연출)
+    // 입구 가로등 1기 (성채·가을 단풍·설원 테마이면 입구 양쪽 따뜻한 랜턴 연출)
     const lampX = gx - perpX * (gateHalfW + 0.85) + gateCos * 0.55;
     const lampZ = gz - perpZ * (gateHalfW + 0.85) + gateSin * 0.55;
     addHangingStreetlamp(b, lampX, lampZ, gateFaceYaw + Math.PI * 0.5, true);
-    if (isCitadelBiome || isAutumnBiome) {
+    if (isCitadelBiome || isAutumnBiome || isSnowTheme) {
       const rightLampX = gx + perpX * (gateHalfW + 0.85) - gateCos * 0.85;
       const rightLampZ = gz + perpZ * (gateHalfW + 0.85) - gateSin * 0.85;
-      addHangingStreetlamp(b, rightLampX, rightLampZ, gateFaceYaw - Math.PI * 0.5, isAutumnBiome);
+      addHangingStreetlamp(b, rightLampX, rightLampZ, gateFaceYaw - Math.PI * 0.5, isAutumnBiome || isSnowTheme);
     }
 
     // 3a. 마을 내부 코블스톤 디딤돌 패스 (정문 ↔ 마을 중앙 광장 ↔ 각 구역 입구, 추가 draw call 0)
@@ -3646,7 +4138,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         const sz = az + dirZ * dAlong + latZ * jitter;
         const sy = getTerrainBaseHeight(sx, sz);
         if (sy < 0.05) continue;
-        const stoneMat = isCitadelBiome
+        const stoneMat = isCitadelBiome || isSnowTheme
           ? (si % 2 === 0 ? matMarble : matStone)
           : isSakuraBiome || isAutumnBiome
             ? (si % 2 === 0 ? matPlasterWarm : matStone)
@@ -3682,6 +4174,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           b.addSphere(matBrass, [0, 2.18, 0.80], [0.18, 0.18, 0.18]);
         });
         addContactShadow(b, mx, mz, 1.15, 1.15);
+        addGrassClearZone(mx, mz, 1.45);
+        addCameraOccluder(mx, mz, 1.0, 3.4, 0, "building");
         colliders.push({ x: mx, z: mz, r: 0.95 });
         if (animatedRoutineWindmills.length < MAX_ROUTINE_WINDMILLS) {
           const axleX = mx + Math.sin(millYaw) * 0.82;
@@ -3719,28 +4213,32 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addOctahedron(matAccentBase, [0, 1.64, 0], [0.28, 0.42, 0.28], undefined, { color: toneHex });
       });
       addContactShadow(b, tx, tz, 0.46 * monumentScale, 0.46 * monumentScale);
+      addGrassClearZone(tx, tz, 0.72 * monumentScale);
     }
 
     // 3d. 업적 해금 3D 마을 랜드마크 (lantern-arch.glb / trophy-statue.glb)
+    // (#12) 벚꽃 등불 아치를 정면 입구→중앙→후면 Tier 3~5 시야축에서 측면/입구 외곽 동선으로 옮겨 성장 파노라마 시야를 완전 개방한다.
     if ((v.overallTier >= 3 || trophyCount >= 1) && assetRegistry.hasCustomModel("lantern-arch")) {
-      const archCandidates: readonly [number, number][] = [
-        [v.x + gateCos * (gateDist * 0.46), v.z + gateSin * (gateDist * 0.46)],
-        [v.x + gateCos * (gateDist * 0.60), v.z + gateSin * (gateDist * 0.60)],
-        [v.x + gateCos * (gateDist + 1.85), v.z + gateSin * (gateDist + 1.85)],
+      const sideLat = Math.min(4.0, Math.max(2.9, v.radius * 0.38));
+      const archCandidates: readonly [number, number, number][] = [
+        [v.x + perpX * sideLat + gateCos * (gateDist * 0.52), v.z + perpZ * sideLat + gateSin * (gateDist * 0.52), gateFaceYaw - 0.36],
+        [v.x - perpX * sideLat + gateCos * (gateDist * 0.52), v.z - perpZ * sideLat + gateSin * (gateDist * 0.52), gateFaceYaw + 0.36],
+        [v.x + perpX * (gateHalfW + 2.25) + gateCos * (gateDist + 1.45), v.z + perpZ * (gateHalfW + 2.25) + gateSin * (gateDist + 1.45), gateFaceYaw - 0.28],
+        [v.x - perpX * (gateHalfW + 2.25) + gateCos * (gateDist + 1.45), v.z - perpZ * (gateHalfW + 2.25) + gateSin * (gateDist + 1.45), gateFaceYaw + 0.28],
       ];
-      for (const [ax, az] of archCandidates) {
+      for (const [ax, az, aYaw] of archCandidates) {
         const ay = getTerrainBaseHeight(ax, az);
-        if (ay < 0.05) continue;
-        const hitsDistrict = v.districts.some((d) => Math.hypot(ax - d.x, az - d.z) < d.radius * 0.72 + 1.15);
+        if (ay < 0.05 || isInBrookChannel(ax, az, 1.4)) continue;
+        const hitsDistrict = v.districts.some((d) => Math.hypot(ax - d.x, az - d.z) < d.radius * 0.76 + 1.15);
         if (hitsDistrict) continue;
         queueInstancedSlot("lantern-arch", {
           x: ax,
           y: ay,
           z: az,
-          rotationY: gateFaceYaw,
+          rotationY: aYaw,
           scale: 1.0,
         });
-        addContactShadow(b, ax, az, 1.55, 0.72, gateFaceYaw);
+        addContactShadow(b, ax, az, 1.55, 0.72, aYaw);
         addGrassClearZone(ax, az, 1.85);
         streetlampAnchors.push(new Vector3(ax, ay + 2.35, az));
         break;
@@ -3769,7 +4267,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         addContactShadow(b, sx, sz, 0.96, 0.96);
         addGrassClearZone(sx, sz, 1.25);
         colliders.push({ x: sx, z: sz, r: 0.72 });
-        addCameraOccluder(sx, sz, 0.72, 2.45);
+        addCameraOccluder(sx, sz, 0.72, 2.45, 0, "prop");
         break;
       }
     }
@@ -3788,12 +4286,24 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       registerFlame(fireX, fireY + 0.10, fireZ, 0.68);
     } else {
       for (const district of v.districts) {
-        buildDistrict(b, parent, district);
+        buildDistrict(b, parent, district, theme);
       }
     }
 
-    // 마을 광장 장식 화단 (flowerbed.glb — 벚꽃 바이옴이면 화단 추가 강조)
-    if (assetRegistry.hasCustomModel("flowerbed")) {
+    // 마을 광장 장식 화단 (flowerbed.glb — 벚꽃 바이옴이면 화단 추가 강조, 설원 테마는 눈 덮인 이끼 돌 악센트)
+    if (isSnowTheme) {
+      for (const side of [-1, 1]) {
+        const mAng = v.gateAngle + Math.PI + side * 0.48;
+        const mx = v.x + Math.cos(mAng) * (v.radius + 1.25);
+        const mz = v.z + Math.sin(mAng) * (v.radius + 1.25);
+        const my = getTerrainBaseHeight(mx, mz);
+        if (my >= 0.08) {
+          b.addDodeca(matSnowCap, [mx, my + 0.20, mz], [1.28, 0.46, 1.05], [0.1, mAng, 0], { flat: true, receiveShadow: true });
+          b.addDodeca(matStone, [mx + 0.42 * side, my + 0.16, mz + 0.22], [0.64, 0.34, 0.56], [0.2, mAng, 0.1], { flat: true, receiveShadow: true });
+          addGrassClearZone(mx, mz, 1.15);
+        }
+      }
+    } else if (assetRegistry.hasCustomModel("flowerbed")) {
       const fbOffsets: readonly [number, number][] = isSakuraBiome
         ? [
             [perpX * 2.55 + gateCos * 1.65, perpZ * 2.55 + gateSin * 1.65],
@@ -3824,28 +4334,32 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     }
 
-    // 마을 외곽 장식 나무 (바이옴별 수종 차별화: autumn → 단풍나무, sakura → 벚나무, citadel → 침엽수)
+    // 마을 외곽 장식 나무 (바이옴·이름 키워드별 수종 차별화: snow → 설원 소나무, autumn → 단풍나무, sakura → 벚나무, citadel → 침엽수)
     for (const side of [-1, 1]) {
       const tAng = v.gateAngle + Math.PI + side * 0.92;
-      const tx = v.x + Math.cos(tAng) * (v.radius + 1.85);
-      const tz = v.z + Math.sin(tAng) * (v.radius + 1.85);
-      const kind = isAutumnBiome
-        ? "autumn"
-        : isSakuraBiome
-          ? "blossom"
-          : isCitadelBiome
-            ? "pine"
-            : (v.tone === "rose" || v.tone === "plum" ? "blossom" : side > 0 ? "oak" : "pine");
-      addTree(b, parent, tx, tz, isSakuraBiome || isAutumnBiome ? 1.08 : 0.96, kind, true);
+      const tx = v.x + Math.cos(tAng) * (v.radius + 2.05);
+      const tz = v.z + Math.sin(tAng) * (v.radius + 2.05);
+      const kind = isSnowTheme
+        ? "snow-pine"
+        : isAutumnBiome
+          ? "autumn"
+          : isSakuraBiome
+            ? "blossom"
+            : isCitadelBiome
+              ? "pine"
+              : (v.tone === "rose" || v.tone === "plum" ? "blossom" : side > 0 ? "oak" : "pine");
+      addTree(b, parent, tx, tz, isSakuraBiome || isAutumnBiome || isSnowTheme ? 1.08 : 0.96, kind, true);
     }
-    if (isSakuraBiome || isAutumnBiome) {
-      // 벚꽃/가을 단풍 바이옴: 마을 입구 좌우에 테마 수종 2그루 + 가을 단풍 덤불 추가 (루틴 풍차 회피)
+    if (isSakuraBiome || isAutumnBiome || isSnowTheme) {
+      // (#3) 측면 프레이밍 나무는 입구 카메라 시야 회랑 밖(gateAngle ± 1.12 rad, radius + 2.65m)에 배치해 착지 직후 시야 가림 차단
       for (const side of [-1, 1]) {
         if (side < 0 && v.routineCount > 0) continue;
-        const eAng = v.gateAngle + side * 0.62;
-        const tx = v.x + Math.cos(eAng) * (v.radius + 1.65);
-        const tz = v.z + Math.sin(eAng) * (v.radius + 1.65);
-        addTree(b, parent, tx, tz, 1.05, isAutumnBiome ? "autumn" : "blossom", true);
+        const eAng = v.gateAngle + side * 1.12;
+        const tx = v.x + Math.cos(eAng) * (v.radius + 2.65);
+        const tz = v.z + Math.sin(eAng) * (v.radius + 2.65);
+        if (isInVillageEntranceSightCorridor(tx, tz)) continue;
+        const sideKind = isSnowTheme ? "snow-pine" : isAutumnBiome ? "autumn" : "blossom";
+        addTree(b, parent, tx, tz, 1.05, sideKind, true);
         if (isAutumnBiome) {
           const bAng = v.gateAngle + Math.PI + side * 0.42;
           const bx = v.x + Math.cos(bAng) * (v.radius + 1.35);
@@ -3986,6 +4500,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addCone(matIron, [0.42, 0.82, 0], [0.22, 0.34, 0.22], [0, 0, -Math.PI * 0.5]);
       });
       colliders.push({ x: ax, z: az, r: 0.65 });
+      addGrassClearZone(ax, az, 0.95);
 
       const rx = zone.x + 3.15;
       const rz = zone.z + 0.45;
@@ -4002,6 +4517,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addBox(matIron, [0, 0.68, 0.22], [0.48, 0.04, 0.18]);
       });
       colliders.push({ x: rx, z: rz, r: 0.72 });
+      addGrassClearZone(rx, rz, 1.05);
     } else {
       const ox = zone.x + 2.75;
       const oz = zone.z + 0.95;
@@ -4018,6 +4534,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addBox(matAccentBase, [-0.78, 0.46, 0.22], [0.32, 0.08, 0.24], undefined, { color: toneHex });
       });
       colliders.push({ x: ox, z: oz, r: 0.72 });
+      addGrassClearZone(ox, oz, 1.05);
     }
 
     addFenceRun(b, zone.x - 4.2, zone.z - 4.1, zone.x + 1.4, zone.z - 4.4, 4);
@@ -4035,6 +4552,18 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     mesh.position.set(district.x, gy + 0.11, district.z);
     mesh.scale.setScalar(district.radius * 1.12);
     (mat.uniforms["uColor"]!.value as Color).setHex(TONE_CRYSTAL_HEX[district.tone]);
+  }
+
+  function syncHoverVisualTarget(hovered: WorldDistrictSpec | null, selected: WorldDistrictSpec | null): void {
+    const effectiveHover = hovered && selected && hovered.id === selected.id ? null : hovered;
+    if (effectiveHover) {
+      hoverDisplayedDistrict = effectiveHover;
+      const gy = getTerrainBaseHeight(effectiveHover.x, effectiveHover.z);
+      hoverHighlightMesh.position.set(effectiveHover.x, gy + 0.11, effectiveHover.z);
+      (hoverHighlightMat.uniforms["uColor"]!.value as Color).setHex(TONE_CRYSTAL_HEX[effectiveHover.tone]);
+      hoverAuraMesh.position.set(effectiveHover.x, gy + 0.08, effectiveHover.z);
+      hoverAuraMat.color.setHex(TONE_CRYSTAL_HEX[effectiveHover.tone]);
+    }
   }
 
   /**
@@ -4124,14 +4653,21 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
   /** 지형 정점 좌표/컬러 갱신, InstancedMesh 구조물/마을/구역 배칭, 풀잎·들꽃 인스탄싱 */
   function rebuildWorld(zones: readonly WorldZoneSpec[], villages: readonly WorldVillageSpec[]): void {
+    disposeDynamicSignResources();
     disposeObjectTree(dynamicWorldGroup);
     while (dynamicWorldGroup.children.length > 0) {
       dynamicWorldGroup.remove(dynamicWorldGroup.children[0]!);
     }
+    districtHitGroup.clear();
+    dynamicWorldGroup.add(districtHitGroup);
     streetlampAnchors.length = 0;
     colliders = [];
     grassClearZones = [];
+    grassClearBoxes = [];
     cameraOccluders = [];
+    cameraOccluderObjects = [];
+    districtHitTargets = [];
+    fishingSpotAnchors = [];
     forestAudioAnchors = [];
     animatedBanners = [];
     animatedFlames = [];
@@ -4327,9 +4863,12 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const cSakuraFloor = new Color(0xe8d5dd);
     const cCitadelFloor = new Color(0xcfd9e6);
     const cAutumnFloor = new Color(0xe8cfa8);
+    const cSnowFloor = new Color(0xeaf4fc);
+    const cSnowRim = new Color(0xd6e8f8);
     const cBank = new Color(0xe2cda2);
     const cMountain = new Color(0x568d7a);
     const tmpCol = new Color();
+    const villageThemes: readonly EffectiveVillageTheme[] = villages.map((v) => resolveEffectiveVillageTheme(v));
 
     for (let i = 0; i < posAttr.count; i += 1) {
       const vx = posAttr.getX(i);
@@ -4352,24 +4891,35 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         tmpCol.lerp(isPlazaCore ? cCobble : cPath, rw * 0.88);
       }
 
-      // 사령관별 마을 테라스 바닥 승격 (바이옴 + 종합 발전도 연동)
+      // 사령관별 마을 테라스 바닥 승격 (실효 테마 + 종합 발전도 연동)
       if (!isInBrookChannel(vx, vz, 0.2)) {
-        for (const v of villages) {
+        for (let vi = 0; vi < villages.length; vi += 1) {
+          const v = villages[vi]!;
+          const theme = villageThemes[vi]!;
           const dv = Math.hypot(vx - v.x, vz - v.z);
-          if (dv < v.radius + 0.7) {
-            const vw = 1 - smoothstep(v.radius - 0.8, v.radius + 0.7, dv);
+          if (theme === "snow") {
+            const outerR = v.radius + 2.6;
+            if (dv < outerR) {
+              const coreW = 1 - smoothstep(v.radius - 0.6, v.radius + 1.1, dv);
+              const rimW = 1 - smoothstep(v.radius - 0.2, outerR, dv);
+              tmpCol.lerp(cSnowRim, rimW * 0.72);
+              tmpCol.lerp(cSnowFloor, coreW * 0.86);
+              break;
+            }
+          } else if (dv < v.radius + 0.85) {
+            const vw = 1 - smoothstep(v.radius - 0.8, v.radius + 0.85, dv);
             const floorColor =
-              v.biome === "citadel" ? cCitadelFloor
-                : v.biome === "sakura" ? cSakuraFloor
-                  : v.biome === "autumn" ? cAutumnFloor
+              theme === "citadel" ? cCitadelFloor
+                : theme === "sakura" ? cSakuraFloor
+                  : theme === "autumn" ? cAutumnFloor
                     : v.overallTier >= 4 ? cCourtyard
                       : v.overallTier === 3 ? cCobble
                         : v.overallTier === 2 ? cGravel
                           : cPath;
             const strength =
-              v.biome === "citadel" ? 0.88
-                : v.biome === "autumn" ? 0.82
-                  : v.biome === "sakura" ? 0.78
+              theme === "citadel" ? 0.88
+                : theme === "autumn" ? 0.84
+                  : theme === "sakura" ? 0.80
                     : v.overallTier >= 4 ? 0.88 : v.overallTier === 3 ? 0.80 : v.overallTier === 2 ? 0.72 : 0.62;
             tmpCol.lerp(floorColor, vw * strength);
             break;
@@ -4411,6 +4961,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     buildGrandGuildHall(bucketBuilder, dynamicWorldGroup);
     buildPlazaCommons(bucketBuilder, dynamicWorldGroup);
     buildBrookBridgesAndFlora(bucketBuilder);
+    buildFishingSpotMarkers(bucketBuilder, dynamicWorldGroup);
 
     for (const v of villages) {
       buildVillage(bucketBuilder, dynamicWorldGroup, v);
@@ -4512,7 +5063,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (villages.some((v) => Math.hypot(sx - v.x, sz - v.z) < v.radius + 2.4)) continue;
       const rd = minRoadDistance(sx, sz);
       if (rd.dist < rd.halfWidth + 0.65) continue;
-      addWoodenSignpost(bucketBuilder, sx, sz, syaw);
+      addWoodenSignpost(bucketBuilder, dynamicWorldGroup, sx, sz, syaw, false);
     }
 
     // 나무·덤불 겹침 방지 트래커 + 들꽃 군락 앵커 풀
@@ -4533,6 +5084,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       if (gy < 0.16) return false;
       if (zones.some((z) => z.kind !== "plaza" && Math.hypot(tx - z.x, tz - z.z) < z.radius + 2.5)) return false;
       if (villages.some((v) => Math.hypot(tx - v.x, tz - v.z) < v.radius + 2.7)) return false;
+      // 모든 사령관 마을 정문·착지 후방 카메라 시야 회랑 내 수목 배치 차단
+      if (isInVillageEntranceSightCorridor(tx, tz)) return false;
       const rd = minRoadDistance(tx, tz);
       if (rd.dist < rd.halfWidth + minRoadClear) return false;
       if (placedTrees.some((p) => Math.hypot(tx - p.x, tz - p.z) < minTreeSpacing)) return false;
@@ -4719,7 +5272,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const overlapsZone = zones.some((z) => z.kind !== "plaza" && Math.hypot(tx - z.x, tz - z.z) < z.radius + 2.4);
       const overlapsVillage = villages.some((v) => Math.hypot(tx - v.x, tz - v.z) < v.radius + 2.6);
       const rd = minRoadDistance(tx, tz);
-      if (overlapsZone || overlapsVillage || rd.dist < rd.halfWidth + 1.55) continue;
+      if (overlapsZone || overlapsVillage || isInVillageEntranceSightCorridor(tx, tz) || rd.dist < rd.halfWidth + 1.55) continue;
       addTree(bucketBuilder, dynamicWorldGroup, tx, tz, sc, kind);
       placedTrees.push({ x: tx, z: tz });
     }
@@ -4863,6 +5416,40 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     }
 
+    // 4c. 카메라 스프링-암 3D 레이캐스트용 4분면 경량 비가시 InstancedMesh 차폐 프록시 (0 draw call, Box3 브로드페이즈 최적화)
+    if (cameraOccluders.length > 0) {
+      const quadBuckets: [CameraOccluder[], CameraOccluder[], CameraOccluder[], CameraOccluder[]] = [[], [], [], []];
+      for (let i = 0; i < cameraOccluders.length; i += 1) {
+        const occ = cameraOccluders[i]!;
+        const qIdx = (occ.x >= 0 ? 1 : 0) + (occ.z >= 0 ? 2 : 0);
+        quadBuckets[qIdx]!.push(occ);
+      }
+      const occDummy = new Object3D();
+      for (let qi = 0; qi < quadBuckets.length; qi += 1) {
+        const list = quadBuckets[qi]!;
+        if (list.length === 0) continue;
+        const proxyInst = new InstancedMesh(districtHitGeo, matInvisibleHit, list.length);
+        proxyInst.name = `camera-occluder-proxy-q${qi}`;
+        proxyInst.userData["kind"] = "camera-occluder";
+        for (let i = 0; i < list.length; i += 1) {
+          const occ = list[i]!;
+          const minY = occ.minY ?? 0;
+          const gy = Math.max(0, getTerrainBaseHeight(occ.x, occ.z));
+          const spanY = Math.max(0.25, occ.height - minY);
+          occDummy.position.set(occ.x, gy + minY, occ.z);
+          occDummy.rotation.set(0, 0, 0);
+          occDummy.scale.set(occ.radius, spanY, occ.radius);
+          occDummy.updateMatrix();
+          proxyInst.setMatrixAt(i, occDummy.matrix);
+        }
+        proxyInst.instanceMatrix.needsUpdate = true;
+        proxyInst.computeBoundingBox();
+        proxyInst.computeBoundingSphere();
+        dynamicWorldGroup.add(proxyInst);
+        cameraOccluderObjects.push(proxyInst);
+      }
+    }
+
     // 동적 인스턴스 색상 초기화 (깃발 · 크리스탈 등대)
     const tmpInstColor = new Color();
     bannerInstanced.count = animatedBanners.length;
@@ -4888,13 +5475,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     routineRotorInst.count = animatedRoutineWindmills.length;
 
     // 하이라이트 링 높이 재동기화
-    applyHighlightMesh(hoverHighlightMesh, hoverHighlightMat, lastHoveredDistrict);
+    syncHoverVisualTarget(lastHoveredDistrict, lastSelectedDistrict);
     applyHighlightMesh(selectedHighlightMesh, selectedHighlightMat, lastSelectedDistrict);
 
     // 마을 바이옴별 국지 낙화·단풍·눈송이·민들레 파티클 자동 동기화
     syncVillageBiomeParticlesInternal(villages);
 
-    // 5. 풀잎(InstancedMesh) & 들꽃(InstancedMesh) 배치 — 도로·수면·마을 석재바닥·건물 회피
+    // 5. 풀잎(InstancedMesh) & 들꽃(InstancedMesh) 배치 — 석재 광장·도로·수면·마을 석재/담장·건물 바닥 OBB 완전 제외
     const dummy = new Object3D();
     const grassColors = [
       new Color(0x52c258),
@@ -4913,11 +5500,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const gz = Math.sin(ang) * rad;
       const gy = getTerrainBaseHeight(gx, gz);
       if (gy < 0.14) continue;
+      if (Math.hypot(gx, gz + 1.6) < 5.65) continue;
       const rd = minRoadDistance(gx, gz);
-      if (rd.dist < rd.halfWidth + 0.28) continue;
-      if (villages.some((v) => Math.hypot(gx - v.x, gz - v.z) < v.radius - 0.15)) continue;
-      if (colliders.some((c) => Math.hypot(gx - c.x, gz - c.z) < c.r + 0.25)) continue;
-      if (grassClearZones.some((z) => Math.hypot(gx - z.x, gz - z.z) < z.r)) continue;
+      if (rd.dist < rd.halfWidth + 0.45) continue;
+      if (villages.some((v) => Math.hypot(gx - v.x, gz - v.z) < v.radius + 0.90)) continue;
+      if (colliders.some((c) => Math.hypot(gx - c.x, gz - c.z) < c.r + 0.34)) continue;
+      if (grassClearZones.some((z) => Math.hypot(gx - z.x, gz - z.z) < z.r + 0.14)) continue;
+      if (isPointInGrassClearBoxes(gx, gz, 0.14)) continue;
 
       dummy.position.set(gx, gy - 0.02, gz);
       dummy.rotation.set(
@@ -4955,11 +5544,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         const fz = glade.z + Math.sin(ang) * rad;
         const fy = getTerrainBaseHeight(fx, fz);
         if (fy < 0.18 || isInBrookChannel(fx, fz, 0.8)) continue;
+        if (Math.hypot(fx, fz + 1.6) < 5.75) continue;
         const rd = minRoadDistance(fx, fz);
-        if (rd.dist < rd.halfWidth + 0.45) continue;
-        if (villages.some((v) => v.overallTier >= 1 && Math.hypot(fx - v.x, fz - v.z) < v.radius - 0.15)) continue;
-        if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.30)) continue;
-        if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.10)) continue;
+        if (rd.dist < rd.halfWidth + 0.58) continue;
+        if (villages.some((v) => Math.hypot(fx - v.x, fz - v.z) < v.radius + 0.95)) continue;
+        if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.36)) continue;
+        if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.18)) continue;
+        if (isPointInGrassClearBoxes(fx, fz, 0.18)) continue;
 
         dummy.position.set(fx, fy - 0.02, fz);
         dummy.rotation.set(0, hash2(fx, fz) * Math.PI * 2, 0);
@@ -4980,11 +5571,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const fz = Math.sin(ang) * rad;
       const fy = getTerrainBaseHeight(fx, fz);
       if (fy < 0.18) continue;
+      if (Math.hypot(fx, fz + 1.6) < 5.75) continue;
       const rd = minRoadDistance(fx, fz);
-      if (rd.dist < rd.halfWidth + 0.45) continue;
-      if (villages.some((v) => v.overallTier >= 1 && Math.hypot(fx - v.x, fz - v.z) < v.radius - 0.25)) continue;
-      if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.35)) continue;
-      if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.15)) continue;
+      if (rd.dist < rd.halfWidth + 0.58) continue;
+      if (villages.some((v) => Math.hypot(fx - v.x, fz - v.z) < v.radius + 0.95)) continue;
+      if (colliders.some((c) => Math.hypot(fx - c.x, fz - c.z) < c.r + 0.38)) continue;
+      if (grassClearZones.some((z) => Math.hypot(fx - z.x, fz - z.z) < z.r + 0.20)) continue;
+      if (isPointInGrassClearBoxes(fx, fz, 0.20)) continue;
 
       dummy.position.set(fx, fy - 0.02, fz);
       dummy.rotation.set(0, hash2(fx, fz) * Math.PI * 2, 0);
@@ -5199,7 +5792,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const villageSig = villages
         .map(
           (v) =>
-            `${v.id}:${v.x}:${v.z}:${v.radius}:${v.tone}:${v.biome}:${v.overallTier}:${v.routineCount > 0 ? 1 : 0}:${Math.min(5, v.completedObjectiveCount)}[`
+            `${v.id}:${v.label}:${v.x}:${v.z}:${v.radius}:${v.tone}:${v.biome}:${v.overallTier}:${v.routineCount > 0 ? 1 : 0}:${Math.min(5, v.completedObjectiveCount)}[`
             + v.districts.map((d) => `${d.id}:${d.tier}:${d.x}:${d.z}:${d.radius}`).join(",")
             + "]",
         )
@@ -5215,10 +5808,45 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     setDistrictHighlight(hovered, selected) {
       lastHoveredDistrict = hovered;
       lastSelectedDistrict = selected;
-      // 선택된 구역과 호버 구역이 같으면 선택 링만 표시
-      const effectiveHover = hovered && selected && hovered.id === selected.id ? null : hovered;
-      applyHighlightMesh(hoverHighlightMesh, hoverHighlightMat, effectiveHover);
+      syncHoverVisualTarget(hovered, selected);
       applyHighlightMesh(selectedHighlightMesh, selectedHighlightMat, selected);
+    },
+    setHoveredDistrict(theaterIdOrDistrictId) {
+      let found: WorldDistrictSpec | null = null;
+      if (theaterIdOrDistrictId) {
+        for (let vi = 0; vi < currentVillages.length && !found; vi += 1) {
+          const ds = currentVillages[vi]!.districts;
+          for (let di = 0; di < ds.length; di += 1) {
+            const d = ds[di]!;
+            if (d.theaterId === theaterIdOrDistrictId || d.id === theaterIdOrDistrictId) {
+              found = d;
+              break;
+            }
+          }
+        }
+      }
+      lastHoveredDistrict = found;
+      syncHoverVisualTarget(found, lastSelectedDistrict);
+    },
+    getDistrictHitGroup() {
+      return districtHitGroup;
+    },
+    getDistrictHitTargets() {
+      return districtHitTargets;
+    },
+    raycastDistrict(raycaster) {
+      if (districtHitTargets.length === 0) return null;
+      districtRaycastScratch.length = 0;
+      raycaster.intersectObjects(districtHitTargets, false, districtRaycastScratch);
+      if (districtRaycastScratch.length === 0) return null;
+      const hitObj = districtRaycastScratch[0]!.object;
+      return (hitObj.userData["district"] as WorldDistrictSpec | undefined) ?? null;
+    },
+    getCameraOccluderObjects() {
+      return cameraOccluderObjects;
+    },
+    getFishingSpotAnchors() {
+      return fishingSpotAnchors;
     },
     setQuestBoardAlert(urgentCount) {
       questBoardUrgentCount = Math.max(0, urgentCount);
@@ -5282,8 +5910,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const rd = minRoadDistance(x, z);
       if (rd.dist < rd.halfWidth + 0.35) return "stone";
       for (const v of currentVillages) {
+        const theme = resolveEffectiveVillageTheme(v);
         if (
-          (v.overallTier >= 2 || v.biome === "citadel" || v.biome === "sakura" || v.biome === "autumn")
+          (v.overallTier >= 2 || theme !== "meadow")
           && Math.hypot(x - v.x, z - v.z) < v.radius
         ) {
           return "stone";
@@ -5380,9 +6009,33 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       assetRegistry.update(dt);
       assetRegistry.setNightFactor(nightFactor);
 
-      // 하이라이트 링 셰이더 시간 갱신
-      if (hoverHighlightMesh.visible) {
+      // 구역 호버 부드러운 페이드 인/아웃 링 & 은은한 수직 아우라 + 선택 링 셰이더 갱신 (0-GC)
+      const hoverActive = Boolean(
+        lastHoveredDistrict && (!lastSelectedDistrict || lastHoveredDistrict.id !== lastSelectedDistrict.id),
+      );
+      const hoverTargetAlpha = hoverActive ? 1 : 0;
+      hoverFadeAlpha += (hoverTargetAlpha - hoverFadeAlpha) * Math.min(1, dt * 9.5);
+      if (hoverFadeAlpha < 0.008 && !hoverActive) {
+        hoverFadeAlpha = 0;
+      }
+      if (hoverFadeAlpha > 0.01 && hoverDisplayedDistrict) {
+        const pulse = 1.0 + Math.sin(elapsed * 3.6) * 0.032;
+        const r = hoverDisplayedDistrict.radius;
+        hoverHighlightMesh.visible = true;
+        hoverHighlightMesh.scale.setScalar(r * (1.00 + 0.12 * hoverFadeAlpha) * pulse);
         hoverHighlightMat.uniforms["uTime"]!.value = elapsed;
+        hoverAuraMesh.visible = true;
+        hoverAuraMesh.scale.set(
+          r * (0.94 + 0.08 * hoverFadeAlpha) * pulse,
+          0.65 + 0.42 * hoverFadeAlpha,
+          r * (0.94 + 0.08 * hoverFadeAlpha) * pulse,
+        );
+        hoverAuraMat.opacity = hoverFadeAlpha * (0.18 + Math.sin(elapsed * 3.4) * 0.045);
+      } else {
+        hoverHighlightMesh.visible = false;
+        hoverAuraMesh.visible = false;
+        hoverAuraMat.opacity = 0;
+        if (!hoverActive) hoverDisplayedDistrict = null;
       }
       if (selectedHighlightMesh.visible) {
         selectedHighlightMat.uniforms["uTime"]!.value = elapsed;
@@ -5942,9 +6595,14 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     },
     dispose() {
       disposed = true;
+      disposeDynamicSignResources();
       disposeObjectTree(dynamicWorldGroup);
       disposeObjectTree(ecosystemButterflyGroup);
       disposeObjectTree(ecosystemKoiGroup);
+      districtHitGroup.clear();
+      districtHitTargets.length = 0;
+      cameraOccluderObjects.length = 0;
+      fishingSpotAnchors.length = 0;
       butterflyLayers.length = 0;
       koiLayers.length = 0;
       assetRegistry.dispose();
@@ -6019,6 +6677,9 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       horizonCanopyInst.dispose();
       horizonCanopyGeo.dispose();
       smokeGeo.dispose();
+      signPlaqueGeo.dispose();
+      districtHitGeo.dispose();
+      hoverAuraGeo.dispose();
       highlightGeo.dispose();
       hoverHighlightMat.dispose();
       selectedHighlightMat.dispose();

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { isIdentityTone } from "../../workspace/shared/identity-tones.js";
+import { isIdentityTone, type IdentityTone } from "../../workspace/shared/identity-tones.js";
 import type {
   WorldActorEmote,
   WorldActorPanelMode,
@@ -499,6 +499,15 @@ export interface WorldPhotoSnapshotPreview {
   readonly savedAt: number;
 }
 
+export interface WorldCurrentZoneInfo {
+  readonly id: string;
+  readonly kind: "plaza" | "village" | "meadow";
+  readonly label: string;
+  readonly subtitle?: string | undefined;
+  readonly tone?: IdentityTone | undefined;
+  readonly villageId?: string | undefined;
+}
+
 export interface WorldStoreSnapshot {
   readonly lifecycle: WorldLifecycleState;
   readonly selectedActorId: string | null;
@@ -518,9 +527,16 @@ export interface WorldStoreSnapshot {
     readonly actorIds?: readonly string[] | undefined;
     readonly prefillText?: string | undefined;
   } | null;
+  readonly quickJumpOpen: boolean;
+  readonly toolsMenuOpen: boolean;
+  readonly weatherPopoverOpen: boolean;
+  readonly debugPopoverOpen: boolean;
+  readonly currentZone: WorldCurrentZoneInfo | null;
   readonly questBoardOpen: boolean;
   readonly warRoomOpen: boolean;
   readonly admiralCustomizerOpen: boolean;
+  readonly admiralCustomizerTab: "self" | "gifts";
+  readonly admiralCustomizerFocusCommodoreId: string | null;
   readonly gazetteOpen: boolean;
   readonly stampBookOpen: boolean;
   readonly mailboxOpen: boolean;
@@ -558,6 +574,13 @@ export interface WorldStoreSnapshot {
   readonly localSpeeches: Readonly<Record<string, { readonly text: string; readonly nonce: number }>>;
 }
 
+const CLOSED_HUD_POPOVERS = {
+  quickJumpOpen: false,
+  toolsMenuOpen: false,
+  weatherPopoverOpen: false,
+  debugPopoverOpen: false,
+} as const;
+
 let state: WorldStoreSnapshot = {
   lifecycle: "closed",
   selectedActorId: null,
@@ -572,9 +595,13 @@ let state: WorldStoreSnapshot = {
   skyQuickMenu: null,
   photoSnapshotPreview: null,
   pendingChatMention: null,
+  ...CLOSED_HUD_POPOVERS,
+  currentZone: null,
   questBoardOpen: false,
   warRoomOpen: false,
   admiralCustomizerOpen: false,
+  admiralCustomizerTab: "self",
+  admiralCustomizerFocusCommodoreId: null,
   gazetteOpen: false,
   stampBookOpen: false,
   mailboxOpen: false,
@@ -690,6 +717,209 @@ export function useOperationFlag(): WorldOperationFlag | null {
   return useSyncExternalStore(subscribeWorldStore, readOperationFlag, readOperationFlag);
 }
 
+function readCurrentZone(): WorldCurrentZoneInfo | null {
+  return state.currentZone;
+}
+
+export function useCurrentZone(): WorldCurrentZoneInfo | null {
+  return useSyncExternalStore(subscribeWorldStore, readCurrentZone, readCurrentZone);
+}
+
+export function setCurrentZone(zone: WorldCurrentZoneInfo | null): void {
+  const prev = state.currentZone;
+  if (
+    prev === zone
+    || (prev !== null
+      && zone !== null
+      && prev.id === zone.id
+      && prev.label === zone.label
+      && prev.subtitle === zone.subtitle
+      && prev.tone === zone.tone)
+  ) {
+    return;
+  }
+  state = { ...state, currentZone: zone };
+  emit();
+}
+
+export function hasOpenHudPopover(snap: WorldStoreSnapshot = state): boolean {
+  return snap.quickJumpOpen || snap.toolsMenuOpen || snap.weatherPopoverOpen || snap.debugPopoverOpen;
+}
+
+export function closeAllHudPopovers(): boolean {
+  if (!hasOpenHudPopover(state)) return false;
+  state = { ...state, ...CLOSED_HUD_POPOVERS };
+  emit();
+  return true;
+}
+
+export function setQuickJumpOpen(open: boolean): void {
+  if (state.quickJumpOpen === open && (!open || (!state.toolsMenuOpen && !state.weatherPopoverOpen && !state.debugPopoverOpen))) {
+    return;
+  }
+  state = {
+    ...state,
+    ...(open ? CLOSED_HUD_POPOVERS : {}),
+    quickJumpOpen: open,
+  };
+  emit();
+}
+
+export function toggleQuickJump(): void {
+  setQuickJumpOpen(!state.quickJumpOpen);
+}
+
+export function closeQuickJump(): void {
+  setQuickJumpOpen(false);
+}
+
+export function setToolsMenuOpen(open: boolean): void {
+  if (state.toolsMenuOpen === open && (!open || (!state.quickJumpOpen && !state.weatherPopoverOpen && !state.debugPopoverOpen))) {
+    return;
+  }
+  state = {
+    ...state,
+    ...(open ? CLOSED_HUD_POPOVERS : {}),
+    toolsMenuOpen: open,
+  };
+  emit();
+}
+
+export function toggleToolsMenu(): void {
+  setToolsMenuOpen(!state.toolsMenuOpen);
+}
+
+export function closeToolsMenu(): void {
+  setToolsMenuOpen(false);
+}
+
+export function setWeatherPopoverOpen(open: boolean): void {
+  if (state.weatherPopoverOpen === open && (!open || (!state.quickJumpOpen && !state.toolsMenuOpen && !state.debugPopoverOpen))) {
+    return;
+  }
+  state = {
+    ...state,
+    ...(open ? CLOSED_HUD_POPOVERS : {}),
+    weatherPopoverOpen: open,
+  };
+  emit();
+}
+
+export function toggleWeatherPopover(): void {
+  setWeatherPopoverOpen(!state.weatherPopoverOpen);
+}
+
+export function closeWeatherPopover(): void {
+  setWeatherPopoverOpen(false);
+}
+
+export function setDebugPopoverOpen(open: boolean): void {
+  if (state.debugPopoverOpen === open && (!open || (!state.quickJumpOpen && !state.toolsMenuOpen && !state.weatherPopoverOpen))) {
+    return;
+  }
+  state = {
+    ...state,
+    ...(open ? CLOSED_HUD_POPOVERS : {}),
+    debugPopoverOpen: open,
+  };
+  emit();
+}
+
+export function toggleDebugPopover(): void {
+  setDebugPopoverOpen(!state.debugPopoverOpen);
+}
+
+export function closeDebugPopover(): void {
+  setDebugPopoverOpen(false);
+}
+
+/**
+ * 통합 Esc 스택 최상위 1겹 해제 계약.
+ *
+ * HUD 팝오버(`debug` → `weather` → `tools` → `quickJump`) → 포토/시네마 → 불멍/이모트/퀵메뉴 →
+ * 각종 모달 → 채팅 → NPC/구역 상호작용 → 별빛 비행 순으로 최상위 레이어 1개만 닫고 `true`를 반환한다.
+ * 열려 있는 레이어가 없으면 `false`를 반환하며 더 월드 전체를 닫지 않는다.
+ */
+export function dismissTopOverlayLayer(): boolean {
+  if (state.debugPopoverOpen) {
+    setDebugPopoverOpen(false);
+    return true;
+  }
+  if (state.weatherPopoverOpen) {
+    setWeatherPopoverOpen(false);
+    return true;
+  }
+  if (state.toolsMenuOpen) {
+    setToolsMenuOpen(false);
+    return true;
+  }
+  if (state.quickJumpOpen) {
+    setQuickJumpOpen(false);
+    return true;
+  }
+  if (state.photoMode) {
+    setPhotoMode(false);
+    return true;
+  }
+  if (state.cinemaMode) {
+    setCinemaMode(false);
+    return true;
+  }
+  if (state.sittingAtCampfire) {
+    setSittingAtCampfire(false);
+    return true;
+  }
+  if (state.emoteWheelOpen) {
+    setEmoteWheelOpen(false);
+    return true;
+  }
+  if (state.skyQuickMenu) {
+    closeSkyQuickMenu();
+    return true;
+  }
+  if (state.districtContextMenu) {
+    closeDistrictContextMenu();
+    return true;
+  }
+  if (state.mailboxOpen) {
+    closeMailbox();
+    return true;
+  }
+  if (state.gazetteOpen) {
+    closeGazette();
+    return true;
+  }
+  if (state.stampBookOpen) {
+    setStampBookOpen(false);
+    return true;
+  }
+  if (state.warRoomOpen) {
+    closeWarRoom();
+    return true;
+  }
+  if (state.admiralCustomizerOpen) {
+    closeAdmiralCustomizer();
+    return true;
+  }
+  if (state.questBoardOpen) {
+    closeQuestBoard();
+    return true;
+  }
+  if (state.chatActive) {
+    deactivateChat();
+    return true;
+  }
+  if (state.interactionMode !== "closed" || state.selectedDistrictId !== null) {
+    closeActorInteraction();
+    return true;
+  }
+  if (state.overviewMode) {
+    setOverviewMode(false);
+    return true;
+  }
+  return false;
+}
+
 export function enterTheWorld(options?: { readonly reducedMotion?: boolean; readonly initialActorId?: string | null }): void {
   if (state.lifecycle === "open" || state.lifecycle === "diving") return;
   clearTransitionTimer();
@@ -707,9 +937,13 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     skyQuickMenu: null,
     photoSnapshotPreview: null,
     pendingChatMention: null,
+    ...CLOSED_HUD_POPOVERS,
+    currentZone: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    admiralCustomizerTab: "self",
+    admiralCustomizerFocusCommodoreId: null,
     gazetteOpen: false,
     stampBookOpen: false,
     mailboxOpen: false,
@@ -751,9 +985,13 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     skyQuickMenu: null,
     photoSnapshotPreview: null,
     pendingChatMention: null,
+    ...CLOSED_HUD_POPOVERS,
+    currentZone: null,
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    admiralCustomizerTab: "self",
+    admiralCustomizerFocusCommodoreId: null,
     gazetteOpen: false,
     stampBookOpen: false,
     mailboxOpen: false,
@@ -809,6 +1047,7 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
 export function openActorRadialMenu(actorId: string): void {
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     selectedActorId: actorId,
     interactionMode: "radial",
     inspectedObjectiveId: null,
@@ -833,6 +1072,7 @@ export function openActorRadialMenu(actorId: string): void {
 export function openActorDialogue(actorId: string): void {
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     selectedActorId: actorId,
     interactionMode: "dialogue",
     inspectedObjectiveId: null,
@@ -858,6 +1098,7 @@ export function openActorDialogue(actorId: string): void {
 export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objectiveId?: string | null): void {
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     selectedActorId: actorId,
     interactionMode: mode,
     inspectedObjectiveId: objectiveId ?? null,
@@ -908,6 +1149,7 @@ export function selectDistrict(districtId: string | null): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     selectedDistrictId: districtId,
     selectedActorId: null,
     interactionMode: "closed",
@@ -1051,6 +1293,7 @@ export function openWarRoom(): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     warRoomOpen: true,
     selectedActorId: null,
     interactionMode: "closed",
@@ -1126,6 +1369,7 @@ export function openGazette(): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     gazetteOpen: true,
     selectedActorId: null,
     interactionMode: "closed",
@@ -1194,6 +1438,7 @@ export function setStampBookOpen(open: boolean): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     stampBookOpen: true,
     mailboxOpen: false,
     selectedActorId: null,
@@ -1296,9 +1541,27 @@ export function setCommodoreGift(commodoreId: string, hat: WorldAdmiralHat | nul
   emit();
 }
 
-export function openAdmiralCustomizer(): void {
+export function setAdmiralCustomizerTab(tab: "self" | "gifts"): void {
+  if (state.admiralCustomizerTab === tab) return;
+  state = {
+    ...state,
+    admiralCustomizerTab: tab,
+    ...(tab === "self" ? { admiralCustomizerFocusCommodoreId: null } : {}),
+  };
+  emit();
+}
+
+export function openAdmiralCustomizer(options?: {
+  readonly tab?: "self" | "gifts";
+  readonly focusCommodoreId?: string | null;
+}): void {
+  const nextTab = options?.tab ?? "self";
+  const nextFocusId = options?.focusCommodoreId ?? null;
   if (
     state.admiralCustomizerOpen
+    && state.admiralCustomizerTab === nextTab
+    && state.admiralCustomizerFocusCommodoreId === nextFocusId
+    && !hasOpenHudPopover(state)
     && state.selectedActorId === null
     && state.interactionMode === "closed"
     && state.selectedDistrictId === null
@@ -1312,7 +1575,10 @@ export function openAdmiralCustomizer(): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     admiralCustomizerOpen: true,
+    admiralCustomizerTab: nextTab,
+    admiralCustomizerFocusCommodoreId: nextFocusId,
     selectedActorId: null,
     interactionMode: "closed",
     inspectedObjectiveId: null,
@@ -1335,7 +1601,11 @@ export function openAdmiralCustomizer(): void {
 
 export function closeAdmiralCustomizer(): void {
   if (!state.admiralCustomizerOpen) return;
-  state = { ...state, admiralCustomizerOpen: false };
+  state = {
+    ...state,
+    admiralCustomizerOpen: false,
+    admiralCustomizerFocusCommodoreId: null,
+  };
   emit();
 }
 
@@ -1452,6 +1722,7 @@ export function openQuestBoard(): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     questBoardOpen: true,
     selectedActorId: null,
     interactionMode: "closed",
@@ -1613,6 +1884,7 @@ export function toggleSoundMuted(): void {
 export function closeActorInteraction(): void {
   if (
     state.interactionMode === "closed"
+    && !hasOpenHudPopover(state)
     && state.selectedActorId === null
     && state.selectedDistrictId === null
     && state.districtContextMenu === null
@@ -1629,6 +1901,7 @@ export function closeActorInteraction(): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     interactionMode: "closed",
     selectedActorId: null,
     inspectedObjectiveId: null,
@@ -1639,6 +1912,7 @@ export function closeActorInteraction(): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    admiralCustomizerFocusCommodoreId: null,
     gazetteOpen: false,
     stampBookOpen: false,
     mailboxOpen: false,
@@ -1882,6 +2156,7 @@ export function setMailboxOpen(open: boolean): void {
   }
   state = {
     ...state,
+    ...CLOSED_HUD_POPOVERS,
     mailboxOpen: true,
     selectedActorId: null,
     interactionMode: "closed",

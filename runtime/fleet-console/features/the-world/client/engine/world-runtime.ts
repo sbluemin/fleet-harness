@@ -66,6 +66,7 @@ import {
 } from "./fishing-controller.js";
 import {
   createLivingWorkflowFx,
+  type LandingPreviewInput,
   type OperationFlagFxInput,
   type SkyRingPositionOut,
   type WorkingVillageFxInput,
@@ -82,6 +83,7 @@ import {
   type CameraFocusFraming,
   type CameraOccluder,
   type CinemaCameraTarget,
+  type LandingTargetOptions,
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
@@ -286,8 +288,11 @@ export interface WorldRuntimeHandle {
   runChoreography(cmd: WorldChoreographyCommand): boolean;
   playEmote(actorId: string, emote: WorldActorEmote): void;
   approachActor(actorId: string): void;
-  teleport(x: number, z: number): void;
-  diveToPoint(x: number, z: number): void;
+  teleport(x: number, z: number, options?: LandingTargetOptions): void;
+  teleportToVillage(village: WorldVillageSpec): void;
+  spawnAtVillage(village: WorldVillageSpec): void;
+  diveToPoint(x: number, z: number, options?: LandingTargetOptions): void;
+  setLandingPreview(position: LandingPreviewInput | null): void;
   pushSpeech(actorId: string, text: string): void;
   pickActorAt(clientX: number, clientY: number): string | null;
   pickDistrictAt(clientX: number, clientY: number): WorldDistrictSpec | null;
@@ -1047,6 +1052,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let prevPlayerLiftY = 0;
   let currentWeather: WorldWeatherMode = "clear";
   let rainbowLookTimer = 0;
+  let landingPreviewActive = false;
   let prevPlayerX = playerCtrl.player.x;
   let prevPlayerZ = playerCtrl.player.z;
   let prevNow = performance.now();
@@ -1706,6 +1712,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     }
 
     livingWorkflowFx.setSkyRingsVisible(playerCtrl.isOverviewMode());
+    if (
+      landingPreviewActive
+      && (!playerCtrl.isOverviewMode() || !playerCtrl.player.flying || playerCtrl.player.diving)
+    ) {
+      livingWorkflowFx.setLandingPreview(null);
+      landingPreviewActive = false;
+    }
     if (playerCtrl.player.flying) {
       const ringHit = livingWorkflowFx.checkSkyRingPass(
         playerCtrl.player.x,
@@ -2672,6 +2685,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       currentVillages = snapshot.villages;
       currentActors = snapshot.actors;
       meadow.syncZones(snapshot.zones, snapshot.villages);
+      playerCtrl.setVillageHints(snapshot.villages);
+      playerCtrl.setCameraOccluders(meadow.getCameraOccluderObjects());
       meadow.syncVillageBiomeParticles(
         snapshot.villages.map((v) => ({
           x: v.x,
@@ -2773,7 +2788,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     setOverviewMode(enabled) {
       if (enabled) cancelFishingInternal();
-      else livingWorkflowFx.resetSkyRingCombo();
+      else {
+        livingWorkflowFx.resetSkyRingCombo();
+        if (landingPreviewActive) {
+          livingWorkflowFx.setLandingPreview(null);
+          landingPreviewActive = false;
+        }
+      }
       playerCtrl.setOverviewMode(enabled);
     },
     setAuroraEnabled(enabled) {
@@ -3081,6 +3102,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     },
     setDistrictHighlight(hovered, selected) {
       currentHoveredDistrict = hovered;
+      meadow.setHoveredDistrict(hovered?.theaterId ?? hovered?.id ?? null);
       meadow.setDistrictHighlight(hovered, selected);
     },
     setDispatchFlags(flags) {
@@ -3177,8 +3199,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         12,
       );
     },
-    teleport(x, z) {
-      playerCtrl.teleportTo(x, z, meadow.getGroundHeight, meadow.resolveMovement);
+    teleport(x, z, options) {
+      playerCtrl.teleportTo(x, z, meadow.getGroundHeight, meadow.resolveMovement, options);
       director.spawnBurst(
         playerCtrl.player.x,
         meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z) + 1.0,
@@ -3187,8 +3209,36 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         14,
       );
     },
-    diveToPoint(x, z) {
-      playerCtrl.startMeteorDive(x, z, meadow.getGroundHeight, meadow.resolveMovement);
+    teleportToVillage(village) {
+      playerCtrl.teleportTo(village.x, village.z, meadow.getGroundHeight, meadow.resolveMovement, {
+        lookAtX: village.x,
+        lookAtZ: village.z,
+      });
+      director.spawnBurst(
+        playerCtrl.player.x,
+        meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z) + 1.0,
+        playerCtrl.player.z,
+        0x38bdf8,
+        14,
+      );
+    },
+    spawnAtVillage(village) {
+      const entryDist = Math.max(2.35, Math.min(village.radius - 2.65, village.radius * 0.42));
+      playerCtrl.player.x = village.x + Math.cos(village.gateAngle) * entryDist;
+      playerCtrl.player.z = village.z + Math.sin(village.gateAngle) * entryDist;
+      playerCtrl.teleportTo(village.x, village.z, meadow.getGroundHeight, meadow.resolveMovement, {
+        lookAtX: village.x,
+        lookAtZ: village.z,
+      });
+      prevPlayerX = playerCtrl.player.x;
+      prevPlayerZ = playerCtrl.player.z;
+    },
+    diveToPoint(x, z, options) {
+      if (landingPreviewActive) {
+        livingWorkflowFx.setLandingPreview(null);
+        landingPreviewActive = false;
+      }
+      playerCtrl.startMeteorDive(x, z, meadow.getGroundHeight, meadow.resolveMovement, options);
       director.spawnBurst(
         playerCtrl.player.x,
         playerCtrl.player.y + 0.55,
@@ -3196,6 +3246,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         0xfde047,
         10,
       );
+    },
+    setLandingPreview(position) {
+      landingPreviewActive = position !== null;
+      livingWorkflowFx.setLandingPreview(position);
     },
     pushSpeech(actorId, text) {
       director.applySpeech(actorId, text);
@@ -3223,6 +3277,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         -((clientY - rect.top) / rect.height) * 2 + 1,
       );
       raycaster.setFromCamera(pickNdc, camera);
+      const meshHit = meadow.raycastDistrict(raycaster);
+      if (meshHit) return meshHit;
+
       const { origin, direction } = raycaster.ray;
       if (Math.abs(direction.y) < 1e-4) return null;
 
@@ -3457,8 +3514,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       scene.remove(groundRingMesh);
       playerRig.dispose();
       fishing.dispose();
+      livingWorkflowFx.setLandingPreview(null);
       livingWorkflowFx.dispose();
       director.dispose();
+      playerCtrl.setCameraOccluders([]);
+      playerCtrl.setVillageHints([]);
       playerCtrl.dispose();
       meadow.dispose();
       skyLighting.dispose();
