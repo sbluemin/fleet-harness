@@ -15,6 +15,10 @@ on:
         description: 셸 설치본을 업로드할 릴리스 태그 (예 v1.2.3)
         required: true
         type: string
+      macos_only:
+        description: 드래프트 복구 시 기존 Windows 자산을 그대로 보존
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       ref:
@@ -40,6 +44,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+      # 러너 기본 Xcode 16.4의 SDK에는 ScreenCaptureKit의 macOS 26 API가 없다.
+      - name: Select Xcode 26.3 for the macOS 26 SDK
+        shell: bash
+        run: |
+          export DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+          sdk=$(xcrun --sdk macosx --show-sdk-version)
+          echo "macOS SDK: $sdk ($DEVELOPER_DIR)"
+          [[ "${sdk%%.*}" -ge 26 ]]
+          echo "DEVELOPER_DIR=$DEVELOPER_DIR" >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -68,6 +82,8 @@ jobs:
       - name: Upload shell installers to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MACOS_ONLY: ${{ inputs.macos_only }}
         shell: bash
         run: |
           shopt -s nullglob
@@ -83,11 +99,13 @@ jobs:
             exit 1
           fi
           artifacts+=(runtime/fleet-desktop/release/latest-mac.yml runtime/fleet-desktop/release/*.blockmap)
-          gh release upload "${{ inputs.tag }}" "${artifacts[@]}" --clobber
+          if [ "$MACOS_ONLY" != true ]; then artifacts+=(--clobber); fi
+          gh release upload "$RELEASE_TAG" "${artifacts[@]}"
 
   # Windows x64 — arm64는 지원하지 않는다(electron-builder의 arm64 NSIS가 malformed 설치본을 만든다).
   # Windows-on-ARM 사용자는 x64 빌드를 에뮬레이션으로 실행한다.
   windows:
+    if: ${{ !inputs.macos_only }}
     name: Windows ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     permissions:

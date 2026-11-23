@@ -1,0 +1,124 @@
+name: Recover Stable v1.316.0
+
+# 한 번의 macOS 실패만 복구한다. 버전 계산, 태그 이동, 드래프트 생성은 하지 않는다.
+on: workflow_dispatch
+
+concurrency:
+  group: stable-release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_ID: '454786961'
+  RELEASE_TAG: v1.316.0
+  RELEASE_SHA: a6c18eba8b796f0d78dc17c6e1587a56a49f2852
+  DESKTOP_TAG: desktop-v0.45.0
+
+jobs:
+  validate:
+    if: github.repository == 'sbluemin/fleet-harness' && github.ref == 'refs/heads/canary'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      assets: ${{ steps.check.outputs.assets }}
+    steps:
+      - name: Confirm the original Stable gates and preserved draft
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          gh api "$repo/actions/runs/45075893142" | jq -e '
+            .head_sha == "0813ed9614af87d771115239c7e59ec1b2aa9d2a" and
+            .path == ".github/workflows/stable-release.yml" and
+            .event == "push" and .head_branch == "main" and
+            .status == "completed" and .conclusion == "failure" and .run_attempt == 1'
+          gh api "$repo/actions/runs/45075893142/attempts/1/jobs" | jq -e '
+            ([.jobs[] | select(.conclusion == "success") | .id] | sort ==
+              [137372900797, 137372932667, 137372932712, 137374046218, 137374146616, 137374146700]) and
+            ([.jobs[] | select(.conclusion != "success" and .conclusion != "skipped") |
+              [.id, .conclusion]] == [[137374146694, "failure"]])'
+          test "$(gh api "$repo/git/ref/tags/$RELEASE_TAG" --jq .object.sha)" = "$RELEASE_SHA"
+          test "$(gh api "$repo/git/ref/heads/main" --jq .object.sha)" = "$RELEASE_SHA"
+          test "$(gh api "$repo/releases/latest" --jq .tag_name)" = v1.315.0
+          assets=$(gh api "$repo/releases/$RELEASE_ID" | jq -ce \
+            --arg tag "$RELEASE_TAG" --arg sha "$RELEASE_SHA" '
+            select(.draft and (.prerelease | not) and .tag_name == $tag and .target_commitish == $sha) |
+            [.assets[] | select(.id as $id |
+              [780630544, 780630545, 780630547, 780630550, 780636786, 780636787] | index($id)) |
+              select(.state == "uploaded" and .size > 0 and (.digest | test("^sha256:[0-9a-f]{64}$"))) |
+              {id, name, digest, size}] | sort_by(.id) | select(length == 6)')
+          echo "assets=$assets" >> "$GITHUB_OUTPUT"
+
+  desktop-build:
+    needs: validate
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop-release.yml
+    with:
+      ref: a6c18eba8b796f0d78dc17c6e1587a56a49f2852
+      tag: v1.316.0
+      macos_only: true
+    secrets: inherit
+
+  publish-release:
+    needs: [validate, desktop-build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Verify assets and publish the original draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORIGINAL_ASSETS: ${{ needs.validate.outputs.assets }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          repo="repos/$GITHUB_REPOSITORY"
+          test "$(gh api "$repo/git/ref/tags/$RELEASE_TAG" --jq .object.sha)" = "$RELEASE_SHA"
+          test "$(gh api "$repo/git/ref/heads/main" --jq .object.sha)" = "$RELEASE_SHA"
+          test "$(gh api "$repo/releases/latest" --jq .tag_name)" = v1.315.0
+          gh api "$repo/releases/$RELEASE_ID" | jq -e --arg tag "$RELEASE_TAG" \
+            --arg sha "$RELEASE_SHA" --argjson original "$ORIGINAL_ASSETS" '
+            .draft and (.prerelease | not) and .tag_name == $tag and .target_commitish == $sha and
+            ([.assets[] | {id, name, digest, size}] as $current |
+              all($original[]; . as $old | any($current[]; . == $old))) and
+            ([.assets[] | select(.state == "uploaded" and .size > 0) | .name] | sort ==
+              (($original | map(.name)) + ["Fleet-Console-0.45.0-mac-arm64.dmg",
+                "Fleet-Console-0.45.0-mac-arm64.dmg.blockmap", "Fleet-Console-0.45.0-mac-arm64.zip",
+                "Fleet-Console-0.45.0-mac-arm64.zip.blockmap", "latest-mac.yml"] | sort))'
+          downloads=$(mktemp -d "$RUNNER_TEMP/recovered-mac.XXXXXX")
+          gh release download "$RELEASE_TAG" --pattern latest-mac.yml \
+            --pattern 'Fleet-Console-0.45.0-mac-arm64.*' --dir "$downloads"
+          ruby -ryaml -rdigest -rbase64 - "$downloads" <<'RUBY'
+          dir = ARGV.fetch(0)
+          manifest = YAML.safe_load(File.read(File.join(dir, 'latest-mac.yml')))
+          base = 'Fleet-Console-0.45.0-mac-arm64'
+          files = manifest.fetch('files')
+          abort 'Unexpected macOS updater version or filenames' unless
+            manifest.fetch('version') == '0.45.0' && manifest.fetch('path') == "#{base}.zip" &&
+            files.map { |file| file.fetch('url') }.sort == ["#{base}.dmg", "#{base}.zip"]
+          files.each do |file|
+            path = File.join(dir, file.fetch('url'))
+            sha512 = Base64.strict_encode64(Digest::SHA512.file(path).digest)
+            abort "Invalid updater artifact: #{path}" unless
+              File.size(path) == file.fetch('size') && sha512 == file.fetch('sha512') &&
+              File.size?("#{path}.blockmap") &&
+              (path.end_with?('.dmg') || sha512 == manifest.fetch('sha512'))
+          end
+          puts 'macOS updater manifest and asset hashes match.'
+          RUBY
+
+          # 검증된 셸 커밋을 다음 Stable의 변경 감지 기준으로 남긴다.
+          marker=$(gh api "$repo/git/matching-refs/tags/$DESKTOP_TAG" --jq \
+            ".[] | select(.ref == \"refs/tags/$DESKTOP_TAG\") | .object.sha")
+          if [ -z "$marker" ]; then
+            gh api "$repo/git/refs" -f ref="refs/tags/$DESKTOP_TAG" -f sha="$RELEASE_SHA" --jq .object.sha
+          else
+            test "$marker" = "$RELEASE_SHA"
+          fi
+          gh api --method PATCH "$repo/releases/$RELEASE_ID" -F draft=false -f make_latest=true \
+            --jq '{id, tag_name, draft, html_url}'
