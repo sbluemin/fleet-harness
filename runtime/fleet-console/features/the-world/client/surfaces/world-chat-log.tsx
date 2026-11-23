@@ -12,7 +12,7 @@ import {
   openActorDialogue,
   pushActorSpeech,
   requestApproachActor,
-  toggleAmbientChatCollapsed,
+  setAmbientChatCollapsed,
   useAmbientChatCollapsed,
   useWorldStore,
 } from "../world-store.js";
@@ -937,24 +937,41 @@ export const WorldChatLog = memo(function WorldChatLog({
             <span>{t("theWorld.chat.enterHint")}</span>
             {unreadCount > 0 ? <span className="the-world-chat-unread">{unreadCount}</span> : null}
           </button>
-          <button
-            type="button"
-            className={`the-world-chat-collapse-btn${ambientCollapsed ? " is-collapsed" : ""}`}
-            tabIndex={chatActive || hidden ? -1 : 0}
-            aria-label={t("theWorld.chat.toggleAria")}
-            aria-pressed={ambientCollapsed}
-            title={ambientCollapsed
+          {(() => {
+            const ambientHidden = ambientCollapsed || (ambientFaded && ambientEntries.length > 0);
+            const toggleLabel = ambientHidden
+              ? (isEn ? "Show Chat" : "대화 보기")
+              : (isEn ? "Hide" : "접기");
+            const toggleTitle = ambientHidden
               ? (isEn ? "Show recent ambient messages" : "최근 대화 펼치기")
-              : (isEn ? "Hide ambient messages" : "최근 대화 접기")}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => toggleAmbientChatCollapsed()}
-          >
-            <span aria-hidden="true">{ambientCollapsed ? "▴" : "▾"}</span>
-            <span>{ambientCollapsed ? (isEn ? "Show" : "펼치기") : (isEn ? "Hide" : "접기")}</span>
-            {ambientCollapsed && ambientEntries.length > 0 ? (
-              <span className="the-world-chat-collapse-count">{ambientEntries.length}</span>
-            ) : null}
-          </button>
+              : (isEn ? "Hide ambient messages" : "최근 대화 접기");
+            return (
+              <button
+                type="button"
+                className={`the-world-chat-collapse-btn${ambientHidden ? " is-collapsed" : ""}`}
+                tabIndex={chatActive || hidden ? -1 : 0}
+                aria-label={t("theWorld.chat.toggleAria")}
+                aria-pressed={ambientHidden}
+                title={toggleTitle}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => {
+                  if (ambientHidden) {
+                    setAmbientChatCollapsed(false);
+                    setAmbientFaded(false);
+                    setAmbientActivityNonce((n) => n + 1);
+                  } else {
+                    setAmbientChatCollapsed(true);
+                  }
+                }}
+              >
+                <span aria-hidden="true">{ambientHidden ? "▴" : "▾"}</span>
+                <span>{toggleLabel}</span>
+                {ambientHidden && ambientEntries.length > 0 ? (
+                  <span className="the-world-chat-collapse-count">{ambientEntries.length}</span>
+                ) : null}
+              </button>
+            );
+          })()}
         </div>
       </div>
 

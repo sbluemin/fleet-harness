@@ -217,6 +217,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let prevLifecycle: WorldLifecycleState = "closed";
   let prevFocusFraming: CameraFocusFraming = "none";
   let autoDialogueYaw: number | null = null;
+  let autoWarpCam: {
+    yaw: number;
+    pitch: number;
+    dist: number;
+    timer: number;
+  } | null = null;
   let sittingAtCampfire = false;
   let jumpedFromGround = false;
 
@@ -613,6 +619,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       villageHints = villages;
     },
     startMeteorDive(targetX, targetZ, getGroundHeight, resolveMovement, options) {
+      autoWarpCam = null;
       const landing = resolveLandingTarget(targetX, targetZ, "dive", getGroundHeight, resolveMovement, options);
       beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
       orbitAnchor.set(
@@ -624,8 +631,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     teleportTo(x, z, getGroundHeight, resolveMovement, options) {
       const landing = resolveLandingTarget(x, z, "teleport", getGroundHeight, resolveMovement, options);
       const dist = Math.hypot(landing.x - player.x, landing.z - player.z);
+      // 빠른 이동 도착 카메라: 마을·광장 정면 힌트(`landing.targetCamYaw`) 기반 약간 높은 후방 3/4 시점으로 자동 정렬
+      const warpCamYaw = normalizeAngle(landing.targetCamYaw + 0.22);
+      autoWarpCam = {
+        yaw: warpCamYaw,
+        pitch: 0.36,
+        dist: Math.max(targetCamDist, 10.6),
+        timer: 1.45,
+      };
       if (overviewMode || player.flying || player.flightAlt > 1.5 || dist > 3.5) {
-        beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, landing.targetCamYaw);
+        beginMeteorDiveTo(landing.x, landing.z, landing.endGy, landing.faceYaw, warpCamYaw);
       } else {
         districtFocus = null;
         overviewMode = false;
@@ -651,7 +666,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.campfireSitSec = 0;
         jumpedFromGround = false;
         player.yaw = landing.faceYaw;
-        autoLandingCamYaw = landing.targetCamYaw;
+        autoLandingCamYaw = warpCamYaw;
         snapSpringArmOnNextFrame = true;
       }
       orbitAnchor.set(
@@ -667,6 +682,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       diveState = null;
       pendingLandDive = false;
       autoLandingCamYaw = null;
+      autoWarpCam = null;
       snapSpringArmOnNextFrame = true;
       skyBoostBurstTimer = 0;
       player.flying = false;
@@ -713,6 +729,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       overviewMode = false;
       sittingAtCampfire = false;
       autoLandingCamYaw = null;
+      autoWarpCam = null;
       const clampedX = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x));
       const clampedZ = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, z));
       const gy = Math.max(0.25, getGroundHeight(clampedX, clampedZ));
@@ -739,6 +756,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         diveState = null;
         pendingLandDive = false;
         autoLandingCamYaw = null;
+        autoWarpCam = null;
         skyBoostBurstTimer = 0;
         chaseManualOrbitTimer = 0;
         chaseDist = 11.4;
@@ -799,6 +817,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         diveState = null;
         pendingLandDive = false;
         autoLandingCamYaw = null;
+        autoWarpCam = null;
         skyBoostBurstTimer = 0;
         player.flying = false;
         player.diving = false;
@@ -828,6 +847,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onPointerRotate(dx, dy) {
       autoDialogueYaw = null;
       autoLandingCamYaw = null;
+      autoWarpCam = null;
       camYaw -= dx * 0.0062;
       if (overviewMode) {
         chaseManualOrbitTimer = 2.4;
@@ -839,6 +859,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
     },
     onWheelZoom(deltaY) {
+      autoWarpCam = null;
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
         chaseDist = Math.max(7.5, Math.min(24.0, chaseDist * Math.exp(clamped * 0.0012)));
@@ -1062,9 +1083,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         }
 
         if (ix !== 0 || iz !== 0) {
-          // WASD/방향키 이동 시작 시 구역 포커스·히어로 착지 포즈·자동 착지 카메라 정렬 해제 (비행 중 WASD는 슈퍼맨 자유 비행!)
+          // WASD/방향키 이동 시작 시 구역 포커스·히어로 착지 포즈·자동 착지/워프 카메라 정렬 해제 (비행 중 WASD는 슈퍼맨 자유 비행!)
           districtFocus = null;
           autoLandingCamYaw = null;
+          autoWarpCam = null;
           player.heroLandTimer = 0;
         }
 
@@ -1324,13 +1346,15 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const dialogueFraming = hasFocusActor && focusFraming === "dialogue";
       const drawerFraming = hasFocusActor && focusFraming === "drawer";
 
-      // 1단계 RPG 대화 진입 시 NPC 정면 3/4 구도, 드레스업 진입 시 제독 정면 클로즈업 각도로 자동 정렬 (드래그 시 즉시 해제)
+      // 1단계 RPG 대화 진입 시 대화 축 우측·약간 높은 3/4 구도로 빼서 사령관 얼굴을 정면 개방, 드레스업 진입 시 제독 정면 클로즈업 (드래그 시 즉시 해제)
       if (focusFraming !== prevFocusFraming) {
         if (dialogueFraming && opts.focusActorPos && focusDistToPlayer > 0.25 && focusDistToPlayer < 12.0) {
           const npcToPlayerYaw = Math.atan2(player.x - opts.focusActorPos.x, player.z - opts.focusActorPos.z);
-          autoDialogueYaw = npcToPlayerYaw + 0.56;
+          autoDialogueYaw = npcToPlayerYaw + 0.92;
+          autoWarpCam = null;
         } else if (customizerFraming) {
-          autoDialogueYaw = player.yaw + 0.16;
+          autoDialogueYaw = player.yaw + 0.14;
+          autoWarpCam = null;
         } else {
           autoDialogueYaw = null;
         }
@@ -1342,7 +1366,22 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           camYaw = autoDialogueYaw;
           autoDialogueYaw = null;
         } else {
-          camYaw += yawDiff * (1 - Math.exp(-opts.dt * 6.5));
+          camYaw += yawDiff * (1 - Math.exp(-opts.dt * 7.2));
+        }
+      } else if (autoWarpCam && !overviewMode && !cinemaFraming && !dialogueFraming && !customizerFraming && !sittingAtCampfire) {
+        // 빠른 이동(워프) 도착 시 마을·광장 정면이 탁 트이는 높은 후방 3/4 시점으로 부드럽게 정렬
+        autoWarpCam.timer -= opts.dt;
+        const yawDiff = normalizeAngle(autoWarpCam.yaw - camYaw);
+        const warpLerp = reduceMotion ? 1 : 1 - Math.exp(-opts.dt * 5.8);
+        camYaw += yawDiff * warpLerp;
+        camPitch += (autoWarpCam.pitch - camPitch) * warpLerp;
+        targetCamDist += (autoWarpCam.dist - targetCamDist) * warpLerp;
+        if (
+          autoWarpCam.timer <= 0
+          || (Math.abs(yawDiff) < 0.018 && Math.abs(autoWarpCam.pitch - camPitch) < 0.012)
+        ) {
+          autoWarpCam = null;
+          autoLandingCamYaw = null;
         }
       } else if (autoLandingCamYaw !== null && !overviewMode && !player.diving && !cinemaFraming && !sittingAtCampfire) {
         const landDiff = normalizeAngle(autoLandingCamYaw - camYaw);
@@ -1352,7 +1391,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         } else {
           camYaw += landDiff * (1 - Math.exp(-opts.dt * 8.5));
         }
-      } else if (cinemaFraming && !opts.reducedMotion) {
+      } else if (cinemaFraming && !reduceMotion) {
         // 관전 / 작업 동반자 모드: 스포트라이트 대상을 중심으로 잔잔하고 영화적인 느린 오빗
         camYaw += opts.dt * 0.11;
       }
@@ -1382,11 +1421,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
 
       const campfireWithCompanions = sittingAtCampfire && !opts.inputLocked && (opts.companionCount ?? 0) > 0;
       if (customizerFraming) {
-        // 실시간 3D 제독 드레스업: 타깃을 카메라 우측 벡터(+cos(camYaw)*0.95, -sin(camYaw)*0.95)로 밀어
-        // 우측 플로팅 드레스업 시트를 피해 좌측 65% 열린 화면 정중앙에 제독 얼굴·모자를 클로즈업
-        desiredTargetX = player.x + Math.cos(camYaw) * 0.95;
-        desiredTargetY = player.y + 0.72;
-        desiredTargetZ = player.z - Math.sin(camYaw) * 0.95;
+        // 실시간 3D 제독 드레스업: 타깃을 카메라 우측 벡터(+cos(camYaw)*0.82, -sin(camYaw)*0.82)로 밀고
+        // 시야 높이와 거리를 미세 보정해 좌측 우물·소품이 제독 팔에 파고들지 않게 깔끔한 클로즈업 유지
+        desiredTargetX = player.x + Math.cos(camYaw) * 0.82;
+        desiredTargetY = player.y + 0.80;
+        desiredTargetZ = player.z - Math.sin(camYaw) * 0.82;
       } else if (takeoffCharging) {
         // 1단계 이륙 충전(`0~0.52s`): 제독 정면 클로즈업으로 귀여운 화이팅 자세를 1:1 중심 고정 포착
         desiredTargetX = player.x;
@@ -1418,14 +1457,15 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetY = districtFocus.y;
         desiredTargetZ = districtFocus.z;
       } else if (dialogueFraming && opts.focusActorPos) {
-        // 1단계 RPG 대화: 제독·사령관 중간점을 겨냥하고 주시 높이를 낮춰 하단 중앙 RPG 바 위쪽 열린 상단 화면에 2샷이 온전히 보이도록 프레이밍
-        const blendT = focusDistToPlayer < 12.0 ? 0.48 : 1.0;
+        // 1단계 RPG 대화: 타깃을 사령관 상체 중심 쪽(blendT 0.78)으로 두고 우측·약간 높은 3/4 시점으로 빼서
+        // 사령관 얼굴이 상단 중앙~우측에 가림 없이 또렷하게 잡히고 제독은 좌하단 가장자리에 아담하게 들어오도록 프레이밍
+        const blendT = focusDistToPlayer < 12.0 ? 0.78 : 1.0;
         const midX = player.x + (opts.focusActorPos.x - player.x) * blendT;
         const midZ = player.z + (opts.focusActorPos.z - player.z) * blendT;
         const midGy = Math.max(-0.05, opts.getGroundHeight(midX, midZ));
-        desiredTargetX = midX;
-        desiredTargetY = midGy + 0.42;
-        desiredTargetZ = midZ;
+        desiredTargetX = midX - Math.cos(camYaw) * 0.18;
+        desiredTargetY = midGy + 0.78;
+        desiredTargetZ = midZ + Math.sin(camYaw) * 0.18;
       } else if (drawerFraming && opts.focusActorPos) {
         // 2단계 우측 사령관 수첩 드로어: 타깃을 카메라 우측 벡터(+cos(camYaw)*1.45, -sin(camYaw)*1.45)로 밀어
         // 3D 사령관·제독이 열린 좌측 57% 초원 정중앙에 가려짐 없이 선명하게 배치되도록 프레이밍
@@ -1471,7 +1511,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const focusDist = interactingClose ? Math.min(camDist, 7.6) : camDist;
       const desiredEffDist =
         customizerFraming
-          ? 4.35
+          ? 3.85
           : takeoffCharging
             ? 4.9
             : takeoffAscending
@@ -1485,7 +1525,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                     : districtFocus && !opts.inputLocked
                       ? districtFocus.dist
                       : dialogueFraming
-                        ? 6.1
+                        ? 7.4
                         : drawerFraming
                           ? 7.2
                           : sittingAtCampfire && !opts.inputLocked
@@ -1495,7 +1535,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                               : focusDist;
       const desiredEffPitch =
         customizerFraming
-          ? 0.18
+          ? 0.24
           : takeoffCharging
             ? 0.14
             : takeoffAscending
@@ -1509,7 +1549,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
                     : districtFocus && !opts.inputLocked
                       ? districtFocus.pitch
                       : dialogueFraming
-                        ? 0.21
+                        ? 0.29
                         : drawerFraming
                           ? 0.25
                           : sittingAtCampfire && !opts.inputLocked

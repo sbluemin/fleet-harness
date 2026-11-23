@@ -94,16 +94,20 @@ void main() {
   vec3 V = normalize(cameraPosition - vWorldPos);
   vec3 L = normalize(uSunDir);
 
-  // 에메랄드 얕은 물 → 맑은 코발트 깊은 물 그라데이션 (낮 · 노을 · 밤 연동)
+  // 에메랄드 얕은 물 → 맑은 코발트 깊은 물 그라데이션 (낮 · 노을 · 밤 깊은 달빛 남청색 연동)
   float sunsetFactor = clamp(1.0 - abs(uNight - 0.38) * 2.8, 0.0, 1.0);
   vec3 dayEmerald = vec3(0.22, 0.80, 0.78);
   vec3 dayCobalt = vec3(0.08, 0.50, 0.82);
   vec3 sunsetShallow = vec3(0.36, 0.58, 0.68);
   vec3 sunsetDeep = vec3(0.16, 0.30, 0.54);
-  vec3 nightShallow = vec3(0.06, 0.20, 0.36);
-  vec3 nightDeep = vec3(0.03, 0.09, 0.22);
+  vec3 nightShallow = vec3(0.024, 0.072, 0.155);
+  vec3 nightDeep = vec3(0.010, 0.028, 0.078);
 
-  float depthT = smoothstep(0.18, 0.92, vShore);
+  // 시냇물 양끝(±73..84.5m) 수로 폭 자연 테이퍼링 (직사각형 절단 제거)
+  float endNarrow = smoothstep(73.0, 84.5, abs(vWorldPos.x)) * 0.72;
+  float effShore = vShore + endNarrow;
+
+  float depthT = smoothstep(0.18, 0.92, effShore);
   vec3 shallowCol = mix(mix(dayEmerald, sunsetShallow, sunsetFactor * 0.65), nightShallow, uNight);
   vec3 deepCol = mix(mix(dayCobalt, sunsetDeep, sunsetFactor * 0.65), nightDeep, uNight);
   vec3 baseCol = mix(deepCol, shallowCol, depthT);
@@ -115,30 +119,33 @@ void main() {
   float c2 = 1.0 - smoothstep(0.02, 0.15, voronoiEdge(flowUv2));
   float caustics = clamp(c1 * 0.75 + c2 * 0.45, 0.0, 1.0);
 
-  vec3 causticCol = mix(vec3(0.76, 0.98, 1.0), vec3(0.36, 0.58, 0.86), uNight);
-  vec3 col = mix(baseCol, causticCol, caustics * (0.28 - uNight * 0.12));
+  vec3 causticCol = mix(vec3(0.76, 0.98, 1.0), vec3(0.14, 0.25, 0.46), uNight);
+  vec3 col = mix(baseCol, causticCol, caustics * mix(0.28, 0.11, uNight));
 
-  // 강둑(shoreline) & 목교 교각 하얀 물거품 테두리 (수로 밖 거품 번짐 방지용 좁은 밴드+알파 클램프)
+  // 강둑(shoreline) & 목교 교각 하얀 물거품 테두리 (야간엔 차분한 달빛 은청색)
   float waveWobble = sin(vWorldPos.x * 2.4 - uTime * 3.1) * 0.05 + cos(vWorldPos.z * 3.2 + uTime * 2.2) * 0.035;
-  float shorePos = vShore + waveWobble;
+  float shorePos = effShore + waveWobble;
   float shoreBand = smoothstep(0.76, 0.92, shorePos) * (1.0 - smoothstep(0.98, 1.12, shorePos));
   float innerFroth = smoothstep(0.60, 0.78, shorePos) * (1.0 - smoothstep(0.94, 1.06, shorePos)) * c1 * 0.58;
   float bridgeFoam = vBridgeProx * smoothstep(0.20, 0.75, c1 + 0.35 * sin(vWorldPos.z * 5.0 - uTime * 4.0)) * 0.75;
-  float foamMask = clamp(shoreBand * 0.88 + innerFroth + bridgeFoam, 0.0, 1.0);
-  vec3 foamCol = mix(vec3(0.95, 0.99, 1.0), vec3(0.46, 0.60, 0.78), uNight * 0.82);
+  float foamMask = clamp(shoreBand * 0.88 + innerFroth + bridgeFoam, 0.0, 1.0) * mix(1.0, 0.56, uNight);
+  vec3 foamCol = mix(vec3(0.95, 0.99, 1.0), vec3(0.18, 0.28, 0.44), uNight * 0.92);
   col = mix(col, foamCol, foamMask);
 
-  // 프레넬 하늘 반사 + 태양/달빛 반짝임(sparkle glints)
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 2.8) * 0.38;
-  vec3 skyRefl = mix(mix(vec3(0.72, 0.93, 1.0), vec3(0.98, 0.68, 0.48), sunsetFactor * 0.75), vec3(0.18, 0.30, 0.54), uNight);
+  // 프레넬 하늘 반사 + 태양/달빛 은빛 별 반짝임(sparkle glints)
+  float fres = pow(1.0 - max(dot(N, V), 0.0), 2.8) * mix(0.38, 0.28, uNight);
+  vec3 skyRefl = mix(mix(vec3(0.72, 0.93, 1.0), vec3(0.98, 0.68, 0.48), sunsetFactor * 0.75), vec3(0.06, 0.13, 0.27), uNight);
   col = mix(col, skyRefl, fres * (1.0 - foamMask * 0.6));
 
   vec3 H = normalize(L + V);
-  float specBase = pow(max(dot(N, H), 0.0), 72.0);
+  float specBase = pow(max(dot(N, H), 0.0), mix(72.0, 96.0, uNight));
   float sparkleNoise = sin(vWorldPos.x * 7.5 - uTime * 4.4) * cos(vWorldPos.z * 6.8 + uTime * 3.6);
-  float glint = smoothstep(0.62, 0.96, sparkleNoise) * (0.35 + specBase * 2.2) * (1.0 - foamMask * 0.7);
-  vec3 glintCol = mix(vec3(1.0, 0.98, 0.88), vec3(0.78, 0.88, 1.0), uNight);
-  col += glintCol * (specBase * 0.85 + glint * 0.55) * (1.0 - uNight * 0.35);
+  float glint = smoothstep(0.66, 0.97, sparkleNoise) * (0.30 + specBase * 2.0) * (1.0 - foamMask * 0.7);
+  // 야간 잔잔한 수면 위 은빛 별 반사 점묘
+  float starCell = sin(vWorldPos.x * 11.4 + sin(vWorldPos.z * 5.2 + uTime * 0.8)) * cos(vWorldPos.z * 10.8 - uTime * 1.4);
+  float starGlint = smoothstep(0.88, 0.995, starCell) * uNight * (1.0 - foamMask);
+  vec3 glintCol = mix(vec3(1.0, 0.98, 0.88), vec3(0.74, 0.86, 1.0), uNight);
+  col += glintCol * (specBase * mix(0.85, 0.42, uNight) + glint * mix(0.55, 0.24, uNight) + starGlint * 0.52);
 
   // 비 날씨(uRain > 0)일 때 시냇물 수면 위 동심원 빗방울 파문(ripple)
   if (uRain > 0.01) {
@@ -157,12 +164,12 @@ void main() {
     float ring2 = smoothstep(0.042, 0.0, abs(length(c2Loc - (rnd2 - 0.5) * 0.50) - ph2 * 0.42)) * (1.0 - ph2) * (1.0 - ph2);
 
     float rainRipple = clamp((ring1 + ring2 * 0.78) * uRain * (1.0 - foamMask * 0.65), 0.0, 0.85);
-    vec3 rippleCol = mix(vec3(0.92, 0.98, 1.0), vec3(0.56, 0.72, 0.90), uNight);
+    vec3 rippleCol = mix(vec3(0.92, 0.98, 1.0), vec3(0.32, 0.46, 0.68), uNight);
     col = mix(col, rippleCol, rainRipple * 0.62);
   }
 
-  float bankAlpha = 1.0 - smoothstep(0.94, 1.10, vShore);
-  float channelFade = 1.0 - smoothstep(76.0, 86.0, abs(vWorldPos.x));
+  float bankAlpha = 1.0 - smoothstep(0.92, 1.08, effShore);
+  float channelFade = 1.0 - smoothstep(72.0, 84.5, abs(vWorldPos.x));
   float waterAlpha = mix(0.88, 0.95, foamMask) * bankAlpha * channelFade;
   if (waterAlpha < 0.02) discard;
 
@@ -172,6 +179,7 @@ void main() {
 
 export const FOUNTAIN_WATER_VERTEX = /* glsl */ `
 out vec2 vLocalXZ;
+out vec3 vWorldPos;
 void main() {
   vLocalXZ = position.xz;
   #ifdef USE_INSTANCING
@@ -179,12 +187,14 @@ void main() {
   #else
     vec4 wp = modelMatrix * vec4(position, 1.0);
   #endif
+  vWorldPos = wp.xyz;
   gl_Position = projectionMatrix * viewMatrix * wp;
 }
 `;
 
 export const FOUNTAIN_WATER_FRAGMENT = /* glsl */ `
 in vec2 vLocalXZ;
+in vec3 vWorldPos;
 out vec4 fragColor;
 
 uniform float uTime;
@@ -192,18 +202,36 @@ uniform float uNight;
 
 void main() {
   float r = clamp(length(vLocalXZ) * 2.0, 0.0, 1.0);
-  float ripple = sin(r * 18.0 - uTime * 4.2) * 0.5 + 0.5;
-  float ring = smoothstep(0.66, 0.94, ripple) * (1.0 - r * 0.45);
-  float rimFoam = smoothstep(0.82, 0.98, r);
-  float centerSplash = smoothstep(0.24, 0.04, r);
+  // 과녁 동심원 대신 부드러운 유기적 2D 수면 일렁임 + 은은한 별빛 반사
+  vec2 p = vWorldPos.xz;
+  float w1 = sin(p.x * 3.8 + uTime * 1.35 + cos(p.y * 2.9 - uTime * 0.9) * 0.8) * 0.5 + 0.5;
+  float w2 = cos(p.x * 5.4 - p.y * 4.6 + uTime * 1.75) * 0.5 + 0.5;
+  float organicWave = w1 * 0.62 + w2 * 0.38;
+  float gentleCaustic = smoothstep(0.62, 0.92, organicWave) * (1.0 - r * 0.35);
+  float rimSoft = smoothstep(0.84, 0.99, r) * (0.65 + 0.35 * w1);
 
-  vec3 shallow = mix(vec3(0.24, 0.84, 0.84), vec3(0.08, 0.24, 0.42), uNight);
-  vec3 deep = mix(vec3(0.10, 0.54, 0.86), vec3(0.04, 0.13, 0.30), uNight);
-  vec3 col = mix(deep, shallow, r * 0.65 + ring * 0.35);
-  vec3 foam = mix(vec3(0.95, 0.99, 1.0), vec3(0.50, 0.66, 0.84), uNight * 0.78);
-  col = mix(col, foam, clamp(rimFoam * 0.72 + centerSplash * 0.65 + ring * 0.28, 0.0, 0.92));
+  vec3 dayShallow = vec3(0.20, 0.78, 0.78);
+  vec3 dayDeep = vec3(0.08, 0.46, 0.76);
+  vec3 nightShallow = vec3(0.028, 0.088, 0.185);
+  vec3 nightDeep = vec3(0.012, 0.036, 0.098);
 
-  fragColor = vec4(col, 0.92);
+  vec3 shallow = mix(dayShallow, nightShallow, uNight);
+  vec3 deep = mix(dayDeep, nightDeep, uNight);
+  vec3 col = mix(deep, shallow, r * 0.52 + organicWave * 0.36);
+
+  vec3 shimmerCol = mix(vec3(0.76, 0.97, 1.0), vec3(0.24, 0.42, 0.68), uNight);
+  col = mix(col, shimmerCol, gentleCaustic * mix(0.28, 0.22, uNight));
+
+  // 야간 별빛 연못 수면 위 은은한 은빛 별 반사 점묘
+  float star1 = sin(p.x * 13.5 + uTime * 0.9) * cos(p.y * 12.7 - uTime * 1.1);
+  float star2 = cos((p.x + p.y) * 9.8 + uTime * 1.45);
+  float starTwinkle = smoothstep(0.86, 0.99, star1 * 0.65 + star2 * 0.35) * (1.0 - r * 0.5);
+  col += mix(vec3(0.95, 0.99, 1.0), vec3(0.78, 0.89, 1.0), uNight) * starTwinkle * mix(0.14, 0.48, uNight);
+
+  vec3 foam = mix(vec3(0.86, 0.96, 0.98), vec3(0.18, 0.28, 0.44), uNight * 0.90);
+  col = mix(col, foam, clamp(rimSoft * mix(0.45, 0.26, uNight), 0.0, 0.55));
+
+  fragColor = vec4(col, 0.93);
 }
 `;
 

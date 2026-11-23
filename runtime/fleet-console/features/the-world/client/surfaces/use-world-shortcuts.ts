@@ -8,6 +8,7 @@ import {
 } from "../engine/world-audio.js";
 import {
   activateChat,
+  clearLastFishCatch,
   closeActorInteraction,
   dismissTopOverlayLayer,
   getWorldStoreSnapshot,
@@ -335,7 +336,7 @@ export function useWorldShortcuts({
         }
       }
 
-      // E: 통합 상호작용 키 (방사형 닫기 → 불멍 기상 → 우체통 → 소집 종 → 사령관 대화 → 모닥불 착석 → 시냇가 낚시)
+      // E: 통합 상호작용 키 (낚시 중 차단/입질 릴 감기 → 방사형 닫기 → 불멍 기상 → 우체통 → 소집 종 → 모닥불 착석 → 시냇가 낚시 → 사령관 대화)
       // 주의: 비행 중(`snap.overviewMode === true`)에는 `player-controller.ts`가 `KeyE`(상승)/`KeyQ`(하강)를 소유하므로 지상 상호작용 완전 차단.
       if (
         event.code === "KeyE"
@@ -349,6 +350,13 @@ export function useWorldShortcuts({
         && !snap.cinemaMode
         && !snap.overviewMode
       ) {
+        if (snap.fishingPhase !== "idle") {
+          event.preventDefault();
+          if (snap.fishingPhase === "bite" && snap.interactionMode === "closed" && !snap.chatActive) {
+            onReelFishing();
+          }
+          return;
+        }
         if (snap.interactionMode === "radial") {
           event.preventDefault();
           closeActorInteraction();
@@ -360,33 +368,23 @@ export function useWorldShortcuts({
             setSittingAtCampfire(false);
             return;
           }
-          if (snap.fishingPhase === "idle" && nearMailboxRef.current) {
+          if (nearMailboxRef.current) {
             event.preventDefault();
             onOpenMailbox();
             return;
           }
-          if (snap.fishingPhase === "idle" && nearParadeBellRef.current) {
+          if (nearParadeBellRef.current) {
             event.preventDefault();
             onRingParadeBell();
             return;
           }
-          const nearNonCompanionActorId =
-            snap.nearActorId && !snap.companionActorIds.includes(snap.nearActorId)
-              ? snap.nearActorId
-              : null;
-          if (nearNonCompanionActorId) {
-            event.preventDefault();
-            playMongleChirp();
-            openActorRadialMenu(nearNonCompanionActorId);
-            return;
-          }
-          if (snap.fishingPhase === "idle" && nearCampfireRef.current) {
+          if (nearCampfireRef.current) {
             event.preventDefault();
             playDistrictSelect();
             setSittingAtCampfire(true);
             return;
           }
-          if (snap.fishingPhase === "idle" && nearFishingWaterRef.current) {
+          if (nearFishingWaterRef.current) {
             event.preventDefault();
             onStartFishing();
             return;
@@ -409,6 +407,10 @@ export function useWorldShortcuts({
         event.stopPropagation();
         if (snap.fishingPhase !== "idle") {
           onCancelFishing();
+          return;
+        }
+        if (snap.lastFishCatch !== null) {
+          clearLastFishCatch();
           return;
         }
         if (hasOpenHudPopover(snap)) {

@@ -82,7 +82,6 @@ const TIME_MODES: readonly {
   readonly tone: WorldIconTone;
 }[] = [
   { id: "realtime", key: "theWorld.hud.timeAuto", icon: "clock", tone: "cerulean" },
-  { id: "cycle", key: "theWorld.hud.timeCycle", icon: "cycle", tone: "teal" },
   { id: "day", key: "theWorld.hud.timeDay", icon: "sun", tone: "amber" },
   { id: "sunset", key: "theWorld.hud.timeSunset", icon: "sunset", tone: "rose" },
   { id: "night", key: "theWorld.hud.timeNight", icon: "moon", tone: "indigo" },
@@ -114,17 +113,19 @@ export interface WorldFlightRingGuideProps {
   readonly containerRef: RefObject<HTMLDivElement | null>;
   readonly chevronRef: RefObject<HTMLSpanElement | null>;
   readonly distRef: RefObject<HTMLSpanElement | null>;
+  readonly altRef?: RefObject<HTMLSpanElement | null> | undefined;
   readonly locale: ConsoleLocale | undefined;
 }
 
 /**
  * 별빛 비행 중 화면 가장자리에 표시되는 다음 황금 별빛 링 방향·거리 가이드.
- * Wave 2 `world-stage.tsx`에서 `ringGuideElRef` / `ringGuideChevronRef` / `ringGuideDistRef`를 연결해 사용한다.
+ * Wave 2 `world-stage.tsx`에서 `ringGuideElRef` / `ringGuideChevronRef` / `ringGuideDistRef` / `ringGuideAltRef`를 연결해 사용한다.
  */
 export const WorldFlightRingGuide = memo(function WorldFlightRingGuide({
   containerRef,
   chevronRef,
   distRef,
+  altRef,
   locale,
 }: WorldFlightRingGuideProps) {
   const t = getWorldT(locale);
@@ -139,6 +140,7 @@ export const WorldFlightRingGuide = memo(function WorldFlightRingGuide({
       <WorldIcon name="sparkle" size={12} tone="amber" />
       <span className="the-world-ring-guide-label">{t("theWorld.flight.ringGuideLabel")}</span>
       <span ref={distRef} className="the-world-ring-guide-dist">0m</span>
+      {altRef ? <span ref={altRef} className="the-world-ring-guide-alt" style={{ display: "none" }} /> : null}
     </div>
   );
 });
@@ -1188,6 +1190,21 @@ export const WorldHud = memo(function WorldHud({
                     );
                   })}
                 </div>
+                <div className="the-world-env-sky-row">
+                  <button
+                    type="button"
+                    className={`the-world-debug-pill${store.auroraEnabled ? " is-active" : ""}`}
+                    aria-label={t("theWorld.hud.auroraAria")}
+                    aria-pressed={store.auroraEnabled}
+                    onClick={() => {
+                      playDistrictHover();
+                      toggleAuroraEnabled();
+                    }}
+                  >
+                    <WorldIcon name="rainbow" size={13} tone={store.auroraEnabled ? "amber" : "teal"} />
+                    <span>{t("theWorld.hud.auroraToggle")}</span>
+                  </button>
+                </div>
               </div>
 
               <div className="the-world-debug-section">
@@ -1227,19 +1244,6 @@ export const WorldHud = memo(function WorldHud({
                   >
                     <WorldIcon name="music" size={13} tone={store.bgmEnabled ? "amber" : "teal"} />
                     <span>{store.bgmEnabled ? t("theWorld.hud.bgmToggleOn") : t("theWorld.hud.bgmToggleOff")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`the-world-debug-pill${store.auroraEnabled ? " is-active" : ""}`}
-                    aria-label={t("theWorld.hud.auroraAria")}
-                    aria-pressed={store.auroraEnabled}
-                    onClick={() => {
-                      playDistrictHover();
-                      toggleAuroraEnabled();
-                    }}
-                  >
-                    <WorldIcon name="rainbow" size={13} tone={store.auroraEnabled ? "amber" : "teal"} />
-                    <span>{t("theWorld.hud.auroraToggle")}</span>
                   </button>
                 </div>
                 <span className="the-world-bgm-hint">{t("theWorld.hud.bgmHint")}</span>

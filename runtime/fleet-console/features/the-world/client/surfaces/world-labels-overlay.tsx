@@ -154,6 +154,8 @@ export interface WorldLabelsOverlayProps {
   readonly suppressInteractPrompts?: boolean | undefined;
   /** 현재 `E` 키 입력 시 실행될 단일 최우선 대상 (중복 `[E]` 프롬프트 방지). */
   readonly activeInteractTarget?: WorldActiveInteractTarget | undefined;
+  /** 제독 외형 꾸미기 등 클로즈업 화면에서 모든 3D 오버레이 이름표·푯말을 전면 숨길 때 `true`. */
+  readonly suppressAllLabels?: boolean | undefined;
 }
 
 export const WorldLabelsOverlay = memo(
@@ -184,6 +186,7 @@ export const WorldLabelsOverlay = memo(
       onOpenUrgentActor,
       suppressInteractPrompts = false,
       activeInteractTarget,
+      suppressAllLabels = false,
     },
     ref,
   ) {
@@ -785,6 +788,10 @@ export const WorldLabelsOverlay = memo(
         bestNearDistance = dist;
         singleNearActorId = m.actorId;
       }
+    }
+
+    if (suppressAllLabels) {
+      return null;
     }
 
     return (

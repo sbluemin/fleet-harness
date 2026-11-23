@@ -24,6 +24,7 @@ import type {
   WorldWeatherMode,
 } from "../../shared/world-types.js";
 import { BROOK_BRIDGES, brookProfile } from "./brook-geometry.js";
+import { MAILBOX_POS, PARADE_BELL_POS } from "./meadow-scene.js";
 import type { WorldAnimMode, WorldExpression } from "./mongle-actor-rig.js";
 
 /**
@@ -2334,24 +2335,51 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             patrolFaceX = ps.chatFaceX ?? ps.faceX;
             patrolFaceZ = ps.chatFaceZ ?? ps.faceZ;
           } else if (!isWorking && m.spec.needsAttention && distToPlayer < 18.0) {
-            // 긴급 확인이 필요한 유휴 사령관이 18m 이내에 있으면 제독에게 직접 다가가 손을 흔들며 주의를 끈다
+            // 긴급 확인이 필요한 유휴 사령관: 제독 3.4m 앞에서 예의 있게 멈춰 손을 흔듦 (시냇가·모닥불·우체통·소집종 근처에서는 4.5m로 한 발짝 물러나 대기)
             ps.route.length = 0;
             ps.workingCommute = false;
             patrolFaceX = playerPos.x;
             patrolFaceZ = playerPos.z;
-            if (distToPlayer > 2.85) {
+            const bpPlayer = brookProfile(playerPos.x);
+            const playerNearBrook =
+              Math.abs(playerPos.x) <= 86
+              && Math.abs(playerPos.z - bpPlayer.centerZ) <= bpPlayer.halfWidth + 3.4;
+            const playerNearLandmark =
+              Math.hypot(playerPos.x - 2.8, playerPos.z - 1.0) <= 3.6
+              || Math.hypot(playerPos.x - PARADE_BELL_POS.x, playerPos.z - PARADE_BELL_POS.z) <= 2.9
+              || Math.hypot(playerPos.x - MAILBOX_POS.x, playerPos.z - MAILBOX_POS.z) <= 2.8;
+            const attentionStopDist = (playerNearBrook || playerNearLandmark) ? 4.5 : 3.4;
+
+            if (distToPlayer > attentionStopDist + 0.15) {
               const nx = (m.x - playerPos.x) / distToPlayer;
               const nz = (m.z - playerPos.z) / distToPlayer;
-              const desiredX = playerPos.x + nx * 2.35;
-              const desiredZ = playerPos.z + nz * 2.35;
+              const desiredX = playerPos.x + nx * attentionStopDist;
+              const desiredZ = playerPos.z + nz * attentionStopDist;
               if (isWalkable(desiredX, desiredZ)) {
                 m.tx = desiredX;
                 m.tz = desiredZ;
+                moveSpeed = 3.0;
               } else {
-                m.tx = playerPos.x;
-                m.tz = playerPos.z;
+                // 제독 몸 위로 파고들지 않고 제자리에서 손을 흔들며 대기
+                m.tx = m.x;
+                m.tz = m.z;
+                moveSpeed = 0;
               }
-              moveSpeed = 3.15;
+            } else if (distToPlayer < attentionStopDist - 0.55 && distToPlayer > 0.05) {
+              // 제독이 낚시·모닥불 등 활동 지점으로 다가온 경우 한 발짝 부드럽게 물러남
+              const nx = (m.x - playerPos.x) / distToPlayer;
+              const nz = (m.z - playerPos.z) / distToPlayer;
+              const retreatX = playerPos.x + nx * attentionStopDist;
+              const retreatZ = playerPos.z + nz * attentionStopDist;
+              if (isWalkable(retreatX, retreatZ)) {
+                m.tx = retreatX;
+                m.tz = retreatZ;
+                moveSpeed = 2.4;
+              } else {
+                m.tx = m.x;
+                m.tz = m.z;
+                moveSpeed = 0;
+              }
             } else {
               m.tx = m.x;
               m.tz = m.z;
@@ -2814,19 +2842,38 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         }
       }
 
-      // 캐릭터 상호 겹침 방지 소프트 분리 (비행 중인 동행 윙맨은 지상 분리에서 제외)
+      // 캐릭터 상호 겹침 방지 소프트 분리 (NPC ↔ NPC 및 NPC ↔ 제독 최소 거리 보강, 비행 중인 동행 윙맨 제외)
       for (let i = 0; i < motionList.length; i += 1) {
         const a = motionList[i]!;
         if (a.flightAlt > 1.2) continue;
+
+        // NPC ↔ 제독 최소 거리 분리 (몸통 겹침 방지 + 긴급 사령관의 활동 공간 침범 억제)
+        const pdx = a.x - playerPos.x;
+        const pdz = a.z - playerPos.z;
+        const pd = Math.hypot(pdx, pdz);
+        const minPlayerSep = a.spec.needsAttention && focusedActorId !== a.spec.id ? 2.65 : 1.38;
+        if (pd > 0.001 && pd < minPlayerSep) {
+          const pushP = (minPlayerSep - pd) * Math.min(1, dt * 8.5);
+          const ra = resolveMovement(
+            a.x,
+            a.z,
+            a.x + (pdx / pd) * pushP,
+            a.z + (pdz / pd) * pushP,
+            0.44,
+          );
+          a.x = ra.x;
+          a.z = ra.z;
+        }
+
         for (let j = i + 1; j < motionList.length; j += 1) {
           const b = motionList[j]!;
           if (b.flightAlt > 1.2) continue;
           const dx = b.x - a.x;
           const dz = b.z - a.z;
           const d = Math.hypot(dx, dz);
-          const minSep = 1.28;
+          const minSep = 1.48;
           if (d > 0.001 && d < minSep) {
-            const push = (minSep - d) * 0.5 * Math.min(1, dt * 10);
+            const push = (minSep - d) * 0.52 * Math.min(1, dt * 13);
             const px = (dx / d) * push;
             const pz = (dz / d) * push;
             const ra = resolveMovement(a.x, a.z, a.x - px, a.z - pz, 0.44);

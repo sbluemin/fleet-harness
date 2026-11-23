@@ -434,61 +434,65 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
         </div>
       ) : null}
 
-      {/* 하단 퀵 프롬프트 칩 + 한 줄 입력창 */}
-      <div className="the-world-rpg-foot">
-        {showQuickChips ? (
-          <div className="the-world-dialogue-chips">
-            {QUICK_PROMPT_KEYS[actor.role].map((promptKey) => {
-              const prompt = t(promptKey);
-              return (
-                <button
-                  key={promptKey}
-                  type="button"
-                  className="the-world-dialogue-chip"
-                  disabled={sending}
-                  onClick={() => {
-                    setDraft(prompt);
-                    inputRef.current?.focus();
-                  }}
-                >
-                  {prompt}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
+      {/* 하단 퀵 프롬프트 칩 + 한 줄 입력창 (대기 Ask 카드 노출 시 이중 입력창 방지) */}
+      {!hasOpenAsks || feedback ? (
+        <div className="the-world-rpg-foot">
+          {showQuickChips ? (
+            <div className="the-world-dialogue-chips">
+              {QUICK_PROMPT_KEYS[actor.role].map((promptKey) => {
+                const prompt = t(promptKey);
+                return (
+                  <button
+                    key={promptKey}
+                    type="button"
+                    className="the-world-dialogue-chip"
+                    disabled={sending}
+                    onClick={() => {
+                      setDraft(prompt);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    {prompt}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
-        {feedback ? (
-          <div className={`the-world-dialogue-feedback${feedback.tone === "error" ? " is-error" : ""}`}>
-            {feedback.text}
-          </div>
-        ) : null}
+          {feedback ? (
+            <div className={`the-world-dialogue-feedback${feedback.tone === "error" ? " is-error" : ""}`}>
+              {feedback.text}
+            </div>
+          ) : null}
 
-        <div className="the-world-dialogue-composer">
-          <input
-            ref={inputRef}
-            type="text"
-            className="the-world-input"
-            value={draft}
-            placeholder={t("theWorld.dialogue.inputPlaceholder", { name: actor.name })}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                void handleSend();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="the-world-primary-action"
-            disabled={sending || draft.trim().length === 0}
-            onClick={() => void handleSend()}
-          >
-            {sending ? t("theWorld.rpg.sending") : t("theWorld.rpg.send")}
-          </button>
+          {!hasOpenAsks ? (
+            <div className="the-world-dialogue-composer">
+              <input
+                ref={inputRef}
+                type="text"
+                className="the-world-input"
+                value={draft}
+                placeholder={t("theWorld.dialogue.inputPlaceholder", { name: actor.name })}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void handleSend();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="the-world-primary-action"
+                disabled={sending || draft.trim().length === 0}
+                onClick={() => void handleSend()}
+              >
+                {sending ? t("theWorld.rpg.sending") : t("theWorld.rpg.send")}
+              </button>
+            </div>
+          ) : null}
         </div>
-      </div>
+      ) : null}
     </section>
   );
 });

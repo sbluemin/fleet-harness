@@ -183,6 +183,7 @@ export interface WorldFrameRingGuide {
   yPct: number;
   angleRad: number;
   distM: number;
+  deltaY: number;
 }
 
 export interface WorldFrameOverlayPositions {
@@ -217,8 +218,8 @@ export interface WorldRuntimeConfig {
   readonly onCompanionDutyReturn?: ((actorId: string, actorName: string) => void) | undefined;
   /** 하늘 순찰 중 별빛 링을 통과할 때 누적 콤보와 부스트 발동 여부를 전달한다. */
   readonly onSkyRingPass?: ((combo: number, boostTrigger: boolean) => void) | undefined;
-  /** 별똥별 유성 급강하로 지면에 착지한 순간 호출된다. */
-  readonly onMeteorLanded?: (() => void) | undefined;
+  /** 별똥별 유성 급강하로 지면에 착지한 순간 호출된다 (`fromSky === true`일 때만 실제 하늘 비행 착지). */
+  readonly onMeteorLanded?: ((fromSky: boolean) => void) | undefined;
   /** 중앙 광장 함대 소집 종 근접 여부가 바뀔 때 호출된다(edge-triggered). */
   readonly onNearParadeBellChange?: ((near: boolean) => void) | undefined;
   /** 중앙 광장 함대 우체통 근접 여부가 바뀔 때 호출된다(edge-triggered). */
@@ -967,7 +968,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     noticeBoard: { x: 0, y: 0, visible: false },
     guildHall: { x: 0, y: 0, visible: false },
     campfireBench: { x: 0, y: 0, visible: false },
-    ringGuide: { visible: false, xPx: 0, yPx: 0, xPct: 50, yPct: 50, angleRad: 0, distM: 0 },
+    ringGuide: { visible: false, xPx: 0, yPx: 0, xPct: 50, yPct: 50, angleRad: 0, distM: 0, deltaY: 0 },
   };
 
   let lastStructSig = "";
@@ -992,6 +993,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let prevNearParadeBell = false;
   let prevNearMailbox = false;
   let prevNearFishingWater = false;
+  let lastDiveFromSky = false;
   let lastNotifiedFishingPhase: WorldFishingPhase = "idle";
   const notifyFishingPhase = (next: WorldFishingPhase): void => {
     if (next === lastNotifiedFishingPhase) return;
@@ -1316,7 +1318,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     }
     director.reactToMeteorLanding(ix, iz);
     livingWorkflowFx.resetSkyRingCombo();
-    config.onMeteorLanded?.();
+    const fromSky = lastDiveFromSky;
+    lastDiveFromSky = false;
+    config.onMeteorLanded?.(fromSky);
   };
 
   const tick = (now: number) => {
@@ -1799,8 +1803,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       || shockwaveTimer > 0;
     bloomPass.enabled = useBloom;
     if (useBloom) {
-      bloomPass.threshold = 1.12 - skyLighting.nightFactor * 0.22;
-      bloomPass.strength = 0.08 + skyLighting.nightFactor * 0.26;
+      bloomPass.threshold = 1.12 - skyLighting.nightFactor * 0.18;
+      bloomPass.strength = 0.08 + skyLighting.nightFactor * 0.11;
     }
 
     camera.updateMatrixWorld();
@@ -2662,9 +2666,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         rg.yPx = (yPct / 100) * cssHeight;
         rg.angleRad = Math.atan2(dirY, dirX);
         rg.distM = nearestRingOut.distM;
+        rg.deltaY = nearestRingOut.deltaY ?? (nearestRingOut.y - p.y);
       }
     } else {
       rg.visible = false;
+      rg.deltaY = 0;
     }
 
     renderer.info.reset();
@@ -2787,8 +2793,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       prevSelectedActorId = opts.selectedActorId;
     },
     setOverviewMode(enabled) {
-      if (enabled) cancelFishingInternal();
-      else {
+      if (enabled) {
+        cancelFishingInternal();
+      } else {
+        if (playerCtrl.player.flying || playerCtrl.player.flightAlt > 1.2) {
+          lastDiveFromSky = true;
+        }
         livingWorkflowFx.resetSkyRingCombo();
         if (landingPreviewActive) {
           livingWorkflowFx.setLandingPreview(null);
@@ -3200,6 +3210,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       );
     },
     teleport(x, z, options) {
+      lastDiveFromSky = playerCtrl.isOverviewMode() || playerCtrl.player.flying || playerCtrl.player.flightAlt > 1.5;
       playerCtrl.teleportTo(x, z, meadow.getGroundHeight, meadow.resolveMovement, options);
       director.spawnBurst(
         playerCtrl.player.x,
@@ -3210,6 +3221,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       );
     },
     teleportToVillage(village) {
+      lastDiveFromSky = playerCtrl.isOverviewMode() || playerCtrl.player.flying || playerCtrl.player.flightAlt > 1.5;
       playerCtrl.teleportTo(village.x, village.z, meadow.getGroundHeight, meadow.resolveMovement, {
         lookAtX: village.x,
         lookAtZ: village.z,
@@ -3223,6 +3235,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       );
     },
     spawnAtVillage(village) {
+      lastDiveFromSky = false;
       const entryDist = Math.max(2.35, Math.min(village.radius - 2.65, village.radius * 0.42));
       playerCtrl.player.x = village.x + Math.cos(village.gateAngle) * entryDist;
       playerCtrl.player.z = village.z + Math.sin(village.gateAngle) * entryDist;
@@ -3234,6 +3247,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       prevPlayerZ = playerCtrl.player.z;
     },
     diveToPoint(x, z, options) {
+      lastDiveFromSky = playerCtrl.isOverviewMode() || playerCtrl.player.flying || playerCtrl.player.flightAlt > 1.5;
       if (landingPreviewActive) {
         livingWorkflowFx.setLandingPreview(null);
         landingPreviewActive = false;
@@ -3281,31 +3295,68 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (meshHit) return meshHit;
 
       const { origin, direction } = raycaster.ray;
-      if (Math.abs(direction.y) < 1e-4) return null;
 
-      // Zero-Mesh 2단 지면 평면 교차 근사 (1차 평균 마을 높이 → 2차 실제 지형 높이 보정)
-      const t0 = (0.46 - origin.y) / direction.y;
-      if (t0 <= 0 || t0 > 420) return null;
-      const wx0 = origin.x + direction.x * t0;
-      const wz0 = origin.z + direction.z * t0;
-      const gy = meadow.getGroundHeight(wx0, wz0);
-      const t1 = (gy - origin.y) / direction.y;
-      if (t1 <= 0 || t1 > 420) return null;
-      const wx = origin.x + direction.x * t1;
-      const wz = origin.z + direction.z * t1;
-
+      // 3D 레이-실린더(캡 포함) 피킹: Tier 4~5 대형 건물 지붕·시계탑 상단 클릭까지 정확히 판정 (0-GC)
+      const aXz = direction.x * direction.x + direction.z * direction.z;
+      const hasDirY = Math.abs(direction.y) >= 1e-5;
       let best: WorldDistrictSpec | null = null;
-      let bestDist = Infinity;
+      let bestT = 420;
+
       for (let vi = 0; vi < currentVillages.length; vi += 1) {
         const v = currentVillages[vi]!;
-        // 마을 바운딩 원 빠른 사전 필터링
-        const vd = Math.hypot(wx - v.x, wz - v.z);
-        if (vd > v.radius + 4.5) continue;
+        // 마을 바운딩 실린더 사전 필터링
+        const vFx = origin.x - v.x;
+        const vFz = origin.z - v.z;
+        const vRad = v.radius + 6.0;
+        if (aXz > 1e-6) {
+          const vb = vFx * direction.x + vFz * direction.z;
+          const vc = vFx * vFx + vFz * vFz - vRad * vRad;
+          if (vc > 0 && vb > 0) continue;
+          const vDisc = vb * vb - aXz * vc;
+          if (vDisc < 0) continue;
+        } else if (vFx * vFx + vFz * vFz > vRad * vRad) {
+          continue;
+        }
+
         for (let di = 0; di < v.districts.length; di += 1) {
           const d = v.districts[di]!;
-          const dist = Math.hypot(wx - d.x, wz - d.z);
-          if (dist <= d.radius + 0.55 && dist < bestDist) {
-            bestDist = dist;
+          const gy = meadow.getGroundHeight(d.x, d.z);
+          const minY = gy - 0.35;
+          const maxY = gy + (d.tier >= 5 ? 6.8 : d.tier >= 4 ? 5.2 : 3.6);
+          const hitRadius = d.radius + 0.55;
+
+          let tXzEnter = 0.1;
+          let tXzExit = bestT;
+          const fx = origin.x - d.x;
+          const fz = origin.z - d.z;
+          if (aXz > 1e-6) {
+            const b = fx * direction.x + fz * direction.z;
+            const c = fx * fx + fz * fz - hitRadius * hitRadius;
+            const disc = b * b - aXz * c;
+            if (disc < 0) continue;
+            const sqrtDisc = Math.sqrt(disc);
+            tXzEnter = (-b - sqrtDisc) / aXz;
+            tXzExit = (-b + sqrtDisc) / aXz;
+            if (tXzExit <= 0.1 || tXzEnter >= bestT) continue;
+          } else if (fx * fx + fz * fz > hitRadius * hitRadius) {
+            continue;
+          }
+
+          let tYEnter = 0.1;
+          let tYExit = bestT;
+          if (hasDirY) {
+            const ty1 = (minY - origin.y) / direction.y;
+            const ty2 = (maxY - origin.y) / direction.y;
+            tYEnter = ty1 < ty2 ? ty1 : ty2;
+            tYExit = ty1 < ty2 ? ty2 : ty1;
+          } else if (origin.y < minY || origin.y > maxY) {
+            continue;
+          }
+
+          const tLo = Math.max(0.1, tXzEnter, tYEnter);
+          const tHi = Math.min(bestT, tXzExit, tYExit);
+          if (tLo <= tHi && tLo < bestT) {
+            bestT = tLo;
             best = d;
           }
         }

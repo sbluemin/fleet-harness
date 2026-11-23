@@ -13,6 +13,7 @@ export interface WorldControlsGuideProps {
 interface GuideEntry {
   readonly keys?: string | undefined;
   readonly keysKey?: TheWorldMessageKey | undefined;
+  readonly isMenuLocation?: boolean | undefined;
   readonly descKey: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
@@ -57,7 +58,7 @@ const GUIDE_GROUPS: readonly {
       { keys: "G", descKey: "theWorld.controls.fastTravelDesc", icon: "compass", tone: "cerulean" },
       { keys: "P", descKey: "theWorld.controls.photoStudioDesc", icon: "camera", tone: "cerulean" },
       { keys: "C", descKey: "theWorld.guide.cinemaDesc", icon: "cinema", tone: "teal" },
-      { keysKey: "theWorld.controls.stampBookKeys", descKey: "theWorld.controls.stampBookDesc", icon: "trophy", tone: "amber" },
+      { keysKey: "theWorld.controls.stampBookKeys", isMenuLocation: true, descKey: "theWorld.controls.stampBookDesc", icon: "trophy", tone: "amber" },
       { keys: "Enter", descKey: "theWorld.guide.chatDesc", icon: "chat", tone: "teal" },
       { keys: "? / H", descKey: "theWorld.guide.guideDesc", icon: "question", tone: "amber" },
     ],
@@ -145,7 +146,11 @@ export const WorldControlsGuide = memo(function WorldControlsGuide({
                         <WorldIcon name={item.icon} size={13} tone={item.tone} />
                       </span>
                       <span className="the-world-guide-desc">{t(item.descKey)}</span>
-                      <kbd className="the-world-guide-kbd">{keyLabel}</kbd>
+                      {item.isMenuLocation ? (
+                        <span className="the-world-guide-menu-tag">{keyLabel}</span>
+                      ) : (
+                        <kbd className="the-world-guide-kbd">{keyLabel}</kbd>
+                      )}
                     </div>
                   );
                 })}

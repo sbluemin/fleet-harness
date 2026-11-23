@@ -283,6 +283,14 @@ const MEMBER_OFFSETS: readonly { readonly dx: number; readonly dz: number }[] = 
 ];
 
 const MEMBER_RUNNING_ACTIVITIES: readonly MongleActivity[] = ["edit", "read", "think", "run", "fetch"];
+const DEFAULT_VILLAGE_BIOMES: readonly WorldVillageBiome[] = ["meadow", "sakura", "autumn", "citadel"];
+
+function resolveDefaultVillageBiome(index: number, tier: WorldDevelopmentTier): WorldVillageBiome {
+  if (tier >= 5 && index % 4 !== 1 && index % 4 !== 2) {
+    return "citadel";
+  }
+  return DEFAULT_VILLAGE_BIOMES[index % DEFAULT_VILLAGE_BIOMES.length] ?? "meadow";
+}
 
 function resolveLookDetails(book: AvatarBook | null, key: string) {
   const resolved = resolveMongleLook(book, key);
@@ -451,7 +459,7 @@ export function buildWorldSnapshot(
     });
 
     const overallDev = computeDevelopmentProgress(totalEntries, anyTruncated);
-    const biome: WorldVillageBiome = villageBiomes[row.commodoreId] ?? "meadow";
+    const biome: WorldVillageBiome = villageBiomes[row.commodoreId] ?? resolveDefaultVillageBiome(idx, overallDev.tier);
     const village: WorldVillageSpec = {
       id: villageId,
       commodoreId: row.commodoreId,

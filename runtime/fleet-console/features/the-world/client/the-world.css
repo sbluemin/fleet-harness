@@ -8866,6 +8866,75 @@
   pointer-events: none;
 }
 
+/* ── Sprint 26: 포획 카드 닫기 버튼 · 고도 힌트 배지 · 환경 하늘 효과 행 · 메뉴 위치 태그 ── */
+
+.the-world-env-sky-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.the-world-guide-menu-tag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-cerulean) 18%, oklch(20% 0.02 258 / 88%));
+  border: 1px solid color-mix(in oklch, var(--mongle-cerulean) 42%, oklch(100% 0 0 / 12%));
+  color: oklch(92% 0.01 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.the-world-fish-catch-close {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(20% 0.02 258 / 86%);
+  color: oklch(88% 0.01 255);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-fish-catch-close:hover {
+  background: oklch(28% 0.024 258 / 96%);
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
+  color: oklch(99% 0.004 85);
+}
+
+.the-world-fish-catch-close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-ring-guide-alt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 26%, oklch(18% 0.02 258 / 92%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(98% 0.015 85);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+}
+
 /* 4종 마을 테마 바이옴 선택기 (2×2 그리드) */
 .the-world-biome-picker {
   display: grid;
@@ -9017,6 +9086,7 @@
   .the-world-chat-collapse-btn:focus-visible,
   .the-world-fish-pond-btn:focus-visible,
   .the-world-fish-release-btn:focus-visible,
+  .the-world-fish-catch-close:focus-visible,
   .the-world-district-opflag-trigger:focus-visible,
   .the-world-stamp-customizer-btn:focus-visible,
   .the-world-field-review-chip:focus-visible,

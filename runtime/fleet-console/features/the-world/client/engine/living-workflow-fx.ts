@@ -54,6 +54,8 @@ export interface SkyRingPositionOut {
   y: number;
   z: number;
   distM: number;
+  /** 플레이어 고도 대비 링 중심 고도차 (`ring.y - py`, 양수면 상승 `↑` · 음수면 하강 `↓`). */
+  deltaY?: number | undefined;
 }
 
 export interface WorkingVillageFxInput {
@@ -1199,6 +1201,7 @@ export function createLivingWorkflowFx(
     out.y = best.y;
     out.z = best.z;
     out.distM = Math.sqrt(bestDistSq);
+    out.deltaY = best.y - py;
     return true;
   }
 

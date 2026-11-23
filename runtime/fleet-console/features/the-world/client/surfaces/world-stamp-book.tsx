@@ -100,6 +100,7 @@ const STAMP_META: Readonly<Record<WorldStampId, {
 const FISH_META: Readonly<Record<WorldFishId, {
   readonly titleKey: TheWorldMessageKey;
   readonly descKey: TheWorldMessageKey;
+  readonly hintKey: TheWorldMessageKey;
   readonly rarity: WorldFishRarity;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
@@ -107,6 +108,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   meadow_minnow: {
     titleKey: "theWorld.fishing.fish.meadow_minnow.title",
     descKey: "theWorld.fishing.fish.meadow_minnow.desc",
+    hintKey: "theWorld.fishing.fish.meadow_minnow.hint",
     rarity: "common",
     icon: "leaf",
     tone: "cerulean",
@@ -114,6 +116,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   golden_koi: {
     titleKey: "theWorld.fishing.fish.golden_koi.title",
     descKey: "theWorld.fishing.fish.golden_koi.desc",
+    hintKey: "theWorld.fishing.fish.golden_koi.hint",
     rarity: "rare",
     icon: "crown",
     tone: "amber",
@@ -121,6 +124,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   starlight_trout: {
     titleKey: "theWorld.fishing.fish.starlight_trout.title",
     descKey: "theWorld.fishing.fish.starlight_trout.desc",
+    hintKey: "theWorld.fishing.fish.starlight_trout.hint",
     rarity: "rare",
     icon: "sparkle",
     tone: "indigo",
@@ -128,6 +132,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   cherry_loach: {
     titleKey: "theWorld.fishing.fish.cherry_loach.title",
     descKey: "theWorld.fishing.fish.cherry_loach.desc",
+    hintKey: "theWorld.fishing.fish.cherry_loach.hint",
     rarity: "common",
     icon: "sakura",
     tone: "rose",
@@ -135,6 +140,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   moon_jelly: {
     titleKey: "theWorld.fishing.fish.moon_jelly.title",
     descKey: "theWorld.fishing.fish.moon_jelly.desc",
+    hintKey: "theWorld.fishing.fish.moon_jelly.hint",
     rarity: "rare",
     icon: "moon",
     tone: "teal",
@@ -142,6 +148,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   rainbow_carp: {
     titleKey: "theWorld.fishing.fish.rainbow_carp.title",
     descKey: "theWorld.fishing.fish.rainbow_carp.desc",
+    hintKey: "theWorld.fishing.fish.rainbow_carp.hint",
     rarity: "legendary",
     icon: "rainbow",
     tone: "amber",
@@ -149,6 +156,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   star_shell: {
     titleKey: "theWorld.fishing.fish.star_shell.title",
     descKey: "theWorld.fishing.fish.star_shell.desc",
+    hintKey: "theWorld.fishing.fish.star_shell.hint",
     rarity: "common",
     icon: "compass",
     tone: "cerulean",
@@ -156,6 +164,7 @@ const FISH_META: Readonly<Record<WorldFishId, {
   message_bottle: {
     titleKey: "theWorld.fishing.fish.message_bottle.title",
     descKey: "theWorld.fishing.fish.message_bottle.desc",
+    hintKey: "theWorld.fishing.fish.message_bottle.hint",
     rarity: "legendary",
     icon: "mail",
     tone: "amber",
@@ -475,7 +484,7 @@ export const WorldStampBook = memo(function WorldStampBook({
                       {caught ? t(meta.titleKey) : "???"}
                     </h4>
                     <p className="the-world-fish-card-desc">
-                      {caught ? t(meta.descKey) : t("theWorld.fishing.lockedHint")}
+                      {caught ? t(meta.descKey) : t(meta.hintKey)}
                     </p>
                     {caught ? (
                       <button

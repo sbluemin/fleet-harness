@@ -99,10 +99,10 @@ export const PARADE_BELL_POS = {
   radius: 1.75,
 } as const;
 
-/** 중앙 길드 광장 좌측 앞마당 「함대 우체통 (Fleet Mailbox)」 좌표 및 피킹 반경 (길드 회관·우물·화단과 1.3m+ 개방 통로 확보). */
+/** 중앙 길드 광장 좌측 현관 앞 「함대 우체통 (Fleet Mailbox)」 좌표 및 피킹 반경 (스폰 정면 시야 100% 개방, 길드 회관·우물·가로등과 1.3m+ 통로 확보). */
 export const MAILBOX_POS = {
-  x: -4.1,
-  z: -4.2,
+  x: -2.1,
+  z: -3.5,
   radius: 1.55,
 } as const;
 
@@ -525,6 +525,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     opacity: 0.86,
   }));
   const matCloud = ownMat(new MeshStandardMaterial({ color: 0xfafcff, roughness: 0.96 }));
+  const smokeDayTint = new Color(0xeef2f6);
+  const smokeNightTint = new Color(0x4c5d78);
   const matSmoke = ownMat(new MeshStandardMaterial({ color: 0xeef2f6, roughness: 0.95, transparent: true, opacity: 0.52 }));
   const matPad = ownMat(new MeshStandardMaterial({ color: 0x3da352, roughness: 0.75 }));
   const matLotus = ownMat(new MeshStandardMaterial({ color: 0xf9a8d4, roughness: 0.65 }));
@@ -2302,18 +2304,18 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   horizonTrunkInst.frustumCulled = false;
   horizonCanopyInst.frustumCulled = false;
 
-  const horizonPaletteNear = [0x3d7b56, 0x4c8a62, 0x59936a, 0x346f4e] as const;
-  const horizonPaletteFar = [0x4c8276, 0x578d84, 0x457870, 0x62968d] as const;
+  const horizonPaletteNear = [0x3b7a54, 0x4c8b60, 0x5d9462, 0x306a4a, 0x628f57, 0x3f7b64] as const;
+  const horizonPaletteFar = [0x4a8074, 0x578c82, 0x42736b, 0x63968c, 0x528371, 0x48797e] as const;
   const horizonColorScratch = new Color();
   const horizonDummy = new Object3D();
 
   let horizonPlanted = 0;
   for (let i = 0; i < HORIZON_TREE_COUNT; i += 1) {
     const baseAngle = (i / HORIZON_TREE_COUNT) * Math.PI * 2;
-    const angleJitter = (hash2(i * 1.91, 3.73) - 0.5) * 0.065;
+    const angleJitter = (hash2(i * 1.91, 3.73) - 0.5) * 0.085;
     // 알프스 능선 군락 느낌을 위해 약간의 군집 파동 + 거리 분포(95..128m)
-    const groveWave = Math.sin(baseAngle * 7.0 + 0.6) * 4.5 + Math.cos(baseAngle * 13.0) * 2.8;
-    const rawR = 95.5 + hash2(i * 4.37, 11.29) * 32.0 + groveWave * 0.32;
+    const groveWave = Math.sin(baseAngle * 7.0 + 0.6) * 5.2 + Math.cos(baseAngle * 13.0) * 3.1;
+    const rawR = 95.5 + hash2(i * 4.37, 11.29) * 32.0 + groveWave * 0.34;
     const distR = Math.max(95.0, Math.min(128.0, rawR));
     const ang = baseAngle + angleJitter;
     const tx = Math.cos(ang) * distR;
@@ -2321,31 +2323,45 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const groundY = getTerrainBaseHeight(tx, tz);
     if (groundY < 0.2) continue;
 
-    const isBroad = hash2(i * 7.13, 2.17) > 0.68;
+    // 침엽 첨탑 · 중간 가문비 · 둥근 활엽 3종 실루엣 비율과 높이·폭·색조 변주를 넓혀 반복 원뿔 느낌 해소
+    const shapeRoll = hash2(i * 7.13, 2.17);
+    const isBroad = shapeRoll > 0.64;
+    const isSlenderSpire = shapeRoll < 0.28;
     const distFrac = (distR - 95.0) / 33.0;
-    const sizeBoost = 0.86 + distFrac * 0.44 + hash2(i * 3.19, 8.41) * 0.42;
-    const trunkH = (isBroad ? 1.85 : 2.35) * sizeBoost;
-    const trunkR = (isBroad ? 0.68 : 0.54) * sizeBoost;
+    const sizeBoost = 0.68 + distFrac * 0.48 + hash2(i * 3.19, 8.41) * 0.68;
+    const widthJitter = 0.78 + hash2(i * 9.41, 4.73) * 0.54;
+    const heightJitter = 0.76 + hash2(i * 6.83, 1.97) * 0.62;
+    const trunkH = (isBroad ? 1.65 : isSlenderSpire ? 2.55 : 2.15) * sizeBoost;
+    const trunkR = (isBroad ? 0.72 : 0.48) * sizeBoost;
     const yaw = hash2(tx * 0.3, tz * 0.3) * Math.PI * 2;
-    const tiltX = (hash2(i * 5.1, 1.3) - 0.5) * 0.07;
-    const tiltZ = (hash2(i * 2.7, 9.1) - 0.5) * 0.07;
+    const tiltX = (hash2(i * 5.1, 1.3) - 0.5) * 0.11;
+    const tiltZ = (hash2(i * 2.7, 9.1) - 0.5) * 0.11;
 
-    horizonDummy.position.set(tx, groundY - 0.48, tz);
+    horizonDummy.position.set(tx, groundY - 0.52, tz);
     horizonDummy.rotation.set(tiltX, yaw, tiltZ);
     horizonDummy.scale.set(trunkR, trunkH, trunkR);
     horizonDummy.updateMatrix();
     horizonTrunkInst.setMatrixAt(horizonPlanted, horizonDummy.matrix);
 
-    const canopyW = (isBroad ? 2.65 : 1.95) * sizeBoost;
-    const canopyH = (isBroad ? 1.95 : 2.85) * sizeBoost;
-    horizonDummy.position.set(tx, groundY - 0.48 + trunkH * 0.72, tz);
+    const baseW = isBroad ? 2.85 : isSlenderSpire ? 1.55 : 2.05;
+    const baseH = isBroad ? 1.78 : isSlenderSpire ? 3.35 : 2.68;
+    const canopyW = baseW * sizeBoost * widthJitter;
+    const canopyH = baseH * sizeBoost * heightJitter;
+    const canopyDepth = canopyW * (0.86 + hash2(i * 2.19, 7.31) * 0.28);
+    horizonDummy.position.set(tx, groundY - 0.52 + trunkH * 0.70, tz);
     horizonDummy.rotation.set(tiltX, yaw, tiltZ);
-    horizonDummy.scale.set(canopyW, canopyH, canopyW);
+    horizonDummy.scale.set(canopyW, canopyH, canopyDepth);
     horizonDummy.updateMatrix();
     horizonCanopyInst.setMatrixAt(horizonPlanted, horizonDummy.matrix);
 
     const pal = distFrac > 0.48 ? horizonPaletteFar : horizonPaletteNear;
-    horizonColorScratch.setHex(pal[i % pal.length]!);
+    horizonColorScratch.setHex(pal[Math.floor(hash2(i * 8.17, 5.29) * pal.length) % pal.length]!);
+    // 미세 명도·채도 변주로 원경 숲 능선에 유기적 깊이감 부여
+    horizonColorScratch.offsetHSL(
+      (hash2(i * 1.37, 9.91) - 0.5) * 0.04,
+      (hash2(i * 3.81, 2.47) - 0.5) * 0.08,
+      (hash2(i * 6.13, 7.09) - 0.5) * 0.07,
+    );
     horizonCanopyInst.setColorAt(horizonPlanted, horizonColorScratch);
     horizonPlanted += 1;
   }
@@ -3131,41 +3147,54 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addCameraOccluder(nbx, nbz, 0.95, 2.7);
     colliders.push({ x: nbx, z: nbz, r: 0.88 });
 
-    // 6. 중앙 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 목재 종루 + 황금 청동 종
+    // 6. 중앙 광장 좌측 앞마당 「함대 소집 종 (Parade Bell)」 목재 종루 + 황금 청동 종 (정면 남쪽 정렬로 양기둥이 종을 깔끔하게 감쌈)
     const pbx = PARADE_BELL_POS.x;
     const pbz = PARADE_BELL_POS.z;
     const pby = getTerrainBaseHeight(pbx, pbz);
-    const pbYaw = Math.atan2(0 - pbx, -1.5 - pbz);
-    b.withFrame(pbx, pby, pbz, pbYaw, 1, () => {
-      // 석조 받침대
-      b.addBox(matStone, [0, 0.10, 0], [1.46, 0.20, 0.96], undefined, { receiveShadow: true });
-      b.addBox(matStoneDark, [0, 0.24, 0], [1.22, 0.10, 0.74], undefined, { receiveShadow: true });
-      // 아담한 목재 종루 양기둥 + 버팀목 + 상단 횡목
-      for (const px of [-0.52, 0.52]) {
-        b.addBox(matTimber, [px, 1.18, 0], [0.15, 1.90, 0.15], undefined, { castShadow: true, receiveShadow: true });
-        b.addBox(matWood, [px, 0.42, 0], [0.22, 0.24, 0.44]);
-        b.addBox(matWood, [px * 0.74, 1.78, 0], [0.34, 0.08, 0.10], [0, 0, px > 0 ? 0.65 : -0.65]);
-      }
-      b.addBox(matTimber, [0, 2.02, 0], [1.34, 0.16, 0.18], undefined, { castShadow: true });
-      b.addCylinder(matBrass, [0, 1.92, 0], [0.09, 0.16, 0.09]);
-      // 종루 미니 박공 지붕 + 상단 황금 장식
-      b.addPitchedRoof(matRoofBase, matPlasterWarm, matTimber, {
-        y: 2.12,
-        width: 1.62,
-        height: 0.58,
-        depth: 1.08,
-        roofColor: TONE_ROOF_HEX.crimson,
-        includeGableWall: false,
-        castShadow: true,
-        receiveShadow: true,
+    const pbYaw = 0;
+    if (assetRegistry.hasCustomModel("parade-bell")) {
+      const bellFrameGroup = new Group();
+      bellFrameGroup.position.set(pbx, pby, pbz);
+      bellFrameGroup.rotation.y = pbYaw;
+      assetRegistry.mountSlot({
+        slot: "parade-bell",
+        container: bellFrameGroup,
+        targetHeight: 2.85,
+        mountFallback: () => {},
       });
-      b.addSphere(matBrass, [0, 2.74, 0], [0.15, 0.15, 0.15]);
-      // 종루 처마 아래 소형 황금빛 걸이 등불 (야간 자동 점등, 기존 matLanternGlass 배칭 공유)
-      b.addCylinder(matIron, [0.62, 2.02, 0.34], [0.025, 0.14, 0.025]);
-      b.addCylinder(matBrass, [0.62, 1.94, 0.34], [0.11, 0.04, 0.11]);
-      b.addCylinder(matLanternGlass, [0.62, 1.84, 0.34], [0.09, 0.16, 0.09]);
-      b.addCylinder(matBrass, [0.62, 1.74, 0.34], [0.10, 0.035, 0.10]);
-    });
+      parent.add(bellFrameGroup);
+    } else {
+      b.withFrame(pbx, pby, pbz, pbYaw, 1, () => {
+        // 석조 받침대
+        b.addBox(matStone, [0, 0.10, 0], [1.46, 0.20, 0.96], undefined, { receiveShadow: true });
+        b.addBox(matStoneDark, [0, 0.24, 0], [1.22, 0.10, 0.74], undefined, { receiveShadow: true });
+        // 아담한 목재 종루 양기둥 + 버팀목 + 상단 횡목
+        for (const px of [-0.52, 0.52]) {
+          b.addBox(matTimber, [px, 1.18, 0], [0.15, 1.90, 0.15], undefined, { castShadow: true, receiveShadow: true });
+          b.addBox(matWood, [px, 0.42, 0], [0.22, 0.24, 0.44]);
+          b.addBox(matWood, [px * 0.74, 1.78, 0], [0.34, 0.08, 0.10], [0, 0, px > 0 ? 0.65 : -0.65]);
+        }
+        b.addBox(matTimber, [0, 2.02, 0], [1.34, 0.16, 0.18], undefined, { castShadow: true });
+        b.addCylinder(matBrass, [0, 1.92, 0], [0.09, 0.16, 0.09]);
+        // 종루 미니 박공 지붕 + 상단 황금 장식
+        b.addPitchedRoof(matRoofBase, matPlasterWarm, matTimber, {
+          y: 2.12,
+          width: 1.62,
+          height: 0.58,
+          depth: 1.08,
+          roofColor: TONE_ROOF_HEX.crimson,
+          includeGableWall: false,
+          castShadow: true,
+          receiveShadow: true,
+        });
+        b.addSphere(matBrass, [0, 2.74, 0], [0.15, 0.15, 0.15]);
+        // 종루 처마 아래 소형 황금빛 걸이 등불 (야간 자동 점등, 기존 matLanternGlass 배칭 공유)
+        b.addCylinder(matIron, [0.62, 2.02, 0.34], [0.025, 0.14, 0.025]);
+        b.addCylinder(matBrass, [0.62, 1.94, 0.34], [0.11, 0.04, 0.11]);
+        b.addCylinder(matLanternGlass, [0.62, 1.84, 0.34], [0.09, 0.16, 0.09]);
+        b.addCylinder(matBrass, [0.62, 1.74, 0.34], [0.10, 0.035, 0.10]);
+      });
+    }
     paradeBellMountGroup.position.set(pbx, pby + 1.90, pbz);
     paradeBellMountGroup.rotation.y = pbYaw;
     addContactShadow(b, pbx, pbz, 0.96, 0.76, pbYaw);
@@ -3173,25 +3202,38 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addCameraOccluder(pbx, pbz, 0.68, 2.8);
     colliders.push({ x: pbx, z: pbz, r: 0.68 });
 
-    // 7. 중앙 광장 「함대 우체통 (Fleet Mailbox)」 지브리풍 빨간 둥근 지붕 우체통 + 나무 기둥 + 투입구
+    // 7. 중앙 광장 「함대 우체통 (Fleet Mailbox)」 지브리풍 빨간 둥근 지붕 우체통 + 동적 깃발/황금 편지
     const mbx = MAILBOX_POS.x;
     const mbz = MAILBOX_POS.z;
     const mby = getTerrainBaseHeight(mbx, mbz);
-    const mbYaw = Math.atan2(0 - mbx, 1.5 - mbz);
-    b.withFrame(mbx, mby, mbz, mbYaw, 1, () => {
-      // 석조 받침 + 원목 기둥 + 사선 받침대
-      b.addCylinder(matStone, [0, 0.07, 0], [0.58, 0.14, 0.58], undefined, { tapered: true, receiveShadow: true });
-      b.addBox(matTimber, [0, 0.54, 0], [0.15, 0.96, 0.15], undefined, { castShadow: true, receiveShadow: true });
-      b.addBox(matWood, [0, 0.98, 0], [0.54, 0.08, 0.70], undefined, { castShadow: true });
-      b.addBox(matWood, [0, 0.80, 0.15], [0.10, 0.34, 0.10], [0.58, 0, 0]);
-      // 빨간 우체통 하단 몸체 + 둥근 아치 지붕
-      b.addBox(matRoofBase, [0, 1.15, 0], [0.46, 0.28, 0.64], undefined, { color: TONE_ROOF_HEX.crimson, castShadow: true, receiveShadow: true });
-      b.addCylinder(matRoofBase, [0, 1.29, 0], [0.46, 0.64, 0.46], [Math.PI * 0.5, 0, 0], { color: TONE_ROOF_HEX.crimson, castShadow: true });
-      // 정면 투입구 + 황동 손잡이 + 작은 황동 문장
-      b.addBox(matIron, [0, 1.24, 0.325], [0.30, 0.06, 0.03]);
-      b.addSphere(matBrass, [0, 1.13, 0.335], [0.055, 0.055, 0.055]);
-      b.addBox(matBrass, [0, 1.04, 0.325], [0.22, 0.035, 0.025]);
-    });
+    const mbYaw = Math.atan2(0.4 - mbx, 2.2 - mbz);
+    if (assetRegistry.hasCustomModel("mailbox")) {
+      const mailboxGlbGroup = new Group();
+      mailboxGlbGroup.position.set(mbx, mby, mbz);
+      mailboxGlbGroup.rotation.y = mbYaw;
+      assetRegistry.mountSlot({
+        slot: "mailbox",
+        container: mailboxGlbGroup,
+        targetHeight: 1.56,
+        mountFallback: () => {},
+      });
+      parent.add(mailboxGlbGroup);
+    } else {
+      b.withFrame(mbx, mby, mbz, mbYaw, 1, () => {
+        // 석조 받침 + 원목 기둥 + 사선 받침대
+        b.addCylinder(matStone, [0, 0.07, 0], [0.58, 0.14, 0.58], undefined, { tapered: true, receiveShadow: true });
+        b.addBox(matTimber, [0, 0.54, 0], [0.15, 0.96, 0.15], undefined, { castShadow: true, receiveShadow: true });
+        b.addBox(matWood, [0, 0.98, 0], [0.54, 0.08, 0.70], undefined, { castShadow: true });
+        b.addBox(matWood, [0, 0.80, 0.15], [0.10, 0.34, 0.10], [0.58, 0, 0]);
+        // 빨간 우체통 하단 몸체 + 둥근 아치 지붕
+        b.addBox(matRoofBase, [0, 1.15, 0], [0.46, 0.28, 0.64], undefined, { color: TONE_ROOF_HEX.crimson, castShadow: true, receiveShadow: true });
+        b.addCylinder(matRoofBase, [0, 1.29, 0], [0.46, 0.64, 0.46], [Math.PI * 0.5, 0, 0], { color: TONE_ROOF_HEX.crimson, castShadow: true });
+        // 정면 투입구 + 황동 손잡이 + 작은 황동 문장
+        b.addBox(matIron, [0, 1.24, 0.325], [0.30, 0.06, 0.03]);
+        b.addSphere(matBrass, [0, 1.13, 0.335], [0.055, 0.055, 0.055]);
+        b.addBox(matBrass, [0, 1.04, 0.325], [0.22, 0.035, 0.025]);
+      });
+    }
     mailboxAnimGroup.position.set(mbx, mby, mbz);
     mailboxAnimGroup.rotation.y = mbYaw;
     addContactShadow(b, mbx, mbz, 0.62, 0.62, mbYaw);
@@ -3199,26 +3241,26 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     addCameraOccluder(mbx, mbz, 0.42, 1.65);
     colliders.push({ x: mbx, z: mbz, r: 0.48 });
 
-    // 8. 중앙 광장 동남쪽 정원 「별빛 연못 (Starlight Pond)」 돌 테두리 + 반짝이는 수면 + 수련 잎 + 돌 등불
+    // 8. 중앙 광장 동남쪽 정원 「별빛 연못 (Starlight Pond)」 조밀 이끼 돌 테두리 + 별빛 수면 + 수련 잎 + 돌 등불
     const spx = STARLIGHT_POND_POS.x;
     const spz = STARLIGHT_POND_POS.z;
     const spy = getTerrainBaseHeight(spx, spz);
     pondWaterSurfaceY = spy + 0.15;
     b.withFrame(spx, spy, spz, 0, 1, () => {
-      // 어두운 연못 바닥 + 에메랄드-별빛 물결 수면
-      b.addCylinder(matStoneDark, [0, 0.04, 0], [3.26, 0.08, 3.10], undefined, { receiveShadow: true });
+      // 어두운 연못 바닥 + 에메랄드-별빛 유기적 물결 수면 (테두리 잔디 비침 차단용 석재 외곽 언더링 포함)
+      b.addCylinder(matStoneDark, [0, 0.04, 0], [3.56, 0.09, 3.38], undefined, { receiveShadow: true });
       b.addCylinder(matWaterTile, [0, 0.13, 0], [3.16, 0.05, 3.00]);
-      // 자연스러운 타원형 이끼 돌 테두리 16개
-      for (let i = 0; i < 16; i += 1) {
-        const a = (i / 16) * Math.PI * 2;
-        const rx = Math.cos(a) * 1.66;
-        const rz = Math.sin(a) * 1.56;
-        const h = 0.24 + (i % 3) * 0.05;
+      // 22개 밀착 타원형 이끼 돌 테두리 (잔디 틈새 완전 차단)
+      for (let i = 0; i < 22; i += 1) {
+        const a = (i / 22) * Math.PI * 2;
+        const rx = Math.cos(a) * (1.60 + (i % 3 - 1) * 0.04);
+        const rz = Math.sin(a) * (1.51 + ((i + 1) % 3 - 1) * 0.04);
+        const h = 0.26 + (i % 3) * 0.055;
         b.addDodeca(
           i % 2 === 0 ? matStone : matStoneDark,
-          [rx, h * 0.48, rz],
-          [0.52 + (i % 2) * 0.08, h, 0.46],
-          [0.12 * (i % 3), a, 0.08],
+          [rx, h * 0.46, rz],
+          [0.58 + (i % 2) * 0.09, h, 0.52],
+          [0.10 * (i % 3), a, 0.07],
           { flat: true, castShadow: true, receiveShadow: true },
         );
       }
@@ -3262,21 +3304,21 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   function buildBrookBridgesAndFlora(b: InstancedBucketBuilder): void {
     const hasCustomBridge = assetRegistry.hasCustomModel("bridge");
     for (const bridge of BRIDGES) {
-      // 다리 양끝 진입로와 중앙부 풀/꽃 관통 제거
+      // 다리 양끝 진입로와 중앙부 풀/꽃 관통 제거 (북단/남단 교대 이음새 여유 확대)
       const endA = fromBridgeLocal(bridge, 0, -bridge.halfSpan);
       const endB = fromBridgeLocal(bridge, 0, bridge.halfSpan);
-      addGrassClearZone(endA.x, endA.z, 2.25);
-      addGrassClearZone(endB.x, endB.z, 2.25);
-      addGrassClearZone(bridge.x, bridge.z, 2.40);
+      addGrassClearZone(endA.x, endA.z, 2.70);
+      addGrassClearZone(endB.x, endB.z, 2.70);
+      addGrassClearZone(bridge.x, bridge.z, 2.55);
       if (hasCustomBridge) {
-        // bridge.glb는 X축 스팬 6.3m, Z축 폭 2.41m 기준 → 로컬 Z 스팬과 90° 정렬 후 실제 강폭에 맞춰 스케일링
+        // bridge.glb는 X축 스팬 6.3m, Z축 폭 2.41m 기준 → y=0.18로 살짝 올려 북단 판자 Z-fighting·남단 교대 침수 해소
         queueInstancedSlot("bridge", {
           x: bridge.x,
-          y: 0.06,
+          y: 0.18,
           z: bridge.z,
           rotationY: bridge.yaw + Math.PI * 0.5,
           scaleX: (bridge.halfSpan * 2) / 6.3,
-          scaleY: 0.88,
+          scaleY: 0.94,
           scaleZ: (bridge.deckHalfWidth * 2) / 2.4,
         });
         continue;
@@ -3416,6 +3458,62 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           rotationY: hash2(rx * 1.7, rz) * Math.PI * 2,
           scale: 0.78 + hash2(rz * 1.3, rx) * 0.48,
         });
+      }
+    }
+
+    // 시냇물 양끝(±BROOK_SPAN_HALF_X) 이끼 바위 샘물 클러스터 + 갈대 마감 (직사각형 수면 절단 제거)
+    const hasCustomRock = assetRegistry.hasCustomModel("river-rock");
+    for (const endSign of [-1, 1] as const) {
+      const endX = endSign * (BROOK_SPAN_HALF_X - 1.2);
+      const bpEnd = brookProfile(endX);
+      const rockOffsets: readonly [number, number, number][] = [
+        [0, 0, 1.85],
+        [-0.85 * endSign, -1.25, 1.35],
+        [-0.75 * endSign, 1.28, 1.42],
+        [0.95 * endSign, -0.72, 1.55],
+        [0.88 * endSign, 0.78, 1.48],
+        [-1.85 * endSign, -1.65, 1.05],
+        [-1.75 * endSign, 1.65, 1.10],
+      ];
+      for (let ri = 0; ri < rockOffsets.length; ri += 1) {
+        const [ox, oz, sc] = rockOffsets[ri]!;
+        const rx = endX + ox;
+        const rz = bpEnd.centerZ + oz;
+        const ry = Math.max(-0.18, getTerrainBaseHeight(rx, rz));
+        if (hasCustomRock) {
+          queueInstancedSlot("river-rock", {
+            x: rx,
+            y: ry - 0.05,
+            z: rz,
+            rotationY: hash2(rx, rz) * Math.PI * 2,
+            scale: sc * 1.12,
+          });
+        } else {
+          b.addDodeca(
+            ri % 2 === 0 ? matStone : matStoneDark,
+            [rx, ry + 0.35 * sc, rz],
+            [0.95 * sc, 0.68 * sc, 0.88 * sc],
+            [0.18 * ri, hash2(rx, rz) * Math.PI, 0.12],
+            { flat: true, castShadow: true, receiveShadow: true },
+          );
+        }
+      }
+      // 샘물 바위 주변 갈대 다발 4기
+      for (const reedOff of [[-2.4, -1.5], [-2.2, 1.5], [-0.4, -1.9], [-0.5, 1.9]] as const) {
+        const rx = endX + reedOff[0] * endSign;
+        const rz = bpEnd.centerZ + reedOff[1];
+        const ry = Math.max(-0.08, getTerrainBaseHeight(rx, rz));
+        if (hasCustomReeds) {
+          queueInstancedSlot("reeds", {
+            x: rx,
+            y: ry - 0.04,
+            z: rz,
+            rotationY: hash2(rx, rz) * Math.PI * 2,
+            scale: 1.05 + hash2(rz, rx) * 0.35,
+          });
+        } else {
+          b.addCylinder(matFoliageBase, [rx, ry + 0.35, rz], [0.06, 0.92, 0.06], undefined, { color: 0x3e9e4c });
+        }
       }
     }
   }
@@ -3749,8 +3847,18 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         b.addCylinder(matMarble, [-0.15, 0.52, 1.26], [0.22, 0.52, 0.22], undefined, { tapered: true });
         b.addCylinder(matWaterTile, [-0.15, 0.82, 1.26], [0.34, 0.08, 0.34]);
 
-        // 좌우 미니 가로수 (컴팩트 스타일라이즈)
-        for (const [tx, tz, leafHex] of [[-1.56, 1.25, 0x5cc458], [1.54, 1.22, 0xfba9cd]] as const) {
+        // 좌우 미니 가로수 (마을 실효 테마 색조 통일 — autumn 단풍 · snow 설원 · citadel 침엽 · sakura 벚꽃 · meadow 초원)
+        const miniTreePair: readonly [number, number, number][] =
+          villageTheme === "autumn"
+            ? [[-1.56, 1.25, 0xd94832], [1.54, 1.22, 0xf5ba32]]
+            : villageTheme === "snow"
+              ? [[-1.56, 1.25, 0x6ea8b0], [1.54, 1.22, 0x93c5fd]]
+              : villageTheme === "citadel"
+                ? [[-1.56, 1.25, 0x366d52], [1.54, 1.22, 0x4c8a72]]
+                : villageTheme === "sakura"
+                  ? [[-1.56, 1.25, 0xfba9cd], [1.54, 1.22, 0xffcce2]]
+                  : [[-1.56, 1.25, 0x5cc458], [1.54, 1.22, 0x79d464]];
+        for (const [tx, tz, leafHex] of miniTreePair) {
           b.addBox(matStoneDark, [tx, 0.14, tz], [0.56, 0.20, 0.56]);
           b.addCylinder(matBark, [tx, 0.62, tz], [0.16, 0.92, 0.16], undefined, { tapered: true });
           b.addDodeca(matFoliageBase, [tx, 1.32, tz], [0.96, 0.82, 0.96], undefined, { color: leafHex, castShadow: true });
@@ -4109,13 +4217,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       addGrassClearZone(signX, signZ, 1.18);
     }
 
-    // 입구 가로등 1기 (성채·가을 단풍·설원 테마이면 입구 양쪽 따뜻한 랜턴 연출)
-    const lampX = gx - perpX * (gateHalfW + 0.85) + gateCos * 0.55;
-    const lampZ = gz - perpZ * (gateHalfW + 0.85) + gateSin * 0.55;
+    // 입구 가로등 1기 (성채·가을 단풍·설원 테마이면 입구 바깥 양쪽 따뜻한 랜턴 연출 — 성문-석벽 틈 및 푯말 비간섭 오프셋 확보)
+    const lampX = gx - perpX * (gateHalfW + 1.15) + gateCos * 0.88;
+    const lampZ = gz - perpZ * (gateHalfW + 1.15) + gateSin * 0.88;
     addHangingStreetlamp(b, lampX, lampZ, gateFaceYaw + Math.PI * 0.5, true);
     if (isCitadelBiome || isAutumnBiome || isSnowTheme) {
-      const rightLampX = gx + perpX * (gateHalfW + 0.85) - gateCos * 0.85;
-      const rightLampZ = gz + perpZ * (gateHalfW + 0.85) - gateSin * 0.85;
+      const rightLampX = gx + perpX * (gateHalfW + 1.65) + gateCos * 1.15;
+      const rightLampZ = gz + perpZ * (gateHalfW + 1.65) + gateSin * 1.15;
       addHangingStreetlamp(b, rightLampX, rightLampZ, gateFaceYaw - Math.PI * 0.5, isAutumnBiome || isSnowTheme);
     }
 
@@ -4334,11 +4442,23 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     }
 
-    // 마을 외곽 장식 나무 (바이옴·이름 키워드별 수종 차별화: snow → 설원 소나무, autumn → 단풍나무, sakura → 벚나무, citadel → 침엽수)
+    // 마을 외곽 장식 나무 (바이옴·이름 키워드별 수종 차별화 + 울타리 v.radius-0.15 비간섭 반경 + 도로/시냇물/인접 마을·입구 시야 회랑 회피 가드)
+    const canPlaceVillageEdgeTree = (tx: number, tz: number): boolean => {
+      if (isInBrookChannel(tx, tz, 1.5)) return false;
+      const rd = minRoadDistance(tx, tz);
+      if (rd.dist < rd.halfWidth + 1.35) return false;
+      for (let oi = 0; oi < currentVillages.length; oi += 1) {
+        const other = currentVillages[oi]!;
+        if (other.id === v.id) continue;
+        if (Math.hypot(tx - other.x, tz - other.z) < other.radius + 2.2) return false;
+      }
+      return true;
+    };
     for (const side of [-1, 1]) {
       const tAng = v.gateAngle + Math.PI + side * 0.92;
-      const tx = v.x + Math.cos(tAng) * (v.radius + 2.05);
-      const tz = v.z + Math.sin(tAng) * (v.radius + 2.05);
+      const tx = v.x + Math.cos(tAng) * (v.radius + 2.40);
+      const tz = v.z + Math.sin(tAng) * (v.radius + 2.40);
+      if (!canPlaceVillageEdgeTree(tx, tz)) continue;
       const kind = isSnowTheme
         ? "snow-pine"
         : isAutumnBiome
@@ -4351,15 +4471,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       addTree(b, parent, tx, tz, isSakuraBiome || isAutumnBiome || isSnowTheme ? 1.08 : 0.96, kind, true);
     }
     if (isSakuraBiome || isAutumnBiome || isSnowTheme) {
-      // (#3) 측면 프레이밍 나무는 입구 카메라 시야 회랑 밖(gateAngle ± 1.12 rad, radius + 2.65m)에 배치해 착지 직후 시야 가림 차단
+      // 측면 프레이밍 나무는 입구 카메라 시야 회랑 밖(gateAngle ± 1.12 rad, radius + 2.65m)에 배치해 착지 직후 시야 가림·울타리 간섭 동시 차단
       for (const side of [-1, 1]) {
         if (side < 0 && v.routineCount > 0) continue;
         const eAng = v.gateAngle + side * 1.12;
         const tx = v.x + Math.cos(eAng) * (v.radius + 2.65);
         const tz = v.z + Math.sin(eAng) * (v.radius + 2.65);
-        if (isInVillageEntranceSightCorridor(tx, tz)) continue;
-        const sideKind = isSnowTheme ? "snow-pine" : isAutumnBiome ? "autumn" : "blossom";
-        addTree(b, parent, tx, tz, 1.05, sideKind, true);
+        if (!isInVillageEntranceSightCorridor(tx, tz) && canPlaceVillageEdgeTree(tx, tz)) {
+          const sideKind = isSnowTheme ? "snow-pine" : isAutumnBiome ? "autumn" : "blossom";
+          addTree(b, parent, tx, tz, 1.05, sideKind, true);
+        }
         if (isAutumnBiome) {
           const bAng = v.gateAngle + Math.PI + side * 0.42;
           const bx = v.x + Math.cos(bAng) * (v.radius + 1.35);
@@ -4891,7 +5012,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         tmpCol.lerp(isPlazaCore ? cCobble : cPath, rw * 0.88);
       }
 
-      // 사령관별 마을 테라스 바닥 승격 (실효 테마 + 종합 발전도 연동)
+      // 사령관별 마을 테라스 바닥 승격 (실효 테마 + 종합 발전도 연동 · 일반 테마는 울타리 boundaryR=v.radius-0.15 안쪽으로 정합)
       if (!isInBrookChannel(vx, vz, 0.2)) {
         for (let vi = 0; vi < villages.length; vi += 1) {
           const v = villages[vi]!;
@@ -4906,8 +5027,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
               tmpCol.lerp(cSnowFloor, coreW * 0.86);
               break;
             }
-          } else if (dv < v.radius + 0.85) {
-            const vw = 1 - smoothstep(v.radius - 0.8, v.radius + 0.85, dv);
+          } else if (dv < v.radius - 0.35) {
+            const vw = 1 - smoothstep(v.radius - 1.55, v.radius - 0.35, dv);
             const floorColor =
               theme === "citadel" ? cCitadelFloor
                 : theme === "sakura" ? cSakuraFloor
@@ -4972,7 +5093,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
 
     // 4. 광장 및 초원 외곽 풍경림 · 울타리 · 길가 가로등 · 갈림길 이정표 · 초원 쉼터 배치
-    addHangingStreetlamp(bucketBuilder, -2.9, -3.5, 0.4, true);
+    // 중앙 광장 대표 가로등 3기 (좌측 가로등은 새 우체통 (-2.1, -3.5)과 1.5m+ 여유 확보)
+    addHangingStreetlamp(bucketBuilder, -3.6, -3.7, 0.4, true);
     addHangingStreetlamp(bucketBuilder, 3.5, -4.4, -0.4, true);
     addHangingStreetlamp(bucketBuilder, 5.4, 5.6, -0.8, true);
 
@@ -5089,7 +5211,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const rd = minRoadDistance(tx, tz);
       if (rd.dist < rd.halfWidth + minRoadClear) return false;
       if (placedTrees.some((p) => Math.hypot(tx - p.x, tz - p.z) < minTreeSpacing)) return false;
-      addTree(bucketBuilder, dynamicWorldGroup, tx, tz, sc, kind, true);
+      // 가을 단풍 마을 인근에 배치되는 벚나무는 자동으로 가을 단풍수로 조화 통일
+      const resolvedKind =
+        kind === "blossom"
+          && villages.some((v) => v.biome === "autumn" && Math.hypot(tx - v.x, tz - v.z) < v.radius + 6.5)
+          ? "autumn"
+          : kind;
+      addTree(bucketBuilder, dynamicWorldGroup, tx, tz, sc, resolvedKind, true);
       placedTrees.push({ x: tx, z: tz });
       return true;
     };
@@ -5977,7 +6105,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         slot.kind = vis.kind;
         slot.isRainbow = speciesId === "rainbow_carp";
         slot.root.visible = true;
-        slot.root.scale.setScalar(vis.scale);
+        // 방생 어류 시인성 1.7× 확대 (작은 피라미·송사리도 연못에서 또렷하게 식별)
+        slot.root.scale.setScalar(vis.scale * 1.7);
         slot.fishWrap.visible = vis.kind === "fish";
         slot.jellyWrap.visible = vis.kind === "jelly";
         slot.shellWrap.visible = vis.kind === "shell";
@@ -6001,6 +6130,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       terrainMat.color.copy(terrainDayTint).lerp(terrainNightTint, nightFactor * 0.72);
       horizonCanopyMat.color.copy(horizonCanopyDayTint).lerp(horizonCanopyNightTint, nightFactor * 0.78);
       horizonTrunkMat.color.copy(horizonTrunkDayTint).lerp(horizonTrunkNightTint, nightFactor * 0.78);
+      matSmoke.color.copy(smokeDayTint).lerp(smokeNightTint, nightFactor * 0.85);
+      matSmoke.opacity = 0.52 - nightFactor * 0.18;
       contactShadowMat.opacity = 0.86 - nightFactor * 0.30;
       windmillBlades.rotation.z = -elapsed * 0.95;
       for (const pivot of customBladePivots) {

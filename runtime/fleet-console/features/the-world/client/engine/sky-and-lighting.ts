@@ -363,7 +363,7 @@ void main() {
   float edgeFade = smoothstep(0.0, 0.16, u) * smoothstep(1.0, 0.84, u);
 
   float intensity = (band1 + band2) * fineStreaks * edgeFade;
-  float alpha = intensity * uAlpha * 0.58;
+  float alpha = intensity * uAlpha * 0.66;
   if (alpha < 0.004) discard;
 
   // 에메랄드 그린(하단 발광) → 루미너스 시안(중단) → 보라/라벤더(상단 너울)
@@ -725,8 +725,8 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   let rainbowAge = 0;
   let rainbowDuration = 0;
 
-  // 밤하늘 북쪽 상공(y = 68..154m, 반경 238m) 물결치는 GLSL3 오로라 커튼 (1 draw call, 주간/OFF 시 visible=false)
-  const auroraGeo = new CylinderGeometry(232, 246, 86, 72, 6, true, Math.PI * 0.56, Math.PI * 0.88);
+  // 밤하늘 북쪽~동서 넓은 방위각 상공(y = 38..130m, 반경 218..234m) 물결치는 GLSL3 오로라 커튼 (지상 산책 중에도 상단 1/3 장관 연출)
+  const auroraGeo = new CylinderGeometry(218, 234, 92, 84, 6, true, Math.PI * 0.28, Math.PI * 1.44);
   const auroraMat = new ShaderMaterial({
     glslVersion: GLSL3,
     transparent: true,
@@ -742,7 +742,7 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     fragmentShader: AURORA_FRAGMENT,
   });
   const auroraMesh = new Mesh(auroraGeo, auroraMat);
-  auroraMesh.position.set(0, 111, 0);
+  auroraMesh.position.set(0, 84, 0);
   auroraMesh.frustumCulled = false;
   auroraMesh.renderOrder = 1;
   auroraMesh.visible = false;

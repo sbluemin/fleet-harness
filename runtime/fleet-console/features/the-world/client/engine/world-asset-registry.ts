@@ -66,7 +66,9 @@ export type WorldModelSlot =
   | "butterfly"
   | "koi-fish"
   | "lantern-arch"
-  | "trophy-statue";
+  | "trophy-statue"
+  | "parade-bell"
+  | "mailbox";
 
 export interface WorldModelInstance {
   readonly root: Group;

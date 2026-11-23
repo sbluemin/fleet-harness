@@ -39,7 +39,7 @@ import {
   setBgmEnabled,
   setWorldAudioMuted,
 } from "../engine/world-audio.js";
-import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
+import { getWorldT, koParticle, type TheWorldMessageKey } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
   addCompanionActorId,
@@ -205,6 +205,28 @@ const FISH_RARITY_KEYS: Readonly<Record<WorldFishRarity, TheWorldMessageKey>> = 
   legendary: "theWorld.fishing.rarityLegendary",
 };
 
+function formatWarpToast(
+  label: string,
+  wasFlying: boolean,
+  lang: ReturnType<TheWorldClientDeps["commodore"]["language"]>,
+): string {
+  const tNow = getWorldT(lang);
+  if (wasFlying) {
+    return tNow("theWorld.flight.diveToast", { label });
+  }
+  const trimmed = label.trim();
+  if (lang === "en") {
+    if (trimmed.toLowerCase().includes("plaza")) {
+      return tNow("theWorld.stage.warpPlazaToast");
+    }
+    return tNow("theWorld.stage.warpVillageToast", { name: trimmed });
+  }
+  if (trimmed.includes("광장") || trimmed.endsWith("마을") || trimmed.endsWith("HQ")) {
+    return `${koParticle(trimmed, "으로")} 이동했습니다.`;
+  }
+  return `${trimmed} 마을로 이동했습니다.`;
+}
+
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
   return mode === "chat" || mode === "goals" || mode === "info" || mode === "settings";
 }
@@ -268,8 +290,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const ringGuideElRef = useRef<HTMLDivElement | null>(null);
   const ringGuideChevronRef = useRef<HTMLSpanElement | null>(null);
   const ringGuideDistRef = useRef<HTMLSpanElement | null>(null);
+  const ringGuideAltRef = useRef<HTMLSpanElement | null>(null);
   const lastRingGuideVisibleRef = useRef(false);
   const lastRingGuideDistRef = useRef(-1);
+  const lastRingGuideAltRef = useRef<"" | "↑" | "↓">("");
+  const fishCatchOriginRef = useRef<{ x: number; z: number } | null>(null);
   const fastTravelOpenRef = useRef(store.quickJumpOpen);
   fastTravelOpenRef.current = store.quickJumpOpen;
   const nearMailboxRef = useRef(nearMailbox);
@@ -336,7 +361,18 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       prev.yaw = pyaw;
     }
 
-    // 비행 중 가장 가까운 하늘 링 오프스크린 방향 화살표 0Hz Direct-DOM 갱신
+    // 낚시 포획 지점에서 2.5m 이상 이동하면 포획 카드 자동 닫힘
+    const catchOrigin = fishCatchOriginRef.current;
+    if (catchOrigin !== null && !Number.isNaN(catchOrigin.x) && Math.hypot(px - catchOrigin.x, pz - catchOrigin.z) >= 2.5) {
+      fishCatchOriginRef.current = null;
+      if (fishCatchTimerRef.current !== null) {
+        window.clearTimeout(fishCatchTimerRef.current);
+        fishCatchTimerRef.current = null;
+      }
+      clearLastFishCatch();
+    }
+
+    // 비행 중 가장 가까운 하늘 링 오프스크린 방향 화살표 + 고도차(↑/↓) 0Hz Direct-DOM 갱신
     const guideEl = ringGuideElRef.current;
     if (guideEl) {
       const rg = positions.ringGuide;
@@ -350,6 +386,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         if (roundedDist !== lastRingGuideDistRef.current && ringGuideDistRef.current) {
           lastRingGuideDistRef.current = roundedDist;
           ringGuideDistRef.current.textContent = `${roundedDist}m`;
+        }
+        const nextAlt: "" | "↑" | "↓" = rg.deltaY > 3.5 ? "↑" : rg.deltaY < -3.5 ? "↓" : "";
+        if (nextAlt !== lastRingGuideAltRef.current && ringGuideAltRef.current) {
+          lastRingGuideAltRef.current = nextAlt;
+          ringGuideAltRef.current.textContent = nextAlt;
+          ringGuideAltRef.current.style.display = nextAlt ? "" : "none";
         }
         lastRingGuideVisibleRef.current = true;
       } else if (lastRingGuideVisibleRef.current) {
@@ -406,24 +448,30 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     closeQuickJump();
   }, []);
 
+  const dismissFishCatch = useCallback(() => {
+    if (fishCatchTimerRef.current !== null) {
+      window.clearTimeout(fishCatchTimerRef.current);
+      fishCatchTimerRef.current = null;
+    }
+    fishCatchOriginRef.current = null;
+    clearLastFishCatch();
+  }, []);
+
   const handleWarpTo = useCallback((x: number, z: number, label: string) => {
     closeQuickJump();
+    dismissFishCatch();
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
       setOverviewMode(false);
     }
     requestWorldTeleport(x, z);
-    const tNow = getWorldT(deps.commodore.language());
-    pushToast(
-      wasFlying
-        ? tNow("theWorld.flight.diveToast", { label })
-        : tNow("theWorld.stage.warpVillageToast", { name: label }),
-    );
-  }, [deps, pushToast]);
+    pushToast(formatWarpToast(label, wasFlying, deps.commodore.language()));
+  }, [deps, dismissFishCatch, pushToast]);
 
   const handleWarpToDistrict = useCallback((district: WorldDistrictSpec, _village: WorldVillageSpec) => {
     closeQuickJump();
+    dismissFishCatch();
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
@@ -437,7 +485,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         ? tNow("theWorld.flight.diveToast", { label: district.label })
         : tNow("theWorld.district.teleportAria", { name: district.label }),
     );
-  }, [deps, pushToast]);
+  }, [deps, dismissFishCatch, pushToast]);
 
   const handleOpenInConsole = useCallback((commodoreId: string, objectiveId?: string | null) => {
     if (objectiveId) {
@@ -522,13 +570,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         pushActorSpeech(actorId, tNow("theWorld.companion.dutyReturnSpeech"));
         pushToast(tNow("theWorld.companion.dutyReturnToast", { name: actorName }));
       },
-      onMeteorLanded: () => {
+      onMeteorLanded: (fromSky) => {
         if (ringComboTimerRef.current !== null) {
           window.clearTimeout(ringComboTimerRef.current);
           ringComboTimerRef.current = null;
         }
         setRingComboHud(null);
-        triggerStamp("first_dive");
+        if (fromSky) {
+          triggerStamp("first_dive");
+        }
       },
       onSkyRingPass: (combo, boostTrigger) => {
         setRingComboHud({ count: combo, boost: Boolean(boostTrigger) });
@@ -537,13 +587,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
           ringComboTimerRef.current = null;
           setRingComboHud(null);
         }, 3_200);
-        const tNow = getWorldT(deps.commodore.language());
-        pushToast(
-          combo >= 2
-            ? tNow("theWorld.skyRing.comboToast", { combo })
-            : tNow("theWorld.skyRing.passToast", { combo }),
-        );
-        if (combo >= 2) {
+        if (combo >= 3) {
           triggerStamp("sky_ring_combo");
         }
       },
@@ -722,6 +766,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       setRingComboHud(null);
       lastRingGuideVisibleRef.current = false;
       lastRingGuideDistRef.current = -1;
+      lastRingGuideAltRef.current = "";
     }
   }, [store.overviewMode]);
 
@@ -1046,13 +1091,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [deps, pushCelebrationToast]);
 
   const handleStartFishing = useCallback(() => {
-    if (fishCatchTimerRef.current !== null) {
-      window.clearTimeout(fishCatchTimerRef.current);
-      fishCatchTimerRef.current = null;
-    }
-    clearLastFishCatch();
+    dismissFishCatch();
     runtimeRef.current?.startFishing();
-  }, []);
+  }, [dismissFishCatch]);
 
   const handleReelFishing = useCallback(() => {
     const names = actorsRef.current
@@ -1065,9 +1106,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         rarity: res.fish.rarity,
         ...(res.senderName ? { senderName: res.senderName } : {}),
       });
+      fishCatchOriginRef.current = {
+        x: lastPlayerPoseRef.current.x,
+        z: lastPlayerPoseRef.current.z,
+      };
       if (fishCatchTimerRef.current !== null) window.clearTimeout(fishCatchTimerRef.current);
       fishCatchTimerRef.current = window.setTimeout(() => {
         fishCatchTimerRef.current = null;
+        fishCatchOriginRef.current = null;
         clearLastFishCatch();
       }, 4_400);
     } else if (res.outcome === "missed") {
@@ -1439,19 +1485,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleWarpToVillage = useCallback((village: WorldVillageSpec) => {
     closeQuickJump();
+    dismissFishCatch();
     const wasFlying = getWorldStoreSnapshot().overviewMode;
     if (wasFlying) {
       runtimeRef.current?.setLandingPreview(null);
       setOverviewMode(false);
     }
     requestWorldTeleport(village.x, village.z);
-    const tNow = getWorldT(deps.commodore.language());
-    pushToast(
-      wasFlying
-        ? tNow("theWorld.flight.diveToast", { label: village.label })
-        : tNow("theWorld.stage.warpVillageToast", { name: village.label }),
-    );
-  }, [deps, pushToast]);
+    pushToast(formatWarpToast(village.label, wasFlying, deps.commodore.language()));
+  }, [deps, dismissFishCatch, pushToast]);
 
   const handleVillageSignClick = useCallback((village: WorldVillageSpec) => {
     if (suppressVillageClickRef.current) return;
@@ -1459,6 +1501,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [handleWarpToVillage]);
 
   const handleToggleFlight = useCallback(() => {
+    dismissFishCatch();
     const next = !getWorldStoreSnapshot().overviewMode;
     playOverviewToggle(next);
     toggleOverviewMode();
@@ -1466,7 +1509,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       const tNow = getWorldT(deps.commodore.language());
       pushToast(tNow("theWorld.flight.landToast"));
     }
-  }, [deps, pushToast]);
+  }, [deps, dismissFishCatch, pushToast]);
 
   const handleWarpFromMailbox = useCallback((village: WorldVillageSpec) => {
     closeMailbox();
@@ -2177,9 +2220,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
     if (nearMailbox) return "mailbox";
     if (nearParadeBell) return "paradeBell";
-    if (store.nearActorId && !store.companionActorIds.includes(store.nearActorId)) {
-      return "actor";
-    }
     if (nearCampfire) return "campfire";
     if (nearFishingWater) return "fishing";
     if (store.nearActorId) return "actor";
@@ -2192,7 +2232,6 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     nearParadeBell,
     store.chatActive,
     store.cinemaMode,
-    store.companionActorIds,
     store.fishingPhase,
     store.interactionMode,
     store.lifecycle,
@@ -2207,6 +2246,26 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     || activeInteractTarget === "paradeBell"
     || activeInteractTarget === "campfire"
     || activeInteractTarget === "fishing";
+
+  useEffect(() => {
+    if (store.lastFishCatch === null) {
+      fishCatchOriginRef.current = null;
+      if (fishCatchTimerRef.current !== null) {
+        window.clearTimeout(fishCatchTimerRef.current);
+        fishCatchTimerRef.current = null;
+      }
+      return;
+    }
+    if (
+      anyModalOpen
+      || store.overviewMode
+      || store.photoMode
+      || store.cinemaMode
+      || store.interactionMode !== "closed"
+    ) {
+      dismissFishCatch();
+    }
+  }, [anyModalOpen, dismissFishCatch, store.cinemaMode, store.interactionMode, store.lastFishCatch, store.overviewMode, store.photoMode]);
 
   // 근처 사령관/마을 정문 원클릭 결재·질문 퀵 액션 해소
   const nearFieldReviewTarget = useMemo(() => {
@@ -2264,6 +2323,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         sittingAtCampfire={store.sittingAtCampfire || store.overviewMode}
         suppressInteractPrompts={store.fishingPhase !== "idle" || activeInteractTarget !== "actor"}
         activeInteractTarget={activeInteractTarget}
+        suppressAllLabels={store.admiralCustomizerOpen}
         playerLabelRevealed={playerLabelRevealed}
         villages={snapshot.villages}
         labelMetas={visibleLabelMetas}
@@ -2337,6 +2397,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               containerRef={ringGuideElRef}
               chevronRef={ringGuideChevronRef}
               distRef={ringGuideDistRef}
+              altRef={ringGuideAltRef}
               locale={locale}
             />
           ) : null}
@@ -2643,6 +2704,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               aria-live="polite"
               onPointerDown={(e) => e.stopPropagation()}
             >
+              <button
+                type="button"
+                className="the-world-fish-catch-close"
+                aria-label={isEnLocale ? "Close catch card" : "포획 카드 닫기"}
+                onClick={dismissFishCatch}
+              >
+                <WorldIcon name="close" size={13} />
+              </button>
               <div className="the-world-fish-catch-head">
                 <span className="the-world-fish-catch-kicker">
                   <WorldIcon name="sparkle" size={13} tone="amber" />

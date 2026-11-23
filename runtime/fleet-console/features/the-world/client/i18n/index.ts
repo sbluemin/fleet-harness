@@ -126,7 +126,7 @@ export const theWorldEn = {
   "theWorld.debug.levelUpTest": "Test Level-Up FX",
   "theWorld.debug.levelUpTestAria": "Trigger level-up fireworks celebration test",
   "theWorld.village.warpAria": "Travel to {name} village",
-  "theWorld.weather.label": "Weather",
+  "theWorld.weather.label": "Weather & Sky",
   "theWorld.weather.groupAria": "Select meadow weather",
   "theWorld.weather.clear": "Clear",
   "theWorld.weather.sakura": "Sakura",
@@ -162,7 +162,7 @@ export const theWorldEn = {
   "theWorld.warRoom.broadcastEmpty": "No Commodores available to receive broadcast",
   "theWorld.admiral.aria": "Customize Admiral Mongle",
   "theWorld.admiral.title": "Admiral Look",
-  "theWorld.admiral.subtitle": "Choose your Mongle color tone and headwear",
+  "theWorld.admiral.subtitle": "Customize your Admiral's body tone, hat, cape, and footstep trail",
   "theWorld.admiral.closeAria": "Close Admiral customization",
   "theWorld.admiral.toneLabel": "Body Tone",
   "theWorld.admiral.toneGroupAria": "Select Admiral body color tone",
@@ -199,7 +199,7 @@ export const theWorldEn = {
   "theWorld.hud.timeDay": "Day",
   "theWorld.hud.timeSunset": "Sunset",
   "theWorld.hud.timeNight": "Night",
-  "theWorld.hud.timeCycle": "Auto",
+  "theWorld.hud.timeCycle": "Cycle",
   "theWorld.hud.timeRealtime": "Live",
   "theWorld.hud.guideAria": "Open controls guide (? / H)",
   "theWorld.hud.createCommodoreAria": "Recruit a new Commodore",
@@ -229,7 +229,6 @@ export const theWorldEn = {
   "theWorld.guide.quickMenuDesc": "District quick dispatch menu",
   "theWorld.guide.chatDesc": "Open / focus world chat",
   "theWorld.guide.guideDesc": "Toggle this controls guide",
-  "theWorld.guide.debugDesc": "Toggle developer debug tools",
   "theWorld.rpg.fullChat": "Full Chat",
   "theWorld.rpg.fullChatAria": "Open full console chat with {name}",
   "theWorld.rpg.goals": "Goals",
@@ -533,7 +532,7 @@ export const theWorldEn = {
   "theWorld.stamps.item.photo_snap.title": "Meadow Photographer",
   "theWorld.stamps.item.photo_snap.desc": "Capture a Polaroid snapshot in Photo Studio (P)",
   "theWorld.stamps.item.sky_ring_combo.title": "Starlight Ring Ace",
-  "theWorld.stamps.item.sky_ring_combo.desc": "Fly through golden sky rings in a combo chain",
+  "theWorld.stamps.item.sky_ring_combo.desc": "Fly through 3 or more golden sky rings in a single combo chain",
   "theWorld.stamps.item.tier5_citadel.title": "Grand Citadel",
   "theWorld.stamps.item.tier5_citadel.desc": "Grow a Commodore district to maximum Tier 5",
   "theWorld.stamps.item.objective_celebration.title": "Victory Fireworks",
@@ -559,7 +558,7 @@ export const theWorldEn = {
   "theWorld.controls.skyQuickDesc": "Sky Quick Command popover",
   "theWorld.controls.companionKeys": "E → Walk Together",
   "theWorld.controls.companionDesc": "Multi-Commodore walk & V-squadron flight",
-  "theWorld.controls.stampBookKeys": "Voyage Book",
+  "theWorld.controls.stampBookKeys": "Tools ▾",
   "theWorld.controls.stampBookDesc": "Starlight Voyage Stamp Book & rewards",
   // Sprint 22: Brookside Fishing & Encyclopedia · Night Aurora · Parade Bell · Autumn Biome
   "theWorld.fishing.castPrompt": "E · Go Fishing",
@@ -581,20 +580,28 @@ export const theWorldEn = {
   "theWorld.fishing.caughtCount": "×{count}",
   "theWorld.fishing.fish.meadow_minnow.title": "Meadow Minnow",
   "theWorld.fishing.fish.meadow_minnow.desc": "A nimble silver minnow darting through sunlit shallows",
+  "theWorld.fishing.fish.meadow_minnow.hint": "Common · Spotted anytime along sunlit meadow brook shallows",
   "theWorld.fishing.fish.golden_koi.title": "Golden Koi",
   "theWorld.fishing.fish.golden_koi.desc": "A shimmering golden carp gliding beneath the wooden bridges",
+  "theWorld.fishing.fish.golden_koi.hint": "Rare · Glides calmly near the wooden brook bridges in bright daylight",
   "theWorld.fishing.fish.starlight_trout.title": "Starlight Trout",
   "theWorld.fishing.fish.starlight_trout.desc": "Speckled with constellations that shimmer softly at dusk",
+  "theWorld.fishing.fish.starlight_trout.hint": "Rare · Rumored to bite most often during sunset and starry nights",
   "theWorld.fishing.fish.cherry_loach.title": "Sakura Loach",
   "theWorld.fishing.fish.cherry_loach.desc": "A playful rosy swimmer sheltering beneath drifting petals",
+  "theWorld.fishing.fish.cherry_loach.hint": "Common · Shelters near flowerbeds and drifting sakura petals",
   "theWorld.fishing.fish.moon_jelly.title": "Moonlight Jelly",
   "theWorld.fishing.fish.moon_jelly.desc": "A translucent glowing drifter surfacing under starry skies",
+  "theWorld.fishing.fish.moon_jelly.hint": "Rare · Surfaces softly when the meadow turns to twilight or night",
   "theWorld.fishing.fish.rainbow_carp.title": "Rainbow Carp",
   "theWorld.fishing.fish.rainbow_carp.desc": "A legendary seven-hued carp said to bless fleet voyages",
+  "theWorld.fishing.fish.rainbow_carp.hint": "Legendary · Elusive brook guardian — keep casting with patience",
   "theWorld.fishing.fish.star_shell.title": "Starlight Shell",
   "theWorld.fishing.fish.star_shell.desc": "A spiral river shell echoing gentle starlight breezes",
+  "theWorld.fishing.fish.star_shell.hint": "Common · Rests along the pebble riverbed anywhere along the brook",
   "theWorld.fishing.fish.message_bottle.title": "Starlight Message Bottle",
   "theWorld.fishing.fish.message_bottle.desc": "A corked glass bottle carrying a warm cheering note from a Commodore",
+  "theWorld.fishing.fish.message_bottle.hint": "Legendary · Drifts downstream from a Commodore's village with a hidden note",
   "theWorld.hud.auroraToggle": "Night Aurora",
   "theWorld.hud.auroraAria": "Toggle night sky aurora curtains",
   "theWorld.bell.prompt": "E · Ring Parade Bell",
@@ -773,7 +780,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.biome.sakura": "벚꽃 정원",
   "theWorld.biome.citadel": "별빛 성채",
   "theWorld.biome.autumn": "가을 단풍",
-  "theWorld.biome.changedToast": "{name} 마을 테마를 {biome}(으)로 바꿨어요",
+  "theWorld.biome.changedToast": "{name} 마을 테마를 {biome}{{으로}} 바꿨어요",
   "theWorld.quickDispatch.aria": "{name} 구역 빠른 명령 메뉴",
   "theWorld.quickDispatch.plantFlagOrder": "작전 깃발 꽂고 지시",
   "theWorld.quickDispatch.inspectDistrict": "구역 상세 보기",
@@ -789,7 +796,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.debug.levelUpTest": "레벨업 축포 테스트",
   "theWorld.debug.levelUpTestAria": "마을 레벨업 축하 축포 연출 테스트",
   "theWorld.village.warpAria": "{name} 마을로 바로 이동",
-  "theWorld.weather.label": "날씨",
+  "theWorld.weather.label": "날씨 · 하늘 효과",
   "theWorld.weather.groupAria": "초원 날씨 선택",
   "theWorld.weather.clear": "맑음",
   "theWorld.weather.sakura": "벚꽃",
@@ -825,7 +832,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.warRoom.broadcastEmpty": "공지를 전달할 사령관이 없습니다",
   "theWorld.admiral.aria": "제독 몽글이 꾸미기",
   "theWorld.admiral.title": "제독 몽글이 꾸미기",
-  "theWorld.admiral.subtitle": "제독 캐릭터의 톤 색상과 모자를 취향대로 고르세요",
+  "theWorld.admiral.subtitle": "제독 캐릭터의 톤 색상 · 모자 · 망토 · 발걸음 궤적을 취향대로 꾸며보세요",
   "theWorld.admiral.closeAria": "제독 꾸미기 닫기",
   "theWorld.admiral.toneLabel": "몽글이 톤",
   "theWorld.admiral.toneGroupAria": "제독 몽글이 색상 톤 선택",
@@ -862,7 +869,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.hud.timeDay": "낮",
   "theWorld.hud.timeSunset": "노을",
   "theWorld.hud.timeNight": "밤",
-  "theWorld.hud.timeCycle": "자동",
+  "theWorld.hud.timeCycle": "순환",
   "theWorld.hud.timeRealtime": "현실",
   "theWorld.hud.guideAria": "조작 가이드 열기 (? / H)",
   "theWorld.hud.createCommodoreAria": "새 사령관 영입",
@@ -892,7 +899,6 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.guide.quickMenuDesc": "구역 빠른 명령 메뉴",
   "theWorld.guide.chatDesc": "월드 채팅 열기 / 입력",
   "theWorld.guide.guideDesc": "조작 가이드 열기 / 닫기",
-  "theWorld.guide.debugDesc": "개발자 디버그 도구 표시 전환",
   "theWorld.rpg.fullChat": "전체 채팅",
   "theWorld.rpg.fullChatAria": "{name} 전체 콘솔 채팅 열기",
   "theWorld.rpg.goals": "목표",
@@ -1000,7 +1006,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.radial.cheer": "격려하기",
   "theWorld.radial.cheerToast": "{name} 지휘관에게 힘찬 격려를 보냈습니다.",
   "theWorld.radial.highfive": "하이파이브",
-  "theWorld.radial.highfiveToast": "{name}와(과) 하이파이브를 나눴습니다.",
+  "theWorld.radial.highfiveToast": "{name}{{과와}} 하이파이브를 나눴습니다.",
   "theWorld.radial.footnote": "1–{count} 빠른 선택 · E / Esc 닫기",
   "theWorld.rpg.promptCommodore1": "현재 상태 요약해줘",
   "theWorld.rpg.promptCommodore2": "진행 중인 작업 확인해줘",
@@ -1114,13 +1120,13 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.admiral.giftsEmpty": "모자를 선물할 사령관이 아직 없습니다.",
   "theWorld.admiral.giftDefault": "기본",
   "theWorld.admiral.giftGroupAria": "{name} 사령관에게 선물할 모자 선택",
-  "theWorld.admiral.giftGivenToast": "{name} 사령관에게 {hat}을(를) 선물했습니다!",
+  "theWorld.admiral.giftGivenToast": "{name} 사령관에게 {hat}{{을를}} 선물했습니다!",
   "theWorld.admiral.giftClearedToast": "{name} 사령관의 기본 외형으로 복원했습니다",
   "theWorld.guide.urgentDesc": "확인 필요 사령관 즉시 포커스",
   "theWorld.guide.cinemaDesc": "관전 / 작업 동반자 모드",
   // Sprint 14: 별똥별 자유 비행 & 유성 급강하 착지
   "theWorld.flight.banner": "별빛 비행 · WASD 이동 · Q/E 고도 · Shift 부스트 · 땅/마을 클릭 유성 착지 · F 착지",
-  "theWorld.flight.diveToast": "{label}(으)로 별똥별 급강하!",
+  "theWorld.flight.diveToast": "{label}{{으로}} 별똥별 급강하!",
   "theWorld.flight.landToast": "초원으로 별똥별 착지!",
   // Sprint 17: 동행 산책 & 하늘 순찰 · 스카이 커맨드 · 현실 시각 · 포토 스튜디오 · 이모트 휠
   "theWorld.companion.walkTogether": "함께 산책하기",
@@ -1128,11 +1134,11 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.companion.endWalkAll": "전원 해산",
   "theWorld.companion.pill": "{name} 동행 중 · F로 함께 하늘 순찰",
   "theWorld.companion.pillMulti": "{name} 외 {others}명 동행 중 · F로 편대 하늘 순찰",
-  "theWorld.companion.joinedToast": "{name}(이)가 별 제독 곁에 합류했어요! F를 누르면 함께 하늘을 날아요",
-  "theWorld.companion.leftToast": "{name}(이)가 마을로 돌아갔어요",
+  "theWorld.companion.joinedToast": "{name}{{이가}} 별 제독 곁에 합류했어요! F를 누르면 함께 하늘을 날아요",
+  "theWorld.companion.leftToast": "{name}{{이가}} 마을로 돌아갔어요",
   "theWorld.companion.leftAllToast": "동행하던 사령관 {count}명이 각자 마을로 돌아갔어요",
   "theWorld.companion.dutyReturnSpeech": "일 생겼어, 다녀올게!",
-  "theWorld.companion.dutyReturnToast": "{name}(이)가 새 작업이 생겨 마을로 달려갔어요",
+  "theWorld.companion.dutyReturnToast": "{name}{{이가}} 새 작업이 생겨 마을로 달려갔어요",
   "theWorld.companion.rosterTitle": "동행 편대 ({count}명)",
   "theWorld.companion.rosterAria": "동행 편대 로스터",
   "theWorld.companion.rosterToggleAria": "동행 편대 로스터 열기/닫기",
@@ -1196,7 +1202,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.stamps.item.photo_snap.title": "초원 포토그래퍼",
   "theWorld.stamps.item.photo_snap.desc": "포토 스튜디오(P)에서 폴라로이드 스냅샷 저장하기",
   "theWorld.stamps.item.sky_ring_combo.title": "별빛 링 에이스",
-  "theWorld.stamps.item.sky_ring_combo.desc": "하늘 비행 중 황금 별빛 링을 연속으로 통과하기",
+  "theWorld.stamps.item.sky_ring_combo.desc": "하늘 비행 중 황금 별빛 링을 연속 3회 이상 통과하기",
   "theWorld.stamps.item.tier5_citadel.title": "메트로폴리스 성채",
   "theWorld.stamps.item.tier5_citadel.desc": "사령관 마을 구역을 최고 단계 Tier 5로 발전시키기",
   "theWorld.stamps.item.objective_celebration.title": "작전 완수 축포",
@@ -1221,8 +1227,8 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.controls.skyQuickKeys": "마을 우클릭 (비행 중)",
   "theWorld.controls.skyQuickDesc": "공중 퀵 지시 팝오버",
   "theWorld.controls.companionKeys": "E → 함께 산책하기",
-  "theWorld.controls.companionDesc": "N명 편대 동행 산책 & V자 하늘 비행",
-  "theWorld.controls.stampBookKeys": "항해 수첩",
+  "theWorld.controls.companionDesc": "여러 명 편대 동행 산책 & V자 하늘 비행",
+  "theWorld.controls.stampBookKeys": "도구 ▾",
   "theWorld.controls.stampBookDesc": "별빛 항해 수첩 (스탬프 · 외형 보상)",
   // Sprint 22: 시냇가 힐링 낚시 & 어류 도감 · 밤하늘 오로라 · 소집 종 · 가을 단풍 바이옴
   "theWorld.fishing.castPrompt": "E · 시냇가 낚시하기",
@@ -1244,20 +1250,28 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.fishing.caughtCount": "×{count}",
   "theWorld.fishing.fish.meadow_minnow.title": "초원 피라미",
   "theWorld.fishing.fish.meadow_minnow.desc": "햇살 비치는 얕은 여울을 재빠르게 누비는 은빛 피라미",
+  "theWorld.fishing.fish.meadow_minnow.hint": "일반 · 햇살이 드는 시냇가 얕은 여울에서 언제든 잘 잡혀요",
   "theWorld.fishing.fish.golden_koi.title": "황금 비단잉어",
   "theWorld.fishing.fish.golden_koi.desc": "목교 아래를 우아하게 유영하는 찬란한 황금 비단잉어",
+  "theWorld.fishing.fish.golden_koi.hint": "희귀 · 낮 시간대 목교 근처 잔잔한 물길에서 모습을 드러내요",
   "theWorld.fishing.fish.starlight_trout.title": "별빛 송어",
   "theWorld.fishing.fish.starlight_trout.desc": "노을과 별빛을 등에 품고 반짝이는 신비로운 송어",
+  "theWorld.fishing.fish.starlight_trout.hint": "희귀 · 노을이 물들거나 별이 뜨는 저녁 시냇가에 잘 나타나요",
   "theWorld.fishing.fish.cherry_loach.title": "벚꽃 미꾸리",
   "theWorld.fishing.fish.cherry_loach.desc": "물 위에 떠내려온 벚꽃 잎 아래 숨어 노는 분홍빛 미꾸리",
+  "theWorld.fishing.fish.cherry_loach.hint": "일반 · 꽃잎이 흩날리는 물가 수초 아래를 좋아해요",
   "theWorld.fishing.fish.moon_jelly.title": "달빛 해파리",
   "theWorld.fishing.fish.moon_jelly.desc": "별이 뜬 밤에만 수면 위로 떠오르는 투명한 달빛 해파리",
+  "theWorld.fishing.fish.moon_jelly.hint": "희귀 · 별빛이 비치는 밤 시냇가 수면 위로 은은히 떠올라요",
   "theWorld.fishing.fish.rainbow_carp.title": "무지개 잉어",
   "theWorld.fishing.fish.rainbow_carp.desc": "함대의 순항과 행운을 불러온다는 전설의 일곱 빛깔 잉어",
+  "theWorld.fishing.fish.rainbow_carp.hint": "전설 · 끈기 있게 낚싯대를 드리우면 드물게 만나는 초원의 수호어",
   "theWorld.fishing.fish.star_shell.title": "별빛 소라",
   "theWorld.fishing.fish.star_shell.desc": "귀를 대면 아득한 별빛 바람 소리가 들리는 소라 껍데기",
+  "theWorld.fishing.fish.star_shell.hint": "일반 · 시냇가 자갈 바닥 어디서든 반짝이며 걸려 올라와요",
   "theWorld.fishing.fish.message_bottle.title": "별빛 유리병 편지",
   "theWorld.fishing.fish.message_bottle.desc": "사령관의 따뜻한 응원 메시지가 담긴 반짝이는 유리병 편지",
+  "theWorld.fishing.fish.message_bottle.hint": "전설 · 사령관 마을 상류에서 시냇물을 타고 떠내려온 비밀 편지",
   "theWorld.hud.auroraToggle": "밤하늘 오로라",
   "theWorld.hud.auroraAria": "밤하늘 오로라 커튼 켜기/끄기",
   "theWorld.bell.prompt": "E · 함대 소집 종 울리기",
@@ -1327,38 +1341,92 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.radial.gift": "선물",
 };
 
+export type KoParticleKind = "으로" | "이가" | "을를" | "은는" | "과와";
+
+/**
+ * 한국어 단어 끝 음절의 받침(종성)에 따라 자연스러운 조사를 붙이거나 선택한다.
+ * - 2인자 (`koParticle(word, "으로" | "이가" | "을를" | "은는" | "과와")`): `word + 조사` 반환 (`ㄹ` 받침 + `"으로"` → `"로"`)
+ * - 3인자 (`koParticle(word, withBatchim, withoutBatchim)`): 조사 문자열만 반환 (예: `koParticle("별빛 개척단", "과", "와")` → `"과"`)
+ */
+export function koParticle(word: string, kind: KoParticleKind): string;
+export function koParticle(word: string, withBatchim: string, withoutBatchim: string): string;
+export function koParticle(
+  word: string,
+  kindOrWithBatchim: KoParticleKind | string,
+  withoutBatchim?: string,
+): string {
+  const cleaned = word.trim().replace(/[\s)\]}"'.,!?]+$/g, "");
+  let hasBatchim = false;
+  let isRieul = false;
+
+  if (cleaned.length > 0) {
+    const lastChar = cleaned[cleaned.length - 1]!;
+    const code = lastChar.charCodeAt(0);
+    if (code >= 0xac00 && code <= 0xd7a3) {
+      const jong = (code - 0xac00) % 28;
+      hasBatchim = jong !== 0;
+      isRieul = jong === 8;
+    } else if (lastChar >= "0" && lastChar <= "9") {
+      // 0(영), 1(일), 3(삼), 6(육), 7(칠), 8(팔) → 받침 있음 / 1, 7, 8 → ㄹ 받침
+      hasBatchim = "013678".includes(lastChar);
+      isRieul = "178".includes(lastChar);
+    } else if ((lastChar >= "a" && lastChar <= "z") || (lastChar >= "A" && lastChar <= "Z")) {
+      const lower = lastChar.toLowerCase();
+      hasBatchim = "lmnr".includes(lower);
+      isRieul = lower === "l" || lower === "r";
+    }
+  }
+
+  if (withoutBatchim !== undefined) {
+    return hasBatchim ? kindOrWithBatchim : withoutBatchim;
+  }
+
+  if (!cleaned) return word;
+  let particle: string;
+  switch (kindOrWithBatchim as KoParticleKind) {
+    case "으로":
+      particle = !hasBatchim || isRieul ? "로" : "으로";
+      break;
+    case "이가":
+      particle = hasBatchim ? "이" : "가";
+      break;
+    case "을를":
+      particle = hasBatchim ? "을" : "를";
+      break;
+    case "은는":
+      particle = hasBatchim ? "은" : "는";
+      break;
+    case "과와":
+      particle = hasBatchim ? "과" : "와";
+      break;
+    default:
+      particle = "";
+      break;
+  }
+  return `${word}${particle}`;
+}
+
+const KO_PARTICLE_MARKER_RE = /([^\s{}]+)\{\{(으로|이가|을를|은는|과와)\}\}/gu;
+
+function resolveKoParticles(text: string): string {
+  if (!text.includes("{{")) return text;
+  return text.replace(KO_PARTICLE_MARKER_RE, (_match, word: string, kind: KoParticleKind) =>
+    koParticle(word, kind),
+  );
+}
+
 export type TheWorldMessageKey = keyof typeof theWorldEn;
 
 const messages = { en: theWorldEn, ko: theWorldKo } as const;
 
+const rawKoTranslator = createTranslator(messages, "ko");
+const koTranslator: Translate<TheWorldMessageKey> = (key, params) =>
+  resolveKoParticles(rawKoTranslator(key, params));
+
 const translators: Record<ConsoleLocale, Translate<TheWorldMessageKey>> = {
   en: createTranslator(messages, "en"),
-  ko: createTranslator(messages, "ko"),
+  ko: koTranslator,
 };
-
-/**
- * 한국어 단어 끝 음절의 받침(종성) 유무에 따라 자연스러운 조사(`과/와`, `을/를`, `이/가` 등)를 선택한다.
- * 예: `koParticle("별빛 개척단", "과", "와")` → `"과"`, `koParticle("아틀라스 본부", "과", "와")` → `"와"`.
- */
-export function koParticle(word: string, withBatchim: string, withoutBatchim: string): string {
-  const trimmed = word.trim().replace(/[\s)\]}"'.,!?]+$/g, "");
-  if (!trimmed) return withoutBatchim;
-  const lastChar = trimmed[trimmed.length - 1]!;
-  const code = lastChar.charCodeAt(0);
-  // 한글 완성형 음절 (가~힣)
-  if (code >= 0xac00 && code <= 0xd7a3) {
-    return (code - 0xac00) % 28 !== 0 ? withBatchim : withoutBatchim;
-  }
-  // 숫자 발음 기준 받침 (0 영, 1 일, 3 삼, 6 육, 7 칠, 8 팔)
-  if (lastChar >= "0" && lastChar <= "9") {
-    return "013678".includes(lastChar) ? withBatchim : withoutBatchim;
-  }
-  // 영문 끝 글자 근사 (l, m, n, r 등 받침 음가)
-  if ((lastChar >= "a" && lastChar <= "z") || (lastChar >= "A" && lastChar <= "Z")) {
-    return "lmnrLMNR".includes(lastChar) ? withBatchim : withoutBatchim;
-  }
-  return withoutBatchim;
-}
 
 export function formatActorInteractAria(locale: ConsoleLocale | undefined, name: string): string {
   const t = getWorldT(locale);
