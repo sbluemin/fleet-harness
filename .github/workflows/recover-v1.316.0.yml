@@ -10,6 +10,10 @@ concurrency:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 env:
   RELEASE_ID: '454786961'
   RELEASE_TAG: v1.316.0
@@ -22,7 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
-      contents: read
+      # 읽기 전용 토큰은 비공개 드래프트 조회에도 403을 반환한다.
+      contents: write
     outputs:
       assets: ${{ steps.check.outputs.assets }}
     steps:
