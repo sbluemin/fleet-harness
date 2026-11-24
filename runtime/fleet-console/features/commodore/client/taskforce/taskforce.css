@@ -12,7 +12,7 @@
 .taskforce-stack[data-count="1"] > :first-child { top: 0; left: 0; }
 .taskforce-stack[data-count="2"] > :nth-child(2) { top: auto; bottom: 5%; }
 .taskforce-stack[data-count="3"] > :nth-child(3) { left: 20%; }
-.taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
+.taskforce-scrim { position: fixed; inset: 0; z-index: calc(var(--z-overlay) + 5); display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); backdrop-filter: var(--dialog-scrim-backdrop); -webkit-backdrop-filter: var(--dialog-scrim-backdrop); }
 .taskforce-dialog { width: min(480px, 100%); max-height: 100%; overflow: auto; border: 0; border-radius: var(--dialog-radius); color: var(--text-primary); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); font-size: var(--t-md); }
 .taskforce-dialog > header { display: flex; justify-content: space-between; align-items: center; padding: 16px 16px 16px 22px; border-bottom: 1px solid var(--hairline); }
 .taskforce-dialog h2 { font-size: var(--t-lg); margin: 0; }

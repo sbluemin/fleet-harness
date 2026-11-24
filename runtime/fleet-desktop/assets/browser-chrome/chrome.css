@@ -51,9 +51,10 @@
   --wash-selected: color-mix(in oklch, var(--text-primary) 8%, transparent);
   --dialog-face: var(--popover-face);
   --dialog-radius: 12px;
-  --dialog-surface-shadow: var(--popover-ring);
-  --dialog-shadow: none;
-  --dialog-scrim: oklch(0% 0 0 / 69.7%);
+  --dialog-surface-shadow: inset 0 0 0 0.5px color-mix(in oklch, var(--text-primary) 15%, transparent), var(--dialog-shadow);
+  --dialog-shadow: 0 28px 64px -12px oklch(0% 0 0 / 64%), 0 10px 24px -6px oklch(0% 0 0 / 44%);
+  --dialog-scrim: oklch(6% 0 0 / 26%);
+  --dialog-scrim-backdrop: blur(12px) saturate(1.08);
   --dialog-cancel-face: oklch(27% 0 0);
   --space-1: 4px;
   --space-2: 8px;
@@ -100,9 +101,10 @@
   --popover-icon-ink: rgb(28 28 28 / 66%);
   --wash-hover: rgb(28 28 28 / 6%);
   --wash-selected: rgb(28 28 28 / 8%);
-  --dialog-surface-shadow: var(--popover-ring), var(--dialog-shadow);
-  --dialog-shadow: 0 20px 32px -5px #1c1c1c1a, 0 8px 12px -6px #1c1c1c1a, 0 0 0 1px #1c1c1c01;
-  --dialog-scrim: oklch(0% 0 0 / 50%);
+  --dialog-surface-shadow: inset 0 0 0 0.5px rgb(28 28 28 / 14%), var(--dialog-shadow);
+  --dialog-shadow: 0 24px 56px -10px rgb(28 28 28 / 18%), 0 8px 20px -6px rgb(28 28 28 / 10%), 0 0 0 1px #1c1c1c01;
+  --dialog-scrim: oklch(98% 0 0 / 38%);
+  --dialog-scrim-backdrop: blur(12px) saturate(1.06);
   --dialog-cancel-face: oklch(96% 0 0);
   --weight-regular: 450;
   --surface-rim: oklch(38% 0 0 / 18%);
@@ -204,7 +206,11 @@ html[data-role="bar"] .strip { background: var(--chrome-toolbar); }
 .overlay[hidden] { display: none; }
 .overlay.over-strip { z-index: 3; }
 .backdrop { position: absolute; inset: 0; }
-.backdrop.scrim { position: absolute; background: var(--dialog-scrim); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+.backdrop.scrim { position: absolute; background: var(--dialog-scrim); backdrop-filter: var(--dialog-scrim-backdrop); -webkit-backdrop-filter: var(--dialog-scrim-backdrop); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
+@media (prefers-reduced-transparency: reduce) {
+  :root { --dialog-scrim: oklch(0% 0 0 / 69.7%); --dialog-scrim-backdrop: none; }
+  :root[data-scheme="light"] { --dialog-scrim: oklch(0% 0 0 / 50%); --dialog-scrim-backdrop: none; }
+}
 .backdrop.modal:not(.scrim) { background: transparent; }
 .menu { position: absolute; right: var(--space-2); top: calc(var(--strip) + var(--space-1)); display: flex; flex-direction: column; gap: var(--popover-list-gap); min-width: 248px; max-width: 320px; max-height: calc(100% - 72px); overflow-y: auto; padding: var(--popover-pad); background: var(--popover-face); border-radius: var(--popover-radius); box-shadow: var(--popover-surface-shadow); }
 /* 탭 표시줄 우클릭 메뉴 — 누른 자리에 뜬다(자리는 문서가 정한다). */

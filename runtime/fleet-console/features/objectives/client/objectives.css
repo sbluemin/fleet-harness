@@ -294,7 +294,7 @@ span.objectives-row-main { cursor: default; }
   .objectives-row > .objectives-launch .objectives-launch-view-word { display: none; }
   .objectives-row-lab { overflow-wrap: normal; }
 }
-.objectives-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: var(--dialog-scrim); }
+.objectives-zoom-backdrop { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 12px; background: var(--dialog-scrim); backdrop-filter: var(--dialog-scrim-backdrop); -webkit-backdrop-filter: var(--dialog-scrim-backdrop); }
 .objectives-zoom { box-sizing: border-box; width: min(940px, 100%); max-height: 100%; overflow: auto; padding: 12px 16px 16px; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); outline: none; }
 .objectives-zoom-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .objectives-zoom-title { display: inline-flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--t-base); font-weight: var(--weight-bold); color: var(--text-primary); }

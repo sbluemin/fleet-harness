@@ -80,6 +80,8 @@
   place-items: center;
   padding: 16px;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
 }
 .fc-confirm {
   width: min(400px, 100%);
@@ -882,6 +884,8 @@
   inset: 0;
   border: 0;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 
@@ -1007,6 +1011,8 @@
   inset: 0;
   border: 0;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 
@@ -5433,6 +5439,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   inset: 0;
   border: 0;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 
@@ -5867,7 +5875,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   place-items: center;
   padding: var(--space-5);
   background: var(--dialog-scrim);
-  animation: fleet-pop 280ms var(--ease-spring) both;
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
+  animation: whatsnew-fade-in var(--duration-fast) ease-out both;
 }
 
 .objective-search-card {
@@ -5876,7 +5886,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   border: 0;
   border-radius: 14px;
   background: var(--popover-face);
-  box-shadow: var(--popover-surface-shadow);
+  box-shadow: var(--dialog-surface-shadow);
+  animation: fleet-pop 280ms var(--ease-spring) both;
 }
 
 .objective-search-card:focus-visible {
@@ -6395,6 +6406,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   border: 0;
   /* 대화상자 덮개(설정 모달과 같은 값) — 카드를 집중형 규격으로 좁힌 만큼 배경은 한 단 물러선다. */
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 
@@ -6980,6 +6993,8 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   inset: 0;
   border: 0;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 
@@ -8334,7 +8349,7 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .command-band-github-stars:focus-visible { box-shadow: var(--focus-face); }
 
 /* 대화상자는 공통 면·반경·덮개를 쓴다. 구역 제목은 12px 보조색, 키 칩은 중립 컨트롤 면이다. */
-.keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: var(--dialog-scrim); }
+.keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: var(--dialog-scrim); backdrop-filter: var(--dialog-scrim-backdrop); -webkit-backdrop-filter: var(--dialog-scrim-backdrop); }
 .keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 18px 20px 20px; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); outline: none; }
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 0 0 6px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; color: var(--text-secondary); }
@@ -8807,6 +8822,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   place-items: center;
   padding: var(--space-6);
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
 }
 .fc-composer-viewer__frame {
   position: relative;
@@ -9887,6 +9904,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .control-curtain-scrim,
 .control-reclaimed-notice {
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
 }
 
 .control-curtain-scrim {
@@ -10587,6 +10606,8 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   justify-items: center;
   padding-block: 32px;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
 }
 
 /* 대화상자 문법 — 불투명 면, 반 픽셀 링, 공통 반경. */
