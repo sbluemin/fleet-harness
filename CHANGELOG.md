@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.317.0] - 2026-11-24
+
+### fleet-console
+
+#### Changed
+- Pending decisions in the Commodore chat now open directly as a one-line bar above the composer without an extra chip step, showing single-question prompts inline and hiding duplicate quick actions while the full card is expanded.
+- Modal dialogs now use a theme-adaptive frosted blur backdrop instead of a heavy dim overlay, falling back to the dim scrim when reduced transparency is enabled.
+
 ## [1.316.0] - 2026-11-22
 
 ### fleet-console
