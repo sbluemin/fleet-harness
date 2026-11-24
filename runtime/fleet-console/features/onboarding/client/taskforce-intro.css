@@ -17,6 +17,8 @@
   inset: 0;
   border: 0;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
   cursor: default;
 }
 

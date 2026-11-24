@@ -49,7 +49,9 @@
   place-items: center;
   padding: var(--space-5);
   background: var(--dialog-scrim);
-  animation: fleet-pop 220ms var(--ease-spring) both;
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
+  animation: whatsnew-fade-in var(--duration-fast) ease-out both;
 }
 
 .standalone-cli-palette-card {
@@ -58,10 +60,11 @@
   border: 0;
   border-radius: var(--popover-radius);
   background: var(--popover-face);
-  box-shadow: var(--popover-surface-shadow);
+  box-shadow: var(--dialog-surface-shadow);
   display: grid;
   gap: var(--popover-list-gap);
   outline: 0;
+  animation: fleet-pop 220ms var(--ease-spring) both;
 }
 
 .standalone-cli-palette-row {

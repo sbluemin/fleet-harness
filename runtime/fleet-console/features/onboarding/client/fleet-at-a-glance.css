@@ -10,6 +10,8 @@
   place-items: center;
   padding: 20px;
   background: var(--dialog-scrim);
+  backdrop-filter: var(--dialog-scrim-backdrop);
+  -webkit-backdrop-filter: var(--dialog-scrim-backdrop);
 }
 
 .glance-dialog {
