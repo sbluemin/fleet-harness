@@ -445,7 +445,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
   // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
-  // 결정 대기함(B+) — 칩·한 줄·펼친 내용은 대화 독 안에 서고(`decision`), 입력창은 한 줄이 열리면 그 결정의 답 칸이 된다. 읽기 전용에는 없다.
+  // 결정 대기함 — 한 줄 바와 펼친 내용이 대화 독 안에 선다(`decision`). 읽기 전용에는 없다.
   const decision = useCommodoreDecisionDock({ theaterId: commodoreId, language, onEnded: fail });
   const dock = readOnly ? null : decision;
   const renderComposer = (trailing?: ReactNode) => (
@@ -453,7 +453,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} cliGate cliFailure={commodoreCliFailure(entries)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} onFail={fail} onClear={() => setFailure(null)} cliGate cliFailure={commodoreCliFailure(entries)} />}
     </footer>
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;

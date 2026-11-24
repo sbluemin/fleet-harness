@@ -1,12 +1,12 @@
 /**
- * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 위 독 안에 세운다(B+).
+ * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 위 독 안에 세운다.
  *
- * 평소에는 입력창 위 한 줄(쿼터·진행 줄 자리)에 「결정 N · 가장 오래된 목표 · 종류」 칩만 보인다. 칩을 누르면 그 줄이 결정 한 줄이 되고
- * 입력창이 답 칸이 된다 — 한 번에 한 건, ‹ ›로 넘긴다. 제목(⌄)을 누를 때만 그 결정의 내용이 입력창 위 독 흐름 안에서 펼쳐져 독이 그만큼
- * 자라고 대화가 밀린다(대화 칸이 독 높이를 읽는 기존 길 그대로). 결정 요청이 도착하거나 칩·한 줄이 나타날 때는 아무것도 저절로 열리거나 밀리지 않는다.
+ * 대기 중인 결정이 있으면 별도 칩 단계 없이 입력창 위 한 줄(쿼터·진행 줄 자리)에 바로 한 건씩 표시하고 ‹ ›로 넘긴다.
+ * 제목(⌃)을 누를 때만 그 결정의 내용이 입력창 위 독 흐름 안에서 펼쳐져 독이 그만큼 자라고 대화가 밀린다(대화 칸이 독 높이를
+ * 읽는 기존 길 그대로). 카드를 펼친 동안에는 한 줄의 중복 빠른 답 단추를 숨기고, 입력창은 일반 사령관 대화로 유지한다.
  *
- * 이 파일은 상태와 조각(칩·줄·카드)을 만들어 주는 훅이다. 조각을 독의 어느 자리에 세울지는 표면이 정한다 — 그룹 대화 독
- * (`GroupConversation`의 `decision`)과 사령관 입력창(`CommodoreComposer`의 `decision`).
+ * 이 파일은 상태와 조각(줄·카드)을 만들어 주는 훅이다. 조각을 독의 어느 자리에 세울지는 표면이 정한다 — 그룹 대화 독
+ * (`GroupConversation`의 `decision`)과 사령관 입력창(`CommodoreComposer`의 `decisionDock`).
  */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
@@ -17,7 +17,6 @@ import type { CommodoreAsk } from "../shared/contracts/types.js";
 import { extendObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, renderInboxDetail, renderInboxQuick, renderObjectiveAvatar, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
 import { CommodoreAskCard } from "./commodore-ask.js";
 import { sendComposerText } from "./commodore-composer-bridge.js";
-import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
 import { getT } from "./i18n/index.js";
 import { answerCommodoreAsk, openAsks, useCommodoreName } from "./commodore-state.js";
 
@@ -49,15 +48,11 @@ interface InboxItem {
   readonly ask?: CommodoreAsk;
 }
 
-/** 표면이 독 안에 세울 조각. `engaged`면 `line`이 쿼터·진행 줄 자리를 차지하고, 아니면 `chip`이 그 줄 안에 선다. */
+/** 표면이 독 안에 세울 조각. 대기 항목이 있으면 `line`이 쿼터·진행 줄 자리를 차지하고, 제목을 누르면 `card`가 그 위에 펼쳐진다. */
 export interface CommodoreDecisionDock {
-  readonly chip: ReactNode;
   readonly line: ReactNode;
-  /** 제목을 눌러 펼친 내용 — 입력창 위 독 흐름 안. 접혀 있으면 null이다. */
+  /** 제목을 눌러 펼친 내용 — 입력창 위 독 흐름 안. */
   readonly card: ReactNode;
-  readonly engaged: boolean;
-  /** 입력창이 답 칸일 때 그 대상 — 한 줄이 열려 있는 동안만 있다. 같은 표면의 입력창에 넘긴다. */
-  readonly target: CommodoreDecisionTarget | null;
 }
 
 export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", language, phone = false, leave, onEnded }: {
@@ -75,11 +70,10 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
   const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, () => finishedObjectives(theaterId), () => finishedObjectives(theaterId));
   useEffect(() => { if (theaterId && !finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   const [answered, setAnswered] = useState<readonly string[]>([]);
-  // 기본은 칩이다. 사람이 눌러야 한 줄 결정이 되고, 항목이 하나뿐이어도 저절로 열지 않는다.
-  const [engaged, setEngaged] = useState(false);
+  // 기본은 한 줄 바(접힘)다. 제목을 누를 때만 내용이 펼쳐지고, 새 결정이 도착해도 저절로 펼쳐지지 않는다.
   const [detail, setDetail] = useState(false);
   const [focus, setFocus] = useState<{ readonly id: string | null; readonly index: number }>({ id: null, index: 0 });
-  useEffect(() => { setAnswered([]); setEngaged(false); setDetail(false); setFocus({ id: null, index: 0 }); }, [theaterId]);
+  useEffect(() => { setAnswered([]); setDetail(false); setFocus({ id: null, index: 0 }); }, [theaterId]);
 
   const objectives = useMemo(() => {
     const seen = new Set(board.objectives.map((objective) => objective.id));
@@ -119,47 +113,20 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
     if (currentId !== null && (focus.id !== currentId || focus.index !== index)) setFocus({ id: currentId, index });
   }, [currentId, index, focus.id, focus.index]);
   const empty = items.length === 0;
-  useEffect(() => { if (empty) { setEngaged(false); setDetail(false); } }, [empty]);
+  useEffect(() => { if (empty) setDetail(false); }, [empty]);
 
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
   const markAnswered = useCallback((id: string) => setAnswered((list) => list.includes(id) ? list : [...list, id]), []);
 
-  // 입력창이 답 칸이 된다 — 보는 결정이 입력창의 대상이다. 질문 하나면 보낸 글이 그 직접 답, 그 밖은 결정을 인용한 일반 메시지다.
-  const live = engaged && current ? current : null;
-  const liveAsk = live?.ask ?? null;
-  const liveId = live?.id ?? null;
-  const liveKind = live?.kind ?? null;
-  const liveTitle = live?.title ?? "";
-  const liveReason = live?.reason ?? "";
-  const liveObjectiveId = live?.objectiveId ?? null;
-  const target = useMemo<CommodoreDecisionTarget | null>(() => {
-    if (!liveId || !liveKind) return null;
-    const kindLabel = t(KIND_KEY[liveKind]);
-    // 입력창 글의 뜻은 여기 한 곳이 정한다 — 질문 하나면 직접 답, 그 밖은 결정을 인용한 일반 메시지(결정 상태는 그대로).
-    const direct = liveAsk ? directAnswer(theaterId, liveAsk, markAnswered) : null;
-    return {
-      kindLabel,
-      quote: {
-        kind: "comment",
-        excerpt: liveAsk ? liveAsk.questions.map((question) => question.text).join(" / ") : liveReason,
-        source: { label: `${liveTitle} · ${kindLabel}`, ref: liveObjectiveId ? `objective:${liveObjectiveId}` : `ask:${liveAsk?.id ?? liveId}` },
-      },
-      answer: direct,
-      placeholder: t(direct ? "commodore.decision.answerPlaceholder" : "commodore.decision.notePlaceholder"),
-    };
-  }, [theaterId, liveId, liveKind, liveAsk, liveTitle, liveReason, liveObjectiveId, markAnswered, t]);
-
   // 펼친 내용은 접힘 전환이 끝날 때까지 남겨 독이 부드럽게 줄어든다.
-  const open = engaged && detail && current !== null;
+  const open = detail && current !== null;
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (open) { setShown(true); return; }
     const timer = window.setTimeout(() => setShown(false), FOLD_MS);
     return () => window.clearTimeout(timer);
   }, [open]);
-  const foldTimer = useRef<number | null>(null);
-  useEffect(() => () => { if (foldTimer.current !== null) window.clearTimeout(foldTimer.current); }, []);
 
   if (!current) return null;
 
@@ -176,24 +143,11 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
     const next = items[(index + step + items.length) % items.length];
     if (next) setFocus({ id: next.id, index: items.indexOf(next) });
   };
-  const fold = () => {
-    if (foldTimer.current !== null) window.clearTimeout(foldTimer.current);
-    if (!detail) { setEngaged(false); return; }
-    // 펼친 내용을 먼저 접어 독이 줄어든 뒤에 칩이 된다.
-    setDetail(false);
-    foldTimer.current = window.setTimeout(() => { foldTimer.current = null; setEngaged(false); }, FOLD_MS);
-  };
 
-  const oldest = items[0]!;
-  const chip = engaged ? null : (
-    <button type="button" className="commodore-decision-chip" onClick={() => { setEngaged(true); setDetail(false); }}>
-      <span className="commodore-decision-chip-n">{t("commodore.decision.chip", { n: items.length })}</span>
-      <span className="commodore-decision-chip-text">{`${oldest.title} · ${t(KIND_KEY[oldest.kind])}`}</span>
-    </button>
-  );
-
-  const title = current.kind === "ask" && !current.objectiveId ? current.reason : `${current.title} · ${current.reason}`;
-  const line = !engaged ? null : (
+  // 문항이 하나인 질문은 배경(reason) 대신 실제 질문 문구를 한 줄에 보여 주어 빠른 선택지의 뜻을 바로 읽을 수 있게 한다.
+  const singleAskText = current.kind === "ask" && current.ask?.questions.length === 1 ? current.ask.questions[0]!.text.trim() : "";
+  const title = singleAskText || (current.kind === "ask" && !current.objectiveId ? current.reason : `${current.title} · ${current.reason}`);
+  const line = (
     <div className="commodore-decision-line">
       <span className="commodore-decision-nav">
         <button type="button" disabled={items.length < 2} aria-label={t("commodore.decision.prev")} onClick={() => go(-1)}>‹</button>
@@ -203,15 +157,14 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
       <span className={`commodore-decision-kind is-${current.kind}`}>{t(KIND_KEY[current.kind])}</span>
       <button type="button" className="commodore-decision-title" aria-expanded={open} onClick={() => setDetail((value) => !value)}>
         <span className="commodore-decision-title-text">{title}</span>
-        <ChevronGlyph direction="down" className="commodore-decision-title-chev" />
+        <ChevronGlyph direction="up" className="commodore-decision-title-chev" />
       </button>
-      <QuickAnswer key={current.id} item={current} theaterId={theaterId} language={language} phone={phone} onAnswered={markAnswered} onFailed={(error) => onEndedRef.current?.(error)} />
+      {!open ? <QuickAnswer key={current.id} item={current} theaterId={theaterId} language={language} phone={phone} onAnswered={markAnswered} onFailed={(error) => onEndedRef.current?.(error)} /> : null}
       <ExtendAction key={`extend:${current.id}`} item={current} theaterId={theaterId} language={language} onFailed={(error) => onEndedRef.current?.(error)} />
-      <button type="button" className="commodore-decision-fold" aria-label={t("commodore.decision.fold")} onClick={fold}>✕</button>
     </div>
   );
 
-  const card = !engaged ? null : (
+  const card = (
     <div className={`commodore-decision-detail${open ? " is-open" : ""}`}>
       <div className="commodore-decision-detail-in">
         {shown ? (
@@ -221,17 +174,7 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
     </div>
   );
 
-  return { chip, line, card, engaged, target };
-}
-
-/** 입력창 글이 질문의 직접 답이 되는 경우 — 문항이 하나인 질문뿐이다(서버가 모든 문항을 한 번에 받으므로 여럿이면 글로 답할 문항을 가를 수 없다). */
-function directAnswer(theaterId: string, ask: CommodoreAsk, onAnswered: (id: string) => void): ((text: string) => Promise<void>) | null {
-  const only = ask.questions.length === 1 ? ask.questions[0]! : null;
-  if (!only) return null;
-  return async (text) => {
-    await answerCommodoreAsk(theaterId, ask.id, [{ questionId: only.id, selectedOptionIds: [], text }]);
-    onAnswered(ask.id);
-  };
+  return { line, card };
 }
 
 /**

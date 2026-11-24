@@ -160,11 +160,11 @@ export interface AgentConversationProps {
    */
   readonly overlay?: ReactNode;
   /**
-   * A one-line decision queue that lives in the measured dock, above the composer. `chip` stands inside the summary row above the composer;
-   * when `engaged`, `line` takes that row's place; `card` is expanded content above the row. The dock grows with it and the log follows
-   * the bottom like any other dock growth, so only what the person presses moves the conversation.
+   * A one-line decision queue that lives in the measured dock, above the composer. When present, `line` takes the summary row's place
+   * and `card` is expanded content above the row. The dock grows with it and the log follows the bottom like any other dock growth,
+   * so only what the person presses moves the conversation.
    */
-  readonly decision?: { readonly chip: ReactNode; readonly line: ReactNode; readonly card: ReactNode; readonly engaged: boolean } | null;
+  readonly decision?: { readonly line: ReactNode; readonly card: ReactNode } | null;
   /** Optional domain-owned inline content and footer; omitted parts keep the standard message renderer. */
   readonly messageContent?: (entry: Extract<GroupTimelineEntry, { kind: "message" }>) => { readonly body?: ReactNode; readonly footer?: ReactNode } | undefined;
   /** Below the working line — the plugin's own composer, a slot renderer receiving trailing entries, or a way back. */
