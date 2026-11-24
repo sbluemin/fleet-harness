@@ -92,8 +92,8 @@ export interface GroupConversationProps {
   readonly fold?: boolean;
   /** 대화 칸 위에 떠 있는 것(공유 화면 미리보기). 이 칸(`.group-chat`)이 배치의 부모다. */
   readonly overlay?: React.ReactNode;
-  /** 독 안의 결정 한 줄 — 칩은 입력창 위 줄 안에, 한 줄은 그 줄 자리에, 펼친 내용은 그 위에 선다. 독이 그만큼 자라 대화가 따라간다. */
-  readonly decision?: { readonly chip: React.ReactNode; readonly line: React.ReactNode; readonly card: React.ReactNode; readonly engaged: boolean } | null;
+  /** 독 안의 결정 한 줄 — 대기 결정이 있으면 한 줄이 입력창 위 요약 줄 자리에 서고, 펼친 내용은 그 위에 선다. 독이 그만큼 자라 대화가 따라간다. */
+  readonly decision?: { readonly line: React.ReactNode; readonly card: React.ReactNode } | null;
   /** 컴퓨터를 지금 조작하는 참여자 — 진행 줄의 그 사람 뒤에 「· 컴퓨터 사용」 꼬리가 붙는다. */
   readonly computerActor?: string | null;
   /** 일하는 사령관이 지금 하는 일의 계열 — 진행 줄의 사령관 이름 뒤 낱말이 된다. Objective 참여자는 세션에서 읽는다. */
@@ -299,7 +299,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
   const renderedComposer = typeof composer === "function"
     ? composer({ trailing: composerTopEnd ? <ComposerTrailingControls>{composerTopEnd}</ComposerTrailingControls> : null })
     : composer;
-  const inlineWorking = Boolean(renderComposerWithWorking || ((composerTopEntries || composerTopEnd || decision?.chip) && renderedComposer));
+  const inlineWorking = Boolean(renderComposerWithWorking || ((composerTopEntries || composerTopEnd) && renderedComposer));
   const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} commodoreActivity={commodoreActivity} />;
 
   return (
@@ -402,9 +402,9 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
       </div>
       <div ref={dockRef} className="group-chat-dock">
         {decision?.card}
-        {decision?.engaged ? decision.line : null}
+        {decision?.line}
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
-          {decision?.engaged ? null : inlineWorking ? <ComposerTopEntries leading={workingLine} chip={decision?.chip} end={composerUsesTrailingSlot ? null : composerTopEnd} omitEntries={!composerTopEntries} /> : workingLine}
+          {decision ? null : inlineWorking ? <ComposerTopEntries leading={workingLine} end={composerUsesTrailingSlot ? null : composerTopEnd} omitEntries={!composerTopEntries} /> : workingLine}
           {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
           {renderedComposer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{renderedComposer}</div> : null}
         </>}

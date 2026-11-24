@@ -1223,34 +1223,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .fc-coord-trigger.is-mobile .objectives-commodore-judgment { vertical-align: -2px; margin-right: 6px; }
 .mobile-choice-icon .objectives-commodore-judgment, .mobile-choice-icon .objectives-commodore-judgment svg { width: 22px; height: 22px; }
 
-/* 결정 대기함(B+) — 입력창 위 독 흐름 안에 선다. 평소는 쿼터·진행 줄 안의 칩 하나, 누르면 그 줄이 결정 한 줄, 제목(⌄)을 누를 때만
-   내용이 그 위에서 펼쳐진다. 독이 자라는 만큼만 대화가 밀리고(대화 칸이 독 높이를 읽는다) 저절로 밀리는 일은 없다. */
-.commodore-decision-chip {
-  flex: 0 1 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  max-width: 70%;
-  height: 24px;
-  padding: 0 9px 0 3px;
-  border: 1px solid color-mix(in oklch, var(--aurora) 55%, transparent);
-  border-radius: var(--radius-pill);
-  background: none;
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--t-xs);
-  cursor: pointer;
-}
-.commodore-decision-chip:hover { background: var(--control-wash-hover); }
-.commodore-decision-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
-.commodore-decision-chip-n { flex: none; padding: 0 7px; border-radius: var(--radius-pill); background: var(--aurora); color: var(--ink-abyss); font-size: var(--t-2xs); font-weight: var(--weight-bold); line-height: 18px; white-space: nowrap; }
-.commodore-decision-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-/* 쿼터 줄과 칩이 한 줄을 나눠 쓰는 표면(폰 기록·기록 탭) — 칩은 줄어들 수 있고 쿼터 요약은 오른쪽 끝이다. */
-.commodore-decision-toprow { flex: none; display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 36px; }
-.commodore-decision-toprow > .conversation-composer-top { flex: 1 1 auto; min-width: 0; padding: 0; }
-.conversation-composer-top.has-chip { gap: var(--space-2); }
-.conversation-composer-top.has-chip > .commodore-decision-chip { margin-right: auto; }
+/* 결정 대기함 — 입력창 위 독 흐름 안에 선다. 대기 결정이 있으면 별도 칩 없이 한 줄 바가 쿼터·진행 줄 자리에 서고,
+   제목(⌃)을 누를 때만 내용이 그 위에서 펼쳐진다. 독이 자라는 만큼만 대화가 밀리고(대화 칸이 독 높이를 읽는다) 저절로 밀리는 일은 없다. */
 .commodore-decision-line {
   flex: none;
   display: flex;
@@ -1327,9 +1301,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   .commodore-decision-quick.has-icon .commodore-decision-quick-label { display: none; }
   .commodore-decision-quick.has-icon .commodore-decision-quick-icon { display: block; width: 12px; height: 12px; }
 }
-.commodore-decision-fold { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); line-height: 1; cursor: pointer; }
-.commodore-decision-fold:hover { background: var(--control-wash-hover); }
-.commodore-decision-fold:focus-visible { box-shadow: var(--focus-face); outline: none; }
 /* 제목을 눌러 펼친 내용 — 줄 위 독 흐름 안. 0fr → 1fr 전환으로 독이 부드럽게 자라고, 내용은 대화 영역 높이의 40%(--decision-cap)까지 자라 그 안에서 스크롤한다. */
 .commodore-decision-detail { flex: none; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-slow) var(--ease-glide); }
 .commodore-decision-detail.is-open { grid-template-rows: 1fr; }
@@ -1349,7 +1320,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .commodore-decision-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 2px 6px; }
 .commodore-decision-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-bold); }
-.commodore-decision-tag { flex: none; align-self: center; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 18px; white-space: nowrap; }
 .commodore-person-inbox-age { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .commodore-person-inbox-avatar { flex: none; display: inline-flex; }
 .commodore-person-inbox-open { flex: none; white-space: nowrap; }
@@ -1374,10 +1344,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-decision-card .group-card-handed { display: none; }
 .commodore-decision-card .objectives-handed-followup,
 .commodore-decision-card .group-card.is-decision { margin-left: 0; width: 100%; max-width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
-/* 위로 읽는 중에는 진행·쿼터 줄이 캡슐 뒤로 비켜나지만, 칩은 남아 눌린다 — 줄 안의 나머지만 비켜난다. */
-.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) { transform: none; opacity: 1; }
-.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) > :not(.commodore-decision-chip) { opacity: 0; }
-.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) > .commodore-decision-chip { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
   .commodore-decision-detail, .commodore-decision-title-chev { transition: none; }
 }

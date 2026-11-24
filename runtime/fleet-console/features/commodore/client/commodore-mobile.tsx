@@ -530,11 +530,11 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, cleare
   } : null), [hasTurn, participants.length, commodoreId, onOpenLog]);
   // 답 단추는 사령관에게 바로 보낸다. 입력창 초안·화면 키보드는 건드리지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
-  // 결정 대기함(B+) — 대화 독이 칩·한 줄·펼친 내용을 세운다(`Conversation`이 없을 때만 입력창이 함께 세운다).
+  // 결정 대기함 — 대화 독이 한 줄 바와 펼친 내용을 세운다(`Conversation`이 없을 때만 입력창이 함께 세운다).
   const decision = useCommodoreDecisionDock({ theaterId: commodoreId, contextTheaterId: theaterId, language, phone: true, onEnded: onFail });
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
+      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
     </div>
   );
   return (
@@ -608,7 +608,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
   const olderAnchor = useRef<number | null>(null);
   const run = view?.run;
   const turn = run?.phase === "turn";
-  // 결정 대기함(B+) — 입력 독 안에 칩·한 줄·펼친 내용이 선다. 독이 자라면 아래 관찰이 바닥 고정을 이어 간다.
+  // 결정 대기함 — 입력 독 안에 한 줄 바와 펼친 내용이 선다. 독이 자라면 아래 관찰이 바닥 고정을 이어 간다.
   const decision = useCommodoreDecisionDock({ theaterId, language, phone: true, leave, onEnded: onFail });
 
   const scrollToBottom = useCallback((node: HTMLDivElement) => {
@@ -691,7 +691,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
-        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
+        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
       </div>
     </div>
   );

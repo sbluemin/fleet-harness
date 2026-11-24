@@ -8,10 +8,8 @@ const ComposerTopEntriesContext = createContext<readonly ComposerTopEntryDescrip
 export const ComposerTopEntriesProvider = ComposerTopEntriesContext.Provider;
 
 /** 대화 표면이 명시적으로 요청한 요약 칸. 플러그인의 팝업은 이 줄을 닻으로 삼는다. */
-export function ComposerTopEntries({ leading, chip, end, omitEntries = false }: {
+export function ComposerTopEntries({ leading, end, omitEntries = false }: {
   readonly leading?: ReactNode;
-  /** 표면이 이 줄 안에 세우는 칩(대기 중인 결정) — 진행 줄 앞에 선다. */
-  readonly chip?: ReactNode;
   readonly end?: ReactNode;
   readonly omitEntries?: boolean;
 }) {
@@ -19,10 +17,9 @@ export function ComposerTopEntries({ leading, chip, end, omitEntries = false }: 
   const layout = useViewMode().effective;
   const popoverAnchorRef = useRef<HTMLSpanElement>(null);
   const showEntries = !omitEntries && entries.length > 0;
-  if (!showEntries && !leading && !end && !chip) return null;
+  if (!showEntries && !leading && !end) return null;
   return (
-    <div className={`conversation-composer-top${leading ? " is-unified" : ""}${end ? " has-end" : ""}${chip ? " has-chip" : ""}`}>
-      {chip}
+    <div className={`conversation-composer-top${leading ? " is-unified" : ""}${end ? " has-end" : ""}`}>
       {leading}
       {end ? <span className="conversation-composer-top-end">{end}</span> : null}
       {showEntries ? (
