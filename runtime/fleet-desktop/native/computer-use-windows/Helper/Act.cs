@@ -21,6 +21,8 @@ internal sealed class ActionRequest
     public double Pages { get; } = 1;
     public string? AxName { get; }
     public bool RequireEditableFocus { get; }
+    /// <summary>Menu item names to choose in order after opening the clicked menu-bar item (decision 9337a92a).</summary>
+    public IReadOnlyList<string>? Menu { get; }
 
     public ActionRequest(JsonObject p)
     {
@@ -36,7 +38,8 @@ internal sealed class ActionRequest
         var allowed = Params.Keys("pid", "windowId", "processStartedAt", "expectedFrame", "action");
         switch (Name)
         {
-            case ActionName.Click or ActionName.DoubleClick or ActionName.RightClick: allowed.UnionWith(["ref", "x", "y"]); break;
+            case ActionName.Click: allowed.UnionWith(["ref", "x", "y", "menu"]); break;
+            case ActionName.DoubleClick or ActionName.RightClick: allowed.UnionWith(["ref", "x", "y"]); break;
             case ActionName.Scroll: allowed.UnionWith(["ref", "x", "y", "direction", "pages"]); break;
             case ActionName.Drag: allowed.UnionWith(["ref", "x", "y", "to"]); break;
             case ActionName.Type or ActionName.SetValue or ActionName.Select: allowed.UnionWith(["ref", "text"]); break;
@@ -71,6 +74,19 @@ internal sealed class ActionRequest
             (Name == ActionName.Key && RequireEditableFocus && Stroke?.Paste != true))
             throw new HelperError("invalid_params", "requireEditableFocus applies to cmd+v only");
         if (Name == ActionName.Key && Text != null && !RequireEditableFocus) throw new HelperError("invalid_params", "text applies to paste only");
+        if (p["menu"] != null)
+        {
+            if (p["menu"] is not JsonArray items || items.Count is < 1 or > 4) throw new HelperError("invalid_params", "menu must list 1 to 4 item names");
+            var names = new List<string>();
+            foreach (var item in items)
+            {
+                var name = Json.Text(item)?.Trim();
+                if (string.IsNullOrEmpty(name) || name.Length > 80) throw new HelperError("invalid_params", "menu item names must be 1 to 80 characters");
+                names.Add(name);
+            }
+            if (Ref == null) throw new HelperError("invalid_params", "menu needs a menu item ref");
+            Menu = names;
+        }
         if (Name == ActionName.Scroll)
         {
             Direction = Json.Text(p["direction"]);
@@ -169,6 +185,103 @@ internal static class UiaActions
     private static T? Pattern<T>(IUIAutomationElement element, UIA_PATTERN_ID id) where T : class
     {
         try { return element.GetCurrentPattern(id) as T; } catch { return null; }
+    }
+
+    private const int MenuItemType = 50011, MenuType = 50009, WindowType = 50032;
+
+    /// <summary>
+    /// Opens <paramref name="top"/>'s menu and chooses each named item in order (submenus expand, the last item is invoked),
+    /// all inside the caller's single foreground borrow: WinUI flyouts are light-dismissed as soon as the person's window is
+    /// restored, so a menu cannot be opened in one call and used in the next (decision 9337a92a). On failure the menu is closed.
+    /// </summary>
+    public static void MenuPath(IUIAutomation auto, IUIAutomationElement root, IUIAutomationElement top, IReadOnlyList<string> names, CancellationToken ct)
+    {
+        var current = top;
+        try
+        {
+            // A light-dismissed flyout can leave the item reporting Expanded; start from a closed menu so Expand opens a fresh one.
+            if (UiaSession.Current<int>(top, UIA_PROPERTY_ID.UIA_ExpandCollapseExpandCollapseStatePropertyId) != 0)
+                Pattern<IUIAutomationExpandCollapsePattern>(top, UIA_PATTERN_ID.UIA_ExpandCollapsePatternId)?.Collapse();
+            for (var i = 0; i < names.Count; i++)
+            {
+                var known = new HashSet<string>(FlyoutItems(auto, root).Select(RuntimeKey));
+                Expand(current);
+                current = WaitForItem(auto, root, known, names[i], i + 1, current, ct);
+            }
+            if (Pattern<IUIAutomationInvokePattern>(current, UIA_PATTERN_ID.UIA_InvokePatternId) is { } invoke) invoke.Invoke();
+            else if (Pattern<IUIAutomationTogglePattern>(current, UIA_PATTERN_ID.UIA_TogglePatternId) is { } toggle) toggle.Toggle();
+            else if (Pattern<IUIAutomationSelectionItemPattern>(current, UIA_PATTERN_ID.UIA_SelectionItemPatternId) is { } item) item.Select();
+            else throw new HelperError("invalid_params", "the last menu item opens a submenu; name an item inside it");
+        }
+        catch (Exception ex)
+        {
+            try { Pattern<IUIAutomationExpandCollapsePattern>(top, UIA_PATTERN_ID.UIA_ExpandCollapsePatternId)?.Collapse(); } catch { }
+            if (ex is HelperError or OperationCanceledException) throw;
+            UiaSession.Trace("menu path failed: " + ex);
+            throw Failure(ex, "background_unavailable");
+        }
+    }
+
+    private static void Expand(IUIAutomationElement element)
+    {
+        var expand = Pattern<IUIAutomationExpandCollapsePattern>(element, UIA_PATTERN_ID.UIA_ExpandCollapsePatternId)
+            ?? throw new HelperError("invalid_params", "menu path step has no submenu");
+        expand.Expand();
+    }
+
+    private static IUIAutomationElement WaitForItem(IUIAutomation auto, IUIAutomationElement root, HashSet<string> known, string name, int step, IUIAutomationElement opener, CancellationToken ct)
+    {
+        var start = Clock.Now;
+        var deadline = start + 1.5;
+        var reopened = false;
+        List<IUIAutomationElement> fresh = [];
+        var settledCount = -1;
+        var settledSince = start;
+        while (true)
+        {
+            fresh = FlyoutItems(auto, root).Where(e => !known.Contains(RuntimeKey(e))).ToList();
+            if (fresh.Count != settledCount) { settledCount = fresh.Count; settledSince = Clock.Now; }
+            var hit = fresh.FirstOrDefault(e => string.Equals(UiaSession.Current<string>(e, UIA_PROPERTY_ID.UIA_NamePropertyId)?.Trim(), name, StringComparison.Ordinal));
+            if (hit != null) { UiaSession.Trace($"menu item '{name}' after {Clock.MillisSince(start)}ms (fresh={fresh.Count}, reopened={reopened})"); return hit; }
+            if (Clock.Now >= deadline) break;
+            // The menu at this step is open and has stopped changing without the name: fail now rather than hold focus to the deadline.
+            if (fresh.Count > 0 && Clock.Now - settledSince >= 0.15) break;
+            // The first Expand right after the app was activated is sometimes dropped (measured on Notepad); ask once more.
+            if (!reopened && fresh.Count == 0 && Clock.MillisSince(start) >= 200) { reopened = true; try { Expand(opener); } catch (HelperError) { } }
+            Clock.Pause(25, ct);
+        }
+        UiaSession.Trace($"menu item '{name}' not found (fresh={fresh.Count}, reopened={reopened})");
+        // Only the names seen at this step (1-based over the menu array); Console quotes and truncates them.
+        var seen = fresh.Select(e => UiaSession.Current<string>(e, UIA_PROPERTY_ID.UIA_NamePropertyId)?.Trim()).Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
+        throw new HelperError("menu_item_not_found", "", new Obj(("step", step), ("available", seen.Take(40).Cast<object?>().ToList()), ("availableCount", seen.Count)));
+    }
+
+    private static string RuntimeKey(IUIAutomationElement e) =>
+        UiaSession.Current<int[]>(e, UIA_PROPERTY_ID.UIA_RuntimeIdPropertyId) is { Length: > 0 } id ? string.Join('.', id) : "";
+
+    /// <summary>Menu items of open WinUI flyouts: window → PopupWindowSiteBridge → InputSite → Popup → Menu → MenuItem.</summary>
+    internal static List<IUIAutomationElement> FlyoutItems(IUIAutomation auto, IUIAutomationElement root)
+    {
+        var walker = auto.ControlViewWalker;
+        var found = new List<IUIAutomationElement>();
+        void Visit(IUIAutomationElement parent, int depth, bool inMenu)
+        {
+            if (depth > 8) return;
+            IUIAutomationElement? child;
+            try { child = walker.GetFirstChildElement(parent); } catch { return; }
+            while (child != null)
+            {
+                var type = UiaSession.Current<int>(child, UIA_PROPERTY_ID.UIA_ControlTypePropertyId);
+                var cls = UiaSession.Current<string>(child, UIA_PROPERTY_ID.UIA_ClassNamePropertyId) ?? "";
+                if (inMenu && type == MenuItemType) found.Add(child);
+                else if (type == MenuType) Visit(child, depth + 1, true);
+                else if (!inMenu && (cls.Contains("PopupWindowSiteBridge", StringComparison.Ordinal) || cls.StartsWith("InputSite", StringComparison.Ordinal) || cls == "Popup" || (type == WindowType && depth > 0)))
+                    Visit(child, depth + 1, false);
+                try { child = walker.GetNextSiblingElement(child); } catch { child = null; }
+            }
+        }
+        Visit(root, 0, false);
+        return found;
     }
 
     public static void Press(UiaNode node, ClickKind kind)
@@ -361,6 +474,25 @@ internal sealed partial class HelperService
                 pulse = kind switch { ClickKind.DoubleClick => CursorFeedback.DoubleClick, ClickKind.RightClick => CursorFeedback.RightClick, _ => CursorFeedback.Click };
                 var (sx, sy) = local is { } l ? win.Screen(l.X, l.Y) : (0, 0);
                 if (local != null) cursorPoint = (sx, sy);
+                if (request.Menu is { } menu)
+                {
+                    if (node == null || !node.Patterns.Expand || node.ControlType != 50011) throw new HelperError("invalid_params", "menu applies to a menu item that opens a menu");
+                    var root = Uia.RootFor(win) ?? throw HelperError.Unavailable();
+                    Revalidate();
+                    if (win.Onscreen && cursorPoint is { } mp) CursorTo(win, mp, ct);
+                    Revalidate();
+                    try { ForegroundGuard.Run(win, notes, ct, () => UiaActions.MenuPath(Uia.Automation, root, node.El, menu, ct)); }
+                    catch (HelperError error) when (error.Code == "menu_item_not_found")
+                    {
+                        // The final item was not invoked, but focus was still borrowed: keep the restore outcome on the error.
+                        var details = error.Details ?? new Obj();
+                        details["notes"] = notes.Cast<object?>().ToList();
+                        throw new HelperError(error.Code, error.Message, details);
+                    }
+                    notes.Add("menu_path");
+                    via = "uia";
+                    break;
+                }
                 nint target = 0;
                 var message = false;
                 if (win.Onscreen && local != null)
@@ -386,6 +518,15 @@ internal sealed partial class HelperService
                 {
                     ForegroundGuard.Run(win, notes, ct, () => UiaActions.Press(actionable!, kind));
                     via = "uia";
+                    // A WinUI menu-bar item's flyout closes when the person's window is restored: say so instead of
+                    // leaving the agent to look for a menu that is already gone.
+                    if (actionable!.ControlType == 50011 && actionable.Patterns.Expand && kind == ClickKind.Click)
+                    {
+                        var settle = Clock.Now + 0.15;
+                        var collapsed = false;
+                        while (!(collapsed = UiaSession.Current<int>(actionable.El, UIA_PROPERTY_ID.UIA_ExpandCollapseExpandCollapseStatePropertyId) == 0) && Clock.Now < settle) Clock.Pause(15, ct);
+                        if (collapsed) notes.Add("menu_closed_on_restore");
+                    }
                 }
                 break;
             }
@@ -504,7 +645,7 @@ internal sealed partial class HelperService
                 Revalidate();
                 if (win.Onscreen && cursorPoint is { } cp) CursorTo(win, cp, ct);
                 if (editable?.Node != null) Pulse(CursorFeedback.TypingOn);
-                try { via = MessageInput.Key(editable?.Hwnd ?? MessageInput.FocusWindow(win), stroke, ct); }
+                try { via = MessageInput.Key(editable?.Hwnd ?? MessageInput.KeyWindow(win), stroke, ct); }
                 finally { if (editable?.Node != null) Pulse(CursorFeedback.TypingOff); }
                 break;
             }

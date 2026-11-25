@@ -243,7 +243,7 @@ export class ComputerUseService {
     if (!this.deps.enabled()) return reject("computer_use_disabled");
     if (!owner || signal?.aborted) return reject("computer_use_session_unavailable");
     let args;
-    try { args = parseDeviceInput(tool, input); }
+    try { args = parseDeviceInput(tool, input, this.os); }
     catch (cause) {
       const error = cause instanceof FleetHelperError ? cause : new FleetHelperError("invalid_params");
       let action: ActionArgs | undefined;
@@ -594,7 +594,7 @@ export class ComputerUseService {
       const plain = args.format === undefined || args.format === "text";
       params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true, ...(plain ? { text: args.text } : {}) };
     } else {
-      params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, foreground: args.foreground, to: end ?? (args.to ? { ref: args.to } : undefined) };
+      params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, foreground: args.foreground, menu: args.menu, to: end ?? (args.to ? { ref: args.to } : undefined) };
     }
     let reply;
     try {

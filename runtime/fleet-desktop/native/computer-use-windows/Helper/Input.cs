@@ -197,6 +197,23 @@ internal static class MessageInput
         return win.Hwnd;
     }
 
+    /// <summary>
+    /// Where a key goes. Like <see cref="FocusWindow"/>, except that when the target's thread focus is a WinUI input site inside the
+    /// target (or a popup it owns), the key goes to that input site. Measured on Notepad: with a menu the person opened, a posted Escape
+    /// there closes the menu, while the main window ignores it. Typing keeps <see cref="FocusWindow"/> (input sites take no WM_CHAR).
+    /// </summary>
+    public static nint KeyWindow(WindowInfo win)
+    {
+        if (!win.IsChromium)
+        {
+            var info = new GUITHREADINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<GUITHREADINFO>() };
+            var focus = GetGUIThreadInfo(Owner(win.Hwnd).Thread, ref info) ? info.hwndFocus : 0;
+            if (focus != 0 && IsWindow(focus) && BelongsToWindow(focus, win.Hwnd) && ClassName(focus).StartsWith("InputSite", StringComparison.Ordinal))
+                return focus;
+        }
+        return FocusWindow(win);
+    }
+
     /// <summary>Whether <paramref name="hwnd"/> is the target, a child of it, or inside a top-level window the target owns.</summary>
     public static bool BelongsToWindow(nint hwnd, nint target)
     {
