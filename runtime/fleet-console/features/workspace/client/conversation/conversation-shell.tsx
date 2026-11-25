@@ -73,6 +73,8 @@ import { ContextRailHost } from "./context-rail/rail.js";
 import { setContextFlyout, useContextRailState } from "./context-rail/store.js";
 import type { ContextRailScope } from "../../shared/context-rail.js";
 import { setSideBarConversationCompact, useSideBarState } from "../sidebar/objective-records-side-bar-store.js";
+import { CommandBoardStage } from "../command-board/command-board.js";
+import { useCommandBoardOpen } from "../command-board/command-board-store.js";
 import { ConversationDockHost } from "./conversation-dock-height.js";
 import "./conversation.css";
 
@@ -764,9 +766,13 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구모음은 같다. 지구본은 칩 옆 도구와 따로 맨 위 줄 오른쪽 끝에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
+  const commandBoardOpen = useCommandBoardOpen();
   const hasCommodores = useCommodoreList().length > 0;
   useConversationSidebarCompact(stageElement, viewport, insets.right);
   const tools = (lead: ReactNode = null, trail: ReactNode = null, tail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} tail={tail} band={band} />;
+
+  const splitRight = commandBoardOpen ? 0 : geometry.conversationRight;
+  const splitBottom = commandBoardOpen ? 0 : geometry.conversationBottom;
 
   return (
     <>
@@ -778,11 +784,13 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       className="conversation-stage"
       // 세 열은 창 높이 전체를 쓰고 서로 붙는다 — 사이드바의 실제 폭이 곧 이 칸의 좌우다. 도구 분할이 서면 그 폭(오른쪽)과
       // 대화 아래 줄 높이(아래)만큼 더 비킨다. 비킨 폭은 머리 pill 줄이 그만큼 오른쪽으로 더 뻗어 맨 위 줄 전체에 걸칠 때 쓴다.
-      style={{ left: insets.left, right: insets.right + geometry.conversationRight, bottom: geometry.conversationBottom, "--conversation-split-right": `${geometry.conversationRight}px` } as CSSProperties}
+      style={{ left: insets.left, right: insets.right + splitRight, bottom: splitBottom, "--conversation-split-right": `${splitRight}px` } as CSSProperties}
       aria-label={t("conversation.stage.aria")}
     >
       <ConversationDockHost.Provider value={stageElement}>
-      {surfaceDescriptor && surface ? (
+      {commandBoardOpen ? (
+        <CommandBoardStage />
+      ) : surfaceDescriptor && surface ? (
         <ConversationSurfaceColumn
           descriptor={surfaceDescriptor}
           selection={surface}
@@ -821,17 +829,19 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       {/* 독립 Claude Code CLI(Ctrl+₩) — 칸 위에 서고, 닫으면 밑에 그대로 있던 대화가 다시 보인다. */}
       <StandaloneCliLayer language={language} theme={state.activeTheme} shortcutLabel={standaloneCliShortcut} />
     </section>
-    <ConversationWorkbench
-      layerRef={workbenchLayerRef}
-      insets={insets}
-      geometry={geometry}
-      layout={shownLayout}
-      focusedTileId={focusedTileId}
-      bindings={railBindings}
-      toolContext={workbenchToolContext}
-      state={state}
-      language={language}
-    />
+    {!commandBoardOpen ? (
+      <ConversationWorkbench
+        layerRef={workbenchLayerRef}
+        insets={insets}
+        geometry={geometry}
+        layout={shownLayout}
+        focusedTileId={focusedTileId}
+        bindings={railBindings}
+        toolContext={workbenchToolContext}
+        state={state}
+        language={language}
+      />
+    ) : null}
 
     </>
   );

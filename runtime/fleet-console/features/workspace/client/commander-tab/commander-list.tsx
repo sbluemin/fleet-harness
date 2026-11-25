@@ -1,13 +1,12 @@
 import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useViewportFit, ChevronGlyph, MenuCheckGlyph } from "@fleet-console/ui/react";
+import { useViewportFit, MenuCheckGlyph } from "@fleet-console/ui/react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { openCommanderRowMenu } from "../sidebar/commander-row-menu-store.js";
 import type { RowPopups, SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
-import { SettledDoneGlyph, SettledFreshGlyph } from "../sidebar/side-bar-cluster-row.js";
 import { commanderObjectiveId } from "../objective-clusters.js";
 import { SideBarClusterRow } from "../sidebar/side-bar-cluster-row.js";
 import { CommodoreAvatar } from "../../../commodore/client/commodore-avatar.js";
@@ -15,9 +14,7 @@ import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/clie
 import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
-import { isNotStartedRow } from "./commander-rows.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
-import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { useCommanderRows, type CommanderSection } from "./commander-rows.js";
 import { CommanderRowGlyphs, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import "./commander-list.css";
@@ -29,38 +26,7 @@ import "./commander-list.css";
  */
 export type CommanderGlyphOpen = (objectiveId: string, tab: CommanderRowGlyphTab, item: SideBarRowItem, opener: HTMLElement) => void;
 
-/** 접힌 settled 머리의 접근 이름 — 0인 상태는 빼고 시작 전·완료를 나눠 읽는다. */
-function settledToggleLabel(t: ReturnType<typeof useT>, collapsed: boolean, fresh: number, done: number): string {
-  const parts: string[] = [];
-  if (fresh > 0) parts.push(t("commanderTab.settledFresh", { n: fresh }));
-  if (done > 0) parts.push(t("commanderTab.settledDone", { n: done }));
-  return t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { parts: parts.join(" · ") });
-}
-
-/**
- * 접힌 settled 머리의 분리 개수 — 행 글리프와 같은 표시(SettledFreshGlyph·SettledDoneGlyph) + 숫자라 좁은 사이드바에 들어간다.
- * 시작 전 먼저, 완료 다음. 0인 상태는 자리를 차지하지 않는다. 버튼의 접근 이름이 뜻을 말하므로 장식이다.
- */
-function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done: number }) {
-  return (
-    <span className="commander-tab-settled-count" aria-hidden="true">
-      {fresh > 0 ? (
-        <span className="commander-tab-settled-part">
-          <SettledFreshGlyph />
-          {fresh}
-        </span>
-      ) : null}
-      {done > 0 ? (
-        <span className="commander-tab-settled-part">
-          <SettledDoneGlyph />
-          {done}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups, onGlyphTab }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onRowMenu, sortNameOnly = false, card = false, showBar = true, heading, popups, onGlyphTab }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
@@ -71,8 +37,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   readonly card?: boolean;
   /** 정렬 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
   readonly showBar?: boolean;
-  /** 시작 전·완료 구역을 그리지 않는다 — 좌측 사이드바의 「시작 전·완료 보이기」를 끈 경우다. */
-  readonly hideSettled?: boolean;
   /** 목록 막대 앞에 서는 섹션 머리 — 개수와 함께 부른다. */
   readonly heading?: ReactNode;
   /** 작업 탭 카드의 행 단추(아바타 대화 열기·임무 게이지 팝업) — 목표 행에만 건넨다. 없으면 지금 행 그대로다. */
@@ -83,10 +47,10 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
   const t = useT();
   const desktop = useViewMode().effective !== "mobile";
   const rows = useCommanderRows(commodoreId, selectedId);
-  const { sorted, preference } = rows;
-  const listSections = hideSettled ? rows.listSections.filter((group) => group.settled !== true) : rows.listSections;
-  const folds = useCommanderFolds();
-  const groupsId = useId();
+  const { preference } = rows;
+  // 시작 전·완료 목표는 통합 지휘판에서 관리하므로 사령관별 목록은 진행·검토 중인 지휘관만 보여 준다.
+  const listSections = rows.listSections.filter((group) => group.settled !== true);
+  const hasActiveRows = listSections.some((group) => group.rows.length > 0);
   const renderItems = (rows: readonly SideBarRowItem[], settled: boolean) => rows.map((item) => {
     const objectiveId = commanderObjectiveId(item.layout.cluster);
     const selected = objectiveId !== null && selectedId === objectiveId;
@@ -100,12 +64,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         onContextMenu={onRowMenu ?? (desktop ? (row, anchor, returnFocus, focusFirst) => openCommanderRowMenu({ item: row, anchor, returnFocus, focusFirst }) : undefined)} />
     </Fragment>;
   });
-  // 우측 작업 탭 카드만 시작 전·완료를 카드 밖 구역으로 나눈다. 줄 순서는 통합 목록(기한·최근 완료)을 유지하고, 접힘은 fresh/done 키다.
-  const settledRows = listSections.find((group) => group.settled === true)?.rows;
-  const outsideFolds: readonly { id: Extract<CommanderFold, "fresh" | "done">; label: "sidebar.row.glyph.fresh" | "sidebar.row.glyph.done"; count: "commanderTab.settledFresh" | "commanderTab.settledDone"; rows: readonly SideBarRowItem[] }[] = [
-    { id: "fresh", label: "sidebar.row.glyph.fresh", count: "commanderTab.settledFresh", rows: settledRows?.filter((item) => isNotStartedRow(item.row)) ?? [] },
-    { id: "done", label: "sidebar.row.glyph.done", count: "commanderTab.settledDone", rows: settledRows?.filter((item) => item.row.glyph === "done") ?? [] },
-  ];
 
   return (
     <section className={["commander-tab", card ? "commander-tab--card" : ""].filter(Boolean).join(" ")} aria-label={t("commanderTab.aria")}>
@@ -113,72 +71,33 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
         {heading ? <span className="commander-tab-heading">{heading}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
       </div> : null}
-      {sorted.length === 0 ? null : card ? (
-        <>
-          {listSections.some((group) => group.settled !== true) ? (
-            <div className="commander-tab-groups">
-              {listSections.filter((group) => group.settled !== true).map((group) => {
-                return <section key={group.id}>
-                  {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-                  <ol className="commander-tab-list side-bar-group-chips">{renderItems(group.rows, false)}</ol>
-                </section>;
-              })}
-            </div>
-          ) : null}
-          {outsideFolds.map((fold) => {
-            if (fold.rows.length === 0) return null;
-            const collapsed = folds[fold.id];
-            const listId = `${groupsId}-${fold.id}`;
-            return <section key={fold.id} className="commander-tab-outside">
-              <button type="button" className="commander-tab-outside-head" aria-expanded={!collapsed} aria-controls={listId}
-                aria-label={t(collapsed ? "commanderTab.settledExpand" : "commanderTab.settledCollapse", { parts: t(fold.count, { n: fold.rows.length }) })}
-                onClick={() => toggleFold(fold.id)}>
-                <span>{t(fold.label)}</span>
-                <span className="commander-tab-outside-count">{fold.rows.length}</span>
-                <span className="commander-tab-outside-rule" aria-hidden="true" />
-                <ChevronGlyph direction="right" className="commander-tab-outside-chev" />
-              </button>
-              <ol id={listId} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>{renderItems(fold.rows, true)}</ol>
+      {!hasActiveRows ? null : card ? (
+        <div className="commander-tab-groups">
+          {listSections.map((group) => {
+            return <section key={group.id}>
+              {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+              <ol className="commander-tab-list side-bar-group-chips">{renderItems(group.rows, false)}</ol>
             </section>;
           })}
-        </>
+        </div>
       ) : (
-        <CommanderSidebarSections sections={listSections} folds={folds} onToggle={toggleFold} renderItems={renderItems} />
+        <CommanderSidebarSections sections={listSections} renderItems={renderItems} />
       )}
     </section>
   );
 }
 
-/** 같은 Console과 미전환 Console이 같은 그룹·접힘·개수 머리를 쓴다. 데이터와 쓰기는 명시적 입력이다. */
-export function CommanderSidebarSections({ sections, folds, onToggle, renderItems }: {
+/** 같은 Console과 미전환 Console이 같은 그룹 머리를 쓴다. 데이터와 쓰기는 명시적 입력이다. */
+export function CommanderSidebarSections({ sections, renderItems }: {
   readonly sections: readonly CommanderSection[];
-  readonly folds: Readonly<Record<CommanderFold, boolean>>;
-  readonly onToggle: (id: CommanderFold) => void;
   readonly renderItems: (rows: readonly SideBarRowItem[], settled: boolean) => ReactNode;
 }) {
-  const t = useT();
-  const mobile = useViewMode().effective === "mobile";
-  const groupsId = useId();
-  return <div className="commander-tab-groups">{sections.map((group) => {
-    const foldId = group.settled === true ? group.fold : null;
-    const collapsed = foldId !== null && folds[foldId];
-    const listId = `${groupsId}-${group.id}`;
-    const settledParts: string[] = [];
-    if ((group.freshCount ?? 0) > 0) settledParts.push(t("commanderTab.settledFresh", { n: group.freshCount ?? 0 }));
-    if ((group.doneCount ?? 0) > 0) settledParts.push(t("commanderTab.settledDone", { n: group.doneCount ?? 0 }));
-    return <section key={group.id}>
-      {group.settled === true
-        ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
-            aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)} onClick={() => { if (foldId !== null) onToggle(foldId); }}>
-            {mobile && settledParts.length > 0 ? <span className="commander-tab-settled-mobile-label">{settledParts.join(" · ")}</span> : null}
-            <span className="commander-tab-settled-rule" aria-hidden="true" />
-            {!mobile && collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
-            <ChevronGlyph direction={collapsed ? "right" : "down"} />
-          </button>
-        : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-      <ol id={group.settled === true ? listId : undefined} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>{renderItems(group.rows, group.settled === true)}</ol>
-    </section>;
-  })}</div>;
+  return <div className="commander-tab-groups">{sections.map((group) => (
+    <section key={group.id}>
+      {group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+      <ol className="commander-tab-list side-bar-group-chips">{renderItems(group.rows, false)}</ol>
+    </section>
+  ))}</div>;
 }
 
 export function useCommanderOwner(commodoreId: string) {

@@ -25,6 +25,7 @@ export interface ShortcutCommand {
 }
 
 export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
+  { id: "console.command-board", group: "console", descriptionKey: "shortcuts.console.commandBoard", defaults: ["Mod+KeyB"] },
   { id: "console.search-objectiveRecords", group: "console", descriptionKey: "shortcuts.console.searchOps", defaults: ["Mod+KeyK"] },
   { id: "console.command-palette", group: "console", descriptionKey: "shortcuts.console.commandPalette", defaults: ["Mod+KeyP"] },
   { id: "console.new-taskforce", group: "console", descriptionKey: "shortcuts.console.newTaskforce", defaults: ["Mod+Shift+KeyN"] },

@@ -1661,9 +1661,15 @@ html[data-desktop-shell="true"] .conversation-profile-popover {
 .console-shell.is-objective-records-view .side-bar-top-strip > * { pointer-events: auto; }
 .console-shell.is-objective-records-view .side-bar-top-strip > .side-bar-top-strip-spacer { pointer-events: none; }
 
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-command-board-wrap {
+  margin-top: var(--conversation-top-row);
+}
 .console-shell.is-objective-records-view .side-bar-wide {
   position: relative;
   margin-top: var(--conversation-top-row);
+}
+.console-shell.is-objective-records-view .objective-records-side-bar:not(.is-compact) .side-bar-command-board-wrap + .side-bar-wide {
+  margin-top: 0;
 }
 .console-shell.is-objective-records-view .side-bar-wide::before,
 .console-shell.is-objective-records-view .side-bar-wide::after {

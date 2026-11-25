@@ -2,6 +2,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
+import { openCommandBoard } from "../../workspace/client/command-board/command-board-store.js";
 import { openCommanderConversation } from "../../workspace/client/commander-tab/commander-navigation.js";
 import { registerContextRailProvider, type ContextRailProvider } from "../../workspace/client/conversation/context-rail/registry.js";
 import type { ContextRailExtraItem, ContextRailMeasure } from "../../workspace/shared/context-rail.js";
@@ -28,6 +29,14 @@ const RoutinesChipGlyph = () => (
   <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M13 8a5 5 0 1 1-1.45-3.55" />
     <path d="M13 3.2v2.7h-2.7" />
+  </svg>
+);
+
+const CommandBoardLinkGlyph = () => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="2" y="2.5" width="3.2" height="11" rx="1" />
+    <rect x="6.4" y="2.5" width="3.2" height="7.5" rx="1" />
+    <rect x="10.8" y="2.5" width="3.2" height="9.2" rx="1" />
   </svg>
 );
 
@@ -68,7 +77,16 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
     : openGoals.length > 0
       ? t("commodore.edge.goalsIdle")
       : t("commodore.edge.goalsEmpty");
-  const hasAnyGoals = openGoals.length > 0 || finishedObjectives(commodoreId).length > 0 || !board.loaded;
+  const freshGoalsCount = openGoals.length - activeGoals.length;
+  const doneGoalsCount = finishedObjectives(commodoreId).length;
+  const hasActiveOrLoadingGoals = activeGoals.length > 0 || !board.loaded;
+  const hasSettledGoals = freshGoalsCount > 0 || doneGoalsCount > 0;
+  const settledSummary = hasSettledGoals
+    ? [
+      freshGoalsCount > 0 ? t("commodore.edge.settledFresh", { n: freshGoalsCount }) : null,
+      doneGoalsCount > 0 ? t("commodore.edge.settledDone", { n: doneGoalsCount }) : null,
+    ].filter((part): part is string => part !== null).join(" · ")
+    : null;
 
   const routines = view?.state.routines ?? [];
   const enabledRoutines = routines.filter((routine) => routine.enabled).length;
@@ -92,7 +110,7 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
       panelSubtitle: name,
       render: (close) => (
         <div className="commodore-edge-panel workspace-avatar-panel" style={accent ?? undefined}>
-          {hasAnyGoals ? (
+          {hasActiveOrLoadingGoals ? (
             <tasks.List
               commodoreId={commodoreId}
               selectedId={null}
@@ -104,8 +122,27 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
               }}
             />
           ) : (
-            <p className="commodore-edge-empty">{t("commodore.edge.goalsEmptyBody")}</p>
+            <p className="commodore-edge-empty">
+              {hasSettledGoals ? t("commodore.edge.goalsActiveEmpty") : t("commodore.edge.goalsEmptyBody")}
+            </p>
           )}
+          <button
+            type="button"
+            className="commodore-edge-board-link"
+            onClick={() => {
+              close();
+              openCommandBoard({ commodoreId });
+            }}
+          >
+            <span className="commodore-edge-board-link-main">
+              <CommandBoardLinkGlyph />
+              <span>{t("commodore.edge.openCommandBoard")}</span>
+            </span>
+            <span className="commodore-edge-board-link-meta">
+              {settledSummary ? <span>{settledSummary}</span> : null}
+              <span aria-hidden="true">→</span>
+            </span>
+          </button>
         </div>
       ),
     });

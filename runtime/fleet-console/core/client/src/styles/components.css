@@ -3015,6 +3015,143 @@ html[data-viewport-resizing="true"] .objective-records-side-bar {
   flex: 1;
 }
 
+/* 사이드바 최상단 고정 지휘판 진입 행 — 스크롤되는 사령관 목록 위에 항상 고정한다. */
+.side-bar-command-board-wrap {
+  flex: none;
+  padding: 0 var(--space-2) var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--hairline-column);
+}
+
+.side-bar-command-board-wrap.is-compact {
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.side-bar-command-board-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+
+.side-bar-command-board-row:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.side-bar-command-board-row.is-active {
+  background: var(--surface-row-selected);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.side-bar-command-board-row:focus-visible,
+.side-bar-command-board-compact:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.side-bar-command-board-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-primary);
+}
+
+.side-bar-command-board-row.is-active .side-bar-command-board-icon {
+  background: var(--control-wash);
+}
+
+.side-bar-command-board-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.side-bar-command-board-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.side-bar-command-board-overdue {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--coral);
+}
+
+.side-bar-command-board-review {
+  color: var(--warn-ink);
+  font-weight: var(--weight-bold);
+}
+
+.side-bar-command-board-count {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--control-wash);
+  color: var(--text-secondary);
+}
+
+.side-bar-command-board-compact {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.side-bar-command-board-compact:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.side-bar-command-board-compact.is-active {
+  background: var(--surface-row-selected);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.side-bar-command-board-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+}
+
 .objective-records-side-bar-chips {
   flex: 1;
   min-height: 0;

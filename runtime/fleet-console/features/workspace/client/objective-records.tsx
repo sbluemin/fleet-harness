@@ -38,6 +38,7 @@ import { getViewModeSnapshot, useViewMode } from "../../../core/client/src/integ
 import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 import { CONVERSATION_RESERVED_ARENA_WIDTH, ConversationRightRail, ConversationPanelHeader, ConversationShellHost, ConversationSideBarActions, ConversationSideBarBottom, ConversationStage } from "./conversation/conversation-shell.js";
 import { setArenaInsets, type ArenaInsets } from "./conversation/arena-insets.js";
+import { closeCommandBoard } from "./command-board/command-board-store.js";
 import { closeConversationSurface } from "./conversation/conversation-surface-store.js";
 import { setConversationObjectiveRename } from "./conversation/conversation-slots.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
@@ -381,6 +382,7 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
 
 function focusConversationObjective(objectiveRecord: ObjectiveRecord): void {
   revealObjectiveStage();
+  closeCommandBoard();
   closeConversationSurface();
   setActiveObjective(objectiveRecord.id);
   requestObjectiveKeyboardFocus(objectiveRecord.id);
