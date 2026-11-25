@@ -1,0 +1,605 @@
+/* 목표 보드(칸반) 온보딩 카드 무대 및 인터랙티브 미니 보드.
+   셀렉터는 .obi- 로 한정하고, 색·활자·무게·반경은 모두 Console 테마 토큰만 사용한다. */
+
+.obi-stage {
+  position: relative;
+  margin: 14px 16px 0;
+  aspect-ratio: 640 / 300;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas-abyss);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.obi-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 10px 8px;
+  gap: 8px;
+}
+
+.obi-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.obi-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  color: var(--text-primary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  min-width: 0;
+}
+
+.obi-pill-mark {
+  display: inline-grid;
+  place-items: center;
+  color: var(--brass-ink);
+  flex: none;
+}
+
+.obi-pill-sub {
+  color: var(--text-tertiary);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.obi-topbar-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.obi-views {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+}
+
+.obi-view-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.obi-view-btn:hover {
+  color: var(--text-primary);
+}
+
+.obi-view-btn.is-active {
+  background: var(--wash-selected);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.obi-demo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.obi-demo-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.obi-board-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.obi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  height: 100%;
+}
+
+.obi-col {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  min-height: 0;
+  padding: 6px;
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--canvas-side) 68%, var(--canvas-abyss));
+}
+
+.obi-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 0 2px 2px;
+  flex: none;
+}
+
+.obi-col-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.obi-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+
+.obi-dot--fresh { background: var(--text-tertiary); }
+.obi-dot--active { background: var(--aurora); }
+.obi-dot--review { background: var(--warn); }
+.obi-dot--done { background: var(--positive); }
+
+.obi-col-title {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.obi-col-count {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.obi-col-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  scrollbar-width: none;
+}
+
+.obi-col-list::-webkit-scrollbar {
+  display: none;
+}
+
+.obi-empty {
+  padding: 16px 4px;
+  text-align: center;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  opacity: 0.65;
+}
+
+/* 좌측 색 띠 없는 중립 헤어라인 카드 — 실제 목표 보드(command-board.css)의 문법을 그대로 따른다. */
+.obi-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.obi-card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-panel-raised);
+  transform: translateY(-1px);
+}
+
+.obi-card.is-selected {
+  border-color: var(--aurora);
+  background: var(--surface-panel-raised);
+}
+
+@keyframes obi-card-arrive {
+  0% { opacity: 0; transform: translateX(-12px) scale(0.96); }
+  70% { opacity: 1; transform: translateX(2px) scale(1.01); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.obi-card.is-just-moved {
+  animation: obi-card-arrive 0.45s cubic-bezier(0.18, 0.92, 0.28, 1.05);
+}
+
+.obi-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.obi-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.obi-owner-name {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.obi-tone--moss { color: var(--id-moss); }
+.obi-tone--crimson { color: var(--id-crimson); }
+.obi-tone--cerulean { color: var(--id-cerulean); }
+.obi-tone--amber { color: var(--id-amber); }
+
+.obi-send--moss { background: var(--identity-bubble-moss); }
+.obi-send--crimson { background: var(--identity-bubble-crimson); }
+.obi-send--cerulean { background: var(--identity-bubble-cerulean); }
+.obi-send--amber { background: var(--identity-bubble-amber); }
+
+.obi-card-title {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.32;
+  color: var(--text-primary);
+  word-break: keep-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.obi-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+.obi-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+}
+
+.obi-tag--active {
+  background: var(--aurora-glow);
+  color: var(--aurora-ink);
+}
+
+.obi-tag--review {
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+}
+
+.obi-tag--done {
+  background: var(--positive-glow);
+  color: var(--positive-ink);
+}
+
+.obi-card-hint {
+  opacity: 0.6;
+}
+
+/* 사령관별 보기(스윔레인) & 매트릭스 보기 */
+.obi-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.obi-lanes::-webkit-scrollbar {
+  display: none;
+}
+
+.obi-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--canvas-side) 68%, var(--canvas-abyss));
+}
+
+.obi-lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.obi-lane-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.obi-matrix {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 6px;
+  height: 100%;
+}
+
+.obi-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px;
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--canvas-side) 68%, var(--canvas-abyss));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.obi-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.obi-rail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+
+.obi-rail-item:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.obi-rail-item.is-active {
+  background: var(--wash-selected);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.obi-rail-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.obi-rail-count {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 카드 클릭 시 열리는 사령관 인라인 지시 트레이 */
+@keyframes obi-tray-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.obi-tray {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--dialog-surface-shadow);
+  animation: obi-tray-in 0.18s ease-out;
+}
+
+.obi-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--t-xs);
+}
+
+.obi-tray-title {
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.obi-tray-close {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.obi-tray-close:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.obi-tray-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.obi-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.obi-preset-btn:hover {
+  background: var(--aurora-glow);
+  border-color: var(--aurora);
+}
+
+.obi-tray-form {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.obi-tray-input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--control-field);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  outline: none;
+}
+
+.obi-tray-input:focus {
+  border-color: var(--hairline-strong);
+}
+
+.obi-send-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  color: var(--text-on-identity);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  flex: none;
+}
+
+.obi-send-btn:hover {
+  opacity: 0.9;
+}
+
+@keyframes obi-toast-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.obi-toast {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--dialog-face);
+  box-shadow: var(--popover-shadow);
+  color: var(--text-primary);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: obi-toast-in 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .obi-card,
+  .obi-card.is-just-moved,
+  .obi-tray,
+  .obi-toast {
+    animation: none;
+    transition: none;
+  }
+}
+
+.obi-stage.is-reduced .obi-card,
+.obi-stage.is-reduced .obi-card.is-just-moved,
+.obi-stage.is-reduced .obi-tray,
+.obi-stage.is-reduced .obi-toast {
+  animation: none;
+  transition: none;
+}

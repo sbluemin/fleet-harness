@@ -10,9 +10,17 @@ import { useViewMode } from "../../../core/client/src/integration/view-mode-stor
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { readCommodoreList } from "../../commodore/client/commodore-list.js";
-import { QUAKER_PROMOTION_SEEN_KEY, TASKFORCE_INTRO_SEEN_KEY, rememberSeen } from "./seen-store.js";
+import {
+  OBJECTIVES_BOARD_INTRO_SEEN_KEY,
+  QUAKER_PROMOTION_SEEN_KEY,
+  TASKFORCE_INTRO_SEEN_KEY,
+  THE_WORLD_COMING_SOON_SEEN_KEY,
+  rememberSeen,
+} from "./seen-store.js";
 import { TaskforceIntroCard, TaskforceIntroLink } from "./taskforce-intro.js";
 import { QuakerPromotionCard, QuakerPromotionLink } from "./quaker-promotion-card.js";
+import { ObjectivesBoardIntroCard, ObjectivesBoardIntroLink } from "./objectives-board-intro.js";
+import { TheWorldComingSoonCard, TheWorldComingSoonNote } from "./the-world-coming-soon.js";
 
 // 새 기능 카드 — 지금까지 나온 카드의 유일한 목록이다. 첫 실행 노출과 도움말 › 새 기능 다시보기가
 // 같은 목록을 같은 순서로 읽는다. 새 카드는 이 목록 끝에 한 항목을 더하면 두 곳 모두에 이어진다.
@@ -51,6 +59,20 @@ export const FEATURE_CARDS: readonly FeatureCard[] = [
     autoShow: () => true,
     Content: QuakerPromotionCard,
     Link: QuakerPromotionLink,
+  },
+  {
+    seenKey: OBJECTIVES_BOARD_INTRO_SEEN_KEY,
+    // 목표 보드 소개는 모두에게 보여 준다.
+    autoShow: () => true,
+    Content: ObjectivesBoardIntroCard,
+    Link: ObjectivesBoardIntroLink,
+  },
+  {
+    seenKey: THE_WORLD_COMING_SOON_SEEN_KEY,
+    // 더 월드 공개 예고는 모두에게 보여 준다.
+    autoShow: () => true,
+    Content: TheWorldComingSoonCard,
+    Link: TheWorldComingSoonNote,
   },
 ];
 
@@ -116,12 +138,15 @@ function FeatureCardsDialog({ cards, onClose }: { readonly cards: readonly Featu
         event.preventDefault();
         onClose();
       } else if (total > 1 && (event.key === "ArrowRight" || event.key === "ArrowLeft")) {
+        // 카드 안 입력창에서 커서를 옮기는 화살표는 가로채지 않는다.
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
         event.preventDefault();
         step(event.key === "ArrowRight" ? 1 : -1);
       } else if (event.key === "Tab") {
         const container = dialogRef.current;
         if (!container) return;
-        const focusable = [...container.querySelectorAll<HTMLElement>("button:not([disabled])")];
+        const focusable = [...container.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled])")];
         const first = focusable[0];
         const lastFocusable = focusable[focusable.length - 1];
         if (!first || !lastFocusable) {

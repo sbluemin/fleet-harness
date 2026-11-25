@@ -1,0 +1,291 @@
+/* 더 월드(Coming Soon) 피처카드 무대 — 18명 사령관 전원 + 별 제독 초원 마을 디오라마.
+   셀렉터는 .twc- 로 한정하고, CSS 색은 모두 Console 테마 토큰 또는 무채색 깊이 리터럴만 사용한다. */
+
+.twc-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--role-commodore-ink);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.twc-chip {
+  border: 1px solid color-mix(in oklch, var(--role-commodore) 45%, var(--hairline-strong));
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  background: color-mix(in oklch, var(--role-commodore) 11%, transparent);
+  color: var(--role-commodore-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.twc-stage {
+  position: relative;
+  margin: 14px 16px 0;
+  aspect-ratio: 640 / 300;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--canvas-abyss);
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.twc-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+/* 18명 사령관 캐릭터 레이어 — 실제 3D 플러시 MongleAvatar 를 초원 좌표에 맞춰 배치한다. */
+.twc-actors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+@keyframes twc-bob {
+  0%, 100% { transform: translate(-50%, -82%); }
+  50% { transform: translate(-50%, calc(-82% - 3px)); }
+}
+
+@keyframes twc-jump {
+  0% { transform: translate(-50%, -82%) scale(1); }
+  35% { transform: translate(-50%, calc(-82% - 16px)) scale(1.07); }
+  65% { transform: translate(-50%, -82%) scale(0.96); }
+  100% { transform: translate(-50%, -82%) scale(1); }
+}
+
+.twc-actor {
+  position: absolute;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  transform: translate(-50%, -82%);
+  animation: twc-bob 2.6s ease-in-out infinite;
+}
+
+.twc-actor:hover,
+.twc-actor.is-focused {
+  z-index: 400 !important;
+}
+
+.twc-actor.is-jumping {
+  animation: twc-jump 0.65s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+.twc-actor-shadow {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 62%;
+  height: 22%;
+  transform: translateX(-50%);
+  border-radius: var(--radius-pill);
+  /* Doctrine: 무채색 그림자 리터럴(깊이 예외) — 초원 위 캐릭터 접지 그림자. */
+  background: oklch(14% 0.01 250 / 28%);
+  pointer-events: none;
+}
+
+.twc-actor-ring {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 78%;
+  height: 30%;
+  transform: translateX(-50%);
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--role-commodore);
+  pointer-events: none;
+}
+
+.twc-nametag {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 1px 7px;
+  border: 1px solid color-mix(in oklch, var(--role-commodore) 55%, transparent);
+  border-radius: var(--radius-pill);
+  /* Doctrine: 무채색 반투명 덮개 리터럴(깊이 예외) — 초원/밤하늘 위에서 항상 판독되는 이름표. */
+  background: oklch(14% 0.012 250 / 84%);
+  color: oklch(96% 0.004 90);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 상단 반투명 HUD 필 — 실제 「더 월드」 HUD 감성을 유지한다. */
+.twc-hud-left {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.twc-hud-right {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.twc-hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 9px;
+  /* Doctrine: 무채색 반투명 덮개 리터럴(깊이 예외) — 밝은 초원/어두운 별밤 위 HUD 가독성 보장. */
+  border: 1px solid oklch(96% 0.004 90 / 18%);
+  border-radius: var(--radius-pill);
+  background: oklch(14% 0.012 250 / 76%);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: oklch(96% 0.004 90);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.twc-hud-pill:hover {
+  background: oklch(18% 0.014 250 / 88%);
+  border-color: color-mix(in oklch, var(--role-commodore) 52%, transparent);
+}
+
+.twc-hud-pill.is-lit {
+  border-color: color-mix(in oklch, var(--role-commodore) 70%, transparent);
+}
+
+.twc-hud-hint {
+  pointer-events: none;
+  opacity: 0.86;
+}
+
+/* RPG 대화 말풍선 */
+@keyframes twc-bubble-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.twc-bubble {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 452;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 5px 11px;
+  border: 1px solid color-mix(in oklch, var(--role-commodore) 52%, transparent);
+  border-radius: var(--radius-pill);
+  /* Doctrine: 무채색 반투명 덮개 리터럴(깊이 예외) — 디오라마 위 대화 가독성 보장. */
+  background: oklch(14% 0.012 250 / 88%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: oklch(96% 0.004 90);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  animation: twc-bubble-in 0.18s ease-out;
+}
+
+.twc-bubble-name {
+  color: var(--role-commodore);
+  font-weight: var(--weight-bold);
+  flex: none;
+}
+
+/* 하단 18명 사령관 도감 스트립 (토글 시 표시) */
+.twc-roster {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 454;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  /* Doctrine: 무채색 반투명 덮개 리터럴(깊이 예외). */
+  border: 1px solid oklch(96% 0.004 90 / 16%);
+  border-radius: var(--radius-md);
+  background: oklch(13% 0.012 250 / 84%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.twc-roster::-webkit-scrollbar {
+  display: none;
+}
+
+.twc-roster-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  padding: 2px 7px 2px 3px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  /* Doctrine: 무채색 반투명 워시 리터럴(깊이 예외). */
+  background: oklch(96% 0.004 90 / 8%);
+  color: oklch(95% 0.004 90);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.twc-roster-chip:hover,
+.twc-roster-chip.is-active {
+  background: oklch(96% 0.004 90 / 18%);
+  border-color: color-mix(in oklch, var(--role-commodore) 68%, transparent);
+}
+
+.twc-soon-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twc-actor,
+  .twc-actor.is-jumping,
+  .twc-bubble {
+    animation: none;
+  }
+}
+
+.twc-stage.is-reduced .twc-actor,
+.twc-stage.is-reduced .twc-actor.is-jumping,
+.twc-stage.is-reduced .twc-bubble {
+  animation: none;
+}
