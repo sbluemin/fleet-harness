@@ -159,7 +159,7 @@ internal static unsafe class WindowCapture
 
     private static Raw? Wgc(nint hwnd, CancellationToken ct)
     {
-        // 테두리 없는 캡처 API는 Windows 10.0.20348 이상에만 있다. 지원 하한(19041)에서는 노란 테두리를 감수한다.
+        // Borderless capture exists only on Windows 10.0.20348+; below that (down to the 19041 floor) the capture border stays.
         if (!borderlessRequested && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
         {
             borderlessRequested = true;
