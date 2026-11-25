@@ -259,13 +259,13 @@ describe("openui hydrator containment", () => {
     await Promise.resolve();
   });
 
-  async function hydrated(markdown: string, options: { readonly streaming?: boolean; readonly reply?: (text: string) => void; readonly open?: OpenUIOpenPort } = {}): Promise<HTMLElement[]> {
+  async function hydrated(markdown: string, options: { readonly streaming?: boolean; readonly reply?: (text: string) => void; readonly open?: OpenUIOpenPort; readonly draft?: (text: string) => void } = {}): Promise<HTMLElement[]> {
     const container = document.createElement("div");
     container.innerHTML = renderMarkdown(markdown, { openui: true, ...(options.streaming ? { deferUnclosedMermaid: true } : {}) }).html;
     document.body.append(container);
     containers.add(container);
     const { installOpenUIHydrator } = await import("@fleet-console/markdown/openui");
-    installOpenUIHydrator(container, undefined, options.reply, options.open);
+    installOpenUIHydrator(container, undefined, options.reply, options.open, options.draft);
     const blocks = [...container.querySelectorAll<HTMLElement>(".openui-block")];
     await waitFor(() => blocks.every((block) => block.dataset.openuiState === "hidden" || (block.dataset.openuiState === "rendered" && block.querySelector("section.openui") !== null)), 5000);
     return blocks;
@@ -560,5 +560,79 @@ describe("openui hydrator containment", () => {
     releaseOpenUIHydrator(container);
     await waitFor(() => last.childNodes.length === 0);
     expect(container.querySelector("[data-openui-owned]")).toBeNull();
+  });
+
+  // 새 컴포넌트(EntityCard·Actions·Checklist·Tabs·Collapsible·Snippet·Breakdown)의 보안·포함·초안 경계.
+  it("contains entity resolution, draft port separation, checklists, disclosure nesting, snippets, and breakdowns", async () => {
+    const { composeChecklistDraft } = await import("@fleet-console/markdown/openui");
+    expect(composeChecklistDraft("처리: {selected}", ["항목 A", "항목 B"])).toBe("처리: 항목 A, 항목 B");
+    expect(composeChecklistDraft("처리: {selected}", [])).toBeNull();
+    expect(composeChecklistDraft("{selected} 진행", ["/clear"])).toBeNull();
+    expect(composeChecklistDraft("확인 {selected}", ["@누군가"])).toBeNull();
+
+    const reply = vi.fn();
+    const draft = vi.fn();
+    const open: OpenUIOpenPort = {
+      accepts: (target) => target.kind === "commodore" && target.id === "01234567-89ab-cdef-0123-456789abcdef",
+      resolve: (target) => target.kind === "commodore"
+        ? { title: "페이퍼컷", subtitle: "사령관 · 대기 중", badge: "Theater 미연결", badgeTone: "warn", avatarTone: "amber" }
+        : null,
+      open: vi.fn(),
+    };
+
+    const [rich, refusedDraftOpen, nestedDisclosure, doubleChecklist, zeroBreakdown] = await hydrated([
+      [
+        "```openui-lang",
+        'root = Card("개요", [entities, actions, tabs, fold, snip, brk, list], "요약 부제")',
+        'entities = EntityList([EntityCard("commodore:01234567-89ab-cdef-0123-456789abcdef", "Fallback"), EntityCard("javascript:alert(1)", "악성")])',
+        'actions = Actions([Button("바로 보내기", @ToAssistant("진행해 줘"), "primary"), Button("초안 채우기", @ToAssistant("수정 후 보낼 말"), "draft")])',
+        'tabs = Tabs([Tab("요약", [Callout("<script>x</script>", "warn", "<b>제목</b>")]), Tab("상세", [Snippet("<img src=x>", "+<script>alert(1)</script>\\n-old", "diff")])])',
+        'fold = Collapsible("더 보기", [Facts([Fact("경로", "~/workspace/papercut", null, true)])])',
+        'snip = Snippet("경로", "~/workspace/papercut", "path")',
+        'brk = Breakdown("진행 분포", [Segment("완료", 3, "good"), Segment("진행", 2, "warn")])',
+        'list = Checklist([CheckItem("항목 A", null, true), CheckItem("항목 B", null, false)], "선택: {selected}", "전송")',
+        "```",
+      ].join("\n"),
+      ["```openui-lang", 'root = Card("x", [Button("잘못된 초안", @OpenUrl("https://example.com/"), "draft")])', "```"].join("\n"),
+      ["```openui-lang", 'root = Card("중첩", [Tabs([Tab("A", [Collapsible("안쪽", [Callout("차단")]), Callout("유지")]), Tab("B", [Form([Input("a", "A")], "A {a}", "보내기"), Callout("유지2")])])])', "```"].join("\n"),
+      ["```openui-lang", 'root = Card("체크", [Checklist([CheckItem("A", null, true), CheckItem("B", null, false)], "1: {selected}", "보내기"), Checklist([CheckItem("C", null, true), CheckItem("D", null, false)], "2: {selected}", "보내기")])', "```"].join("\n"),
+      ["```openui-lang", 'root = Card("분포", [Breakdown("비어 있음", [Segment("A", 0, "good"), Segment("B", -1, "bad")])])', "```"].join("\n"),
+    ].join("\n\n"), { reply, draft, open });
+
+    expect(rich!.dataset.openuiState).toBe("rendered");
+    expect(rich!.querySelector("script, img, a, [href], iframe, form")).toBeNull();
+    expect(rich!.querySelectorAll(".openui-checklist")).toHaveLength(1);
+    expect(rich!.querySelectorAll(".openui-tabs")).toHaveLength(1);
+    expect(rich!.querySelectorAll(".openui-collapsible")).toHaveLength(1);
+    expect(rich!.querySelectorAll(".openui-snippet")).toHaveLength(1);
+    expect(rich!.querySelectorAll(".openui-breakdown")).toHaveLength(1);
+    // 해석된 사령관 이름은 원시 UUID 대신 별칭을 표시하고, 거부된 대상은 비활성 엔티티로 남는다.
+    const entityBtn = rich!.querySelector<HTMLButtonElement>("button.openui-entity")!;
+    expect(entityBtn.textContent).toContain("페이퍼컷");
+    expect(entityBtn.textContent).not.toContain("01234567");
+    expect(rich!.querySelector<HTMLElement>(".openui-inert.openui-entity")?.title).toBe("javascript:alert(1)");
+    // 합성 클릭은 전송·초안·열기 어느 포트에도 닿지 않는다.
+    for (const button of rich!.querySelectorAll<HTMLButtonElement>("button")) button.click();
+    expect(reply).not.toHaveBeenCalled();
+    expect(draft).not.toHaveBeenCalled();
+    expect(open.open).not.toHaveBeenCalled();
+
+    // draft 포트 없는 블록에서는 draft 버튼이 비활성화되고 send 포트로 폴백하지 않는다.
+    const [noDraftPort] = await hydrated(['```openui-lang', 'root = Card("초안", [Button("초안", @ToAssistant("보낼 말"), "draft")])', '```'].join("\n"), { reply });
+    const draftBtn = noDraftPort!.querySelector<HTMLButtonElement>("button.openui-button.is-draft")!;
+    expect(draftBtn.disabled).toBe(true);
+    expect(draftBtn.getAttribute("aria-disabled")).toBe("true");
+
+    // @OpenUrl + "draft" 조합은 거부되어 블록이 숨겨진다.
+    expect(refusedDraftOpen!.dataset.openuiState).toBe("hidden");
+    // Tabs 안의 중첩 Collapsible·Form 은 정제에서 제거되고 안전한 Callout 만 남는다.
+    expect(nestedDisclosure!.dataset.openuiState).toBe("rendered");
+    expect(nestedDisclosure!.querySelector(".openui-collapsible, .openui-form")).toBeNull();
+    expect(nestedDisclosure!.querySelector(".openui-callout-text")?.textContent).toBe("유지");
+    // 카드당 Checklist 는 최대 1개만 허용한다.
+    expect(doubleChecklist!.dataset.openuiState).toBe("rendered");
+    expect(doubleChecklist!.querySelectorAll(".openui-checklist")).toHaveLength(1);
+    // 합이 0이거나 음수 세그먼트를 담은 Breakdown 은 거부되어 블록이 숨겨진다.
+    expect(zeroBreakdown!.dataset.openuiState).toBe("hidden");
   });
 });

@@ -13,6 +13,9 @@ export function useOpenUIOpenPort(): OpenUIOpenPort | null {
   const navigation = React.useContext(OpenUINavigationContext);
   return React.useMemo(() => https || navigation ? {
     accepts: (target) => target.kind === "https" ? https !== null : navigation?.accepts(target) === true,
+    resolve: (target) => target.kind === "https"
+      ? null
+      : navigation?.resolve?.(target) ?? null,
     open: (target, at) => {
       if (target.kind === "https") { if (https && !https(target.url, at)) openInDefaultOsBrowser(target.url); }
       else if (navigation?.accepts(target)) navigation.open(target, at);

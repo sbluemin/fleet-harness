@@ -14,6 +14,7 @@ import { MobileGlyph, useMobileSurface } from "../mobile-surface.js";
 import { getTerminalPrefsSnapshot, useChatHistoryAutoFold, useChatReadingWidth, nextChatReadingWidth, setChatReadingWidth } from "../../terminal/shared/terminal-preferences.js";
 import { CaptionReadingWidthGlyph } from "../../../../workspace/client/components/caption-actions.js";
 import { messageAgentSession, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
+import { getComposerDraft } from "../../objective-view-state.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { ToolDetail } from "./tool-detail.js";
 import { AgentGlyph } from "../agent-glyphs.js";
@@ -139,7 +140,9 @@ export function AgentChatView({
   // 답 단추(OpenUI)는 사람이 누를 때 이 Objective의 기존 메시지 API로 보낸다. 입력창 초안은 건드리지 않고, 원장은 읽기 전용이다.
   const objectiveId = context.objectiveId;
   const sendOpenUI = React.useCallback((text: string) => { void messageAgentSession(objectiveId, text).catch(() => {}); }, [objectiveId]);
+  const draftOpenUI = React.useCallback((text: string) => { getComposerDraft(objectiveId).setText(text); }, [objectiveId]);
   const openUISend = objectiveCommander && !commanderLedger ? sendOpenUI : undefined;
+  const openUIDraft = objectiveCommander && !commanderLedger ? draftOpenUI : undefined;
   // 대화 중심 화면의 1:1 대화 — 목표가 아닌 일반 채팅은 그룹 대화와 같은 문법(말풍선·캡슐 입력)으로 선다(지휘관은 구성원이
   // 없어도 그룹 대화가 선다). 기능(도구 단계·생각·변경·첨부·예약·모델·중지)은 이 본문이 그대로 진다 — 바뀌는 것은 모양뿐이다.
   // 원장 보기와 토글이 꺼진 캔버스는 지금 모양 그대로다. 모바일 Objective 화면은 늘 대화 중심이다 — 데스크톱 대화 화면과 같은
@@ -771,6 +774,7 @@ export function AgentChatView({
             speaker={speaker}
             openui={objectiveCommander}
             {...(openUISend ? { onOpenUISend: openUISend } : {})}
+            {...(openUIDraft ? { onOpenUIDraft: openUIDraft } : {})}
           />
         ))}
       </div>
@@ -793,6 +797,7 @@ export function AgentChatView({
           liveSpeaker
           openui={objectiveCommander}
           {...(openUISend ? { onOpenUISend: openUISend } : {})}
+          {...(openUIDraft ? { onOpenUIDraft: openUIDraft } : {})}
           {...(mobileSurface && retryText !== null && !turnRunning ? { onRetry: retry } : {})}
         />
       ) : null}
@@ -1205,12 +1210,15 @@ export const ChatTurn = React.memo(function ChatTurn({
   liveSpeaker = false,
   openui = false,
   onOpenUISend,
+  onOpenUIDraft,
 }: {
   readonly objectiveId: string;
   /** 답·흐르는 글의 `openui-lang` 펜스를 생성형 UI로 그린다 — 지휘관 채팅과, 플러그인이 켠 기록(사령관 원장·기록)만. */
   readonly openui?: boolean;
   /** 사람이 누른 OpenUI 답을 이 표면의 기존 전송 경로로 보낸다. 포트 없는 원장은 정적 칩이다. */
   readonly onOpenUISend?: (reply: string) => void;
+  /** 사람이 누른 OpenUI 초안을 보내지 않고 입력창에 채운다. */
+  readonly onOpenUIDraft?: (draft: string) => void;
   readonly turn: AgentChatTurn;
   /**
    * 모바일 대화 문법의 답 발화자 — 있으면 답·흐르는 글을 왼쪽 말풍선으로 세우고 그 옆에 아바타를, 이름이 있으면 말풍선 위에 이름을
@@ -1426,6 +1434,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   language={language}
                   openui={openui}
                   {...(openui && onOpenUISend ? { onOpenUISend } : {})}
+                  {...(openui && onOpenUIDraft ? { onOpenUIDraft } : {})}
                 />
               </SpeakerRow>
             ) : null}
@@ -1443,6 +1452,7 @@ export const ChatTurn = React.memo(function ChatTurn({
                   language={language}
                   openui={openui}
                   {...(openui && onOpenUISend ? { onOpenUISend } : {})}
+                  {...(openui && onOpenUIDraft ? { onOpenUIDraft } : {})}
                 />
                 {mobileSurface && !speaker ? <AnswerActions text={view.answer} language={language} {...(onRetry ? { onRetry } : {})} /> : null}
               </div>

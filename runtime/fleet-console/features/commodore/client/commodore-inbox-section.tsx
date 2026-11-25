@@ -407,8 +407,9 @@ const FOLLOW_SLACK_PX = 48;
  */
 export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
-  // 답 단추는 같은 Theater의 사령관 메시지 API로 보낸다. 입력창 초안·첨부는 건드리지 않는다.
+  // 답 단추는 같은 Theater의 사령관 메시지 API로 보낸다. 초안 단추는 보내지 않고 입력창에 채운다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
+  const draftOpenUI = useCallback((text: string) => { fillCommodoreComposerDraft(theaterId, text); }, [theaterId]);
   // 질문 줄의 지금(답을 기다림·답함·거둠)은 상태의 질문에서 읽는다.
   const asks = useCommodore(theaterId).view?.state.asks;
   const index = useCommodoreObjectiveIndex(theaterId);
@@ -492,7 +493,7 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
         return (
           <div key={turn.id} className="objectives-commodore-turn-open" data-commodore-turn={turn.id}>
             {line}
-            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openUIOpen={openUIOpen} openui onOpenUISend={sendOpenUI} />
+            <Transcript entries={shown} language={language} reveal={reveal && revealedId === turn.id ? reveal : null} references={references} openUIOpen={openUIOpen} openui onOpenUISend={sendOpenUI} onOpenUIDraft={draftOpenUI} />
           </div>
         );
       }) : null}
@@ -647,6 +648,20 @@ function commodoreDraft(theaterId: string, port?: ComposerAttachmentPort, limits
   let draft = commodoreDrafts.get(theaterId);
   if (!draft) { draft = createCommodoreDraft(port, limits); commodoreDrafts.set(theaterId, draft); }
   return draft;
+}
+const commodoreDraftFocusListeners = new Map<string, Set<() => void>>();
+function subscribeCommodoreDraftFocus(theaterId: string, listener: () => void): () => void {
+  const set = commodoreDraftFocusListeners.get(theaterId) ?? new Set<() => void>();
+  set.add(listener);
+  commodoreDraftFocusListeners.set(theaterId, set);
+  return () => { set.delete(listener); if (set.size === 0) commodoreDraftFocusListeners.delete(theaterId); };
+}
+/** OpenUI 초안 단추가 사령관 입력창에 텍스트를 채우고(전송하지 않음) 데스크톱 입력창에 초점을 옮긴다. */
+export function fillCommodoreComposerDraft(theaterId: string, text: string): void {
+  const draft = commodoreDraft(theaterId);
+  const current = draft.read();
+  draft.update({ text, references: [], textRevision: current.textRevision + 1, budgetNotice: null });
+  for (const listener of commodoreDraftFocusListeners.get(theaterId) ?? []) listener();
 }
 
 /**
@@ -836,6 +851,10 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     if (!phone) inputRef.current?.focus();
   };
   useEffect(() => subscribeCommodoreInbox(theaterId, () => takeInbox.current()), [theaterId]);
+  useEffect(() => subscribeCommodoreDraftFocus(theaterId, () => {
+    if (phone) return;
+    window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  }), [theaterId, phone]);
   // 다른 표면이 인용을 붙이면 커서가 이 입력창으로 온다(폰은 화면 키보드를 올리지 않는다). 처음 서는 순간의 기존 칩은 초점을 가져가지 않는다.
   const quoteCount = useRef(quotes.length);
   useEffect(() => {

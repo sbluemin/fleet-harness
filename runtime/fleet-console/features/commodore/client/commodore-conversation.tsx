@@ -12,7 +12,7 @@ import type { ClientTheaterInboxCapability } from "../../workspace/shared/theate
 
 import { actionFailureWord, commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
-import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDescription, CommodoreIntel } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDescription, CommodoreIntel, fillCommodoreComposerDraft } from "./commodore-inbox-section.js";
 import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
 import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { CommodoreComposerSettings, requestCommodoreComposerSettings, type CommodoreComposerSettingsSection } from "./commodore-composer-settings.js";
@@ -442,8 +442,9 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => { setSettingsOpen(false); }, [commodoreId]);
-  // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
+  // 답 단추는 기존 사령관 메시지 API로 보내고, 초안 단추는 입력창에만 채운다. 읽기 전용이면 둘 다 주지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
+  const draftOpenUI = useCallback((text: string) => { fillCommodoreComposerDraft(commodoreId, text); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
   // 결정 대기함 — 한 줄 바와 펼친 내용이 대화 독 안에 선다(`decision`). 읽기 전용에는 없다.
   const decision = useCommodoreDecisionDock({ theaterId: commodoreId, language, onEnded: fail });
@@ -535,7 +536,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
             composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing)}
             composerTopEnd={topSettings}
             composerTopEntries={!readOnly}
-            {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}
+            {...(readOnly ? {} : { onOpenUISend: sendOpenUI, onOpenUIDraft: draftOpenUI })}
           />
         ) : renderComposer(null)}
       </div>

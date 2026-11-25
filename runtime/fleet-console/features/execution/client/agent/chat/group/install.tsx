@@ -25,7 +25,7 @@ import { useObjectiveLinks } from "../../objective-links.js";
 import { isGroupConversationRoot, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
-import { GroupComposer } from "./group-composer.js";
+import { fillGroupComposerDraft, GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
@@ -258,10 +258,13 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
-  // 답 단추(OpenUI)는 이 말의 화자에게 기존 대화 전송 계약으로 보낸다. 초안·첨부는 섞지 않는다.
+  // 답 단추(OpenUI)는 이 말의 화자에게 기존 대화 전송 계약으로 보낸다. 초안 단추는 보내지 않고 입력창에 채운다.
   const sendOpenUI = React.useCallback((text: string, speaker: ConversationSpeaker) => {
     void actions?.send({ kind: speaker.kind === "commodore" ? "commodore" : "commander" }, text).catch(() => {});
   }, [actions]);
+  const draftOpenUI = React.useCallback((text: string) => {
+    fillGroupComposerDraft(root.id, text);
+  }, [root.id]);
   const composer = (workingLine?: React.ReactNode) => (
     <GroupComposer
       key={root.id}
@@ -286,7 +289,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       cards={cards}
       fold
       computerActor={computerActor}
-      {...(actions ? { onOpenUISend: sendOpenUI } : {})}
+      {...(actions ? { onOpenUISend: sendOpenUI, onOpenUIDraft: draftOpenUI } : {})}
       overlay={phone || !shared ? null : (
         <ComputerScreenShare
           objectiveId={root.id}

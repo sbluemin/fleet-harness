@@ -100,6 +100,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   preserveStreamingDom = false,
   openui = false,
   onOpenUISend,
+  onOpenUIDraft,
 }: {
   readonly text: string;
   readonly streaming: boolean;
@@ -119,6 +120,8 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
    * 참조가 바뀌어도 다시 그리지 않는다(최신 함수를 ref로 부른다).
    */
   readonly onOpenUISend?: (reply: string) => void;
+  /** OpenUI 초안 단추를 사람이 누르면 보내지 않고 입력창 초안에만 채운다. */
+  readonly onOpenUIDraft?: (draft: string) => void;
 }) {
   const resolveLink = useMarkdownLinkResolver();
   const latestText = React.useRef(text);
@@ -199,11 +202,15 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   reply.current = onOpenUISend;
   const hasReply = onOpenUISend !== undefined;
   const replyPort = React.useCallback((text: string) => reply.current?.(text), []);
+  const draft = React.useRef(onOpenUIDraft);
+  draft.current = onOpenUIDraft;
+  const hasDraft = onOpenUIDraft !== undefined;
+  const draftPort = React.useCallback((text: string) => draft.current?.(text), []);
   React.useEffect(() => {
     const target = root.current;
     if (!target || !openui) return;
-    installOpenUIHydrator(target, openUIHydratorLabels(language), hasReply ? replyPort : null, openPort);
-  }, [openui, language, hasReply, replyPort, openPort]);
+    installOpenUIHydrator(target, openUIHydratorLabels(language), hasReply ? replyPort : null, openPort, hasDraft ? draftPort : null);
+  }, [openui, language, hasReply, replyPort, openPort, hasDraft, draftPort]);
   React.useEffect(() => {
     const target = root.current;
     if (!target || !openui) return;

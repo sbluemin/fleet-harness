@@ -135,6 +135,20 @@ function groupDraft(rootObjectiveId: string) {
   if (!draft) { draft = createGroupDraft(); groupDrafts.set(rootObjectiveId, draft); }
   return draft;
 }
+const groupDraftFocusListeners = new Map<string, Set<() => void>>();
+function subscribeGroupDraftFocus(rootObjectiveId: string, listener: () => void): () => void {
+  const set = groupDraftFocusListeners.get(rootObjectiveId) ?? new Set<() => void>();
+  set.add(listener);
+  groupDraftFocusListeners.set(rootObjectiveId, set);
+  return () => { set.delete(listener); if (set.size === 0) groupDraftFocusListeners.delete(rootObjectiveId); };
+}
+/** OpenUI 초안 단추가 그룹 입력창에 텍스트를 채우고(전송하지 않음) 데스크톱 입력창에 초점을 옮긴다. */
+export function fillGroupComposerDraft(rootObjectiveId: string, text: string): void {
+  const draft = groupDraft(rootObjectiveId);
+  const current = draft.read();
+  draft.update({ text, textRevision: current.textRevision + 1, notice: null });
+  for (const listener of groupDraftFocusListeners.get(rootObjectiveId) ?? []) listener();
+}
 
 export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, renderControls, workingLine, cliFailure = null, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
@@ -186,6 +200,15 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
     draft.attachments.add(entry.files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
     inputRef.current?.focus();
   }), [rootObjectiveId, draft, ct]);
+  React.useEffect(() => subscribeGroupDraftFocus(rootObjectiveId, () => {
+    if (phone) return;
+    window.requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }), [rootObjectiveId, phone]);
   const pendingPick = React.useRef<Candidate | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const plusRootRef = React.useRef<HTMLSpanElement | null>(null);
