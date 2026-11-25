@@ -13,7 +13,7 @@ import { parseFail, refuse, text } from "./tool-results.js";
 import { CommodoreStoreError, safeErrorCode } from "./errors.js";
 
 /** 생성 성공 응답에만 싣는 안내 — 상시 프롬프트가 아니라 그 상황에서만 필요하다. */
-const CREATED_HINT = "After successful creation, offer one small openui-lang Card containing Button(\"Open Commodore\", @OpenUrl(target)), using the exact returned target. This navigation-only offer is an exception to the usual visual-block conditions; it needs no confirmation.";
+const CREATED_HINT = "After successful creation, offer one small openui-lang Card in the person's conversation language containing EntityCard(target, alias, note), using the exact returned target without printing raw UUIDs (optionally add a Snippet with kind=\"path\" if a folder path still needs to be attached). This navigation-only offer is an exception to the usual visual-block conditions; it needs no confirmation.";
 
 const commodores = defineConsoleTool({
   name: "console_commodores",

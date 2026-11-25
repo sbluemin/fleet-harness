@@ -1,5 +1,5 @@
-import type { OpenUIOpenPort } from "@fleet-console/markdown/openui";
-export type { OpenUIOpenPort, OpenUIOpenTarget } from "@fleet-console/markdown/openui";
+import type { OpenUIDraftPort, OpenUIOpenPort, OpenUIResolvedEntity } from "@fleet-console/markdown/openui";
+export type { OpenUIDraftPort, OpenUIOpenPort, OpenUIOpenTarget, OpenUIResolvedEntity } from "@fleet-console/markdown/openui";
 import type { ComposerQuote } from "../client/composer-primitives/quotes.js";
 import type { ComponentType, ReactNode } from "react";
 
@@ -96,6 +96,8 @@ export interface AgentChatTranscriptProps {
    * Without this port, send buttons remain inert (a read-only record).
    */
   readonly onOpenUISend?: (text: string) => void;
+  /** Fill the surface composer with the clicked OpenUI draft text without sending. Omit on read-only records. */
+  readonly onOpenUIDraft?: (text: string) => void;
   /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
   readonly openUIOpen?: OpenUIOpenPort;
 }
@@ -180,6 +182,8 @@ export interface AgentConversationProps {
    * one send, leaving the composer's draft untouched. Omit it on read-only conversations.
    */
   readonly onOpenUISend?: (text: string) => void;
+  /** Fill the surface composer with the clicked OpenUI draft text without sending. Omit on read-only records. */
+  readonly onOpenUIDraft?: (text: string) => void;
   /** Plugin-owned objective/mission navigation. Without it those targets are inert. HTTPS uses the host's normal link chooser. */
   readonly openUIOpen?: OpenUIOpenPort;
 }

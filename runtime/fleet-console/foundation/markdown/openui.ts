@@ -3,7 +3,7 @@
  * 원문·확정 여부가 바뀌면 같은 루트를 갱신하고, 숨김·블록 제거·호스트 해제 때 루트를 걷는다.
  * 렌더러에는 정제한 원문만 넘긴다. 그릴 것이 남지 않은 확정 블록은 원문 코드도 안내 문구도 없이 숨긴다.
  * 렌더러는 처음 블록을 만날 때 지연 로드한다. 모듈 상태는 이 번들 안에서만 쓰며 다른 번들과 조율하지 않는다.
- * 전송·열기 포트는 설치 root마다 주입하고 React 컴포넌트의 클릭 클로저로만 건넨다. DOM 속성은 행동의 권한이 아니다.
+ * 전송·초안·열기 포트는 설치 root마다 주입하고 React 컴포넌트의 클릭 클로저로만 건넨다. DOM 속성은 행동의 권한이 아니다.
  */
 
 import { decodeMermaidSource } from "@fleet-console/markdown/core";
@@ -18,11 +18,11 @@ export interface OpenUIHydratorLabels extends OpenUIRenderLabels {
   readonly pending: string;
 }
 
-export type { OpenUIState, OpenUITone };
+export type { OpenUIRenderLabels, OpenUIState, OpenUITone };
 
-import type { OpenUIOpenPort, OpenUISendPort } from "./openui-actions.js";
-export { composeDraft, parseOpenUIOpenTarget, sendableDraft, sendableReply } from "./openui-actions.js";
-export type { OpenUIOpenPort, OpenUIOpenTarget, OpenUISendPort } from "./openui-actions.js";
+import type { OpenUIDraftPort, OpenUIOpenPort, OpenUISendPort } from "./openui-actions.js";
+export { composeChecklistDraft, composeDraft, parseOpenUIOpenTarget, sendableDraft, sendableReply } from "./openui-actions.js";
+export type { OpenUIDraftPort, OpenUIEntityBadgeTone, OpenUIIdentityTone, OpenUIOpenPort, OpenUIOpenTarget, OpenUIResolvedEntity, OpenUISendPort } from "./openui-actions.js";
 
 type Library = typeof import("./openui-library.js");
 interface Mounted {
@@ -32,16 +32,29 @@ interface Mounted {
   final: boolean;
 }
 interface Installation {
-  configure(labels: OpenUIHydratorLabels, send: OpenUISendPort | null, open: OpenUIOpenPort | null): void;
+  configure(labels: OpenUIHydratorLabels, send: OpenUISendPort | null, open: OpenUIOpenPort | null, draft: OpenUIDraftPort | null): void;
   dispose(): void;
 }
 
 const BLOCK_SELECTOR = ".openui-block[data-openui-source]";
 const OWNED_SELECTOR = ":scope > [data-openui-owned]";
-const DEFAULT_LABELS: OpenUIHydratorLabels = {
+export const DEFAULT_OPENUI_LABELS: OpenUIHydratorLabels = {
   pending: "Drawing…",
   states: { todo: "Queued", running: "Running", waiting: "Waiting", done: "Done", blocked: "Blocked" },
   tones: { good: "Good", warn: "Caution", bad: "Problem" },
+  open: "Open",
+  unavailable: "Unavailable",
+  copy: "Copy",
+  copied: "Copied",
+  fillDraft: "Edit in input",
+  draftFilled: "Filled",
+  sent: "Sent",
+  previewLabel: "Message to send",
+  selectedCount: "{count} selected",
+  selectOneHint: "Select at least one item",
+  cardView: "Cards",
+  tableView: "Table",
+  entityKinds: { commodore: "Commodore", objective: "Objective", mission: "Mission", https: "Link" },
 };
 
 const installations = new WeakMap<Element, Installation>();
@@ -54,15 +67,16 @@ function loadLibrary(): Promise<Library> {
 }
 
 /** 같은 root에 다시 설치하면 라벨·포트만 갱신해 단추 노드와 초점을 지킨다. */
-export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydratorLabels, send?: OpenUISendPort | null, open?: OpenUIOpenPort | null): void {
+export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydratorLabels, send?: OpenUISendPort | null, open?: OpenUIOpenPort | null, draft?: OpenUIDraftPort | null): void {
   const existing = installations.get(root);
   if (existing) {
-    existing.configure(nextLabels ?? DEFAULT_LABELS, send ?? null, open ?? null);
+    existing.configure(nextLabels ?? DEFAULT_OPENUI_LABELS, send ?? null, open ?? null, draft ?? null);
     return;
   }
-  let labels = nextLabels ?? DEFAULT_LABELS;
+  let labels = nextLabels ?? DEFAULT_OPENUI_LABELS;
   let port = send ?? null;
   let openPort = open ?? null;
+  let draftPort = draft ?? null;
   let disposed = false;
   const generations = new WeakMap<HTMLElement, number>();
   // 제거된 블록도 찾을 수 있도록 설치마다 소유 블록을 추적한다. 전역 맵은 약한 참조만 갖는다.
@@ -79,7 +93,7 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
     queueMicrotask(() => mounted.root.unmount());
   };
   const paint = (mounted: Mounted, library: Library) => {
-    mounted.root.render(createElement(library.OpenUIView, { source: mounted.source, final: mounted.final, labels, send: port, open: openPort }));
+    mounted.root.render(createElement(library.OpenUIView, { source: mounted.source, final: mounted.final, labels, send: port, open: openPort, draft: draftPort }));
   };
   // 원문(코드 블록)도 보조 글자도 남기지 않는다. 무엇이 왜 빠졌는지는 화면이 아니라 다음 턴 입력으로 모델에게만 간다.
   const hide = (block: HTMLElement) => {
@@ -142,10 +156,11 @@ export function installOpenUIHydrator(root: Element, nextLabels?: OpenUIHydrator
   });
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["data-openui-source", "data-openui-final"] });
   installations.set(root, {
-    configure(next, send, open) {
+    configure(next, send, open, draft) {
       labels = next;
       port = send;
       openPort = open;
+      draftPort = draft;
       if (!mine.size) return;
       void loadLibrary().then((library) => {
         if (disposed) return;
