@@ -16,7 +16,7 @@ const hint: Record<string, string> = {
   stale_element: "That element id is no longer valid for this window. Call computer_state and use a current id.",
   coordinates_need_image: "Call computer_state with image:true. Read the coordinates from that new image and use its view id.",
   text_via_key: "key sends key codes that depend on the user's input source. Use type for text.",
-  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with cmd/ctrl/alt/shift+.",
+  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Delete (⌫), ForwardDelete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with cmd/ctrl/alt/shift+.",
   no_editable_focus: "Editable focus was not confirmed in the target window. Check the intended field with computer_state.",
   not_settable: "This element does not support AX value replacement.",
   text_not_found: "That text was not found in the element.",
@@ -27,6 +27,8 @@ const hint: Record<string, string> = {
   timeout: "The helper did not answer in time.",
   internal: "The Fleet Computer Use helper could not complete the request.",
   clipboard_prepare_failed: "The clipboard could not be prepared.",
+  user_busy: "The user is typing or using the pointer. Retry shortly.",
+  foreground_unavailable: "The app could not be brought to the front; focus was returned.",
 };
 
 // 권한 안내 문구(프롬프트 자문 확정, 결정 "permission_required 문구 v2"). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은
@@ -176,6 +178,7 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
+  if (reply.via === "foreground") lines.push(`note: App was brought to the front${reply.foregroundMs ? ` for ${reply.foregroundMs}ms` : ""}; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : reply.notes.includes("focus_restored") ? "focus returned to the user's app." : "it was already in front."}`);
   if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }

@@ -16,6 +16,7 @@ private struct ActionRequest {
   let pages: Double
   let axName: String?
   let requireEditableFocus: Bool
+  let foreground: Bool
 
   init(_ p: Object) throws {
     guard let raw = p["action"] as? String, let action = ActionName(rawValue: raw) else { throw HelperError("invalid_params", "action") }
@@ -29,7 +30,10 @@ private struct ActionRequest {
     case .key: allowed.formUnion(["key", "ref", "requireEditableFocus", "text"])
     case .axAction: allowed.formUnion(["ref", "name"])
     }
+    if [.click, .doubleClick, .rightClick, .scroll, .key, .type].contains(action) { allowed.insert("foreground") }
     try validateKeys(p, allowed: allowed)
+    if p["foreground"] != nil && jsonBool(p["foreground"]) == nil { throw HelperError("invalid_params", "foreground") }
+    let foreground = jsonBool(p["foreground"]) == true
     let ref = try optionalRef(p["ref"])
     var point: CGPoint?
     if p["x"] != nil || p["y"] != nil {
@@ -74,6 +78,7 @@ private struct ActionRequest {
     }
     self.name = action; self.ref = ref; self.point = point; self.end = end; self.text = text; self.stroke = stroke
     self.direction = direction; self.pages = pages; self.axName = axName; self.requireEditableFocus = requireEditableFocus
+    self.foreground = foreground
   }
 }
 
@@ -718,6 +723,11 @@ private struct Expectation {
       return KeyWindowPrimer(element: el, range: raw as! AXValue, click: click)
     }
 
+    if request.foreground {
+      return try await actForeground(request, node: node, win: win, before: before, windows: beforeWindows, record: record,
+                                     revalidate: revalidate, actionStart: actionStart)
+    }
+
     switch request.name {
     case .click, .doubleClick, .rightClick:
       switch request.name {
@@ -931,6 +941,61 @@ private struct Expectation {
     let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
     defer { feedback?.cancel() }
     return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+  }
+
+  /// 전면 폴백(`Foreground`). 에이전트가 명시할 때만 온다. 사람이 쉬는 틈에 대상 앱을 잠깐 앞으로 올려 SkyLight로 보내고 직전 앱으로 되돌린다.
+  /// 접근성 동작·포커스 확인을 건너뛰므로 type은 미국 배열 ASCII 키 입력이다. 결과에 포커스 이동과 복원 여부를 남긴다.
+  private func actForeground(_ request: ActionRequest, node: AXNode?, win: WindowInfo, before: AXTree, windows: [WindowInfo],
+                             record: DispatchRecord, revalidate: () throws -> Void, actionStart: Double) async throws -> Object {
+    guard Foreground.available else { throw HelperError("self_check_failed", "foreground_unavailable") }
+    if !win.onscreen { throw HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"]) }
+    var action: PointerAction?
+    var strokes: [KeyStroke] = []
+    switch request.name {
+    case .click: action = .click
+    case .doubleClick: action = .doubleClick
+    case .rightClick: action = .rightClick
+    case .scroll: action = .scroll(request.direction!, request.pages)
+    case .key: strokes = [request.stroke!]
+    case .type:
+      guard let keys = Foreground.asciiKeys(request.text!) else { throw HelperError("invalid_params", "foreground type accepts printable ASCII, tabs and newlines") }
+      strokes = keys
+    default: throw HelperError("invalid_params", "foreground")
+    }
+    let point = action == nil ? (try? localPoint(node: node, explicit: nil, in: win)) : try localPoint(node: node, explicit: request.point, in: win)
+    try revalidate()
+    defer { idleCursor() }
+    await startCursor(point, in: win)
+    try await Foreground.waitForIdle()
+    try revalidate()
+    let session = try await Foreground.activate(win, symbols: symbols)
+    var sent = false
+    do {
+      try await pause(120)
+      try revalidate()
+      // 원격 패널 경로는 활성화 뒤에 정한다. 포커스 요소는 앱이 앞에 와야 확정된다.
+      let route = Foreground.route(win, point: point)
+      if request.name == .type { await cursor?.pulse(.typing(true)) }
+      if let action, let point {
+        try await Foreground.pointer(action, route: route, screen: win.screen(point), height: win.frame.height) { sent = true }
+      } else {
+        try await Foreground.keys(strokes, route: route) { sent = true }
+      }
+      if request.name == .type { await cursor?.pulse(.typing(false)) }
+      try? await pause(150)
+    } catch {
+      let restored = await Foreground.restore(session)
+      hideCursor(animated: false)
+      if sent { throw HelperError("timeout", restored ? "foreground_delivery_unknown" : "foreground_delivery_unknown_focus_not_restored") }
+      throw error
+    }
+    let restored = await Foreground.restore(session)
+    var notes = ["foreground"]
+    if session.switched { notes.append(restored ? "focus_restored" : "focus_not_restored") }
+    record.confirmed(via: "foreground", notes: notes)
+    var result = try await observe(win, before: before, windows: windows, via: "foreground", notes: notes, verification: nil, actionStart: actionStart)
+    if session.switched { result["foregroundMs"] = Int((clockNow() - session.started) * 1000) }
+    return result
   }
 
   private func failedAX(_ code: AXError, defaultCode: String) -> HelperError {

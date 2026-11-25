@@ -461,6 +461,8 @@ describe("Fleet Computer Use", () => {
       [{ action: "drag", target: "e1" }, "to is required"],
       [{ action: "select", target: "e2", text: "hello", format: "md" }, "format is not allowed"],
       [{ action: "ax_action", target: "e1" }, "name is required"],
+      [{ action: "set_value", target: "e2", text: "x", foreground: true }, "foreground is not allowed"],
+      [{ action: "drag", target: "e1", to: "e2", foreground: true }, "foreground is not allowed"],
     ] as const;
     for (const [args, error] of cases) expect(text(await f.action(args))).toMatch(new RegExp(`not sent: .*${error}`));
     expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
@@ -566,6 +568,22 @@ describe("Fleet Computer Use", () => {
     expect(text(await f.action({ action: "key", target: "e2", key: "cmd+a" }))).toBe(`key e2 via event+focus: verified: e2 selection covers all text\n${focusNote}\n${clickNote}`);
     f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, notes: ["focus_record_used"], observation: "unobservable" });
     expect(text(await f.action({ action: "key", target: "e2", key: "cmd+a" }))).toBe(`key e2 via event+focus: sent; effect unknown\n${focusNote}`);
+  });
+
+  it("passes the explicit foreground fallback to the helper and discloses the focus switch", async () => {
+    const f = setup();
+    await f.invoke("computer_apps", {});
+    await f.invoke("computer_state", { window: "w1" });
+    const reply = { sent: true, via: "foreground", foregroundMs: 420, changes: [], observation: "unobservable", notes: ["foreground", "focus_restored"] };
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce(reply);
+    expect(text(await f.action({ action: "click", target: "e1", foreground: true }))).toBe("click e1 via foreground: sent; effect unknown\nnote: App was brought to the front for 420ms; focus returned to the user's app.");
+    expect(f.calls("act").at(-1)).toMatchObject({ action: "click", ref: "e1", foreground: true });
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, notes: ["foreground", "focus_not_restored"] });
+    expect(text(await f.action({ action: "key", key: "cmd+delete", foreground: true }))).toContain("focus was NOT returned to the user's app; tell the user.");
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, notes: ["foreground"], foregroundMs: undefined });
+    expect(text(await f.action({ action: "type", text: "ok", foreground: true }))).toContain("note: App was brought to the front; it was already in front.");
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ error: { code: "user_busy", dispatch: "not_sent" } });
+    expect(text(await f.action({ action: "click", target: "e1", foreground: true }))).toBe("click e1: not sent: user_busy — The user is typing or using the pointer. Retry shortly.");
   });
 
   it("returns unknown rather than success for stale, ambiguous, or incomplete verification", async () => {
