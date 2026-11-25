@@ -24,7 +24,7 @@ export type SnapshotWindow = Pick<HelperWindow, "pid" | "windowId" | "processSta
 export interface HelperSnapshot { window: SnapshotWindow; elements: HelperElement[]; omitted: number; complete: boolean; image?: HelperImage; viewOnly?: boolean }
 export interface HelperWindows { windows: HelperWindow[]; installed?: { name: string; path: string; bundleId: string }[] }
 export interface HelperAction {
-  sent: boolean; via?: "ax" | "event" | "event+focus" | "foreground";
+  sent: boolean; via?: "ax" | "event" | "event+focus" | "vm";
   observation: "changes" | "none" | "unobservable" | "timeout";
   verified?: string; changes: { op: string; element: HelperElement }[];
   changesMore?: number; windowsChanged?: { op: string; window: HelperWindow }[]; notes: string[];

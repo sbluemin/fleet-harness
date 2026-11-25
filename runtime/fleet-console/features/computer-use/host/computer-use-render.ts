@@ -27,7 +27,6 @@ const hint: Record<string, string> = {
   timeout: "The helper did not answer in time.",
   internal: "The Fleet Computer Use helper could not complete the request.",
   clipboard_prepare_failed: "The clipboard could not be prepared.",
-  needs_foreground: "This is a virtual machine display, which ignores background input. If the task authorizes taking over the user's front app and pointer, retry with foreground:true.",
 };
 
 // 권한 안내 문구(프롬프트 자문 확정, 결정 "permission_required 문구 v2"). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은
@@ -80,10 +79,18 @@ function errorHint(error: FleetHelperError): string {
       : " If the drag itself is required, ask the user to perform it.");
   }
   if (code === "permission_required") return permissionHint(details);
-  if (code === "foreground_unconfirmed") {
-    return details?.reason === "covered"
-      ? "Another window covers that point, so the real pointer would click it. Ask the user to uncover the virtual machine window."
-      : "The app did not come to the front. Check computer_apps; if it is still needed, ask the user to bring it to the front.";
+  if (code === "vm_unavailable") {
+    const reason = details?.reason;
+    if (reason === "not_found" || reason === "ambiguous") return "Fleet could not match this window to exactly one Parallels virtual machine by its title. Nothing was sent to the guest.";
+    return "Fleet could not reach this virtual machine's input devices through Parallels Desktop. Nothing was sent to the guest.";
+  }
+  if (code === "vm_unsupported") {
+    const reason = details?.reason;
+    if (reason === "text") return "Typing into a virtual machine supports ASCII characters only. Nothing was sent.";
+    if (reason === "key") return "That key has no virtual machine key code. Nothing was sent.";
+    if (reason === "outside_guest") return "That point is outside the guest screen (for example on the Parallels toolbar). Use an element id for toolbar controls.";
+    if (reason === "horizontal_scroll") return "Virtual machine displays support vertical scrolling only. Nothing was sent.";
+    return "This action is not supported on a virtual machine display. Nothing was sent.";
   }
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
@@ -182,7 +189,7 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
-  if (reply.via === "foreground") lines.push(`note: Foreground input: the app was brought to the front${reply.notes.includes("pointer_returned") ? " and the real pointer was used, then returned" : ""}. Guest content is not in the accessibility tree; check with computer_state image:true.`);
+  if (reply.via === "vm") lines.push("note: Sent to the virtual machine's own input devices; the user's pointer, focus and front app were not used. Guest content is not in the accessibility tree; check with computer_state image:true.");
   if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }
