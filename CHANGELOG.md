@@ -5,6 +5,39 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.318.0] - 2026-11-25
+
+### fleet-console
+
+#### Added
+- Manage not-started, in-progress, awaiting-review, and completed objectives across all Commodores on a four-column Objectives view with unified, per-Commodore, and matrix layouts, reachable from the top of the sidebar (`Cmd/Ctrl+B`) or Command Palette, and instruct Commodores directly from each card.
+- Add interactive feature onboarding cards introducing the Objectives board and previewing the upcoming 3D village experience, The World.
+- Add interactive checklists, tabbed sections, collapsible details, copyable path and diff snippets, proportional status breakdowns, and draft-to-input buttons inside Commodore and Commander reply cards.
+- Computer Use now works on Windows: agents can read, click, type and scroll in apps in the background without moving your pointer, while an AI cursor shows where they act. Controls in some modern apps (such as Calculator or Notepad menus) briefly borrow focus and hand it straight back to your window.
+- When background input has no effect, such as on a virtual machine screen, an agent can choose a foreground fallback for clicks, keys and short typing. It briefly brings the app to the front, then returns focus to your app and reports the switch. Your pointer is not moved.
+
+#### Changed
+- Replaced per-Commodore not-started and completed objective lists in the sidebar and goal flyout with the unified Objectives view, leaving only active objectives under each Commodore.
+- Redesign reply cards with Fleet-native styling, live Commodore and Objective navigation cards instead of raw IDs, higher-contrast charts, and responsive forms with live message previews.
+
+#### Fixed
+- Computer Use can now press buttons in save and open sheets, such as Delete when closing an unsaved TextEdit document, without bringing the app to the front.
+- When an app brings itself to the front in response to Computer Use background input, such as a virtual machine window, Fleet now returns focus to your app and says so.
+- The key name `delete` now sends the Mac Delete (backspace) key; use `forwarddelete` for forward delete.
+- Clicking a link in a chat while connected to another Console from Fleet Desktop now opens it in that Console's Fleet Browser, which opens on your screen; before, the click appeared to do nothing.
+
+#### Removed
+- Remove Gemini 4 Argon (`gemini-4-argon`) from the Gemini API key provider in the model picker and routing pool.
+
+### fleet-desktop
+
+#### Added
+- The Windows app includes the Computer Use helper, so no extra install or system permission is needed.
+
+#### Fixed
+- With horizontal tabs, drag the empty space in the Fleet Browser tab strip to move the window, both in the Console window and in the floating browser window.
+- When horizontal tabs overflow a narrow Fleet Browser window, the new-tab button stays at the end of the tab strip and the tab you open or switch to scrolls into view.
+
 ## [1.317.0] - 2026-11-24
 
 ### fleet-console
