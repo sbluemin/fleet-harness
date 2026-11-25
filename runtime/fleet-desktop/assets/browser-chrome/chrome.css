@@ -382,6 +382,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
    띠에 닿거나 녹아들지 않는다. 호버도 같은 상자 하나다. */
 .rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; -webkit-app-region: drag; }
 .rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
+.rail.horizontal > .pad.lead { order: -1; }
 .rail.horizontal > .pad:last-child { flex: 1 0 auto; min-width: 40px; }
 .rail.horizontal :is(.tab, .row) { -webkit-app-region: no-drag; }
 .rail.horizontal.menu-open, .rail.horizontal.menu-open > .pad { -webkit-app-region: no-drag; }

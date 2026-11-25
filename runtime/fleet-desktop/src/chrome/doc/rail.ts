@@ -25,9 +25,11 @@ export function mountRail(): (state: ChromeUiState) => void {
   newButton.append(h("span", { class: "glyph", text: "+" }));
   scroll.append(tabsBox, newButton);
   // 가로 표시줄이 맨 위 줄일 때 신호등·캡션 버튼 자리를 비우는 여백 — 세로 레일에서는 자리를 차지하지 않는다.
-  const leading = h("span", { class: "pad" });
+  // 앞 여백은 문서에서 스크롤 영역 뒤에 두고 CSS order 로 맨 앞에 세운다. 창 끌기 영역은 문서 순서로 겹쳐져 뒤의 것이 이기는데,
+  // 줄을 넘기면 왼쪽으로 밀려난 탭의 끌기 제외 자리가 스크롤 영역에 잘리지 않고 앞 여백 위에 남아 그 자리를 끌 수 없게 된다.
+  const leading = h("span", { class: "pad lead" });
   const trailing = h("span", { class: "pad" });
-  root.append(leading, pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll, trailing);
+  root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll, leading, trailing);
 
   let last: ChromeUiState | null = null;
   let hovered = false;
@@ -109,16 +111,18 @@ export function mountRail(): (state: ChromeUiState) => void {
    * 가로 표시줄에서 보는 탭이 스크롤 영역 밖에 걸쳐 있으면 그 탭 전체가 보이는 데까지만 넘긴다. 이미 다 보이면 그대로 둔다 —
    * Chrome 이 보는 탭이 바뀔 때 하는 일(TabContainerImpl::ScrollTabToVisible)과 같다. 새로 연 탭도 보는 탭이 되므로 같은 길로 보인다.
    */
-  const revealActive = (): void => {
+  const revealActive = (animate = true): void => {
     const tab = tabsBox.querySelector<HTMLElement>(".tab.active");
     if (!tab) return;
     const view = scroll.getBoundingClientRect();
     const box = tab.getBoundingClientRect();
     const delta = box.left < view.left - 0.5 ? box.left - view.left : box.right > view.right + 0.5 ? box.right - view.right : 0;
     if (delta === 0) return;
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = !animate || matchMedia("(prefers-reduced-motion: reduce)").matches;
     scroll.scrollBy({ left: delta, behavior: still ? "auto" : "smooth" });
   };
+  // 창 폭이 바뀌어 스크롤 영역이 줄면 보는 탭이 끝에서 잘릴 수 있다 — 크기를 바꾸는 동안이므로 애니메이션 없이 다시 맞춘다.
+  new ResizeObserver(() => { if (horizontal()) revealActive(false); }).observe(scroll);
 
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
