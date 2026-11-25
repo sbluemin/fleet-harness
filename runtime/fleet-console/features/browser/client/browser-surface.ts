@@ -154,11 +154,12 @@ export function selectBrowserSpaceForCommodore(commodoreId: string): void {
  * 표면 안의 화면은 Desktop 이 그리므로 이 요청은 서버의 탭 REST 로 곧장 간다.
  *
  * 원격 조작 Desktop(`remote`)의 브라우저는 관리 표면이 아니라 그 셸이 그리는 원격 셸이다. 관리 표면 요청은 거절되므로
- * 탭을 연 뒤 그 셸이 닫혀 있을 때만 창 명령으로 연다 — 그러지 않으면 링크는 실행 측 기계에서만 열리고 보는 화면에는 아무 일도 없다.
+ * 그 셸이 닫혀 있으면 창 명령으로 먼저 연다 — 그러지 않으면 링크는 실행 측 기계에서만 열리고 보는 화면에는 아무 일도 없다.
+ * 셸은 열리면서 기억해 둔 스페이스를 띄우므로, 탭은 셸이 열린 뒤에 열어야 그 선택에 밀려나지 않는다.
  */
 export async function openBrowserLink(url: string): Promise<void> {
-  const remote = getBrowserEngineSnapshot()?.surfaceMode === "remote";
-  if (!remote) openBrowserPane();
+  if (getBrowserEngineSnapshot()?.surfaceMode === "remote") await revealRemoteBrowser();
+  else openBrowserPane();
   try {
     const stateResponse = await fetch(`${endpoint}/state`);
     const state = stateResponse.ok ? await stateResponse.json() as { activeTabId?: string | null; tabs?: { id: string; url: string; spaceId: string }[] } : null;
@@ -169,17 +170,34 @@ export async function openBrowserLink(url: string): Promise<void> {
       body: JSON.stringify(intoActive ? { url } : { action: "create", url }),
     });
   } catch { /* 열리지 않은 링크는 다음 시도에서 다시 연다 */ }
-  if (remote) await revealRemoteBrowser();
 }
 
-/** 원격 셸이 열려 있지 않으면 연다. 셸은 여닫기 명령만 받으므로, 열려 있는지는 서버가 그 셸의 투영 구독으로 답한다. */
-async function revealRemoteBrowser(): Promise<void> {
-  if (!isDesktopShell() || !desktopShellCapabilities().includes(DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY)) return;
+const REMOTE_VIEWER_WAIT_MS = 3000;
+const REMOTE_VIEWER_POLL_MS = 150;
+/** 열린 셸이 첫 투영을 받고 기억한 스페이스를 띄우는 한 번의 왕복. */
+const REMOTE_VIEWER_SETTLE_MS = 300;
+
+async function remoteViewerOpen(): Promise<boolean | null> {
   try {
     const response = await fetch("/api/v1/browser");
-    if (!response.ok) return;
+    if (!response.ok) return null;
     const body = await response.json() as { viewerOpen?: unknown };
-    if (body.viewerOpen === true) return;
-  } catch { return; }
+    return body.viewerOpen === true;
+  } catch { return null; }
+}
+
+const pause = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * 원격 셸이 닫혀 있으면 열고, 열릴 때까지 잠깐 기다린다. 셸은 여닫기 명령만 받으므로, 열려 있는지는 서버가 그 셸의
+ * 투영 구독으로 답한다 — 열린 셸에 명령을 보내면 닫혀 버린다. 끝내 열리지 않아도 탭은 연다(다음에 셸을 열면 보인다).
+ */
+async function revealRemoteBrowser(): Promise<void> {
+  if (!isDesktopShell() || !desktopShellCapabilities().includes(DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY)) return;
+  if (await remoteViewerOpen() !== false) return;
   toggleBrowserViewerShell();
+  for (let waited = 0; waited < REMOTE_VIEWER_WAIT_MS; waited += REMOTE_VIEWER_POLL_MS) {
+    await pause(REMOTE_VIEWER_POLL_MS);
+    if (await remoteViewerOpen() === true) { await pause(REMOTE_VIEWER_SETTLE_MS); return; }
+  }
 }
