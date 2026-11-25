@@ -88,8 +88,11 @@ const Block = React.createContext<BlockContext | null>(null);
 const useBlock = () => React.useContext(Block)!;
 const InsideActions = React.createContext(false);
 
+function rawText(value: unknown): string | null {
+  return typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : null;
+}
 function plain(value: unknown): string | null {
-  const raw = typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : null;
+  const raw = rawText(value);
   if (raw === null) return null;
   return raw.length > MAX_TEXT ? `${raw.slice(0, MAX_TEXT - 1)}…` : raw;
 }
@@ -260,8 +263,9 @@ function FactRow({ props }: { props: Record<string, unknown> }) {
   const { labels } = useBlock();
   const { copied, copy } = useCopyState();
   const t = oneOf(props.tone, TONES);
+  const fullValue = rawText(props.value) ?? "";
   const value = plain(props.value) ?? "";
-  const copyable = props.copyable === true && value.length > 0;
+  const copyable = props.copyable === true && fullValue.length > 0;
   return (
     <div className="openui-fact" role="listitem">
       <span className="openui-fact-label">{plain(props.label)}</span>
@@ -269,7 +273,7 @@ function FactRow({ props }: { props: Record<string, unknown> }) {
         {t ? <ToneLabel tone={t} /> : null}
         {value}
         {copyable ? (
-          <button type="button" className={`openui-copy-inline${copied ? " is-copied" : ""}`} aria-label={copied ? (labels.copied ?? "Copied") : (labels.copy ?? "Copy")} onClick={(event) => { if (event.nativeEvent.isTrusted) copy(value); }}>
+          <button type="button" className={`openui-copy-inline${copied ? " is-copied" : ""}`} aria-label={copied ? (labels.copied ?? "Copied") : (labels.copy ?? "Copy")} onClick={(event) => { if (event.nativeEvent.isTrusted) copy(fullValue); }}>
             {copied ? <MenuCheckGlyph className="openui-button-check" /> : <CopyIcon />}
             <span>{copied ? (labels.copied ?? "Copied") : (labels.copy ?? "Copy")}</span>
           </button>
