@@ -990,11 +990,12 @@ private struct Expectation {
       throw error
     }
     let restored = await Foreground.restore(session)
+    let foregroundMs = Int((clockNow() - session.started) * 1000)
     var notes = ["foreground"]
     if session.switched { notes.append(restored ? "focus_restored" : "focus_not_restored") }
     record.confirmed(via: "foreground", notes: notes)
     var result = try await observe(win, before: before, windows: windows, via: "foreground", notes: notes, verification: nil, actionStart: actionStart)
-    if session.switched { result["foregroundMs"] = Int((clockNow() - session.started) * 1000) }
+    if session.switched { result["foregroundMs"] = foregroundMs }
     return result
   }
 

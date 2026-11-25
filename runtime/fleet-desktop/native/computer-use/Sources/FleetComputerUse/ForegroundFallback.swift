@@ -45,16 +45,35 @@ enum Foreground {
     if let point {
       let screen = win.screen(point)
       guard AXUIElementCopyElementAtPosition(app, Float(screen.x), Float(screen.y), &element) == .success else { return own }
+      // 앱 단위 적중 검사는 시트(AXSheet)에서 멈추고 원격 패널 안으로 내려가지 않는다(eb7cf15c 실측). 점을 담은 자식으로 끝까지 내려간다.
+      element = element.map { deepest($0, at: screen) }
+    } else if let root = AXReader.window(win),
+              let sheet = (AXReader.attribute(root, kAXChildrenAttribute) as? [AXUIElement])?.first(where: { AXReader.attribute($0, kAXRoleAttribute) as? String == "AXSheet" }),
+              let frame = AXReader.frame(sheet) {
+      // 시트가 열린 창의 키는 시트가 받는다. 앱의 포커스 요소는 원격 패널을 가리키지 않아(eb7cf15c 실측) 시트 내용 창을 찾는다.
+      element = deepest(sheet, at: CGPoint(x: frame.midX, y: frame.midY))
     } else {
       element = asAX(AXReader.attribute(app, kAXFocusedUIElementAttribute))
     }
     var wid: CGWindowID = 0
     guard let element, let windowNumber, windowNumber(element, &wid) == .success, wid != 0, wid != win.key.id,
-          let row = (CGWindowListCopyWindowInfo([.optionIncludingWindow], wid) as? [Object])?.first,
+          // 패널 서비스의 내용 창은 화면 밖으로 보고되어 optionIncludingWindow에 나오지 않는다. 전체 목록에서 찾는다.
+          let row = (CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [Object])?
+            .first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value == wid }),
           let pid = row[kCGWindowOwnerPID as String] as? pid_t,
           let bounds = row[kCGWindowBounds as String] as? NSDictionary,
           let frame = CGRect(dictionaryRepresentation: bounds) else { return own }
     return remote(own, owner: pid, window: wid, frame: frame)
+  }
+
+  private static func deepest(_ start: AXUIElement, at screen: CGPoint) -> AXUIElement {
+    var current = start
+    for _ in 0..<32 {
+      let children = AXReader.attribute(current, kAXChildrenAttribute) as? [AXUIElement] ?? []
+      guard let next = children.last(where: { AXReader.frame($0)?.contains(screen) == true }) else { break }
+      current = next
+    }
+    return current
   }
 
   /// 같은 앱의 다른 창(겹친 창 등)으로는 돌리지 않는다. 다른 프로세스가 그린 원격 뷰일 때만 돌린다.
@@ -211,10 +230,11 @@ enum Foreground {
   }
 
   static func keys(_ strokes: [KeyStroke], route: ForegroundRoute, sent: () -> Void) async throws {
+    let source = CGEventSource(stateID: .hidSystemState)
     sent()
     for (i, stroke) in strokes.enumerated() {
       for down in [true, false] {
-        guard let e = CGEvent(keyboardEventSource: nil, virtualKey: stroke.code, keyDown: down) else { throw HelperError("internal", "event_creation_failed") }
+        guard let e = CGEvent(keyboardEventSource: source, virtualKey: stroke.code, keyDown: down) else { throw HelperError("internal", "event_creation_failed") }
         e.flags = stroke.flags
         send(e, to: route.pid)
         try await pause(down ? 25 : (i + 1 < strokes.count ? 12 : 0))
