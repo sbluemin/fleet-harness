@@ -32,7 +32,7 @@ import AppKit
 
   private func targetActivated(_ app: NSRunningApplication) {
     guard let watched, app.processIdentifier == watched.pid, restoring == nil else { return }
-    let session = Foreground.Session(previous: watched.previous, previousWindow: watched.window, switched: true, started: clockNow())
+    let session = Foreground.Session(target: watched.pid, previous: watched.previous, previousWindow: watched.window, switched: true, started: clockNow())
     restoring = Task { @MainActor in await Foreground.restore(session) }
   }
 

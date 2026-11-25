@@ -465,6 +465,7 @@ describe("Fleet Computer Use", () => {
       [{ action: "drag", target: "e1", to: "e2", foreground: true }, "foreground is not allowed"],
       [{ action: "right_click", target: "e1", foreground: true }, "foreground is not allowed"],
       [{ action: "scroll", target: "e1", direction: "down", foreground: true }, "foreground is not allowed"],
+      [{ action: "type", text: "x".repeat(201), foreground: true }, "at most 200 characters"],
     ] as const;
     for (const [args, error] of cases) expect(text(await f.action(args))).toMatch(new RegExp(`not sent: .*${error}`));
     expect(f.runtime.spawnProcess).not.toHaveBeenCalled();

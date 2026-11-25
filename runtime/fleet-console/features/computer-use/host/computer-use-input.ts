@@ -68,6 +68,7 @@ function validateAction(input: ActionArgs): void {
   if (input.action === "type" || input.action === "paste") need("text");
   if ((input.action === "type" || input.action === "paste" || input.action === "select") && input.text === "") invalid(`text must not be empty for ${input.action}.`);
   if (input.action === "key") { need("key"); validateKey(input.key!); }
+  if (input.foreground && input.action === "type" && [...input.text!].length > 200) invalid("foreground type: at most 200 characters.");
   if (!(ACTION_FIELDS[input.action] as readonly string[]).includes("x")) return;
   const hasCoordinates = input.x !== undefined || input.y !== undefined;
   const end = dragPoint(input.to);

@@ -97,6 +97,7 @@ enum Foreground {
   // MARK: 활성화와 복원
 
   struct Session {
+    let target: pid_t
     let previous: NSRunningApplication?
     let previousWindow: CGWindowID?
     let switched: Bool
@@ -137,9 +138,9 @@ enum Foreground {
     let previous = NSWorkspace.shared.frontmostApplication
     let started = clockNow()
     if previous?.processIdentifier == win.key.pid {
-      return Session(previous: nil, previousWindow: nil, switched: false, started: started)
+      return Session(target: win.key.pid, previous: nil, previousWindow: nil, switched: false, started: started)
     }
-    let session = Session(previous: previous, previousWindow: previous.flatMap { frontWindow(of: $0.processIdentifier) }, switched: true, started: started)
+    let session = Session(target: win.key.pid, previous: previous, previousWindow: previous.flatMap { frontWindow(of: $0.processIdentifier) }, switched: true, started: started)
     // 가상 머신(eb7cf15c 실측): 앱 활성화(activate) 뒤에는 키가 첫 입력부터 닿았고(KT2 4/4, V5·V6·V8), SkyLight 전면 지정 뒤에는 키가
     // 하나도 닿지 않았다(KT 0/4). 왼쪽 클릭은 두 방식 모두 첫 클릭부터 정확했다(6/6). 입력 종류에 맞는 쪽을 먼저 쓰고, 안 되면 다른 쪽으로 올린다.
     let byActivate = { NSRunningApplication(processIdentifier: win.key.pid)?.activate(options: []) == true }
@@ -159,8 +160,8 @@ enum Foreground {
   /// 대상 앱이 아직 앞일 때만 직전 앱으로 되돌린다. 그사이 사람이 다른 앱으로 옮겼으면 그대로 둔다.
   @MainActor static func restore(_ session: Session) async -> Bool {
     guard session.switched, let previous = session.previous, !previous.isTerminated else { return true }
-    let now = NSWorkspace.shared.frontmostApplication
-    if now?.processIdentifier == previous.processIdentifier { return true }
+    // 직전 앱이 이미 앞이거나, 대상 앱이 아닌 앱(사람이 그사이 고른 앱)이 앞이면 바꾸지 않는다.
+    guard NSWorkspace.shared.frontmostApplication?.processIdentifier == session.target else { return true }
     if let wid = session.previousWindow, front(previous.processIdentifier, window: wid) {
       if await waitFront(previous.processIdentifier, ms: 400) { return true }
     }

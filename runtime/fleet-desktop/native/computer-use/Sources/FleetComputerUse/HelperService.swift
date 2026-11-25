@@ -965,9 +965,15 @@ private struct Expectation {
     case .click: clicks = true
     case .key: strokes = [request.stroke!]
     case .type:
+      // 키 하나에 약 40ms다. 요청 감시 시간(15초) 안에 보내고 되돌리도록, 그리고 앞에 둔 시간을 짧게 하도록 길이를 묶는다.
+      guard request.text!.count <= 200 else { throw HelperError("invalid_params", "foreground type accepts at most 200 characters") }
       guard let keys = Foreground.asciiKeys(request.text!) else { throw HelperError("invalid_params", "foreground type accepts printable ASCII, tabs and newlines") }
       strokes = keys
     default: throw HelperError("invalid_params", "foreground")
+    }
+    // 키는 창 번호 없이 앱의 key 창으로 간다. 대상 앱이 이미 앞인데 다른 창이 key면 그 창(사람이 쓰는 창)에 들어가므로 보내기 전에 거절한다.
+    if !clicks, NSRunningApplication(processIdentifier: win.key.pid)?.isActive == true, !AXReader.reportsFocusedWindow(win, root: before.root) {
+      throw HelperError("no_editable_focus", "target_not_key_window")
     }
     let point = clicks ? try localPoint(node: node, explicit: request.point, in: win) : (try? localPoint(node: node, explicit: nil, in: win))
     try revalidate()
