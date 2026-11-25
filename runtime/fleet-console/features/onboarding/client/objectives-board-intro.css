@@ -241,7 +241,7 @@
 }
 
 .obi-card.is-selected {
-  border-color: var(--aurora);
+  border-color: var(--hairline-strong);
   background: var(--surface-panel-raised);
 }
 
@@ -513,8 +513,7 @@
 }
 
 .obi-preset-btn:hover {
-  background: var(--aurora-glow);
-  border-color: var(--aurora);
+  background: var(--wash-hover);
 }
 
 .obi-tray-form {

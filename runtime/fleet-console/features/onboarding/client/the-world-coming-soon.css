@@ -168,7 +168,6 @@
 
 .twc-hud-pill:hover {
   background: oklch(18% 0.014 250 / 88%);
-  border-color: color-mix(in oklch, var(--role-commodore) 52%, transparent);
 }
 
 .twc-hud-pill.is-lit {
@@ -260,7 +259,10 @@
   cursor: pointer;
 }
 
-.twc-roster-chip:hover,
+.twc-roster-chip:hover {
+  background: oklch(96% 0.004 90 / 16%);
+}
+
 .twc-roster-chip.is-active {
   background: oklch(96% 0.004 90 / 18%);
   border-color: color-mix(in oklch, var(--role-commodore) 68%, transparent);
