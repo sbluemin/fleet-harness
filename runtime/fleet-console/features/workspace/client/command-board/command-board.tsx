@@ -239,85 +239,51 @@ export function CommandBoardStage() {
 
   return (
     <div className="command-board" data-command-board-view={store.viewMode} aria-label={t("commandBoard.aria")}>
-      <header className="command-board-head">
-        <div className="command-board-title-group">
-          <span className="command-board-title-icon" aria-hidden="true"><CommandBoardGlyph /></span>
-          <h2 className="command-board-title">{t("commandBoard.title")}</h2>
-          <span className="command-board-summary">
-            {t("commandBoard.summary", { commodores: board.commodores.length, objectives: visibleItems.length })}
-          </span>
-        </div>
-
-        <div className="command-board-toolbar">
-          <label className="command-board-search">
-            <SearchGlyph />
-            <input
-              type="text"
-              className="command-board-search-input"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={t("commandBoard.searchPlaceholder")}
-              aria-label={t("commandBoard.searchAria")}
-            />
-          </label>
-
-          <button
-            type="button"
-            className="command-board-filter-btn is-attention"
-            aria-pressed={onlyAttention}
-            onClick={() => setOnlyAttention((value) => !value)}
-          >
-            {t("commandBoard.filterAttention")}
-          </button>
-
-          <button
-            type="button"
-            className="command-board-filter-btn"
-            aria-pressed={onlyDue}
-            onClick={() => setOnlyDue((value) => !value)}
-          >
-            {t("commandBoard.filterDue")}
-          </button>
-
-          <div className="command-board-segmented" role="group" aria-label={t("commandBoard.viewGroupAria")}>
-            <button
-              type="button"
-              className={`command-board-seg-btn${store.viewMode === "unified" ? " is-active" : ""}`}
-              aria-pressed={store.viewMode === "unified"}
-              onClick={() => setCommandBoardViewMode("unified")}
-            >
-              <CommandBoardGlyph size={12} />
-              <span>{t("commandBoard.view.unified")}</span>
-            </button>
-            <button
-              type="button"
-              className={`command-board-seg-btn${store.viewMode === "commodore" ? " is-active" : ""}`}
-              aria-pressed={store.viewMode === "commodore"}
-              onClick={() => setCommandBoardViewMode("commodore")}
-            >
-              <SwimlaneGlyph />
-              <span>{t("commandBoard.view.commodore")}</span>
-            </button>
-            <button
-              type="button"
-              className={`command-board-seg-btn${store.viewMode === "matrix" ? " is-active" : ""}`}
-              aria-pressed={store.viewMode === "matrix"}
-              onClick={() => setCommandBoardViewMode("matrix")}
-            >
-              <MatrixGlyph />
-              <span>{t("commandBoard.view.matrix")}</span>
-            </button>
+      {/* 콘솔 쉘 상단 52px 띠 — 좌우 빈 공간은 Desktop 창 드래그·Windows 캡션 영역으로 남기고,
+          가운데에 대화 화면과 같은 부유 캡슐(.conversation-pill 문법)로 지휘판 이름과 보기 전환을 둔다. */}
+      <header className="command-board-shell-bar">
+        <div className="command-board-shell-pill">
+          <div className="command-board-title-group">
+            <span className="command-board-shell-mark" aria-hidden="true"><CommandBoardGlyph size={15} /></span>
+            <h2 className="command-board-title">{t("commandBoard.title")}</h2>
+            <span className="command-board-summary">
+              · {t("commandBoard.summary", { commodores: board.commodores.length, objectives: visibleItems.length })}
+            </span>
           </div>
 
           {board.commodores.length > 0 ? (
-            <button
-              type="button"
-              className="command-board-primary-btn"
-              onClick={() => setModal({ kind: "create", defaultCommodoreId: defaultCreateCommodoreId() })}
-            >
-              <PlusGlyph />
-              <span>{t("commandBoard.newObjective")}</span>
-            </button>
+            <>
+              <span className="command-board-shell-divider" aria-hidden="true" />
+              <div className="command-board-segmented" role="group" aria-label={t("commandBoard.viewGroupAria")}>
+                <button
+                  type="button"
+                  className={`command-board-seg-btn${store.viewMode === "unified" ? " is-active" : ""}`}
+                  aria-pressed={store.viewMode === "unified"}
+                  onClick={() => setCommandBoardViewMode("unified")}
+                >
+                  <CommandBoardGlyph size={12} />
+                  <span>{t("commandBoard.view.unified")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`command-board-seg-btn${store.viewMode === "commodore" ? " is-active" : ""}`}
+                  aria-pressed={store.viewMode === "commodore"}
+                  onClick={() => setCommandBoardViewMode("commodore")}
+                >
+                  <SwimlaneGlyph />
+                  <span>{t("commandBoard.view.commodore")}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`command-board-seg-btn${store.viewMode === "matrix" ? " is-active" : ""}`}
+                  aria-pressed={store.viewMode === "matrix"}
+                  onClick={() => setCommandBoardViewMode("matrix")}
+                >
+                  <MatrixGlyph />
+                  <span>{t("commandBoard.view.matrix")}</span>
+                </button>
+              </div>
+            </>
           ) : null}
         </div>
       </header>
@@ -326,50 +292,94 @@ export function CommandBoardStage() {
         <div className="command-board-empty-stage">{t("commandBoard.empty.noCommodores")}</div>
       ) : (
         <>
-          {store.viewMode !== "matrix" ? (
-            <div className="command-board-roster">
+          {/* 콘솔 쉘 52px 띠 바로 아래 지휘판 컨트롤 바 — 검색·필터·사령관 로스터·새 목표 지시를 쉘 드래그 영역 밖에서 안전하게 조작한다. */}
+          <div className="command-board-controls">
+            {store.viewMode !== "matrix" ? (
+              <div className="command-board-roster">
+                <button
+                  type="button"
+                  className={`command-board-pill${store.selectedCommodores.size === 0 ? " is-active" : ""}`}
+                  aria-pressed={store.selectedCommodores.size === 0}
+                  onClick={clearCommandBoardCommodoreFilter}
+                >
+                  <span>{t("commandBoard.filterAll")}</span>
+                  <span className="command-board-pill-count">{allFiltered.length}</span>
+                </button>
+                {board.sectionBuckets.map((bucket, bucketIndex) => (
+                  <span key={bucket.id ?? `flat-${bucketIndex}`} style={{ display: "contents" }}>
+                    {bucket.name !== null ? (
+                      <>
+                        <span className="command-board-roster-sep" aria-hidden="true" />
+                        <span className="command-board-roster-sec">{bucket.name}</span>
+                      </>
+                    ) : null}
+                    {bucket.commodores.map((comm) => {
+                      const count = allFiltered.filter((item) => item.commodoreId === comm.id).length;
+                      const hasAlert = board.items.some((item) => item.commodoreId === comm.id && (item.column === "review" || item.due?.overdue));
+                      const active = store.selectedCommodores.has(comm.id);
+                      return (
+                        <button
+                          key={comm.id}
+                          type="button"
+                          className={`command-board-pill${active ? " is-active" : ""}`}
+                          aria-pressed={active}
+                          onClick={() => toggleCommandBoardCommodoreFilter(comm.id)}
+                          onMouseEnter={() => { if (store.viewMode === "unified") setHoveredCommodoreId(comm.id); }}
+                          onMouseLeave={() => { if (hoveredCommodoreId === comm.id) setHoveredCommodoreId(null); }}
+                        >
+                          <CommodoreAvatar commodoreId={comm.id} state={comm.running ? "running" : "idle"} size={18} label="" decorative />
+                          <span>{comm.name}</span>
+                          <span className="command-board-pill-count">{count}</span>
+                          {hasAlert ? <span className="command-board-pill-alert" aria-hidden="true" /> : null}
+                        </button>
+                      );
+                    })}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <div className="command-board-toolbar">
+              <label className="command-board-search">
+                <SearchGlyph />
+                <input
+                  type="text"
+                  className="command-board-search-input"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("commandBoard.searchPlaceholder")}
+                  aria-label={t("commandBoard.searchAria")}
+                />
+              </label>
+
               <button
                 type="button"
-                className={`command-board-pill${store.selectedCommodores.size === 0 ? " is-active" : ""}`}
-                aria-pressed={store.selectedCommodores.size === 0}
-                onClick={clearCommandBoardCommodoreFilter}
+                className="command-board-filter-btn is-attention"
+                aria-pressed={onlyAttention}
+                onClick={() => setOnlyAttention((value) => !value)}
               >
-                <span>{t("commandBoard.filterAll")}</span>
-                <span className="command-board-pill-count">{allFiltered.length}</span>
+                {t("commandBoard.filterAttention")}
               </button>
-              {board.sectionBuckets.map((bucket, bucketIndex) => (
-                <span key={bucket.id ?? `flat-${bucketIndex}`} style={{ display: "contents" }}>
-                  {bucket.name !== null ? (
-                    <>
-                      <span className="command-board-roster-sep" aria-hidden="true" />
-                      <span className="command-board-roster-sec">{bucket.name}</span>
-                    </>
-                  ) : null}
-                  {bucket.commodores.map((comm) => {
-                    const count = allFiltered.filter((item) => item.commodoreId === comm.id).length;
-                    const hasAlert = board.items.some((item) => item.commodoreId === comm.id && (item.column === "review" || item.due?.overdue));
-                    const active = store.selectedCommodores.has(comm.id);
-                    return (
-                      <button
-                        key={comm.id}
-                        type="button"
-                        className={`command-board-pill${active ? " is-active" : ""}`}
-                        aria-pressed={active}
-                        onClick={() => toggleCommandBoardCommodoreFilter(comm.id)}
-                        onMouseEnter={() => { if (store.viewMode === "unified") setHoveredCommodoreId(comm.id); }}
-                        onMouseLeave={() => { if (hoveredCommodoreId === comm.id) setHoveredCommodoreId(null); }}
-                      >
-                        <CommodoreAvatar commodoreId={comm.id} state={comm.running ? "running" : "idle"} size={18} label="" decorative />
-                        <span>{comm.name}</span>
-                        <span className="command-board-pill-count">{count}</span>
-                        {hasAlert ? <span className="command-board-pill-alert" aria-hidden="true" /> : null}
-                      </button>
-                    );
-                  })}
-                </span>
-              ))}
+
+              <button
+                type="button"
+                className="command-board-filter-btn"
+                aria-pressed={onlyDue}
+                onClick={() => setOnlyDue((value) => !value)}
+              >
+                {t("commandBoard.filterDue")}
+              </button>
+
+              <button
+                type="button"
+                className="command-board-primary-btn"
+                onClick={() => setModal({ kind: "create", defaultCommodoreId: defaultCreateCommodoreId() })}
+              >
+                <PlusGlyph />
+                <span>{t("commandBoard.newObjective")}</span>
+              </button>
             </div>
-          ) : null}
+          </div>
 
           {store.viewMode === "unified" ? (
             <div className="command-board-scroll">

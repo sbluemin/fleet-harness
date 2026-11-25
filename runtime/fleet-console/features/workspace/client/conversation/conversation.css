@@ -1808,7 +1808,7 @@ html[data-desktop-shell="true"] .conversation-profile-popover {
    작업 영역 맨 위 줄(.conversation-band)도 같다 — 도구 분할 위의 빈 자리도 창을 끈다.
    오른쪽 세부 정보 머리는 맨 위 줄(.conversation-panel-toolbar)만 끈다 — 머리 전체(아바타·이름·탭, 200px 남짓)를 끌면
    그 아래 내용을 잡아도 창이 움직인다. */
-html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-band, .conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header .conversation-panel-toolbar) {
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-band, .conversation-pill-row, .command-board-shell-bar, .side-bar-top-strip, .right-rail-panel-header .conversation-panel-toolbar) {
   -webkit-app-region: drag;
 }
 
@@ -1829,7 +1829,9 @@ html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conver
 }
 
 html[data-desktop-shell="true"] .console-shell.is-objective-records-view .conversation-pill-tools,
-html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-pill-row, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view .command-board-shell-pill,
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view .command-board-controls,
+html[data-desktop-shell="true"] .console-shell.is-objective-records-view :is(.conversation-pill-row, .command-board-shell-bar, .side-bar-top-strip, .right-rail-panel-header) :is(button, a, input, select, textarea, [role="button"], [role="menu"], [role="switch"], [tabindex]) {
   -webkit-app-region: no-drag;
 }
 
