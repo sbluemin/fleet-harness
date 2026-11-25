@@ -1713,6 +1713,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     surfaceMode: (req) => surfaceModeOfRequest(req),
     isNativeBrowserWrite: (req) => isNativeBrowserWrite(req),
     isRemoteBrowserControl: (req) => isRemoteBrowserControl(req),
+    remoteViewerOpen: (req) => {
+      const owner = remoteDesktopSession(req)?.handle;
+      if (!owner) return false;
+      for (const subscription of browserViewerSseSubscribers.values()) if (subscription.owner === owner) return true;
+      return false;
+    },
     isManagingDesktopProcess: (req) => isManagingDesktopProcess(req),
     isLoopbackListener: (req) => isLoopbackListener(req),
     isSameOriginConsoleRead: (req) => isSameOriginConsoleRead(req),
