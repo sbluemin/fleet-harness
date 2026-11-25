@@ -113,6 +113,8 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
       // Electron 자신의 TCC 요청을 거친다. 목록은 floating 창을 생략할 수 있어 식별의 근거가 아니다.
       const sources = await desktopCapturer.getSources({ types: ["window"], thumbnailSize: { width: 0, height: 0 } });
       const source = sources.find(source => source.id === `window:${target.windowId}:0`);
+      // Windows는 목록의 정확한 `window:<hwnd>:0` 존재(HWND 하위 32비트 = Electron 소스 ID)에 더해 헬퍼로 pid+생성시각+HWND 세대를 전후 검증한다.
+      const verifiesIdentity = process.platform === "darwin" || process.platform === "win32";
       if (process.platform !== "darwin" && !source) { log(`computer capture rejected: exact window source unavailable, screen permission=${screenAccess()}`); respond({}); return; }
       const matchesWindow = async () => {
         const verification = await verifyWindow(verifierExecutable, target);
@@ -121,10 +123,10 @@ export function installComputerCapture(contents: WebContents, localOrigin: () =>
         log(`computer capture rejected: ${reason}, screen permission=${screenAccess()}`);
         return false;
       };
-      if (process.platform === "darwin" && !await matchesWindow()) { respond({}); return; }
+      if (verifiesIdentity && !await matchesWindow()) { respond({}); return; }
       const current = await readTarget();
       if (current?.id !== target.id || localOrigin() !== origin) { log("computer capture rejected: selection changed"); respond({}); return; }
-      if (process.platform === "darwin" && !await matchesWindow()) { respond({}); return; }
+      if (verifiesIdentity && !await matchesWindow()) { respond({}); return; }
       log(`computer capture source selected window=${target.windowId} listed=${source ? "yes" : "no"}, screen permission=${screenAccess()}`);
       respond({ video: { id: `window:${target.windowId}:0`, name: target.title } });
     })().catch((error: unknown) => { log(`computer capture failed: ${error instanceof Error ? error.message : typeof error === "string" ? error : "unknown"}, screen permission=${screenAccess()}`); if (!answered) respond({}); });

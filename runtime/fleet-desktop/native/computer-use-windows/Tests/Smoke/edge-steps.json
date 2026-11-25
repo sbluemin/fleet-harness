@@ -1,0 +1,11 @@
+[
+  { "name": "click Press (ref)", "find": { "role": "AXButton", "label": "Press" }, "params": { "action": "click" } },
+  { "name": "type into input (ref)", "find": { "role": "AXTextField", "label": "probe input" }, "params": { "action": "type", "text": "hi한글" } },
+  { "name": "key ctrl+a", "params": { "action": "key", "key": "cmd+a" } },
+  { "name": "key enter", "params": { "action": "key", "key": "enter" } },
+  { "name": "click by point (button)", "findPoint": { "role": "AXButton", "label": "Press" }, "params": { "action": "click" } },
+  { "name": "scroll down (point in page)", "params": { "action": "scroll", "direction": "down", "x": 400, "y": 400, "pages": 2 } },
+  { "name": "key end", "params": { "action": "key", "key": "end" } },
+  { "name": "set_value input (B)", "find": { "role": "AXTextField", "label": "probe input" }, "params": { "action": "set_value", "text": "set-by-uia" } },
+  { "name": "drag (unsupported)", "params": { "action": "drag", "x": 100, "y": 200, "to": { "x": 200, "y": 300 } } }
+]

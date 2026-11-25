@@ -1,0 +1,6 @@
+[
+  { "name": "set_value A", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "set_value", "text": "one" } },
+  { "name": "set_value B", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "set_value", "text": "two" } },
+  { "name": "click menu", "find": { "role": "AXMenuItem", "label": "파일" }, "params": { "action": "click" } },
+  { "name": "click menu2", "find": { "role": "AXMenuItem", "label": "편집" }, "params": { "action": "click" } }
+]

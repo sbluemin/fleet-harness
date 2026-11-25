@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <InternalsVisibleTo Include="FleetComputerUse.Cursor.Tests" />
+  </ItemGroup>
+</Project>

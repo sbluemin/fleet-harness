@@ -1,6 +1,7 @@
 import type { HelperAction, HelperElement, HelperHello, HelperVerify, HelperWindow, HelperWindows, SnapshotWindow } from "../runtime/fleet-helper.js";
 import { FleetHelperError } from "../runtime/fleet-helper.js";
 import { permissionHolderName, type ClipboardRestoration, type ComputerUseResult } from "../runtime/platform.js";
+import type { ComputerUseOs } from "../shared/status.js";
 import { InvalidComputerUseParameters, isElementId, type ActionArgs, type Expectation } from "./computer-use-input.js";
 
 export function quoteApp(value: string): string {
@@ -61,14 +62,22 @@ function permissionHint(details: Record<string, unknown> | undefined): string {
   return `${ask} ${SCREEN_RECORDING_LIST} ${reopen} Retry after the user confirms the change. ${SCREEN_RECORDING_NEXT_CAPTURE}`;
 }
 
-function errorHint(error: FleetHelperError): string {
+// Windows에서만 달라지는 안내. 나머지 코드는 두 OS가 같은 문구를 쓴다.
+const windowsHint: Record<string, string> = {
+  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with ctrl/alt/shift+ (cmd is treated as ctrl; the Windows key is unsupported).",
+  not_settable: "This element does not support value replacement.",
+  background_unavailable: "This control cannot be driven in the background. If it is required, ask the user to perform it or choose an element that lists an action.",
+};
+
+function errorHint(error: FleetHelperError, os: ComputerUseOs = "darwin"): string {
   const { code, details } = error;
+  const windows = os === "win32";
   if (code === "window_unavailable") {
     const reason = details?.reason;
     if (reason === "closed") return "This window is closed. If it is reopened, get its new id with computer_apps.";
-    if (reason === "other_space") return "Window is on another Space. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current Space.";
+    if (reason === "other_space") return windows ? "Window is on another virtual desktop. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current virtual desktop." : "Window is on another Space. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current Space.";
     if (reason === "hidden" || reason === "minimized") {
-      return `Window unavailable: ${reason}. If needed, ask the user to make the intended window visible on the current Space.`;
+      return `Window unavailable: ${reason}. If needed, ask the user to make the intended window visible${windows ? " on the current virtual desktop" : " on the current Space"}.`;
     }
     return "Window unavailable.";
   }
@@ -82,7 +91,9 @@ function errorHint(error: FleetHelperError): string {
       : " If the drag itself is required, ask the user to perform it.");
   }
   if (code === "permission_required") return permissionHint(details);
-  return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
+  if (error instanceof InvalidComputerUseParameters) return error.detail;
+  if (windows && Object.hasOwn(windowsHint, code)) return windowsHint[code]!;
+  return Object.hasOwn(hint, code) ? hint[code]! : hint.internal!;
 }
 
 export function textResult(text: string, isError = false) {
@@ -91,11 +102,11 @@ export function textResult(text: string, isError = false) {
 export function gateResult(error: string, hintText?: string) {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);
 }
-export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration): ComputerUseResult {
+export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration, os: ComputerUseOs = "darwin"): ComputerUseResult {
   const code = /^(?:[a-z][a-z_]{0,63})$/u.test(error.code) ? error.code : "internal";
   const text = action
-    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `not sent: ${code} — ${errorHint(error)}`}`
-    : `${code === "invalid_params" ? "not sent: invalid_params —" : `error ${code}:`} ${errorHint(error)}`;
+    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `not sent: ${code} — ${errorHint(error, os)}`}`
+    : `${code === "invalid_params" ? "not sent: invalid_params —" : `error ${code}:`} ${errorHint(error, os)}`;
   return textResult(text + clipboardLine(clipboard), true);
 }
 
@@ -125,17 +136,18 @@ function elementLine(item: HelperElement, expand = false): string {
   return `${id} ${role}${item.label === undefined ? "" : ` ${quoteApp(item.label)}`}${value}${item.focused ? " focused" : ""}${item.enabled === false ? " disabled" : ""}${item.selected ? " selected" : ""}${actions.length ? ` [${actions.join(",")}]` : ""}`;
 }
 const size = ({ w, h }: { w: number; h: number }) => `${Math.round(w)}×${Math.round(h)}`;
-export function windowLine(id: string, window: HelperWindow): string {
-  const flags = [window.front && "front", window.hidden && "hidden", window.minimized && "minimized", !window.onCurrentSpace && !window.hidden && !window.minimized && "other-space"].filter(Boolean);
+export function windowLine(id: string, window: HelperWindow, os: ComputerUseOs = "darwin"): string {
+  const flags = [window.front && "front", window.hidden && "hidden", window.minimized && "minimized", !window.onCurrentSpace && !window.hidden && !window.minimized && (os === "win32" ? "other-desktop" : "other-space")].filter(Boolean);
   return `${id} ${quoteApp(window.title)} — ${quoteApp(window.app)} ${size(window.frame)}${flags.length ? ` ${flags.join(" ")}` : ""}`;
 }
 export function renderApps(lines: readonly string[], installed: HelperWindows["installed"]): ComputerUseResult {
   return textResult([...lines, ...(installed ?? []).map((app) => `installed: ${quoteApp(app.name)} ${quoteApp(app.path)}${app.bundleId ? ` ${quoteApp(app.bundleId)}` : ""}`)].join("\n") || "No matching apps or windows.");
 }
-export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, viewOnly = false) {
+export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, viewOnly = false, os: ComputerUseOs = "darwin", imageNote?: string) {
   const lines = [`${id} ${quoteApp(window.title)} ${size(window.frame)}`];
   if (view) lines.push(`view ${view} ${size(window.frame)}`);
-  if (viewOnly) lines.push("view-only: screenshot from another Space. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current Space.");
+  if (viewOnly) lines.push(os === "win32" ? "view-only: screenshot from another virtual desktop. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current virtual desktop." : "view-only: screenshot from another Space. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current Space.");
+  if (view && imageNote === "occluded_chromium_may_be_stale") lines.push("note: This Chromium/Electron window is fully covered, so its screenshot may be stale (the app stops rendering hidden windows). Read elements instead, or ask the user to uncover it if an exact image is needed.");
   if (expand) {
     const element = elements.find((item) => item.ref === expand);
     if (element) lines.push(elementLine(element, true));
@@ -162,7 +174,7 @@ function actionTarget(args: ActionArgs): string {
   return `${args.action} ${args.target ?? (args.x !== undefined && args.y !== undefined ? `(${args.x},${args.y}) ${args.view ?? ""}`.trimEnd() : args.window)}`;
 }
 const clipboardLine = (result?: ClipboardRestoration) => result ? `\nclipboard: ${result === "restored" ? "restored" : result === "preserved_newer_contents" ? "kept newer contents" : "restore failed"}` : "";
-export function renderAction(args: ActionArgs, reply: HelperAction, windowChanges: string[], clipboard?: ClipboardRestoration) {
+export function renderAction(args: ActionArgs, reply: HelperAction, windowChanges: string[], clipboard?: ClipboardRestoration, os: ComputerUseOs = "darwin") {
   const verified = reply.verified === "value_contains_text" ? `${args.target ?? "editable field"} value contains the ${args.action === "paste" ? "pasted" : "typed"} text`
     : reply.verified === "value_equals" ? `${args.target ?? "editable field"} value equals the new value`
       : reply.verified === "selection_matches" && args.text !== undefined ? `selection matches ${quoteApp(args.text)}`
@@ -177,7 +189,11 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   const exposed = elementChanges.slice(0, shown.length).filter(({ op }) => op !== "-").map(({ element }) => element);
   const more = Math.max(0, changes.length - 30) + (reply.changesMore ?? 0);
   if (more) lines.push(`… ${more} more changes; call computer_state`);
-  if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
+  if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push(os === "win32" ? "note: Setting a value may not fire app change events." : "note: Setting an AX value may not fire app change events.");
+  for (const note of reply.notes) {
+    const borrowed = /^foreground_borrowed:(\d{1,6})ms (restored|not_restored)$/u.exec(note);
+    if (borrowed) lines.push(`note: Focus was briefly borrowed (${borrowed[1]}ms) to use UI Automation; the previous window was ${borrowed[2] === "restored" ? "restored" : "NOT restored — tell the user"}.`);
+  }
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
   if (reply.notes.includes("app_took_focus")) lines.push(`note: The app brought itself to the front; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : "focus was returned."} If the input had no effect, foreground:true may reach it.`);
   if (reply.via === "foreground") lines.push(`note: App was brought to the front${reply.foregroundMs ? ` for ${reply.foregroundMs}ms` : ""}; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : reply.notes.includes("focus_restored") ? "focus returned to the user's app." : "it was already in front."}`);

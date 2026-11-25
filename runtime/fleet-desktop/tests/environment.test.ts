@@ -84,6 +84,31 @@ describe("desktop environment", () => {
     expect(helper(true, "linux").FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
   });
 
+  it("passes the Windows computer use helper only from the build-owned folder with a matching marker", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-helper-win-"));
+    TEMP_DIRS.push(root);
+    const resourceRoot = path.join(root, "runtime", "fleet-console");
+    const resourcesPath = path.join(root, "Fleet Console", "resources");
+    const dev = path.join(root, "runtime", "fleet-desktop", "dist", "helpers", "fleet-computer-use", "fleet-computer-use.exe");
+    const packaged = path.join(resourcesPath, "..", "helpers", "fleet-computer-use", "fleet-computer-use.exe");
+    const env = { FLEET_DATA_DIR: root, FLEET_COMPUTER_USE_HELPER: "C:\\untrusted\\inherited.exe", FLEET_COMPUTER_USE_PLATFORM_VERSION: "1" };
+    const helper = (isPackaged: boolean, platform: NodeJS.Platform = "win32") => createDesktopEnvironment(root, "1.23.0", resourceRoot, isPackaged, env, { platform, resourcesPath }).serviceEnv;
+    expect(helper(false).FLEET_COMPUTER_USE_HELPER).toBeUndefined();
+    expect(helper(true).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
+    for (const [isPackaged, entry] of [[false, dev], [true, packaged]] as const) {
+      fs.mkdirSync(path.dirname(entry), { recursive: true });
+      fs.writeFileSync(entry, "");
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_HELPER).toBe(path.resolve(entry));
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
+      const marker = path.join(path.dirname(entry), "computer-use-platform-version");
+      fs.writeFileSync(marker, "2\n");
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBeUndefined();
+      fs.writeFileSync(marker, "1\n");
+      expect(helper(isPackaged).FLEET_COMPUTER_USE_PLATFORM_VERSION).toBe("1");
+    }
+    expect(helper(true, "linux").FLEET_COMPUTER_USE_HELPER).toBeUndefined();
+  });
+
   it("rejects a relative isolation override instead of silently using the real user root", () => {
     const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-relative-"));
     TEMP_DIRS.push(worktree);

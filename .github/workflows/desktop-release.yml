@@ -125,9 +125,15 @@ jobs:
         with:
           node-version: '22'
           cache: pnpm
+      # Windows Computer Use 헬퍼(.NET)는 desktop build가 `dotnet publish`(self-contained, single-file)로 만든다. 설치본에는 .NET이 필요 없다.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
       - run: pnpm install --frozen-lockfile
       # postinstall이 desktop을 뺀 워크스페이스 전체(Console 포함)를 이미 빌드했다.
       - name: Build desktop shell
+        env:
+          FLEET_REQUIRE_COMPUTER_USE_HELPER: '1'
         run: pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installer (nsis, ${{ matrix.arch }})
         shell: bash

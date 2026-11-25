@@ -1,0 +1,7 @@
+[
+  { "name": "snapshot image of minimized", "method": "snapshot", "params": { "image": true } },
+  { "name": "type while minimized", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "type", "text": "x" } },
+  { "name": "click by point while minimized", "params": { "action": "click", "x": 100, "y": 100 } },
+  { "name": "set_value while minimized (uia)", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "set_value", "text": "min-set" } },
+  { "name": "click ref while minimized", "find": { "role": "AXMenuItem", "label": "보기" }, "params": { "action": "click" } }
+]

@@ -1,7 +1,7 @@
 import { extractFile, listPackage } from "@electron/asar";
 import { flipFuses, FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
 import { existsSync } from "node:fs";
-import { access, readdir, readFile, stat } from "node:fs/promises";
+import { access, open, readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -47,6 +47,7 @@ async function verifyApplication(application, platform) {
   await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
   await assertFuses(application.fuseBinary);
   if (platform === "darwin") await assertMacComputerUseHelper(application.appBundle);
+  if (platform === "win32") await assertWindowsComputerUseHelper(dirname(application.resourcesDirectory));
   await assertMacSignature(application, platform);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
 }
@@ -145,6 +146,20 @@ export async function assertMacComputerUseHelper(appBundle) {
   const info = await stat(helper).catch(() => null);
   if (!info?.isFile() || (info.mode & 0o111) === 0) throw new Error(`Computer Use helper is missing or not executable: ${helper}`);
   const marker = join(appBundle, ...MAC_COMPUTER_USE_HELPER_APP, "Contents", "Resources", "computer-use-platform-version");
+  if (await readFile(marker, "utf8").catch(() => null) !== "1\n") throw new Error(`Computer Use helper platform ABI marker is missing or incompatible: ${marker}`);
+}
+
+/** Windows 패키지는 앱 폴더의 `helpers/fleet-computer-use/`에 헬퍼 exe와 ABI marker를 둔다. 빠지면 기능이 꺼진 설치본이 조용히 나간다. */
+export async function assertWindowsComputerUseHelper(appDirectory) {
+  const directory = join(appDirectory, "helpers", "fleet-computer-use");
+  const helper = join(directory, "fleet-computer-use.exe");
+  const info = await stat(helper).catch(() => null);
+  if (!info?.isFile() || info.size === 0) throw new Error(`Computer Use helper is missing: ${helper}`);
+  const header = Buffer.alloc(2);
+  const handle = await open(helper, "r");
+  try { await handle.read(header, 0, 2, 0); } finally { await handle.close(); }
+  if (!header.equals(Buffer.from("MZ"))) throw new Error(`Computer Use helper is not a Windows executable: ${helper}`);
+  const marker = join(directory, "computer-use-platform-version");
   if (await readFile(marker, "utf8").catch(() => null) !== "1\n") throw new Error(`Computer Use helper platform ABI marker is missing or incompatible: ${marker}`);
 }
 

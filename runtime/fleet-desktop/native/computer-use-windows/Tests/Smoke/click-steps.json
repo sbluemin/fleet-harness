@@ -1,0 +1,5 @@
+[
+  { "name": "click doc by point A", "params": { "action": "click", "x": 300, "y": 300 } },
+  { "name": "click doc by point B", "params": { "action": "click", "x": 320, "y": 320 } },
+  { "name": "click doc by point C", "params": { "action": "click", "x": 340, "y": 300 } }
+]

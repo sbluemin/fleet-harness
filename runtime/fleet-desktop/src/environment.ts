@@ -173,6 +173,20 @@ function computerUseHelperEnvironment(contents: string): NodeJS.ProcessEnv {
   return env;
 }
 
+/** Windows 헬퍼는 번들이 아니라 폴더 하나다: `<dir>/fleet-computer-use.exe` + 같은 폴더의 `computer-use-platform-version`. */
+function windowsComputerUseHelperEnvironment(directory: string): NodeJS.ProcessEnv {
+  const executable = path.join(directory, "fleet-computer-use.exe");
+  if (!fs.statSync(executable, { throwIfNoEntry: false })?.isFile()) return {};
+  const env: NodeJS.ProcessEnv = { FLEET_COMPUTER_USE_HELPER: executable };
+  try {
+    const marker = path.join(directory, COMPUTER_USE_PLATFORM_VERSION_FILE);
+    const version = `${COMPUTER_USE_PLATFORM_VERSION}\n`;
+    const stat = fs.lstatSync(marker);
+    if (stat.isFile() && stat.size === version.length && fs.readFileSync(marker, "utf8") === version) env[COMPUTER_USE_PLATFORM_VERSION_ENV] = COMPUTER_USE_PLATFORM_VERSION;
+  } catch { /* No usable marker: do not advertise this capability. */ }
+  return env;
+}
+
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {
   // 개발 실행도 명시 슬롯을 존중한다 — 단 **새 이름만**. 옛 이름은 개발 모드에서 계속 무시하는
   // 것이 기존 불변식이다: 개발자 셸에 떠돌던 값 하나가 dev Desktop을 엉뚱한 슬롯으로 끌고 가면
@@ -188,11 +202,14 @@ export function createDesktopEnvironment(userDataDir: string, appVersion: string
   if (!fs.existsSync(ownerFile)) fs.writeFileSync(ownerFile, `${ownerId}\n`, { mode: 0o600 });
   const sanitized = sanitizeEnvironment(env);
   const resourcesPath = options.resourcesPath ?? process.resourcesPath;
+  const helperPlatform = options.platform ?? process.platform;
+  const windowsHelper = helperPlatform === "win32";
   const helpers = isPackaged
-    ? resourcesPath && path.resolve(resourcesPath, "../Helpers")
-    : path.resolve(resourceRoot, "../fleet-desktop/dist/helpers");
-  const computerUseEnvironment = helpers && (options.platform ?? process.platform) === "darwin"
-    ? computerUseHelperEnvironment(path.join(helpers, "Fleet Computer Use.app", "Contents")) : {};
+    ? resourcesPath && path.resolve(resourcesPath, windowsHelper ? "../helpers/fleet-computer-use" : "../Helpers")
+    : path.resolve(resourceRoot, windowsHelper ? "../fleet-desktop/dist/helpers/fleet-computer-use" : "../fleet-desktop/dist/helpers");
+  const computerUseEnvironment = !helpers ? {}
+    : helperPlatform === "darwin" ? computerUseHelperEnvironment(path.join(helpers, "Fleet Computer Use.app", "Contents"))
+    : windowsHelper ? windowsComputerUseHelperEnvironment(helpers) : {};
   const releaseTagOverride = readConsoleReleaseTagOverride(env);
   const releaseTagValue = readEnvironmentValue(env, CONSOLE_RELEASE_TAG_OVERRIDE_ENV)?.trim();
   const serviceBase = isPackaged

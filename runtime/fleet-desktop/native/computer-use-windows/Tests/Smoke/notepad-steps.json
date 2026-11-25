@@ -1,0 +1,10 @@
+[
+  { "name": "type ABC (no ref)", "method": "act", "params": { "action": "type", "text": "ABC" } },
+  { "name": "type via ref", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "type", "text": "한글✓" } },
+  { "name": "key ctrl+a", "params": { "action": "key", "key": "cmd+a" } },
+  { "name": "key end", "params": { "action": "key", "key": "end" } },
+  { "name": "click doc by point", "params": { "action": "click", "x": 300, "y": 300 } },
+  { "name": "scroll down", "params": { "action": "scroll", "direction": "down", "x": 300, "y": 300 } },
+  { "name": "click menu (WinUI -> uia)", "find": { "role": "AXMenuItem", "label": "편집" }, "params": { "action": "click" } },
+  { "name": "set_value doc", "find": { "role": "AXTextArea", "label": "텍스트" }, "params": { "action": "set_value", "text": "set by helper" } }
+]

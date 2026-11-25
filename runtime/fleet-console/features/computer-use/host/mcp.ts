@@ -239,7 +239,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
     try {
       const { id, occurrences } = await deps.feedback.store.submit(parsed.data as FeedbackFields, {
         actor, sessionKey, objectiveId, fleetVersion: deps.feedback.fleetVersion,
-        helperVersion: helper?.helperVersion, os: helper?.os ? `macOS ${helper.os}` : `${process.platform} ${systemRelease()}`,
+        helperVersion: helper?.helperVersion, os: helper?.os ? `${process.platform === "win32" ? "Windows" : "macOS"} ${helper.os}` : `${process.platform} ${systemRelease()}`,
         recentCalls: deps.service.recentCalls(sessionKey),
       });
       return textResult(occurrences === 1 ? `filed ${id}` : `updated ${id} (occurrences ${occurrences})`);

@@ -1,0 +1,14 @@
+import { Helper } from "./helper-client.mjs";
+import { execFileSync } from "node:child_process";
+const h = new Helper(process.argv[2]);
+await h.send("hello");
+const win = (await h.send("windows", { query: process.argv[3] })).result.windows[0];
+const ps = `Add-Type 'using System;using System.Text;using System.Runtime.InteropServices;public class W{public delegate bool P(IntPtr h,IntPtr l);[DllImport("user32")]public static extern bool EnumWindows(P p,IntPtr l);[DllImport("user32",CharSet=CharSet.Unicode)]public static extern int GetClassName(IntPtr h,StringBuilder s,int n);[DllImport("user32")]public static extern bool IsWindowVisible(IntPtr h);[DllImport("user32")]public static extern int GetWindowLong(IntPtr h,int i);}'; $script:r=@(); [W]::EnumWindows({param($h,$l) $s=New-Object Text.StringBuilder 256; [void][W]::GetClassName($h,$s,256); if($s.ToString().StartsWith('FleetComputerUse.AICursor')){ $script:r+=('{0:X} visible={1} ex={2:X}' -f [int64]$h,[W]::IsWindowVisible($h),[W]::GetWindowLong($h,-20)) }; $true},[IntPtr]::Zero) | Out-Null; $r -join '; '`;
+const act = h.send("act", { pid: win.pid, windowId: win.windowId, processStartedAt: win.processStartedAt, action: "click", x: 200, y: 200 });
+await new Promise((r) => setTimeout(r, 700));
+console.log("overlay during action:", execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).trim() || "(none)");
+console.log(JSON.stringify((await act).result?.via ?? (await act).error));
+await h.send("cursor", { op: "hide" });
+await new Promise((r) => setTimeout(r, 800));
+console.log("after hide:", execFileSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).trim() || "(none)");
+await h.stop();
