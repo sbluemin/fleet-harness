@@ -159,7 +159,8 @@ internal static unsafe class WindowCapture
 
     private static Raw? Wgc(nint hwnd, CancellationToken ct)
     {
-        if (!borderlessRequested)
+        // Borderless capture exists only on Windows 10.0.20348+; below that (down to the 19041 floor) the capture border stays.
+        if (!borderlessRequested && OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
         {
             borderlessRequested = true;
             try { GraphicsCaptureAccess.RequestAccessAsync(GraphicsCaptureAccessKind.Borderless).AsTask().Wait(2000); } catch { }
@@ -169,7 +170,10 @@ internal static unsafe class WindowCapture
         if (size.Width <= 0 || size.Height <= 0) return null;
         using var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(Device(), DirectXPixelFormat.B8G8R8A8UIntNormalized, 1, size);
         using var session = pool.CreateCaptureSession(item);
-        try { session.IsBorderRequired = false; } catch { }
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 20348))
+        {
+            try { session.IsBorderRequired = false; } catch { }
+        }
         try { session.IsCursorCaptureEnabled = false; } catch { }
         using var arrived = new ManualResetEventSlim();
         Direct3D11CaptureFrame? frame = null;

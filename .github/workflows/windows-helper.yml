@@ -1,0 +1,31 @@
+name: Windows Helper
+
+# Windows Computer Use 헬퍼(.NET)는 desktop 릴리스 빌드에서만 컴파일돼, Windows 전용 분석기 오류(CA1416 등)가
+# Stable Release 도중에야 드러났다(v1.318.0). 헬퍼 소스를 바꾸는 PR에서 릴리스와 같은 publish를 먼저 돌린다.
+# macOS에서의 교차 publish는 이 분석기 오류를 재현하지 못하므로 Windows 러너에서 돌린다.
+on:
+  pull_request:
+    paths:
+      - 'runtime/fleet-desktop/native/computer-use-windows/**'
+      - 'runtime/fleet-desktop/scripts/build-computer-use-helper.mjs'
+      - '.github/workflows/windows-helper.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish helper (win-x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      # build-computer-use-helper.mjs와 같은 인자다.
+      - name: dotnet publish
+        shell: bash
+        run: >-
+          dotnet publish runtime/fleet-desktop/native/computer-use-windows/Helper/FleetComputerUse.Helper.csproj
+          -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=None
+          -o "$RUNNER_TEMP/fleet-computer-use"
