@@ -1,0 +1,46 @@
+[
+ {
+  "name": "click 7 by ref",
+  "find": {
+   "role": "AXButton",
+   "label": "7"
+  },
+  "params": {
+   "action": "click"
+  }
+ },
+ {
+  "name": "click 8 by point",
+  "findPoint": {
+   "role": "AXButton",
+   "label": "8"
+  },
+  "params": {
+   "action": "click"
+  }
+ },
+ {
+  "name": "key 9 (text_via_key expected)",
+  "params": {
+   "action": "key",
+   "key": "9"
+  }
+ },
+ {
+  "name": "type 5 (no editable)",
+  "params": {
+   "action": "type",
+   "text": "5"
+  }
+ },
+ {
+  "name": "click clear",
+  "find": {
+   "role": "AXButton",
+   "label": "지우기"
+  },
+  "params": {
+   "action": "click"
+  }
+ }
+]

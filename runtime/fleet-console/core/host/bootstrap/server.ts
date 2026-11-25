@@ -881,7 +881,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     spawnProcess: (request) => ownedProcesses.spawn(request),
   }, {
     // Keep the existing unsupported-vs-missing Settings distinction. Actual native availability is the helper ABI.
-    supported: process.platform === "darwin",
+    supported: process.platform === "darwin" || process.platform === "win32",
     command: process.env.FLEET_COMPUTER_USE_HELPER,
     platformVersion: process.env.FLEET_COMPUTER_USE_PLATFORM_VERSION,
   });
@@ -914,6 +914,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       watchComputerCapture(computerCaptureTarget?.offscreen === null);
     },
     platform: computerUsePlatform,
+    os: process.platform === "win32" ? "win32" : "darwin",
     onFailure: recordFailure,
     diagnostic: (event) => (event.outcome === "unknown" || (event.outcome === "error" && event.error !== "computer_use_app_closed") ? process.stderr : process.stdout).write(`[fleet-computer-use] ${JSON.stringify({ ts: new Date().toISOString(), ...event })}\n`),
     enabled: () => readExperimentSettings({ load: consoleSettingsStore.readSnapshot }).computerUse,

@@ -1,0 +1,5 @@
+[
+  { "name": "paste via ref (no lease flags)", "find": { "role": "AXTextField", "label": "probe input" }, "params": { "action": "key", "key": "cmd+v" } },
+  { "name": "ctrl+v again", "params": { "action": "key", "key": "ctrl+v" } },
+  { "name": "shift+insert-like: ctrl+a then ctrl+c", "params": { "action": "key", "key": "ctrl+a" } }
+]

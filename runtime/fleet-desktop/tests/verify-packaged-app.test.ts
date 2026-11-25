@@ -51,6 +51,26 @@ describe("release package verification", () => {
     }
   });
 
+  it("requires the Windows Computer Use helper executable and ABI marker in the app folder", async () => {
+    const appDirectory = await mkdtemp(path.join(os.tmpdir(), "fleet-cu-helper-win-"));
+    const folder = path.join(appDirectory, "helpers", "fleet-computer-use");
+    try {
+      const verifier = await import(pathToFileURL(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs")).href);
+      await expect(verifier.assertWindowsComputerUseHelper(appDirectory)).rejects.toThrow("Computer Use helper is missing");
+      await mkdir(folder, { recursive: true });
+      await writeFile(path.join(folder, "fleet-computer-use.exe"), "#!/bin/sh\n");
+      await expect(verifier.assertWindowsComputerUseHelper(appDirectory)).rejects.toThrow("not a Windows executable");
+      await writeFile(path.join(folder, "fleet-computer-use.exe"), Buffer.from("MZ\0\0"));
+      await expect(verifier.assertWindowsComputerUseHelper(appDirectory)).rejects.toThrow("platform ABI marker is missing or incompatible");
+      await writeFile(path.join(folder, "computer-use-platform-version"), "1\n");
+      await expect(verifier.assertWindowsComputerUseHelper(appDirectory)).resolves.toBeUndefined();
+      const source = await readFile(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs"), "utf8");
+      expect(source).toContain('if (platform === "win32") await assertWindowsComputerUseHelper(dirname(application.resourcesDirectory));');
+    } finally {
+      await rm(appDirectory, { force: true, recursive: true });
+    }
+  });
+
   it("accepts the expected PE architecture and rejects a mismatched Electron binary", async () => {
     // Windows 실기는 [Unverified]지만 PE 헤더 판독은 fixture로 고정한다.
     const directory = await mkdtemp(path.join(os.tmpdir(), "fleet-electron-arch-"));

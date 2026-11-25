@@ -2,8 +2,8 @@ import { marked } from "marked";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { FleetHelperError, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
 import type { ClipboardLease, ClipboardRestoration, ComputerUseCaptureFailure, ComputerUsePermissions, ComputerUsePlatform, ComputerUseResult, ComputerUseWindowIdentity, ComputerUseWindowState } from "../runtime/platform.js";
-import { COMPUTER_USE_PERMISSIONS, type ComputerUsePermission, type ComputerUseSettingsStatus } from "../shared/status.js";
-import { computerUseTools } from "./computer-use-tools.js";
+import { COMPUTER_USE_PERMISSIONS, type ComputerUseOs, type ComputerUsePermission, type ComputerUseSettingsStatus } from "../shared/status.js";
+import { computerUseTools, computerUseToolsFor } from "./computer-use-tools.js";
 import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
 import { gateResult, nativeRole, offeredAction, renderAction, renderApps, renderError, renderOpen, renderSessionEnd, renderSessionStatus, renderState, renderVerify, windowLine } from "./computer-use-render.js";
 
@@ -97,11 +97,15 @@ export class ComputerUseService {
   constructor(private readonly deps: {
     readonly enabled: () => boolean;
     readonly platform: ComputerUsePlatform;
+    /** 문구·도구 설명을 고르는 호스트 OS. 없으면 macOS. */
+    readonly os?: ComputerUseOs;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
     readonly onActiveOwnerChange?: (owner: string | null) => void;
   }) {}
+
+  private get os(): ComputerUseOs { return this.deps.os ?? "darwin"; }
 
   status(): ComputerUseStatus {
     const supported = this.deps.platform.supported();
@@ -135,7 +139,7 @@ export class ComputerUseService {
     }
     const missingPermissions = permissions ? COMPUTER_USE_PERMISSIONS.filter((permission) => !permissions[permission]) : null;
     const permissionHolder = permissions?.holder ?? hello?.permissionHolder ?? null;
-    return { enabled, supported, helperAvailable, missingPermissions, permissionHolder, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
+    return { enabled, supported, helperAvailable, missingPermissions, permissionHolder, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed, ...(this.os === "win32" ? { os: this.os } : {}) };
   }
   async captureWindowState(target: ComputerUseWindowIdentity): Promise<ComputerUseWindowState> {
     return this.deps.enabled() ? this.deps.platform.windowState(target) : { identity: "mismatch", onscreen: false };
@@ -208,7 +212,7 @@ export class ComputerUseService {
   }
 
   specs(): (AgentToolSpec & { id: DeviceTool })[] {
-    return computerUseTools.map(({ name, description, inputSchema }) => ({
+    return computerUseToolsFor(this.os).map(({ name, description, inputSchema }) => ({
       id: name, tag: name, title: name, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters: inputSchema,
       execute: (args, context) => this.execute(name, args, context.sessionLabel, context.signal),
     }));
@@ -248,7 +252,7 @@ export class ComputerUseService {
         if ("window" in input && typeof input.window === "string" && /^w[0-9]+$/u.test(input.window)) action.window = input.window;
         if ("target" in input && typeof input.target === "string" && isElementId(input.target)) action.target = input.target;
       }
-      return { result: renderError(error, action), code: `not_sent:${error.code}` };
+      return { result: renderError(error, action, undefined, this.os), code: `not_sent:${error.code}` };
     }
     if (tool === "computer_session") {
       if ((args as { op: string }).op === "status") return withOk(renderSessionStatus(true, this.client?.live ? this.client.hello : null, this.activeTool ?? "idle"));
@@ -310,7 +314,7 @@ export class ComputerUseService {
         else if (error.code === "permission_required" && Array.isArray(error.details?.missing) && error.details.missing.includes("accessibility")) this.publishCapture(undefined, "accessibility_permission_required");
       }
       const code = error.uncertain ? "dispatch_unknown" : tool === "computer_action" ? `not_sent:${error.code}` : error.code;
-      return output = { result: renderError(error, tool === "computer_action" ? args as ActionArgs : undefined, clipboard), code };
+      return output = { result: renderError(error, tool === "computer_action" ? args as ActionArgs : undefined, clipboard, this.os), code };
     } finally {
       signal?.removeEventListener("abort", onAbort);
       this.lastCall = { tool, outcome: output?.result.isError ? "error" : "returned", elapsedMs: Math.max(0, Date.now() - this.startedAt!), error: output?.result.isError ? output.code : null };
@@ -483,20 +487,24 @@ export class ComputerUseService {
   }
 
   private async list(client: FleetHelperClient, query: string | undefined, lifetime: AbortController) {
-    if (!query) return renderApps((await this.windowsNow(client, lifetime)).map((w) => windowLine(this.registerWindow(w).id, w)), undefined);
+    if (!query) return renderApps((await this.windowsNow(client, lifetime)).map((w) => windowLine(this.registerWindow(w).id, w, this.os)), undefined);
     const result = await client.request("windows", { query });
     this.assertActive(lifetime);
-    return renderApps(result.windows.filter((w) => w.processStartedAt > 0).map((w) => windowLine(this.registerWindow(w).id, w)), result.installed);
+    return renderApps(result.windows.filter((w) => w.processStartedAt > 0).map((w) => windowLine(this.registerWindow(w).id, w, this.os)), result.installed);
   }
 
   private async open(args: OpenArgs, lifetime: AbortController) {
     const resolved = await this.deps.platform.resolveApp(args.app, lifetime.signal);
     this.assertActive(lifetime);
-    if ("error" in resolved) throw new InvalidComputerUseParameters({
+    if ("error" in resolved) throw new InvalidComputerUseParameters((this.os === "win32" ? {
+      exact_target_required: "Use an absolute .exe or .lnk path, an exact AppUserModelID, or an exact Start menu app name.",
+      unambiguous_target_required: "That name did not match exactly one Start menu app; use the absolute .exe or .lnk path.",
+      installed_target_required: "Use an existing .exe or .lnk path.",
+    } : {
       exact_target_required: "Use an exact .app path or an unambiguous bundle ID.",
       unambiguous_target_required: "Bundle ID did not match exactly one installation; use the exact .app path.",
       installed_target_required: "Use an existing .app bundle path.",
-    }[resolved.error]);
+    })[resolved.error]);
     const { app } = resolved;
     this.views.clear();
     this.publishCapture();
@@ -521,7 +529,7 @@ export class ComputerUseService {
   private async observe(client: FleetHelperClient, args: StateArgs, actor: string, lifetime: AbortController, caller?: Caller) {
     const { known, window } = await this.resolveWindow(client, args.window, lifetime, args.image === true);
     if (args.expand) this.issuedElement(known, args.expand);
-    const { elements, image, omitted, window: observed, viewOnly } = await client.request("snapshot", {
+    const { elements, image, omitted, window: observed, viewOnly, imageNote } = await client.request("snapshot", {
       ...address(window), find: args.find, expand: args.expand, limit: args.limit ?? 200, valueLimit: 80, image: args.image ?? false,
     });
     this.assertActive(lifetime);
@@ -538,13 +546,15 @@ export class ComputerUseService {
       views.set(args.window, { id: view, frame: { ...observed.frame }, width: image.width, height: image.height });
       this.views.set(actor, views);
     }
-    const result = renderState(args.window, observed, elements, omitted, args.expand, view, viewOnly === true);
+    const result = renderState(args.window, observed, elements, omitted, args.expand, view, viewOnly === true, this.os, imageNote);
     return view && image ? { ...result, content: [...result.content, { type: "image", data: image.data, mimeType: image.mime }] } : result;
   }
 
   private async act(client: FleetHelperClient, args: ActionArgs, actor: string, lifetime: AbortController, onClipboard: (value: ClipboardRestoration) => void, didSend: () => void): Promise<DeviceOutput> {
     try { await client.ensureInputAllowed(); }
     finally { this.selfCheckFailed = this.failedSelfCheck(client); }
+    // foreground 대체 경로는 macOS 헬퍼만 가진다. Windows는 메시지 경로와 UIA+전경 복원(결정 b753a115)으로 대신한다.
+    if (args.foreground && this.os === "win32") throw new InvalidComputerUseParameters("foreground is not supported on Windows; controls without a background path already borrow focus briefly and restore it.");
     this.assertActive(lifetime);
     const { window, known } = await this.resolveWindow(client, args.window, lifetime);
     const element = args.target ? this.issuedElement(known, args.target) : undefined;
@@ -590,7 +600,7 @@ export class ComputerUseService {
     try {
       this.assertActive(lifetime);
       reply = await client.request("act", params);
-      if (!reply.sent || !reply.via || !["ax", "event", "event+focus", "foreground"].includes(reply.via)) throw new FleetHelperError("timeout", true);
+      if (!reply.sent || !reply.via || !["ax", "event", "event+focus", "foreground", "message", "message+keystate", "uia"].includes(reply.via)) throw new FleetHelperError("timeout", true);
       didSend();
     } finally {
       if (lease) {
@@ -602,20 +612,20 @@ export class ComputerUseService {
     const changes: string[] = [];
     for (const change of reply.windowsChanged ?? []) {
       if (change.op === "+" && change.window.processStartedAt > 0 && change.window.onCurrentSpace && change.window.title.trim()) {
-        changes.push(`+ ${windowLine(this.registerWindow(change.window).id, change.window)}`);
+        changes.push(`+ ${windowLine(this.registerWindow(change.window).id, change.window, this.os)}`);
       }
       if (change.op === "-") {
         const closed = this.liveWindows.get(identityOf(change.window));
         if (closed) {
           this.closeWindow(closed);
-          changes.push(`- ${windowLine(closed.id, change.window)}`);
+          changes.push(`- ${windowLine(closed.id, change.window, this.os)}`);
           if (closed === known) this.publishCapture();
         }
       }
     }
     // 헬퍼가 보조 창 변경만 보고 관측을 끝냈다면, 변화 없음으로 단정할 수 없다.
     const onlyWindowNoise = reply.observation === "changes" && reply.windowsChanged?.length && !changes.length && !reply.changes.length && !reply.changesMore;
-    const { result, code, exposed } = renderAction(args, onlyWindowNoise ? { ...reply, observation: "unobservable" } : reply, changes, clipboard);
+    const { result, code, exposed } = renderAction(args, onlyWindowNoise ? { ...reply, observation: "unobservable" } : reply, changes, clipboard, this.os);
     this.rememberElements(known, exposed);
     return { result, code };
   }

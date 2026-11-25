@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>smoke-tool</AssemblyName>
+    <SelfContained>true</SelfContained>
+    <NoWarn>CS8981;CA1416</NoWarn>
+  </PropertyGroup>
+</Project>

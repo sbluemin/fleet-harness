@@ -1,0 +1,8 @@
+[
+  { "name": "type in Edit (Win32 dialog)", "find": { "role": "AXTextField", "label": "열기" }, "params": { "action": "type", "text": "-hello 한글" } },
+  { "name": "key ctrl+a", "params": { "action": "key", "key": "ctrl+a" } },
+  { "name": "key home", "params": { "action": "key", "key": "home" } },
+  { "name": "click Browse button (message)", "find": { "role": "AXButton", "label": "찾아보기" }, "params": { "action": "click" } },
+  { "name": "set_value combo text", "find": { "role": "AXTextField", "label": "열기" }, "params": { "action": "set_value", "text": "notepad" } },
+  { "name": "click Cancel", "find": { "role": "AXButton", "label": "취소" }, "params": { "action": "click" } }
+]

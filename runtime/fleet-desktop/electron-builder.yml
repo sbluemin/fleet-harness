@@ -43,6 +43,9 @@ mac:
     - target: zip
 win:
   icon: build/icon.ico
+  extraFiles:
+    - from: dist/helpers/fleet-computer-use
+      to: helpers/fleet-computer-use
   signExts:
     - .exe
     - .dll

@@ -64,7 +64,9 @@ macOS 개발 실행은 `pnpm desktop` 또는 `pnpm --filter @dotobokuri/fleet-de
 
 ## Computer Use
 
-The macOS app ships Fleet's Swift helper inside `Contents/Helpers/Fleet Computer Use.app`. Console starts the helper directly under the desktop app's responsibility and checks Accessibility, Screen Recording, and background input before sending actions. If the self-check fails, observation remains available but app control pauses. Windows and Linux do not support Computer Use.
+The macOS app ships Fleet's Swift helper inside `Contents/Helpers/Fleet Computer Use.app`. Console starts the helper directly under the desktop app's responsibility and checks Accessibility, Screen Recording, and background input before sending actions. If the self-check fails, observation remains available but app control pauses.
+
+The Windows app ships a self-contained .NET helper at `helpers/fleet-computer-use/fleet-computer-use.exe` next to `Fleet Console.exe`, with a `computer-use-platform-version` marker in the same folder; users need no .NET install. Windows has no per-app permission prompts, so the helper's self-check covers an interactive desktop, UI Automation, window capture, and an input probe that must not move the pointer or change the foreground window. Building the Windows desktop app (`pnpm --filter @dotobokuri/fleet-desktop build`) uses the .NET 10 SDK on `PATH`; without it the helper build is skipped with a warning (Computer Use stays unavailable), unless `FLEET_REQUIRE_COMPUTER_USE_HELPER=1` is set, as the release workflow does, in which case the build fails. `verify:package` always requires the helper in a Windows package. Linux does not support Computer Use.
 
 Agents use the MCP tools to read exact windows, act in the background, and verify the result. An action is never replayed to recover an uncertain outcome. An AI cursor shows where Fleet acts without taking over the user's pointer. The optional Desktop live preview uses only the selected window, runs locally, and ends with the device session; it is not a recording.
 

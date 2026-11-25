@@ -1,0 +1,10 @@
+import { Helper } from "./helper-client.mjs";
+const exe = process.argv[2];
+const h = new Helper(exe);
+const t0 = Date.now();
+const hello = await h.send("hello");
+console.log("hello", Date.now() - t0, "ms", JSON.stringify(hello));
+const w = await h.send("windows");
+for (const x of w.result.windows) console.log(x.windowId, x.pid, x.engine, JSON.stringify(x.app), JSON.stringify(x.title.slice(0, 40)), JSON.stringify(x.frame), x.front ? "front" : "", x.minimized ? "min" : "", x.onCurrentSpace ? "" : "other-space", x.bundleId);
+console.log("events", JSON.stringify(h.events));
+console.log("exit", await h.stop());

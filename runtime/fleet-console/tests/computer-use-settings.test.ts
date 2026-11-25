@@ -30,7 +30,7 @@ it("locks a missing helper but preserves its saved opt-in; other platforms are e
   expect(absent.toggle.disabled).toBe(true);
   expect(absent.toggle.checked).toBe(true);
   const unsupported = await mount({ ...ready, enabled: false, helperAvailable: false, supported: false, missingPermissions: null }, true);
-  expect(unsupported.node.querySelector('[role="status"]')?.textContent).toContain("Available on macOS only for now.");
+  expect(unsupported.node.querySelector('[role="status"]')?.textContent).toContain("Available on macOS and Windows only for now.");
   expect(unsupported.toggle.disabled).toBe(true);
   expect(unsupported.toggle.checked).toBe(false);
 });
@@ -74,4 +74,17 @@ it("locks the remote preview share switch on a remote client and keeps the exist
   expect(remote.node.textContent).toContain("Remote clients cannot manage this feature.");
   expect(remote.remotePreviewToggle?.disabled).toBe(true);
   expect(remote.toggle.disabled).toBe(true);
+});
+
+it("on Windows hides the permission rows, keeps the toggle usable and uses PC wording", async () => {
+  // Windows에는 TCC가 없다: 헬퍼가 어떤 권한 부족을 보고해도 요청 버튼·macOS 안내 행이 서지 않는다.
+  const view = await mount({ ...ready, os: "win32", missingPermissions: ["accessibility", "screenRecording"] });
+  expect(view.node.querySelector('[role="status"]')).toBeNull();
+  expect(view.node.textContent).not.toContain("Request permissions");
+  expect(view.toggle.disabled).toBe(false);
+  const paused = await mount({ ...ready, os: "win32", selfCheckFailed: true });
+  expect(paused.node.querySelector('[role="status"]')?.textContent).toContain("Self-check failed on this Windows session");
+  expect(paused.node.textContent).not.toContain("macOS");
+  const phone = await mount({ ...ready, os: "win32" }, true);
+  expect(phone.remotePreviewToggle?.checked).toBe(true);
 });
