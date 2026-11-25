@@ -1,6 +1,7 @@
 import AppKit
 import Carbon
 import Darwin
+import Security
 
 /// 가상 머신 창의 게스트 화면. Parallels Desktop은 백그라운드 입력(postToPid·focus 레코드)을 게스트에 넘기지 않고 버린다
 /// (18a642fb m1 실측: 게스트 페이지 pointerdown/keydown 기록기 0건, 일반 맥 앱 대조군은 백그라운드 정상).
@@ -105,9 +106,32 @@ enum GuestKeys {
     let height: UInt32
   }
 
+  /// Parallels가 Developer ID로 서명한 SDK만 연다. 번들 ID는 아무 앱이나 자칭할 수 있고 헬퍼는 손쉬운 사용·화면 기록 권한을 가지며
+  /// 릴리스 빌드는 라이브러리 검증을 끄므로, 서명을 확인하지 않으면 같은 번들 ID를 단 앱의 코드가 헬퍼 안에서 실행될 수 있다.
+  /// 팀 식별자는 설치된 Parallels Desktop 27.1의 실제 서명에서 읽었다(Parallels International GmbH, 4C6364ACXT).
+  nonisolated static let sdkRequirement = "identifier \"com.parallels.virtualization.sdk\" and anchor apple generic"
+    + " and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+    + " and certificate leaf[subject.OU] = \"4C6364ACXT\""
+
+  /// 프레임워크 번들 전체(안에 든 dylib 포함)가 위 요구 조건을 만족하면 그 안의 실행 파일 실제 경로를 돌려준다.
+  nonisolated static func trustedSDK(_ framework: String) -> String? {
+    let url = URL(fileURLWithPath: framework).resolvingSymlinksInPath()
+    var code: SecStaticCode?
+    var requirement: SecRequirement?
+    guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code,
+          SecRequirementCreateWithString(sdkRequirement as CFString, [], &requirement) == errSecSuccess, let requirement,
+          SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSCheckNestedCode | kSecCSCheckAllArchitectures), requirement) == errSecSuccess
+    else { return nil }
+    let binary = url.appendingPathComponent("ParallelsVirtualizationSDK").resolvingSymlinksInPath().path
+    // 심볼릭 링크가 검증한 번들 밖을 가리키면 열지 않는다.
+    return binary.hasPrefix(url.path + "/") ? binary : nil
+  }
+
   private func load(_ bundlePath: String) throws -> Symbols {
     if let symbols { return symbols }
-    let path = bundlePath + "/Contents/Frameworks/ParallelsVirtualizationSDK.framework/ParallelsVirtualizationSDK"
+    let framework = bundlePath + "/Contents/Frameworks/ParallelsVirtualizationSDK.framework"
+    guard FileManager.default.fileExists(atPath: framework) else { throw HelperError("vm_unavailable", details: ["reason": "sdk_missing"]) }
+    guard let path = Self.trustedSDK(framework) else { throw HelperError("vm_unavailable", details: ["reason": "sdk_untrusted"]) }
     guard let lib = dlopen(path, RTLD_NOW | RTLD_LOCAL) else { throw HelperError("vm_unavailable", details: ["reason": "sdk_missing"]) }
     func sym<T>(_ name: String, _: T.Type) throws -> T {
       guard let p = dlsym(lib, name) else { throw HelperError("vm_unavailable", details: ["reason": "sdk_missing"]) }
@@ -154,7 +178,7 @@ enum GuestKeys {
     guard s.result(list, &result) == 0 else { throw HelperError("vm_unavailable", details: ["reason": "sdk_call"]) }
     defer { _ = s.free(result) }
     var count: UInt32 = 0
-    _ = s.count(result, &count)
+    guard s.count(result, &count) == 0 else { throw HelperError("vm_unavailable", details: ["reason": "sdk_call"]) }
     var matches: [H] = []
     for i in 0..<count {
       var vm: H = nil
