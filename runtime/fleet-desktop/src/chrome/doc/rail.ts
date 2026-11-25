@@ -25,9 +25,11 @@ export function mountRail(): (state: ChromeUiState) => void {
   newButton.append(h("span", { class: "glyph", text: "+" }));
   scroll.append(tabsBox, newButton);
   // 가로 표시줄이 맨 위 줄일 때 신호등·캡션 버튼 자리를 비우는 여백 — 세로 레일에서는 자리를 차지하지 않는다.
-  const leading = h("span", { class: "pad" });
+  // 앞 여백은 문서에서 스크롤 영역 뒤에 두고 CSS order 로 맨 앞에 세운다. 창 끌기 영역은 문서 순서로 겹쳐져 뒤의 것이 이기는데,
+  // 줄을 넘기면 왼쪽으로 밀려난 탭의 끌기 제외 자리가 스크롤 영역에 잘리지 않고 앞 여백 위에 남아 그 자리를 끌 수 없게 된다.
+  const leading = h("span", { class: "pad lead" });
   const trailing = h("span", { class: "pad" });
-  root.append(leading, pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll, trailing);
+  root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll, leading, trailing);
 
   let last: ChromeUiState | null = null;
   let hovered = false;
@@ -94,8 +96,8 @@ export function mountRail(): (state: ChromeUiState) => void {
   };
   new ResizeObserver(fitTabs).observe(tabsBox);
   /**
-   * 가로 표시줄의 탭 묶음이 탭들의 최소 폭 합보다 줄지 않게 붙든다. 묶음이 그보다 줄면 탭이 묶음 밖으로 넘쳐 새 탭 단추를 덮고
-   * 단추 누름을 가로챈다. 붙들면 넘치는 만큼 줄이 옆으로 넘어가고(휠로 넘긴다), 끝 여백의 끌 자리도 그대로 남는다.
+   * 가로 표시줄의 탭 묶음이 탭들의 최소 폭 합보다 줄지 않게 붙든다. 묶음이 그보다 줄면 탭이 묶음 밖으로 넘쳐 묶음의 폭과 탭의 자리가 어긋난다.
+   * 붙들면 넘치는 만큼 줄이 옆으로 넘어가고(휠로 넘긴다), 새 탭 단추와 끝 여백의 끌 자리는 스크롤 영역 밖에 그대로 남는다.
    */
   const holdTabsMinimum = (): void => {
     if (!horizontal()) { tabsBox.style.minWidth = ""; return; }
@@ -104,6 +106,23 @@ export function mountRail(): (state: ChromeUiState) => void {
     const floor = tabs.reduce((sum, tab) => sum + (Number.parseFloat(getComputedStyle(tab).minWidth) || 0), 0) + gap * Math.max(0, tabs.length - 1);
     tabsBox.style.minWidth = `${Math.ceil(floor)}px`;
   };
+
+  /**
+   * 가로 표시줄에서 보는 탭이 스크롤 영역 밖에 걸쳐 있으면 그 탭 전체가 보이는 데까지만 넘긴다. 이미 다 보이면 그대로 둔다 —
+   * Chrome 이 보는 탭이 바뀔 때 하는 일(TabContainerImpl::ScrollTabToVisible)과 같다. 새로 연 탭도 보는 탭이 되므로 같은 길로 보인다.
+   */
+  const revealActive = (animate = true): void => {
+    const tab = tabsBox.querySelector<HTMLElement>(".tab.active");
+    if (!tab) return;
+    const view = scroll.getBoundingClientRect();
+    const box = tab.getBoundingClientRect();
+    const delta = box.left < view.left - 0.5 ? box.left - view.left : box.right > view.right + 0.5 ? box.right - view.right : 0;
+    if (delta === 0) return;
+    const still = !animate || matchMedia("(prefers-reduced-motion: reduce)").matches;
+    scroll.scrollBy({ left: delta, behavior: still ? "auto" : "smooth" });
+  };
+  // 창 폭이 바뀌어 스크롤 영역이 줄면 보는 탭이 끝에서 잘릴 수 있다 — 크기를 바꾸는 동안이므로 애니메이션 없이 다시 맞춘다.
+  new ResizeObserver(() => { if (horizontal()) revealActive(false); }).observe(scroll);
 
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
@@ -160,6 +179,9 @@ export function mountRail(): (state: ChromeUiState) => void {
     // 가로 표시줄의 바탕은 창 끌기 영역이라 누름이 문서에 오지 않는다. 표시줄 메뉴가 떠 있는 동안만 끌기를 내려, 바탕을 눌러도 메뉴가 닫히게 한다.
     root.classList.toggle("menu-open", state.overlay?.kind === "tabs-menu");
     newButton.hidden = viewLocked;
+    // 가로 표시줄의 새 탭 단추는 Chrome 처럼 스크롤 영역 밖, 탭 줄 끝에 선다 — 탭이 넘쳐도 밀려나지 않는다. 세로 레일에서는 탭 목록 끝에 그대로 둔다.
+    if (flat && newButton.parentElement !== root) root.insertBefore(newButton, trailing);
+    else if (!flat && newButton.parentElement !== scroll) scroll.append(newButton);
     tabsBox.setAttribute("aria-orientation", state.orientation);
     leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
     if (flat && (hovered || keyboard)) { hovered = false; keyboard = false; }
@@ -185,6 +207,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);
     holdTabsMinimum();
     fitTabs();
+    if (flat && (previous?.chrome?.activeTabId !== chrome.activeTabId || previous?.orientation !== state.orientation || previous?.spaceId !== state.spaceId)) revealActive();
   };
 
   return render;
