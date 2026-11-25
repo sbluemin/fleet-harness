@@ -81,14 +81,6 @@ private final class Wire: @unchecked Sendable {
 final class DispatchRecord: @unchecked Sendable {
   private let lock = NSLock()
   private var confirmed: Object?
-  private var guest = false
-
-  /// 가상 머신 게스트 화면 입력. 전송 불명 응답이 접근성 확인이 아니라 화면 확인으로 이끌도록 표시한다.
-  func markGuest() { lock.lock(); guest = true; lock.unlock() }
-  var timeoutError: HelperError {
-    lock.lock(); defer { lock.unlock() }
-    return HelperError("timeout", details: guest ? ["target": "vm"] : nil)
-  }
 
   func confirmed(via: String, notes: [String]) {
     lock.lock(); defer { lock.unlock() }
@@ -161,7 +153,7 @@ enum HelperMain {
           // 타임아웃 뒤에는 이 프로세스에서 다음 입력을 받지 않는다. 호출자는 먼저 관측해야 한다.
           DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .milliseconds(400)) { _exit(1) }
           if let sent = record.timeoutResult { wire.emit(["id": request.id, "ok": true, "result": sent]) }
-          else { wire.fail(id: request.id, record.timeoutError, isAction: request.method == "act") }
+          else { wire.fail(id: request.id, HelperError("timeout"), isAction: request.method == "act") }
           Task { @MainActor in service.hideCursor(animated: false); _exit(1) }
         }
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + .seconds(15), execute: watchdog)
