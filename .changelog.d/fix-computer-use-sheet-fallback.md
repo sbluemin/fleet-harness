@@ -6,7 +6,7 @@ branch: fix/computer-use-sheet-fallback
 #### Fixed
 - Computer Use can now press buttons in save and open sheets, such as Delete when closing an unsaved TextEdit document, without bringing the app to the front.
   ko: Computer Use가 저장·열기 시트의 버튼(예: 저장하지 않은 텍스트 편집기 문서를 닫을 때의 삭제)을 앱을 앞으로 가져오지 않고 누를 수 있습니다.
-- The key name `delete` now sends the Mac Delete key (⌫); use `forwarddelete` for ⌦.
+- The key name `delete` now sends the Mac Delete (backspace) key; use `forwarddelete` for forward delete.
   ko: 키 이름 `delete`가 이제 맥의 Delete 키(⌫)를 보냅니다. ⌦는 `forwarddelete`를 쓰세요.
 
 #### Added
