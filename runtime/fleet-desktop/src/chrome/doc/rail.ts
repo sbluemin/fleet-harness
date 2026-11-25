@@ -102,8 +102,10 @@ export function mountRail(): (state: ChromeUiState) => void {
   const holdTabsMinimum = (): void => {
     if (!horizontal()) { tabsBox.style.minWidth = ""; return; }
     const tabs = [...tabsBox.children] as HTMLElement[];
-    const gap = Number.parseFloat(getComputedStyle(tabsBox).columnGap) || 0;
-    const floor = tabs.reduce((sum, tab) => sum + (Number.parseFloat(getComputedStyle(tab).minWidth) || 0), 0) + gap * Math.max(0, tabs.length - 1);
+    const box = getComputedStyle(tabsBox);
+    const gap = Number.parseFloat(box.columnGap) || 0;
+    const edges = (Number.parseFloat(box.paddingInlineStart) || 0) + (Number.parseFloat(box.paddingInlineEnd) || 0);
+    const floor = tabs.reduce((sum, tab) => sum + (Number.parseFloat(getComputedStyle(tab).minWidth) || 0), 0) + gap * Math.max(0, tabs.length - 1) + edges;
     tabsBox.style.minWidth = `${Math.ceil(floor)}px`;
   };
 
@@ -116,7 +118,9 @@ export function mountRail(): (state: ChromeUiState) => void {
     if (!tab) return;
     const view = scroll.getBoundingClientRect();
     const box = tab.getBoundingClientRect();
-    const delta = box.left < view.left - 0.5 ? box.left - view.left : box.right > view.right + 0.5 ? box.right - view.right : 0;
+    // 마지막 탭은 그 뒤의 끝 패딩(새 탭 단추까지의 틈)까지 보여 탭이 단추에 맞붙지 않게 한다.
+    const right = tab === tabsBox.lastElementChild ? box.right + (Number.parseFloat(getComputedStyle(tabsBox).paddingInlineEnd) || 0) : box.right;
+    const delta = box.left < view.left - 0.5 ? box.left - view.left : right > view.right + 0.5 ? right - view.right : 0;
     if (delta === 0) return;
     const still = !animate || matchMedia("(prefers-reduced-motion: reduce)").matches;
     scroll.scrollBy({ left: delta, behavior: still ? "auto" : "smooth" });
