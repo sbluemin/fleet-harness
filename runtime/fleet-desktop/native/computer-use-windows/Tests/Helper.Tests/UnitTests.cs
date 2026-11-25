@@ -298,3 +298,32 @@ public class ClipboardFormatTests
         Assert.Equal("</html>", Encoding.UTF8.GetString(bytes, endHtml - 7, 7));
     }
 }
+
+public class FocusScopeTests
+{
+    private const uint WS_CHILD = 0x40000000, WS_POPUP = 0x80000000;
+
+    [Fact]
+    public void KeyboardFocusCountsOnlyInsideTheTargetOrWindowsItOwns()
+    {
+        // Codex P1 (PR #2788): an unrelated top-level window of the same process and thread must not receive the target's keys.
+        var target = Native.CreateWindowEx(0, "STATIC", "target", 0, 0, 0, 100, 100, 0, 0, 0, 0);
+        var sibling = Native.CreateWindowEx(0, "STATIC", "sibling", 0, 0, 0, 100, 100, 0, 0, 0, 0);
+        var child = Native.CreateWindowEx(0, "STATIC", "child", WS_CHILD, 0, 0, 10, 10, target, 0, 0, 0);
+        var popup = Native.CreateWindowEx(0, "STATIC", "menu popup", WS_POPUP, 0, 0, 10, 10, target, 0, 0, 0);
+        var siblingChild = Native.CreateWindowEx(0, "STATIC", "sibling child", WS_CHILD, 0, 0, 10, 10, sibling, 0, 0, 0);
+        try
+        {
+            Assert.All(new[] { target, sibling, child, popup, siblingChild }, h => Assert.NotEqual(0, h));
+            Assert.True(MessageInput.BelongsToWindow(target, target));
+            Assert.True(MessageInput.BelongsToWindow(child, target));
+            Assert.True(MessageInput.BelongsToWindow(popup, target));
+            Assert.False(MessageInput.BelongsToWindow(sibling, target));
+            Assert.False(MessageInput.BelongsToWindow(siblingChild, target));
+        }
+        finally
+        {
+            foreach (var h in new[] { siblingChild, popup, child, sibling, target }) if (h != 0) Native.DestroyWindow(h);
+        }
+    }
+}

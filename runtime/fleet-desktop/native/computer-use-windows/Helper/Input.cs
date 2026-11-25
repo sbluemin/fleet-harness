@@ -185,7 +185,9 @@ internal static class MessageInput
             var (_, thread) = Owner(candidate);
             var info = new GUITHREADINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<GUITHREADINFO>() };
             if (!GetGUIThreadInfo(thread, ref info)) continue;
-            if (info.hwndFocus != 0 && IsWindow(info.hwndFocus) && (GetAncestor(info.hwndFocus, GA_ROOT) == win.Hwnd || Owner(info.hwndFocus).Pid == Owner(candidate).Pid))
+            // The thread's focus counts only inside the target's own tree or a window it owns (menus, dialogs). Another top-level
+            // window of the same process on the same thread is a different document: never send it the target's keys.
+            if (info.hwndFocus != 0 && IsWindow(info.hwndFocus) && BelongsToWindow(info.hwndFocus, win.Hwnd))
             {
                 // Focus inside bridged XAML content cannot take WM_CHAR; hand it the enclosing real window.
                 return MessageSurface(ClassName(info.hwndFocus)) ? info.hwndFocus : candidate;
@@ -193,6 +195,13 @@ internal static class MessageInput
             if (candidate != win.Hwnd) return candidate;
         }
         return win.Hwnd;
+    }
+
+    /// <summary>Whether <paramref name="hwnd"/> is the target, a child of it, or inside a top-level window the target owns.</summary>
+    public static bool BelongsToWindow(nint hwnd, nint target)
+    {
+        var root = GetAncestor(hwnd, GA_ROOT);
+        return root == target || GetAncestor(root, GA_ROOTOWNER) == target;
     }
 
     /// <summary>Whether the window class is an edit-like Win32 control (used when UIA does not report keyboard focus).</summary>
