@@ -50,6 +50,11 @@ interface BrowserRouteDeps {
   readonly viewerFrameRead: (req: IncomingMessage) => "ok" | "unauthorized" | "forbidden";
   /** 보기·원격 셸의 투영 스트림을 연다 — 첫 프레임으로 지금 투영을 쓰고, 뒤따르는 변화는 조립하는 쪽이 흘린다. */
   readonly subscribeViewer?: (req: IncomingMessage, res: ServerResponse) => void;
+  /**
+   * 이 요청의 원격 Desktop 셸이 지금 투영 스트림을 듣고 있는가 — 곧 그 셸의 브라우저가 열려 있는가.
+   * 원격 셸은 창 명령으로 여닫기만 하므로, 링크를 연 화면이 열린 셸을 닫지 않고 닫힌 셸만 열도록 이 값을 읽는다.
+   */
+  readonly remoteViewerOpen?: (req: IncomingMessage) => boolean;
   readonly writeJson: (res: ServerResponse, status: number, body: unknown) => void;
   readonly readJsonBody: <T>(req: IncomingMessage, maxBytes?: number) => Promise<T | null>;
   readonly readUrl: (req: IncomingMessage) => URL;
@@ -85,7 +90,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       deps.subscribeViewer(req, res);
       return true;
     }
-    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, withSurface(req, browserService.status())); return true; }
+    if (req.method === "GET" && pathname === "/api/v1/browser") {
+      const body = withSurface(req, browserService.status());
+      writeJson(res, 200, body.surfaceMode === "remote" ? { ...body, viewerOpen: deps.remoteViewerOpen?.(req) ?? false } : body);
+      return true;
+    }
     if (pathname === "/api/v1/browser/suggestion-settings") return serveSuggestionSettings(req, res);
     if (pathname === "/api/v1/browser/passwords" || pathname.startsWith("/api/v1/browser/passwords/")) return servePasswords(req, res, pathname);
     if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req) && !(isRemoteBrowserControl(req) && REMOTE_GLOBAL_BROWSER_PATHS.has(pathname))) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }

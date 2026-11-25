@@ -1,9 +1,11 @@
 import * as React from "react";
 import type { DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
-import { commodoreBrowserSpaceId, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
+import { commodoreBrowserSpaceId, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
 import { desktopShellCapabilities, isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
+import { getBrowserEngineSnapshot } from "./browser-engine.js";
+import { toggleBrowserViewerShell } from "./browser-viewer-shell.js";
 
 /**
  * 플릿 브라우저 표면(메인 창 오른쪽 칸 또는 독립 창)의 Console 쪽 손잡이. 표면 자체 — 크롬·레이아웃·입력 — 은 Desktop 셸이 그리고 소유한다.
@@ -150,9 +152,13 @@ export function selectBrowserSpaceForCommodore(commodoreId: string): void {
 /**
  * CLI·채팅에서 고른 주소를 브라우저로 연다. 표면을 열고, 링크는 디폴트 스페이스의 새 탭에서 — 사람이 거기서 보던 빈 탭만 그 자리에서 쓴다(사람이 보던 페이지를 링크 하나가 밀어내지 않게).
  * 표면 안의 화면은 Desktop 이 그리므로 이 요청은 서버의 탭 REST 로 곧장 간다.
+ *
+ * 원격 조작 Desktop(`remote`)의 브라우저는 관리 표면이 아니라 그 셸이 그리는 원격 셸이다. 관리 표면 요청은 거절되므로
+ * 탭을 연 뒤 그 셸이 닫혀 있을 때만 창 명령으로 연다 — 그러지 않으면 링크는 실행 측 기계에서만 열리고 보는 화면에는 아무 일도 없다.
  */
 export async function openBrowserLink(url: string): Promise<void> {
-  openBrowserPane();
+  const remote = getBrowserEngineSnapshot()?.surfaceMode === "remote";
+  if (!remote) openBrowserPane();
   try {
     const stateResponse = await fetch(`${endpoint}/state`);
     const state = stateResponse.ok ? await stateResponse.json() as { activeTabId?: string | null; tabs?: { id: string; url: string; spaceId: string }[] } : null;
@@ -163,4 +169,17 @@ export async function openBrowserLink(url: string): Promise<void> {
       body: JSON.stringify(intoActive ? { url } : { action: "create", url }),
     });
   } catch { /* 열리지 않은 링크는 다음 시도에서 다시 연다 */ }
+  if (remote) await revealRemoteBrowser();
+}
+
+/** 원격 셸이 열려 있지 않으면 연다. 셸은 여닫기 명령만 받으므로, 열려 있는지는 서버가 그 셸의 투영 구독으로 답한다. */
+async function revealRemoteBrowser(): Promise<void> {
+  if (!isDesktopShell() || !desktopShellCapabilities().includes(DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY)) return;
+  try {
+    const response = await fetch("/api/v1/browser");
+    if (!response.ok) return;
+    const body = await response.json() as { viewerOpen?: unknown };
+    if (body.viewerOpen === true) return;
+  } catch { return; }
+  toggleBrowserViewerShell();
 }
