@@ -34,6 +34,27 @@ struct AXIdentity: Hashable {
   func hash(into hasher: inout Hasher) { hasher.combine(CFHash(element)); hasher.combine(CFHash(parent)) }
 }
 
+/// 요소가 대상 창 소속인지 정한다. 시트(저장·열기 패널)는 별도 창이고, 그 내용은 패널 서비스 프로세스의 창이 그려서
+/// `_AXUIElementGetWindow`가 대상 창이 아닌 번호를 돌려준다(eb7cf15c 실측: '삭제' 버튼 pid는 앱, 창 번호는 서비스 창).
+/// 창 번호가 다르면 AX 부모 경로가 대상 창 루트에 닿을 때만 인정한다. 다른 창·다른 앱 요소의 부모 경로는 이 루트에 닿지 않는다.
+enum WindowMembership {
+  static func decide(pid: pid_t?, window: CGWindowID?, target: WindowKey, reachesRoot: () -> Bool) -> Bool {
+    guard pid == target.pid else { return false }
+    if window == target.id { return true }
+    return reachesRoot()
+  }
+
+  static func reaches<T>(_ start: T, root: T, parent: (T) -> T?, same: (T, T) -> Bool, limit: Int = 64) -> Bool {
+    var current: T? = start
+    for _ in 0..<limit {
+      guard let node = current else { return false }
+      if same(node, root) { return true }
+      current = parent(node)
+    }
+    return false
+  }
+}
+
 enum AXReader {
   private typealias WindowNumberFn = @convention(c) (AXUIElement, UnsafeMutablePointer<CGWindowID>) -> AXError
   private static let windowNumber: WindowNumberFn? = loadSymbol("_AXUIElementGetWindow", WindowNumberFn.self)
@@ -205,18 +226,14 @@ enum AXReader {
 
   static func belongs(_ el: AXUIElement, _ win: WindowInfo, root: AXUIElement? = nil) -> Bool {
     var pid: pid_t = 0
-    guard AXUIElementGetPid(el, &pid) == .success, pid == win.key.pid else { return false }
     var wid: CGWindowID = 0
-    if let get = windowNumber, get(el, &wid) == .success, wid != 0 { return wid == win.key.id }
-    guard let root = root ?? window(win) else { return false }
-    if let parentWindow = asAX(attribute(el, kAXWindowAttribute)) { return CFEqual(root, parentWindow) }
-    var current: AXUIElement? = el
-    for _ in 0..<64 {
-      guard let node = current else { return false }
-      if CFEqual(node, root) { return true }
-      current = asAX(attribute(node, kAXParentAttribute))
+    let reported = windowNumber.map { $0(el, &wid) == .success && wid != 0 } == true
+    return WindowMembership.decide(pid: AXUIElementGetPid(el, &pid) == .success ? pid : nil, window: reported ? wid : nil,
+                                   target: win.key) {
+      guard let root = root ?? window(win) else { return false }
+      if !reported, let parentWindow = asAX(attribute(el, kAXWindowAttribute)) { return CFEqual(root, parentWindow) }
+      return WindowMembership.reaches(el, root: root, parent: { asAX(attribute($0, kAXParentAttribute)) }, same: { CFEqual($0, $1) })
     }
-    return false
   }
 
   static func focused(_ win: WindowInfo, root: AXUIElement? = nil) -> AXUIElement? {
