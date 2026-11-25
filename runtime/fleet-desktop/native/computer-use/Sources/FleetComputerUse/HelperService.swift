@@ -16,6 +16,8 @@ private struct ActionRequest {
   let pages: Double
   let axName: String?
   let requireEditableFocus: Bool
+  /// 게스트 화면(가상 머신 창) 입력에 사람의 전면 앱·포인터를 쓰도록 호출자가 허락했다(`InputRoute`).
+  let foreground: Bool
 
   init(_ p: Object) throws {
     guard let raw = p["action"] as? String, let action = ActionName(rawValue: raw) else { throw HelperError("invalid_params", "action") }
@@ -29,7 +31,9 @@ private struct ActionRequest {
     case .key: allowed.formUnion(["key", "ref", "requireEditableFocus", "text"])
     case .axAction: allowed.formUnion(["ref", "name"])
     }
+    if [.click, .doubleClick, .rightClick, .scroll, .key, .type].contains(action) { allowed.insert("foreground") }
     try validateKeys(p, allowed: allowed)
+    if p["foreground"] != nil && jsonBool(p["foreground"]) == nil { throw HelperError("invalid_params", "foreground") }
     let ref = try optionalRef(p["ref"])
     var point: CGPoint?
     if p["x"] != nil || p["y"] != nil {
@@ -74,6 +78,7 @@ private struct ActionRequest {
     }
     self.name = action; self.ref = ref; self.point = point; self.end = end; self.text = text; self.stroke = stroke
     self.direction = direction; self.pages = pages; self.axName = axName; self.requireEditableFocus = requireEditableFocus
+    self.foreground = jsonBool(p["foreground"]) ?? false
   }
 }
 
@@ -718,6 +723,26 @@ private struct Expectation {
       return KeyWindowPrimer(element: el, range: raw as! AXValue, click: click)
     }
 
+    // 가상 머신 게스트 화면은 백그라운드 입력을 버린다. 보낸 것처럼 보고하지 않도록 아무것도 보내기 전에 경로를 정한다.
+    let guest: Bool = {
+      guard GuestDisplay.bundleIds.contains(win.bundleId), node == nil else { return false }
+      switch request.name {
+      case .click, .doubleClick, .rightClick, .scroll, .drag:
+        guard let p = request.point else { return false }
+        let hit = AXReader.hit(win, p)
+        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: hit == nil || before.root.map { CFEqual(hit!, $0) } == true)
+      case .key, .type:
+        let focused = AXReader.focused(win, root: before.root)
+        let editable = focused.map { el in AXReader.editable(el, role: AXReader.attribute(el, kAXRoleAttribute) as? String ?? "") } ?? false
+        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: !editable)
+      default: return false
+      }
+    }()
+    if guest, request.name == .drag { throw HelperError("drag_unsupported", details: ["settableSlider": false]) }
+    if try InputRoute.decide(guest: guest, foreground: request.foreground) == .foreground {
+      return try await actOnGuest(request, win: win, root: before.root, record: record, revalidate: revalidate)
+    }
+
     switch request.name {
     case .click, .doubleClick, .rightClick:
       switch request.name {
@@ -931,6 +956,46 @@ private struct Expectation {
     let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
     defer { feedback?.cancel() }
     return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+  }
+
+  /// 게스트 화면 전면 전달(`ForegroundDelivery`). 게스트 내용은 접근성 트리에 없어 관측할 수 없으므로 결과는 늘 관측 불가다.
+  private func actOnGuest(_ request: ActionRequest, win: WindowInfo, root: AXUIElement?, record: DispatchRecord,
+                          revalidate: () throws -> Void) async throws -> Object {
+    guard win.visible else { throw HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"]) }
+    let delivery = ForegroundDelivery(win: win, root: root)
+    let factory = EventFactory(symbols: symbols)
+    var steps: [EventSequence.Step]
+    let point = request.point
+    switch request.name {
+    case .click: steps = try delivery.pointerEvents(.click, at: point!)
+    case .doubleClick: steps = try delivery.pointerEvents(.doubleClick, at: point!)
+    case .rightClick: steps = try delivery.pointerEvents(.rightClick, at: point!)
+    case .scroll: steps = try delivery.pointerEvents(.scroll(request.direction!, request.pages), at: point!)
+    case .key: steps = try factory.key(request.stroke!, focus: false).events
+    case .type: steps = try factory.typing(request.text!, focus: false).events
+    default: throw HelperError("invalid_params", "foreground applies only to a virtual machine display")
+    }
+    let pointer = steps.contains(where: \.hid)
+    try revalidate()
+    defer { idleCursor() }
+    await startCursor(point, in: win)
+    try await delivery.bringToFront(point: point)
+    let original = CGEvent(source: nil)?.location
+    // 활성화 뒤 창이 바뀌었거나 다른 창이 그 점을 덮었으면 보내지 않는다.
+    try revalidate()
+    var notes = ["foreground"]
+    record.confirmed(via: "foreground", notes: notes)
+    if request.name == .type { await cursor?.pulse(.typing(true)) }
+    try await EventSequence(beforeFocusPrimer: [], events: steps, needsFocus: false).send(to: win, using: symbols, revalidate: {})
+    if request.name == .type { await cursor?.pulse(.typing(false)) }
+    if pointer, let original {
+      // 게스트가 클릭 위치를 읽기 전에 포인터를 옮기지 않도록 잠시 기다린 뒤 사람의 포인터를 원래 자리로 돌려놓는다.
+      try? await pause(120)
+      CGWarpMouseCursorPosition(original)
+      notes.append("pointer_returned")
+    }
+    record.confirmed(via: "foreground", notes: notes)
+    return ["sent": true, "via": "foreground", "observation": "unobservable", "changes": [], "notes": notes]
   }
 
   private func failedAX(_ code: AXError, defaultCode: String) -> HelperError {

@@ -136,6 +136,8 @@ struct EventSequence {
   struct Step {
     let event: CGEvent
     let delayAfter: Int
+    /// 참이면 HID 탭(실제 커서)으로 보낸다. 게스트 화면 전면 전달(`ForegroundDelivery`)만 쓴다.
+    var hid = false
   }
   let beforeFocusPrimer: [Step]
   let events: [Step]
@@ -155,7 +157,7 @@ struct EventSequence {
     // 프라이머 도중 창이 사라졌다면 실제 제스처/키 입력은 시작하지 않는다.
     try revalidate()
     for step in events {
-      step.event.postToPid(win.key.pid)
+      if step.hid { step.event.post(tap: .cghidEventTap) } else { step.event.postToPid(win.key.pid) }
       if step.delayAfter > 0 { try await pause(step.delayAfter) }
     }
   }
