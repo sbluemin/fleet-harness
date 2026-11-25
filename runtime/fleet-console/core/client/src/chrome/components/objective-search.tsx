@@ -47,6 +47,7 @@ import { useObjectiveClusters } from "../../../../../features/workspace/client/o
 import { CONVERSATION_ROW_PHRASE } from "../../../../../features/workspace/client/sidebar/side-bar-row-style.js";
 import { archiveObjectiveFromUi, type ArchiveOutcome } from "../../integration/objective-actions.js";
 import { openArchiveSheet } from "../../integration/objective-archive.js";
+import { openCommandBoard } from "../../../../../features/workspace/client/command-board/command-board-store.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 import {
   buildPaletteCommands,
@@ -453,6 +454,12 @@ export function ObjectiveSearch({
       case "open-archive": {
         previousFocusRef.current = null;
         openArchiveSheet();
+        break;
+      }
+      case "open-command-board": {
+        previousFocusRef.current = null;
+        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
+        openCommandBoard();
         break;
       }
       case "open-rail-panel": {

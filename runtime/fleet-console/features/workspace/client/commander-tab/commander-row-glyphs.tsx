@@ -45,7 +45,7 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
   const groupRef = useRef<HTMLSpanElement | null>(null);
   const [near, setNear] = useState(false);
   useEffect(() => {
-    const row = groupRef.current?.closest<HTMLElement>(".side-bar-cluster-row");
+    const row = groupRef.current?.closest<HTMLElement>(".side-bar-cluster-row, .command-board-card");
     if (!row) return;
     const on = () => setNear(true), off = () => setNear(false);
     row.addEventListener("pointerenter", on); row.addEventListener("pointerleave", off);

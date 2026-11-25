@@ -654,6 +654,53 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   font-size: var(--t-sm);
   line-height: 1.55;
 }
+.commodore-edge-board-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+}
+.commodore-edge-board-link:hover {
+  background: var(--wash-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+.commodore-edge-board-link:focus-visible {
+  box-shadow: var(--focus-face);
+}
+.commodore-edge-board-link-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.commodore-edge-board-link-main svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--brass-ink);
+}
+.commodore-edge-board-link-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* 상단 이름 pill 프로필 팝오버 하단 — 설명 미리보기와 신경망 바로가기 */
 .commodore-profile-footer {

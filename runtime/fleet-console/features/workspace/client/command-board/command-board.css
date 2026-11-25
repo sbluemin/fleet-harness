@@ -1,0 +1,1446 @@
+/* 지휘판(Command Board) — 모든 사령관의 목표를 4열·3종 보기로 조망하고 사령관에게 직접 지시한다.
+   카드는 좌측 색 띠를 쓰지 않고 중립 헤어라인 테두리만 유지한다. 정체성 색은 아바타·사령관 이름 잉크·전송 단추에만 쓴다. */
+
+.command-board {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--canvas-abyss);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+.command-board-head {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--hairline-column);
+}
+
+.command-board-title-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.command-board-title-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--radius-xs);
+  background: var(--control-wash);
+  color: var(--text-primary);
+}
+
+.command-board-title-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.command-board-title {
+  margin: 0;
+  font-size: var(--t-base);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.command-board-summary {
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.command-board-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.command-board-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--control-field);
+  padding: 0 var(--space-2);
+  gap: var(--space-1);
+}
+
+.command-board-search:focus-within {
+  border-color: var(--hairline-strong);
+}
+
+.command-board-search svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.command-board-search-input {
+  width: 148px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  outline: none;
+}
+
+.command-board-search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.command-board-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-filter-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.command-board-filter-btn[aria-pressed="true"] {
+  background: var(--wash-selected);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-filter-btn.is-attention[aria-pressed="true"] {
+  background: var(--warn-glow);
+  border-color: var(--warn);
+  color: var(--warn-ink);
+}
+
+.command-board-filter-btn:focus-visible,
+.command-board-seg-btn:focus-visible,
+.command-board-primary-btn:focus-visible,
+.command-board-pill:focus-visible,
+.command-board-col-btn:focus-visible,
+.command-board-link-btn:focus-visible,
+.command-board-preset-chip:focus-visible,
+.command-board-send-btn:focus-visible,
+.command-board-lane-toggle:focus-visible,
+.command-board-matrix-row:focus-visible,
+.command-board-modal-btn:focus-visible,
+.command-board-comm-choice:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.command-board-segmented {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+}
+
+.command-board-seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 24px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.command-board-seg-btn svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.command-board-seg-btn:hover {
+  color: var(--text-primary);
+}
+
+.command-board-seg-btn.is-active {
+  background: var(--wash-selected);
+  color: var(--text-primary);
+}
+
+.command-board-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-primary-btn svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.command-board-primary-btn:hover {
+  opacity: 0.9;
+}
+
+/* 로스터 필터 띠 (통합 · 사령관별 보기) */
+.command-board-roster {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline-column);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.command-board-roster-sep {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  margin: 0 var(--space-1);
+  background: var(--hairline);
+}
+
+.command-board-roster-sec {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  flex: none;
+  padding: 0 var(--space-1);
+}
+
+.command-board-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-pill:hover {
+  background: var(--wash-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-pill.is-active {
+  background: var(--wash-selected);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-pill-count {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.command-board-pill-alert {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+  flex: none;
+}
+
+/* 통합 4열 보드 */
+.command-board-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.command-board-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(252px, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+  min-height: 100%;
+}
+
+.command-board-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 360px;
+  padding: var(--space-2);
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--canvas-side) 68%, var(--canvas-abyss));
+}
+
+.command-board-col-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 2px var(--space-1);
+}
+
+.command-board-col-head-left {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.command-board-col-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+
+.command-board-col-dot.is-fresh { background: var(--text-tertiary); }
+.command-board-col-dot.is-active { background: var(--aurora); }
+.command-board-col-dot.is-review { background: var(--warn); }
+.command-board-col-dot.is-done { background: var(--positive); }
+
+.command-board-col-title {
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.command-board-col-count {
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.command-board-col-desc {
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-col-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-col-btn:hover {
+  background: var(--wash-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-col-btn.is-icon {
+  width: 22px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.command-board-col-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.command-board-col-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1;
+}
+
+.command-board-col-empty {
+  padding: var(--space-5) var(--space-3);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-md);
+  text-align: center;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.command-board-col-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline-column);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.command-board-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-link-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.command-board-link-btn svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* 띠 없는 순수 카드 (좌측 색 띠 없음 · 드래그 없음 · 공유 글리프 3종 + 인라인 사령관 지시 트레이) */
+.command-board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease, opacity var(--duration-fast) ease;
+}
+
+.command-board-card:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-panel-raised);
+}
+
+.command-board-card.is-expanded {
+  border-color: var(--hairline-strong);
+  background: var(--surface-panel-raised);
+  cursor: default;
+}
+
+.command-board-card.is-dimmed {
+  opacity: 0.24;
+}
+
+.command-board-card.is-done:not(.is-expanded) {
+  opacity: 0.88;
+}
+
+.command-board-card.is-done.is-dimmed {
+  opacity: 0.2;
+}
+
+.command-board-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.command-board-card-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.command-board-card-owner-name {
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: var(--cb-tone-ink, var(--text-secondary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-card-updated {
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* 좌측 사이드바와 공유하는 3글리프(목표 · 구성원 · 증거)를 카드 우측 상단에 상시 표시 */
+.command-board-card .commander-row-glyphs {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+}
+
+.command-board-card-title {
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  line-height: 1.38;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.command-board-card.is-done .command-board-card-title {
+  color: var(--text-secondary);
+}
+
+.command-board-card-note {
+  margin-top: var(--space-1);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  line-height: 1.38;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.command-board-card-foot {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.command-board-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.command-board-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.command-board-card-status svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.command-board-card-status-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-card-status-text.is-running {
+  color: var(--aurora-ink);
+  font-weight: var(--weight-medium);
+}
+
+.command-board-card-status-text.is-awaiting {
+  color: var(--warn-ink);
+  font-weight: var(--weight-medium);
+}
+
+.command-board-due {
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: none;
+}
+
+.command-board-due.is-overdue {
+  background: var(--coral-glow);
+  color: var(--coral-ink);
+  font-weight: var(--weight-bold);
+}
+
+.command-board-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.command-board-progress-track {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+  overflow: hidden;
+}
+
+.command-board-progress-fill {
+  display: block;
+  height: 100%;
+  background: var(--aurora);
+}
+
+.command-board-progress-fill.is-done {
+  background: var(--positive);
+}
+
+.command-board-progress-num {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.command-board-review-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.command-board-review-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+  flex: none;
+}
+
+.command-board-review-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.command-board-dispatch-bar {
+  margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  background: var(--aurora-glow);
+  color: var(--aurora-ink);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+}
+
+.command-board-done-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--positive-ink);
+  white-space: nowrap;
+}
+
+.command-board-done-mark svg {
+  width: 13px;
+  height: 13px;
+}
+
+.command-board-done-stamp {
+  color: var(--text-tertiary);
+}
+
+/* 카드 하단 인라인 사령관 지시 트레이 */
+.command-board-tray {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline-column);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.command-board-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.command-board-tray-who {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: var(--cb-tone-ink, var(--text-primary));
+  min-width: 0;
+}
+
+.command-board-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.command-board-preset-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.command-board-preset-chip:hover {
+  background: var(--wash-hover);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-preset-chip.is-picked {
+  background: var(--wash-selected);
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.command-board-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--control-field);
+}
+
+.command-board-composer:focus-within {
+  border-color: var(--hairline-strong);
+}
+
+.command-board-ref-chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--control-wash);
+  color: var(--cb-tone-ink, var(--text-secondary));
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.command-board-textarea {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+}
+
+.command-board-textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.command-board-send-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--cb-tone-body, var(--brass));
+  color: var(--mongle-face);
+  cursor: pointer;
+}
+
+.command-board-send-btn:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: default;
+}
+
+.command-board-send-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.command-board-error {
+  margin: 0;
+  font-size: var(--t-xs);
+  color: var(--coral-ink);
+}
+
+/* 사령관별 가로 스윔레인 (보기 2) */
+.command-board-swim-wrap {
+  min-width: 960px;
+}
+
+.command-board-swim-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(228px, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--hairline-column);
+  background: var(--canvas-abyss);
+}
+
+.command-board-swim-col-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.command-board-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.command-board-lane {
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--canvas-side) 58%, var(--canvas-abyss));
+  overflow: hidden;
+}
+
+.command-board-lane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline-column);
+}
+
+.command-board-lane.is-collapsed .command-board-lane-head {
+  border-bottom: 0;
+}
+
+.command-board-lane-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 2px var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.command-board-lane-toggle:hover {
+  background: var(--wash-hover);
+}
+
+.command-board-lane-name {
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  color: var(--cb-tone-ink, var(--text-primary));
+  white-space: nowrap;
+}
+
+.command-board-lane-badge {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--control-wash);
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.command-board-lane-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.command-board-lane-counts {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.command-board-lane-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(228px, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.command-board-lane-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 76px;
+}
+
+.command-board-lane-dash {
+  flex: 1;
+  min-height: 60px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--hairline-column);
+  border-radius: var(--radius-md);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  opacity: 0.55;
+}
+
+.command-board-empty-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-md);
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}
+
+.command-board-empty-strip-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.command-board-empty-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+/* 매트릭스 레일 + 집중 보드 (보기 3) */
+.command-board-matrix {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.command-board-matrix-rail {
+  width: 228px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-right: 1px solid var(--hairline-column);
+  background: color-mix(in oklch, var(--canvas-side) 48%, var(--canvas-abyss));
+  overflow-y: auto;
+}
+
+.command-board-matrix-rail.is-collapsed {
+  width: 44px;
+  align-items: center;
+  padding: var(--space-2) 0;
+}
+
+.command-board-matrix-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px var(--space-1) var(--space-1);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+}
+
+.command-board-matrix-sec {
+  padding: var(--space-2) var(--space-1) 2px;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+}
+
+.command-board-matrix-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  width: 100%;
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.command-board-matrix-row:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.command-board-matrix-row.is-active {
+  background: var(--surface-row-selected);
+  color: var(--text-primary);
+}
+
+.command-board-matrix-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.command-board-matrix-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--weight-medium);
+  color: var(--cb-tone-ink, var(--text-primary));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-matrix-cells {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.command-board-matrix-cell {
+  padding: 2px 0;
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-tertiary);
+}
+
+.command-board-matrix-cell.is-fresh { color: var(--text-secondary); }
+.command-board-matrix-cell.is-active { background: var(--aurora-glow); color: var(--aurora-ink); }
+.command-board-matrix-cell.is-review { background: var(--warn-glow); color: var(--warn-ink); }
+.command-board-matrix-cell.is-done { background: var(--positive-glow); color: var(--positive-ink); }
+
+.command-board-matrix-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.command-board-matrix-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--hairline-column);
+  background: color-mix(in oklch, var(--canvas-side) 36%, var(--canvas-abyss));
+}
+
+.command-board-matrix-banner-left {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.command-board-matrix-path {
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.command-board-matrix-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+}
+
+.command-board-matrix-icon-btn:hover { background: var(--wash-hover); }
+.command-board-matrix-icon-btn.is-active { background: var(--surface-row-selected); }
+
+/* 모달 (새 목표 지시 · 완료 일괄 정리 지시) */
+.command-board-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.command-board-modal {
+  width: min(460px, 100%);
+  padding: var(--space-4);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-lg);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.command-board-modal-eyebrow {
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+}
+
+.command-board-modal-title {
+  margin: 0;
+  font-size: var(--t-base);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+}
+
+.command-board-modal-desc {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.command-board-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.command-board-comm-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.command-board-comm-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.command-board-comm-choice:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.command-board-comm-choice[aria-pressed="true"] {
+  background: var(--wash-selected);
+  border-color: var(--hairline-strong);
+  color: var(--cb-tone-ink, var(--text-primary));
+}
+
+.command-board-modal-textarea {
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+}
+
+.command-board-modal-textarea:focus {
+  border-color: var(--hairline-strong);
+}
+
+.command-board-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.command-board-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.command-board-modal-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.command-board-modal-btn.is-primary {
+  border: 0;
+  background: var(--brass);
+  color: var(--text-on-brass);
+  font-weight: var(--weight-bold);
+}
+
+.command-board-modal-btn:disabled {
+  opacity: var(--control-disabled-opacity);
+  cursor: default;
+}
+
+/* 지시 전송 피드백 토스트 */
+.command-board-toast {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 32px);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  font-size: var(--t-sm);
+  color: var(--text-primary);
+}
+
+.command-board-toast-btn {
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 3px var(--space-2);
+  background: var(--control-wash);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.command-board-toast-btn:hover {
+  background: var(--wash-selected);
+}
+
+.command-board-empty-stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: var(--t-md);
+}
+
+/* 모바일 지휘판(390px) */
+.command-board-mobile {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--canvas-abyss);
+  color: var(--text-primary);
+}
+
+.command-board-mobile-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline-column);
+}
+
+.command-board-mobile-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  height: 34px;
+  border: 1px solid var(--hairline-column);
+  border-radius: var(--radius-xs);
+  background: var(--control-rest);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.command-board-mobile-tab.is-active {
+  border-color: var(--hairline-strong);
+  background: var(--wash-selected);
+  color: var(--text-primary);
+  font-weight: var(--weight-bold);
+}
+
+.command-board-mobile-cards {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-board-card {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .command-board-filter-btn:focus-visible,
+  .command-board-seg-btn:focus-visible,
+  .command-board-primary-btn:focus-visible,
+  .command-board-pill:focus-visible,
+  .command-board-col-btn:focus-visible,
+  .command-board-link-btn:focus-visible,
+  .command-board-preset-chip:focus-visible,
+  .command-board-send-btn:focus-visible,
+  .command-board-lane-toggle:focus-visible,
+  .command-board-matrix-row:focus-visible,
+  .command-board-modal-btn:focus-visible,
+  .command-board-comm-choice:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 1px;
+  }
+}

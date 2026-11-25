@@ -10,16 +10,15 @@ import { useCommanderRows } from "./commander-rows.js";
  * 가리키거나 행 안에 초점이 있으면 나타나는 글리프(목표·구성원·증거)는 목표·임무 팝업 또는 증거 뷰어를 연다.
  * 행 본문은 지휘관 대화를 열고, 플릿 브라우저가 열려 있으면 소속 사령관 스페이스로 맞춘다.
  */
-export function SidebarCommanderList({ commodoreId, selectedId, hideSettled }: { readonly commodoreId: string; readonly selectedId: string | null; readonly hideSettled: boolean }) {
+export function SidebarCommanderList({ commodoreId, selectedId }: { readonly commodoreId: string; readonly selectedId: string | null }) {
   const listed = useCommanderRows(commodoreId, selectedId);
   const { rowPopups, openTab, dialogs } = useCommanderPopups(commodoreId);
-  const sections = hideSettled ? listed.listSections.filter((group) => group.settled !== true) : listed.listSections;
+  const sections = listed.listSections.filter((group) => group.settled !== true);
   if (!sections.some((group) => group.rows.length > 0)) return null;
   return <>
     <CommodoreCommanderList
       sortNameOnly
       showBar={false}
-      hideSettled={hideSettled}
       commodoreId={commodoreId}
       selectedId={selectedId}
       onSelect={(item) => {

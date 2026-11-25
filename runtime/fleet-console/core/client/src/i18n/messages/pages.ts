@@ -382,6 +382,7 @@ export const pagesEn = {
   "palette.undoClose": "Undo last close",
   "palette.undoArchive": "Undo archive",
   "palette.openArchive": "Open archive",
+  "palette.openCommandBoard": "Open Command Board",
   "palette.switchTheater": "Switch theater: {label}",
   "palette.openTheaterSection": "{section}: {theater}",
   "palette.newTheater": "Add Theater",
@@ -402,6 +403,7 @@ export const pagesEn = {
   // shortcuts
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "Go to an Objective",
+  "shortcuts.console.commandBoard": "Open or close Command Board",
   "shortcuts.console.commandPalette": "Open Command Palette",
   "shortcuts.console.newTaskforce": "New TaskForce",
   "shortcuts.console.standaloneCli": "Open or close standalone CLI",
@@ -982,6 +984,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "palette.undoClose": "마지막 닫기 실행 취소",
   "palette.undoArchive": "보관 되돌리기",
   "palette.openArchive": "보관함 열기",
+  "palette.openCommandBoard": "지휘판 열기",
   "palette.switchTheater": "작전 구역 전환: {label}",
   "palette.openTheaterSection": "{section}: {theater}",
   "palette.newTheater": "작전 구역 추가",
@@ -1001,6 +1004,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
 
   "shortcuts.group.console": "Console",
   "shortcuts.console.searchOps": "목표로 이동",
+  "shortcuts.console.commandBoard": "지휘판 열기·닫기",
   "shortcuts.console.commandPalette": "커맨드 팔레트 열기",
   "shortcuts.console.newTaskforce": "새 태스크포스",
   "shortcuts.console.standaloneCli": "독립 CLI 열기·닫기",

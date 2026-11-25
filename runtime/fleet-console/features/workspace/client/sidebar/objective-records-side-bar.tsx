@@ -57,7 +57,11 @@ import { SidebarCommanderList } from "../commander-tab/commander-sidebar-list.js
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { clusterHasPersonDecision } from "../../../objectives/shared/objective-clusters.js";
 import { useClusterIndex } from "../objective-clusters.js";
-import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
+import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded } from "./commander-expansion.js";
+import { CommandBoardGlyph } from "../command-board/command-board.js";
+import { useCommandBoardCounts } from "../command-board/command-board-data.js";
+import { closeCommandBoard, toggleCommandBoard, useCommandBoardOpen } from "../command-board/command-board-store.js";
+import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import { RowToolUse } from "./side-bar-cluster-row.js";
 import { useCommodoreBrowserUse, useCommodoreComputerUse } from "../../../computer-use/client/computer-screen-share.js";
@@ -207,7 +211,10 @@ export function ObjectiveRecordsSideBar({
   bottomAccessory,
 }: ObjectiveRecordsSideBarProps) {
   const t = useT();
-  const showSettled = useCommanderShowSettled();
+  useShortcutOverrides();
+  const commandBoardOpen = useCommandBoardOpen();
+  const commandBoardCounts = useCommandBoardCounts();
+  const commandBoardShortcut = shortcutCommandLabel("console.command-board");
   const rootRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
@@ -620,6 +627,7 @@ export function ObjectiveRecordsSideBar({
   // 정하지 않으면 사령관 기록 칸이다.
   const openTheaterHeaderInbox = (theater: SideBarHead, returnFocus: HTMLElement | null) => {
     setActiveContextMenu(null);
+    closeCommandBoard();
     reselectActiveCommodore(theater.id);
     setZoneCommodore(theater.id);
     selectBrowserSpaceForCommodore(theater.id);
@@ -699,14 +707,14 @@ export function ObjectiveRecordsSideBar({
     renderHeader: (row, frame) => {
       const taskforce = row.commodoreId.startsWith("taskforce:") ? tfSummaries.find((item) => `taskforce:${item.id}` === row.commodoreId) : null;
       if (taskforce) return <TheaterSectionHeader theater={{ id: taskforce.id, label: taskforce.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0 }}
-        active={taskforce.id === selectedTaskforceId} lastResponse={taskforce.preview?.text || taskforce.topic} dock={false}
+        active={!commandBoardOpen && taskforce.id === selectedTaskforceId} lastResponse={taskforce.preview?.text || taskforce.topic} dock={false}
         editingAlias={false} clampAlias={clampAlias} onStartAliasEdit={() => {}} onFinishAliasEdit={() => {}}
-        showStatusLiveTick={false} liveOverride={taskforce.judging.length > 0} selectedOverride={taskforce.id === selectedTaskforceId}
+        showStatusLiveTick={false} liveOverride={taskforce.judging.length > 0} selectedOverride={!commandBoardOpen && taskforce.id === selectedTaskforceId}
         dragging={frame.dragging} dropTarget={frame.dropTarget} dragOffsetY={frame.dragOffsetY}
         accessory={frame.accessory} onOpenInbox={() => openTaskforce(taskforce.id)} onContextMenu={frame.onMenu} menuTarget={frame.menuTarget} onPointerDragStart={frame.onPointerDragStart}
         avatarOverride={<span className="side-bar-theater-anchor is-avatar" aria-hidden="true"><TaskforceStack members={taskforce.members} judging={taskforce.judging} /></span>} />;
       const theater = standingTheaterFor(row);
-      return <TheaterSectionHeader theater={theater} active={theater.id === owningCommodoreId} selectedOverride={theater.id === owningCommodoreId}
+      return <TheaterSectionHeader theater={theater} active={!commandBoardOpen && theater.id === owningCommodoreId} selectedOverride={!commandBoardOpen && theater.id === owningCommodoreId}
         lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
         dock={!compact} onReselect={() => reselectActiveCommodore(theater.id)} onMarkSelect={() => selectBrowserSpaceForCommodore(theater.id)} {...aliasEditingFor(theater.id)}
         showStatusLiveTick={countAwaitingObjectiveRecords(objectiveRecords.filter((record) => record.commodoreId === theater.id), objectiveRecordRuntime) > 0}
@@ -717,10 +725,10 @@ export function ObjectiveRecordsSideBar({
     renderCommanders: (row) => {
       if (row.commodoreId.startsWith("taskforce:")) return null;
       const expanded = expandedCommanders.has(row.commodoreId);
-      const selected = typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === row.commodoreId
+      const selected = commandBoardOpen ? null : typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === row.commodoreId
         ? surface.params.objectiveId : objectiveOwner === row.commodoreId ? activeObjectiveId : null;
       return expanded ? <div className="side-bar-commander-list" data-keep-objective-active="">
-        <SidebarCommanderList commodoreId={row.commodoreId} selectedId={selected} hideSettled={!showSettled} />
+        <SidebarCommanderList commodoreId={row.commodoreId} selectedId={selected} />
       </div> : null;
     },
     renderItems: (row, onClose, opener) => {
@@ -778,6 +786,38 @@ export function ObjectiveRecordsSideBar({
         {topStripTrailing}
       </div>
 
+      <div className={`side-bar-command-board-wrap${compact ? " is-compact" : ""}`}>
+        {compact ? (
+          <button
+            type="button"
+            className={`side-bar-command-board-compact${commandBoardOpen ? " is-active" : ""}`}
+            aria-pressed={commandBoardOpen}
+            aria-label={t("commandBoard.sidebarTooltip", { fresh: commandBoardCounts.fresh, review: commandBoardCounts.review, shortcut: commandBoardShortcut })}
+            title={t("commandBoard.sidebarTooltip", { fresh: commandBoardCounts.fresh, review: commandBoardCounts.review, shortcut: commandBoardShortcut })}
+            onClick={() => toggleCommandBoard()}
+          >
+            <CommandBoardGlyph size={16} />
+            {commandBoardCounts.review > 0 || commandBoardCounts.overdue > 0 ? <span className="side-bar-command-board-dot" aria-hidden="true" /> : null}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={`side-bar-command-board-row${commandBoardOpen ? " is-active" : ""}`}
+            aria-pressed={commandBoardOpen}
+            title={t("commandBoard.sidebarTooltip", { fresh: commandBoardCounts.fresh, review: commandBoardCounts.review, shortcut: commandBoardShortcut })}
+            onClick={() => toggleCommandBoard()}
+          >
+            <span className="side-bar-command-board-icon" aria-hidden="true"><CommandBoardGlyph size={14} /></span>
+            <span className="side-bar-command-board-label">{t("commandBoard.title")}</span>
+            <span className="side-bar-command-board-meta">
+              {commandBoardCounts.overdue > 0 ? <span className="side-bar-command-board-overdue" aria-hidden="true" /> : null}
+              {commandBoardCounts.review > 0 ? <span className="side-bar-command-board-review">{t("commandBoard.sidebarReview", { n: commandBoardCounts.review })}</span> : null}
+              <span className="side-bar-command-board-count">{commandBoardCounts.totalOpen}</span>
+            </span>
+          </button>
+        )}
+      </div>
+
       <div className="side-bar-wide">
       {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
@@ -804,7 +844,7 @@ export function ObjectiveRecordsSideBar({
             : drag !== null && drag.dragging && drag.sourceTheaterId !== face.id && theaterIndex === faces.length - 1 && drag.dropIndex === faces.length;
           // TF 행은 사령관 행과 같은 카드·드래그·섹션 소속을 쓰고, 내용만 TF 것(멤버 묶음·이름·미리보기·판단 중)을 세운다.
           if (face.kind === "taskforce") {
-            const selected = face.id === selectedTaskforceId;
+            const selected = !commandBoardOpen && face.id === selectedTaskforceId;
             return (
               <TaskforceFaceRow
                 key={face.id}
@@ -836,16 +876,16 @@ export function ObjectiveRecordsSideBar({
           // 아바타만 서는 좁은 열에는 목록을 두지 않는다 — 창을 넓히면 저장된 펼침대로 돌아온다.
           const sectionExpanded = !compact && expandedCommanders.has(theater.id);
           // 가운데 채팅이 가리키는 지휘관 — 왼쪽 목록이 이 선택을 말한다.
-          const selectedCommanderId =
+          const selectedCommanderId = commandBoardOpen ? null : (
             typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === theater.id
               ? surface.params.objectiveId
-              : objectiveOwner === theater.id ? activeObjectiveId : null;
+              : objectiveOwner === theater.id ? activeObjectiveId : null);
           return (
             <li
               key={theater.id}
               className={[
                 "side-bar-theater-section",
-                theater.id === owningCommodoreId ? "side-bar-theater-section--active" : "",
+                !commandBoardOpen && theater.id === owningCommodoreId ? "side-bar-theater-section--active" : "",
                 theaterDropBefore ? "side-bar-theater-section--drop-before" : "",
                 theaterDropAfter ? "side-bar-theater-section--drop-after" : "",
               ].filter(Boolean).join(" ")}
@@ -853,7 +893,8 @@ export function ObjectiveRecordsSideBar({
             >
               <TheaterSectionHeader
                 theater={theater}
-                active={theater.id === owningCommodoreId}
+                active={!commandBoardOpen && theater.id === owningCommodoreId}
+                selectedOverride={commandBoardOpen ? false : undefined}
                 lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
                 // ⋯ 호버 독은 사령관 행에 달되, 아바타만 서는 좁은 열에는 두지 않는다.
                 dock={!compact}
@@ -873,7 +914,6 @@ export function ObjectiveRecordsSideBar({
               {(!compact && (sectionExpanded || (consoles.seamless && consoles.sectioned))) ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <SidebarCommanderList
-                    hideSettled={sectionExpanded ? !showSettled : true}
                     commodoreId={theater.id}
                     selectedId={selectedCommanderId}
                   />

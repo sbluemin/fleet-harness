@@ -40,6 +40,7 @@ export type MobileDestination =
    */
   | { readonly kind: "info"; readonly tab?: string }
   | { readonly kind: "attention" }
+  | { readonly kind: "command-board"; readonly commodoreId?: string }
   | { readonly kind: "archive" }
   | { readonly kind: "search"; readonly scope?: "archive" }
   | { readonly kind: "plugins" }
@@ -56,6 +57,8 @@ export function readDestinationFromUrl(): MobileDestination {
   if (typeof window === "undefined") return { kind: "home" };
   const raw = new URLSearchParams(window.location.search).get(DEST_PARAM);
   if (raw === "search:archive") return { kind: "search", scope: "archive" };
+  if (raw === "command-board") return { kind: "command-board" };
+  if (raw !== null && raw.startsWith("command-board:") && raw.length > 14) return { kind: "command-board", commodoreId: raw.slice(14) };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
   if (raw !== null && raw.startsWith("info:") && raw.length > 5) return { kind: "info", tab: raw.slice(5) };
   if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) {
@@ -83,7 +86,10 @@ function paramsSuffix(params: Readonly<Record<string, string>> | undefined): str
 function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
-  const value = next.kind === "home" ? null : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}` : next.kind === "search" && next.scope === "archive" ? "search:archive"
+  const value = next.kind === "home" ? null
+    : next.kind === "command-board" ? (next.commodoreId ? `command-board:${next.commodoreId}` : "command-board")
+    : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}`
+    : next.kind === "search" && next.scope === "archive" ? "search:archive"
     : next.kind === "info" && next.tab !== undefined ? `info:${next.tab}` : next.kind;
   const clearObjective = next.kind === "plugin" && next.entryId === "commodore" && url.searchParams.has("op");
   if (url.searchParams.get(DEST_PARAM) === value && !clearObjective) return;
@@ -122,6 +128,7 @@ export function consumeMobileReturnDestination(): MobileDestination | null {
 export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
+    && (destination as { commodoreId?: string }).commodoreId === (next as { commodoreId?: string }).commodoreId
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) { writeDestinationToUrl(next); return; }
   destination = next;
   if (next.kind === "plugin" && next.params?.theaterId) {

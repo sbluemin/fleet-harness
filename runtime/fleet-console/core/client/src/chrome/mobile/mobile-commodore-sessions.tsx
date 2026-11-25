@@ -1,6 +1,7 @@
 import { useClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
-import { useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
+import { CommandBoardGlyph } from "../../../../../features/workspace/client/command-board/command-board.js";
+import { isNotStartedRow, useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
 import { useRailEntries } from "../pane/pane-registry.js";
@@ -9,9 +10,8 @@ import { MobileArchivedFinished } from "./mobile-archived-finished.js";
 import { MobileCommanderList } from "./mobile-commander-list.js";
 import { attentionMovesFirst, entryIconOf, useMobileAttention } from "./mobile-destinations.js";
 import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
-import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
-import { openMobilePluginDestination } from "./mobile-store.js";
+import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
 
 /** 사령관 세부 첫 화면의 「확인 필요 N」 수 — 플러그인 항목과 사람을 기다리는 세션을 모두 센다. */
 export function useMobileCommodoreAttentionCount(commodoreId: string): number {
@@ -29,15 +29,22 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
   const clusterIndex = useClusterIndex();
   const { rows } = useMobileAttention(state, commodoreId);
   const commanderRows = useCommanderRows(commodoreId, null);
-  // 폰은 두 입구를 나눈다 — 사령관의 직접 질문은 띠에만, 사람에게 넘긴 보드 항목은 뿌리 유무와 관계없이 목록에만 선다.
-  // 요청도 플러그인 행으로 오므로 kind만으로 가르지 않고 실제 명단의 묶음 id를 쓴다. 데스크톱 명단은 바꾸지 않는다.
-  const sorted = commanderRows.sorted.filter((item) => !item.row.commodore);
+  // 폰은 두 입구를 나눈다 — 사령관의 직접 질문은 띠에만, 시작 전·완료 목표는 통합 지휘판에서 관리하므로 여기서는 진행·검토 중인 지휘관만 보여 준다.
+  const nonCommodore = commanderRows.sorted.filter((item) => !item.row.commodore);
+  const freshCount = nonCommodore.filter((item) => isNotStartedRow(item.row)).length;
+  const doneCount = nonCommodore.filter((item) => item.row.glyph === "done").length;
+  const sorted = nonCommodore.filter((item) => !isNotStartedRow(item.row) && item.row.glyph !== "done");
   const commanderClusterIds = new Set(sorted.map((item) => item.layout.cluster.id));
   const sections = commanderRows.sections
+    .filter((section) => section.fold === null)
     .map((section) => ({ ...section, rows: section.rows.filter((item) => commanderClusterIds.has(item.layout.cluster.id)) }))
     .filter((section) => section.rows.length > 0);
   const attention = rows.filter((row) => row.kind !== "objectiveRecord")
     .filter((row) => row.kind === "approval" || !row.clusterId || !commanderClusterIds.has(row.clusterId));
+  const settledSummary = [
+    freshCount > 0 ? t("commanderTab.settledFresh", { n: freshCount }) : null,
+    doneCount > 0 ? t("commanderTab.settledDone", { n: doneCount }) : null,
+  ].filter((part): part is string => part !== null).join(" · ");
   // 지휘관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   return (
@@ -66,6 +73,21 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
         </div>
       </> : null}
       <MobileCommanderList key={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
+      <button
+        type="button"
+        data-press="r1"
+        className="mobile-commodore-board-link"
+        onClick={() => leave(() => setMobileDestination({ kind: "command-board", commodoreId }))}
+      >
+        <span className="mobile-commodore-board-link-main">
+          <CommandBoardGlyph size={16} />
+          <span>{t("commandBoard.mobileOpenBoard")}</span>
+        </span>
+        <span className="mobile-commodore-board-link-meta">
+          {settledSummary ? <span>{settledSummary}</span> : null}
+          <span aria-hidden="true">→</span>
+        </span>
+      </button>
       <MobileArchivedFinished commodoreId={commodoreId} leave={leave} />
     </div>
   );

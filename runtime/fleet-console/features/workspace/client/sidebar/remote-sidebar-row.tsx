@@ -15,7 +15,7 @@ import { sidebarJson } from "../../../remote-access/client/sidebar-transport.js"
 import { objectiveSidebarRow } from "../../../objectives/client/clusters.js";
 import { indexClusters } from "../objective-clusters.js";
 import { sortCommanderRows } from "../commander-tab/commander-sort.js";
-import { isNotStartedRow, settledOrder, type CommanderSection } from "../commander-tab/commander-rows.js";
+import { isNotStartedRow, type CommanderSection } from "../commander-tab/commander-rows.js";
 import { CommanderSidebarSections } from "../commander-tab/commander-list.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { fallbackMongleBase, objectiveRecordAvatarKey, commodoreAvatarKey } from "../../shared/avatars.js";
@@ -40,7 +40,6 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
   const language = useConsoleLocale();
   const tf = taskforceT(language);
   const [editing, setEditing] = useState(false);
-  const [readOnlyFolds, setReadOnlyFolds] = useState<SidebarRemotePage["preferences"]["folds"] | null>(null);
   const [menuSnapshot, setMenu] = useState<Menu | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"group" | "delete" | "taskforce" | "deleteTaskforce" | "folder" | null>(null);
@@ -110,17 +109,13 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
       onContextMenu={(item, anchor, opener, focus = false) => { cancelOpen(); setMenu({ kind: "objective", source, item, anchor, opener, focus }); }} />;
   };
   const active = items.filter(({ item }) => !isNotStartedRow(item.row) && item.row.glyph !== "done");
-  const settledByItem = new Map(items.map((entry) => [entry.item, entry]));
-  const settled = settledOrder(items.filter(({ item }) => isNotStartedRow(item.row)).map(({ item }) => item), items.filter(({ item }) => item.row.glyph === "done").map(({ item }) => item))
-    .map((item) => settledByItem.get(item)!);
+  const entryByItem = new Map(items.map((entry) => [entry.item, entry]));
   const groups = [...(page?.groups ?? [])].filter((group) => group.commodoreId === row.commodoreId).sort((a, b) => a.order - b.order || a.createdAt - b.createdAt);
   const groupIds = new Set(groups.map((group) => group.id));
-  const activeSections: CommanderSection[] = preferences.sort.grouped
+  const sections: readonly CommanderSection[] = preferences.sort.grouped
     ? [...groups.map((group) => ({ id: group.id, title: group.name, rows: active.filter(({ item }) => item.row.groupId === group.id).map(({ item }) => item), fold: null })),
       { id: "ungrouped", title: t("commanderTab.ungrouped"), rows: active.filter(({ item }) => !groupIds.has(item.row.groupId ?? "")).map(({ item }) => item), fold: null }].filter((section) => section.rows.length > 0)
     : active.length ? [{ id: "active", title: null, rows: active.map(({ item }) => item), fold: null }] : [];
-  const sections: readonly CommanderSection[] = [...activeSections, ...(preferences.showSettled && settled.length ? [{ id: "settled", title: null, rows: settled.map(({ item }) => item), fold: "settled" as const,
-    settled: true as const, freshCount: settled.filter(({ item }) => isNotStartedRow(item.row)).length, doneCount: settled.filter(({ item }) => item.row.glyph === "done").length }] : [])];
   const header = useRef<HTMLDivElement | null>(null);
   const taskforceAvatar = summary.taskforce ? <span className="side-bar-theater-anchor is-avatar" aria-hidden="true"><span className="taskforce-stack" data-count={Math.min(4, summary.taskforce.members.length)}>
     {summary.taskforce.members.slice(0, 4).map((id) => { const member = directory.commodores.find((row) => row.id === id); return <MongleAvatar key={id} role="commodore" base={member?.look?.base ?? fallbackMongleBase(commodoreAvatarKey(id))} tone={member?.look?.tone} state="idle" size={18} label="" decorative hideBadge />; })}
@@ -138,10 +133,9 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
               activity={summary.activity} className="objectives-commodore-mark-glyph" size={18} label={summary.name} decorative figure />
             {summary.decisions ? <span className="objectives-commodore-mark-badge">{summary.decisions}</span> : null}
           </button>,
-          dock: <CommodoreHoverDock name={summary.name} adapter={{ ...preferences, disabled: !writable || busy,
+          dock: <CommodoreHoverDock name={summary.name} adapter={{ keepExpanded: preferences.keepExpanded, sort: preferences.sort, disabled: !writable || busy,
             onSort: (value) => { void mutate("saveSettings", { commanderSort: value }).catch(() => undefined); },
-            onKeep: (value) => { void mutate("saveSettings", { commanderKeepExpanded: value }).catch(() => undefined); },
-            onSettled: (value) => { void mutate("saveSettings", { commanderShowSettled: value }).catch(() => undefined); } }} /> }}
+            onKeep: (value) => { void mutate("saveSettings", { commanderKeepExpanded: value }).catch(() => undefined); } }} /> }}
         clampAlias={(value) => [...value].slice(0, 40).join("")} editingAlias={editing}
         onStartAliasEdit={() => { cancelOpen(); if (writable && !summary.taskforce) setEditing(true); }} onFinishAliasEdit={(_id, alias) => { setEditing(false); if (alias !== undefined) void mutate("alias", { commodoreId: row.commodoreId, alias }).catch(() => undefined); }}
         showStatusLiveTick={summary.state === "awaiting" || summary.state === "decision"}
@@ -151,12 +145,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     </div>
     {!compact && !summary.taskforce ? <div className="side-bar-commander-list" data-keep-objective-active="" onKeyDownCapture={cancelOpen}><div className="commander-tab">
       {readError ? <p role="alert">{readError}</p> : null}
-      <CommanderSidebarSections sections={sections} folds={!writable && readOnlyFolds ? readOnlyFolds : preferences.folds}
-        onToggle={(id) => {
-          if (!writable) { setReadOnlyFolds((value) => { const folds = value ?? preferences.folds; return { ...folds, [id]: !folds[id] }; }); return; }
-          void mutate("saveSettings", { commanderFolds: { ...preferences.folds, [id]: !preferences.folds[id] } }).catch(() => undefined);
-        }}
-        renderItems={(rows, settled) => rows.map((item) => render(settledByItem.get(item)!, settled))} />
+      <CommanderSidebarSections sections={sections} renderItems={(rows, settled) => rows.map((item) => render(entryByItem.get(item)!, settled))} />
     </div></div> : null}
     {error ? <p role="alert">{error}</p> : null}
     {menu ? <SectionMenu anchor={menu.anchor} focusFirst={menu.focus} opener={menu.opener} label={summary.name} onClose={close}>

@@ -9,14 +9,16 @@ import type { ObjectiveKindDescriptor, ObjectiveRuntimeHydration, ObjectiveRunti
 import type { createHostCapabilities } from "../../integration/feature-capabilities.js";
 
 import { useT } from "../../i18n/index.js";
-import { selectNestedBody } from "../../integration/store.js";
+import { selectNestedBody, focusObjective } from "../../integration/store.js";
 import type { ObjectiveRecord, ObjectiveNotification } from "../../integration/types.js";
+import { MobileCommandBoard } from "../../../../../features/workspace/client/command-board/command-board.js";
+import { openCommanderConversation } from "../../../../../features/workspace/client/commander-tab/commander-navigation.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobilePluginScreen } from "./mobile-plugin-screen.js";
 import { MobileSessionView } from "./mobile-session-view.js";
 import { MobileTools } from "./mobile-tools.js";
-import { getMobileDestination, setMobileDestination, useMobileDestination } from "./mobile-store.js";
+import { getMobileDestination, setMobileDestination, setMobileReturnDestination, useMobileDestination } from "./mobile-store.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { MobileArchiveScreen } from "./mobile-archive-screen.js";
 import { MobileSearchScreen } from "./mobile-search-screen.js";
@@ -106,6 +108,8 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
   let content;
   if (destination.kind === "attention") {
     content = <MobileAttentionScreen />;
+  } else if (destination.kind === "command-board") {
+    content = <MobileCommandBoardScreen commodoreId={destination.commodoreId ?? null} />;
   } else if (destination.kind === "archive") {
     content = <MobileArchiveScreen state={consoleState} />;
   } else if (destination.kind === "search") {
@@ -145,6 +149,36 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
     <main className="mobile-shell">
       <div className="mobile-shell-content">{content}</div>
     </main>
+  );
+}
+
+/**
+ * 모바일 지휘판 — 전체 사령관 목표를 4열 탭(시작 전 · 진행 중 · 검토 대기 · 완료)으로 보고 카드에서 바로 사령관에게 지시한다.
+ */
+function MobileCommandBoardScreen({ commodoreId }: { readonly commodoreId: string | null }) {
+  const t = useT();
+  const state = useConsoleState();
+  useClaimMobileBar({
+    variant: "centered",
+    title: t("commandBoard.title"),
+    leading: "back",
+    onBack: () => setMobileDestination({ kind: "home" }),
+  });
+  return (
+    <MobileCommandBoard
+      initialCommodoreId={commodoreId}
+      onOpenObjective={(item) => {
+        setMobileReturnDestination(commodoreId ? { kind: "command-board", commodoreId } : { kind: "command-board" });
+        const record = state.objectiveRecords.find((entry) => entry.id === item.id && entry.commodoreId === item.commodoreId);
+        if (record) {
+          setMobileDestination({ kind: "home" });
+          focusObjective(record.id);
+        } else {
+          setMobileDestination({ kind: "home" });
+          openCommanderConversation(item.commodoreId, item.id);
+        }
+      }}
+    />
   );
 }
 

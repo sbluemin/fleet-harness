@@ -15,6 +15,7 @@ import { Toast, ToastHost } from "../chrome/components/toast.js";
 import { UpdateCurtain } from "../../../../features/updates/client/update-curtain.js";
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
 import { openArchiveSheet } from "../integration/objective-archive.js";
+import { openCommandBoard, toggleCommandBoard } from "../../../../features/workspace/client/command-board/command-board-store.js";
 import type { ArchiveOutcome } from "../integration/objective-actions.js";
 import { ApiError, undoObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
@@ -396,6 +397,15 @@ function ConnectedApp() {
       openObjectiveSearch,
       closeObjectiveSearch,
       getObjectiveSearchMode: () => getState().objectiveRecordSearchMode,
+      toggleCommandBoard: () => {
+        const outcome = resolvePanelShortcut();
+        if (outcome === "suppress") return false;
+        if (outcome === "reveal") {
+          navigate("/objectives");
+          return openCommandBoard();
+        }
+        return toggleCommandBoard();
+      },
       openTaskforce: () => {
         if (getGlobalSettingsStoreState().state?.experiments.taskforce !== true) return false;
         if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");

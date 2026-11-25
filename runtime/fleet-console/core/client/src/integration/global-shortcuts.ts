@@ -22,6 +22,8 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getObjectiveSearchMode: () => "objectiveRecords" | "commands" | null;
   readonly openTaskforce?: () => boolean;
+  /** 지휘판(Command Board)을 여닫는다. 모바일에서는 false. */
+  readonly toggleCommandBoard?: () => boolean;
   /** 독립 CLI 패널·팔레트를 여닫는다. 그릴 자리가 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly toggleStandaloneCli?: () => boolean;
   /** 독립 CLI 선택 팔레트를 바로 여닫는다(열린 CLI 안에서 다른 CLI로 전환). 모바일에서는 false. */
@@ -76,6 +78,13 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
+    if (matches("console.command-board")) {
+      if (event.repeat || dependencies.toggleCommandBoard?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
     if (matches("console.new-taskforce")) {
       if (event.repeat || dependencies.openTaskforce?.()) {
         event.preventDefault();

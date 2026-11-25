@@ -40,6 +40,9 @@ export interface RevealTarget {
 
 const EMPTY: OwnerState = { objectives: [], groups: [], loaded: false, launchAvailable: false };
 const boards = new Map<string, OwnerState>();
+let boardsRevision = 0;
+let allObjectivesCachedRev = -1;
+let allObjectivesSnapshot: readonly Objective[] = [];
 const removedOwners = new Set<string>();
 const removedOwnerObjectiveIds = new Map<string, ReadonlySet<string>>();
 export const objectiveIdsForRemovedOwner = (id: string): ReadonlySet<string> => removedOwnerObjectiveIds.get(id) ?? new Set();
@@ -287,6 +290,7 @@ function notify(): void {
 function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
   if (removedOwners.has(commodoreId)) return;
   boards.set(commodoreId, { ...(boards.get(commodoreId) ?? EMPTY), ...next });
+  boardsRevision += 1;
   notify();
   describeMissingObjectiveRecords();
 }
@@ -718,7 +722,7 @@ export function subscribeObjectiveOrFinished(listener: () => void): () => void {
 export function forgetObjectiveOwner(commodoreId: string): void {
   removedOwners.add(commodoreId);
   const ids = new Set([...(removedOwnerObjectiveIds.get(commodoreId) ?? []), ...[...(boards.get(commodoreId)?.objectives ?? []), ...(finishedByOwner.get(commodoreId) ?? [])].flatMap((objective) => [objective.id, ...objective.members.map((member) => member.id)]), ...objectiveRecordsSnapshot.filter((row) => row.commodoreId === commodoreId).map((row) => row.id)]);
-  boards.delete(commodoreId); inflight.delete(commodoreId); loadRetries.delete(commodoreId); refreshAfterReconnect.delete(commodoreId);
+  boards.delete(commodoreId); boardsRevision += 1; inflight.delete(commodoreId); loadRetries.delete(commodoreId); refreshAfterReconnect.delete(commodoreId);
   finishedByOwner.delete(commodoreId); finishedInflight.delete(commodoreId); finishedFailed.delete(commodoreId); finishedDirty.delete(commodoreId); views.delete(commodoreId);
   for (const [id, row] of described) if (row?.commodoreId === commodoreId) { described.delete(id); ids.add(id); }
   for (const id of ids) { objectiveRequests.delete(id); fetching.delete(id); describing.delete(id); unknownToServer.delete(id); objectiveRecordLocations.set(id, "deleted"); }
@@ -735,6 +739,24 @@ export function readBoard(commodoreId: string | null): OwnerState {
 
 export function useObjectiveBoard(commodoreId: string | null): OwnerState {
   return useSyncExternalStore(subscribeObjective, () => readBoard(commodoreId), () => readBoard(commodoreId));
+}
+
+/** 모든 사령관의 살아 있는(미보관·미제거) 목표 목록 — 지휘판이 단일 원천으로 구독한다. */
+export function readAllObjectives(): readonly Objective[] {
+  if (allObjectivesCachedRev === boardsRevision) return allObjectivesSnapshot;
+  const out: Objective[] = [];
+  for (const state of boards.values()) {
+    for (const objective of state.objectives) {
+      if (!objective.archived && !objective.removed) out.push(objective);
+    }
+  }
+  allObjectivesSnapshot = out;
+  allObjectivesCachedRev = boardsRevision;
+  return out;
+}
+
+export function useAllObjectives(): readonly Objective[] {
+  return useSyncExternalStore(subscribeObjective, readAllObjectives, readAllObjectives);
 }
 
 /** 일반 목록의 Objective 과, 목표가 가리키는 보관 Objective 의 describe 요약. 참조는 바뀔 때만 새로 만든다. */
