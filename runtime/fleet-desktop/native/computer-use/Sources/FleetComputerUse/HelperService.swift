@@ -718,6 +718,24 @@ private struct Expectation {
       return KeyWindowPrimer(element: el, range: raw as! AXValue, click: click)
     }
 
+    // 가상 머신 게스트 화면은 백그라운드 입력을 버린다. 보낸 것처럼 보고하지 않도록 아무것도 보내기 전에 가상 머신 입력 장치 경로로 돌린다.
+    let guest: Bool = {
+      guard GuestDisplay.bundleIds.contains(win.bundleId), node == nil else { return false }
+      switch request.name {
+      case .click, .doubleClick, .rightClick, .scroll, .drag:
+        guard let p = request.point else { return false }
+        let hit = AXReader.hit(win, p)
+        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: hit == nil || before.root.map { CFEqual(hit!, $0) } == true)
+      case .key, .type:
+        let focused = AXReader.focused(win, root: before.root)
+        let editable = focused.map { el in AXReader.editable(el, role: AXReader.attribute(el, kAXRoleAttribute) as? String ?? "") } ?? false
+        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: !editable)
+      default: return false
+      }
+    }()
+    if guest, request.name == .drag { throw HelperError("drag_unsupported", details: ["settableSlider": false]) }
+    if guest { return try await actOnGuest(request, win: win, record: record, revalidate: revalidate) }
+
     switch request.name {
     case .click, .doubleClick, .rightClick:
       switch request.name {
@@ -931,6 +949,60 @@ private struct Expectation {
     let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
     defer { feedback?.cancel() }
     return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+  }
+
+  /// 게스트 화면 입력(`ParallelsGuest`): 가상 머신의 마우스·키보드 장치에 직접 보낸다. 사람의 포인터·포커스·전면 앱은 쓰지 않는다.
+  /// 게스트 내용은 접근성 트리에 없어 관측할 수 없으므로 결과는 늘 관측 불가다.
+  private func actOnGuest(_ request: ActionRequest, win: WindowInfo, record: DispatchRecord, revalidate: () throws -> Void) async throws -> Object {
+    // 보낼 키를 먼저 모두 정한다. 대응이 없는 글자·키가 있으면 아무것도 보내지 않는다.
+    var keys: [(UInt32, UInt32)]?
+    switch request.name {
+    case .key:
+      guard let events = GuestKeys.events(request.stroke!) else { throw HelperError("vm_unsupported", details: ["reason": "key"]) }
+      keys = events
+    case .type:
+      guard let events = GuestKeys.events(request.text!) else { throw HelperError("vm_unsupported", details: ["reason": "text"]) }
+      keys = events
+    case .scroll where request.direction == .left || request.direction == .right:
+      throw HelperError("vm_unsupported", details: ["reason": "horizontal_scroll"])
+    case .click, .doubleClick, .rightClick, .scroll: break
+    default: throw HelperError("vm_unsupported", details: ["reason": "action"])
+    }
+    try revalidate()
+    let guest = ParallelsGuest.shared
+    let connection = try guest.connect(win)
+    defer { guest.close(connection) }
+    var target: CGPoint?
+    if let point = request.point {
+      guard let mapped = ParallelsGuest.guestPoint(point, window: win.frame.size, guest: (connection.width, connection.height)) else {
+        throw HelperError("vm_unsupported", details: ["reason": "outside_guest"])
+      }
+      target = mapped
+    }
+    defer { idleCursor() }
+    if win.onscreen { await startCursor(request.point, in: win) }
+    try revalidate()
+    let notes = ["vm_input"]
+    // 보내기 시작한 뒤의 시간 초과는 전송 불명이다. 모든 입력을 SDK가 받은 뒤에만 보냄으로 표시한다.
+    record.markGuest()
+    if let keys {
+      if request.name == .type { await cursor?.pulse(.typing(true)) }
+      try await guest.keys(connection, keys, gapMs: request.name == .type ? 12 : 25)
+      if request.name == .type { await cursor?.pulse(.typing(false)) }
+    } else if let target {
+      let action: PointerAction
+      switch request.name {
+      case .doubleClick: action = .doubleClick
+      case .rightClick: action = .rightClick
+      case .scroll: action = .scroll(request.direction!, request.pages)
+      default: action = .click
+      }
+      try await guest.pointer(connection, action, at: target)
+    }
+    record.confirmed(via: "vm", notes: notes)
+    // 연결을 닫기 전에 가상 머신이 마지막 이벤트를 처리할 시간을 둔다.
+    try? await pause(150)
+    return ["sent": true, "via": "vm", "observation": "unobservable", "changes": [], "notes": notes]
   }
 
   private func failedAX(_ code: AXError, defaultCode: String) -> HelperError {

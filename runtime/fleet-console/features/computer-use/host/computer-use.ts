@@ -590,7 +590,7 @@ export class ComputerUseService {
     try {
       this.assertActive(lifetime);
       reply = await client.request("act", params);
-      if (!reply.sent || !reply.via || !["ax", "event", "event+focus"].includes(reply.via)) throw new FleetHelperError("timeout", true);
+      if (!reply.sent || !reply.via || !["ax", "event", "event+focus", "vm"].includes(reply.via)) throw new FleetHelperError("timeout", true);
       didSend();
     } finally {
       if (lease) {
