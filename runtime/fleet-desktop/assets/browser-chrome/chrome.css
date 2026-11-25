@@ -375,17 +375,18 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 /* 레일 머리 — 접힌 레일에서는 표식 하나가 가운데 서고, 펼치면 이름과 탭 수가 붙는다. */
 /* ---- 가로 탭 표시줄: 같은 문서가 주소줄 위 한 줄로 눕는다. 맨 위 줄이므로 신호등·캡션 자리를 비운다(.pad).
    줄은 창의 제목 표시줄이다 — 탭·새 탭 단추를 뺀 바탕(여백, 탭 사이, 새 탭 단추 뒤)을 끌면 창이 움직인다. 탭 위를 끌면 창은 그대로다.
-   탭이 줄을 가득 채워도 끝 여백(.pad:last-child)이 최소 폭만큼 남아 끌 자리가 사라지지 않는다. ---- */
+   새 탭 단추는 Chrome 처럼 탭 스크롤 영역(.scroll) 밖에 선다 — 스크롤 영역은 탭 폭만큼만 늘어나 단추가 마지막 탭 뒤에 붙고,
+   탭이 넘치면 스크롤 영역만 줄어 단추는 줄 끝에 남는다. 남는 폭은 끝 여백(.pad:last-child)이 받고, 탭이 넘쳐도 최소 폭만큼 남아 끌 자리가 사라지지 않는다. ---- */
 html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 가로 탭은 줄의 세로 가운데에 뜬 둥근 상자다 — 보는 탭은 아래 주소줄 띠와 같은 바탕 위에서 한 단 밝은 면으로만 구분되고,
    띠에 닿거나 녹아들지 않는다. 호버도 같은 상자 하나다. */
 .rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; -webkit-app-region: drag; }
 .rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
-.rail.horizontal > .pad:last-child { min-width: 40px; }
+.rail.horizontal > .pad:last-child { flex: 1 0 auto; min-width: 40px; }
 .rail.horizontal :is(.tab, .row) { -webkit-app-region: no-drag; }
 .rail.horizontal.menu-open, .rail.horizontal.menu-open > .pad { -webkit-app-region: no-drag; }
 .rail.horizontal :is(.rail-pin, .divider) { display: none; }
-.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.rail.horizontal .scroll { flex: 0 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; align-items: center; min-width: 0; }
 .rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
