@@ -30,7 +30,9 @@ private struct ActionRequest {
     case .key: allowed.formUnion(["key", "ref", "requireEditableFocus", "text"])
     case .axAction: allowed.formUnion(["ref", "name"])
     }
-    if [.click, .doubleClick, .rightClick, .scroll, .key, .type].contains(action) { allowed.insert("foreground") }
+    // 실측으로 확인한 클릭·키·입력만 받는다(eb7cf15c, 가상 머신). 오른쪽 클릭은 누름만 늦게 실제 포인터 자리로 들어가고 뗌이 사라졌고(3/4),
+    // 두 번 클릭은 한 번만, 스크롤은 하나도 닿지 않았다.
+    if [.click, .key, .type].contains(action) { allowed.insert("foreground") }
     try validateKeys(p, allowed: allowed)
     if p["foreground"] != nil && jsonBool(p["foreground"]) == nil { throw HelperError("invalid_params", "foreground") }
     let foreground = jsonBool(p["foreground"]) == true
@@ -892,6 +894,8 @@ private struct Expectation {
       let rc = AXReader.set(element, attribute, value)
       guard rc == .success else { throw failedAX(rc, defaultCode: "not_settable") }
     }
+    if sequence != nil { activation.watch(pid) }
+    defer { activation.stopWatching() }
     if let sequence {
       if sequence.needsFocus { via = "event+focus"; notes.append("focus_record_used") }
       else { via = "event" }
@@ -940,7 +944,13 @@ private struct Expectation {
     // 피드백 모션은 관측 주기와 병행한다. 전송은 이미 끝났고 이후에는 관측만 한다.
     let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
     defer { feedback?.cancel() }
-    return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+    var result: Object
+    do { result = try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart) }
+    catch { _ = await activation.unwatch(); throw error }
+    if let restored = await activation.unwatch() {
+      result["notes"] = notes + ["app_took_focus", restored ? "focus_restored" : "focus_not_restored"]
+    }
+    return result
   }
 
   /// 전면 폴백(`Foreground`). 에이전트가 명시할 때만 온다. 사람이 쉬는 틈에 대상 앱을 잠깐 앞으로 올려 SkyLight로 보내고 직전 앱으로 되돌린다.
@@ -949,35 +959,33 @@ private struct Expectation {
                              record: DispatchRecord, revalidate: () throws -> Void, actionStart: Double) async throws -> Object {
     guard Foreground.available else { throw HelperError("self_check_failed", "foreground_unavailable") }
     if !win.onscreen { throw HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"]) }
-    var action: PointerAction?
+    var clicks = false
     var strokes: [KeyStroke] = []
     switch request.name {
-    case .click: action = .click
-    case .doubleClick: action = .doubleClick
-    case .rightClick: action = .rightClick
-    case .scroll: action = .scroll(request.direction!, request.pages)
+    case .click: clicks = true
     case .key: strokes = [request.stroke!]
     case .type:
       guard let keys = Foreground.asciiKeys(request.text!) else { throw HelperError("invalid_params", "foreground type accepts printable ASCII, tabs and newlines") }
       strokes = keys
     default: throw HelperError("invalid_params", "foreground")
     }
-    let point = action == nil ? (try? localPoint(node: node, explicit: nil, in: win)) : try localPoint(node: node, explicit: request.point, in: win)
+    let point = clicks ? try localPoint(node: node, explicit: request.point, in: win) : (try? localPoint(node: node, explicit: nil, in: win))
     try revalidate()
+    // 원격 패널(시트) 경로. 키는 7가지 방식 모두 패널에 닿지 않았으므로(eb7cf15c 실측) 앞으로 올리기 전에 거절한다. 시트 버튼은 요소로 누른다.
+    let route = Foreground.route(win, point: clicks ? point : nil)
+    if !clicks && route.pid != win.key.pid { throw HelperError("foreground_unsupported", details: ["reason": "sheet_keys"]) }
     defer { idleCursor() }
     await startCursor(point, in: win)
     try await Foreground.waitForIdle()
     try revalidate()
-    let session = try await Foreground.activate(win, symbols: symbols)
+    let session = try await Foreground.activate(win, keyboard: !clicks, symbols: symbols)
     var sent = false
     do {
       try await pause(120)
       try revalidate()
-      // 원격 패널 경로는 활성화 뒤에 정한다. 포커스 요소는 앱이 앞에 와야 확정된다.
-      let route = Foreground.route(win, point: point)
       if request.name == .type { await cursor?.pulse(.typing(true)) }
-      if let action, let point {
-        try await Foreground.pointer(action, route: route, screen: win.screen(point), height: win.frame.height) { sent = true }
+      if clicks, let point {
+        try await Foreground.click(route: route, screen: win.screen(point)) { sent = true }
       } else {
         try await Foreground.keys(strokes, route: route) { sent = true }
       }

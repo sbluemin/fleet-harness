@@ -8,6 +8,34 @@ import AppKit
   private var observer: NSObjectProtocol?
   private(set) var yields = 0
 
+  /// 백그라운드 이벤트를 보내는 동안 대상 앱이 스스로 앞으로 오면(Parallels는 창 클릭을 받으면 자신을 활성화했다, eb7cf15c 실측)
+  /// 곧바로 직전 앱으로 되돌린다. 백그라운드 입력은 사람의 전면 앱을 바꾸지 않는다는 약속을 지킨다.
+  private var watched: (pid: pid_t, previous: NSRunningApplication, window: CGWindowID?)?
+  private var restoring: Task<Bool, Never>?
+
+  func watch(_ pid: pid_t) {
+    restoring = nil
+    guard let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != pid else { watched = nil; return }
+    watched = (pid, front, Foreground.frontWindow(of: front.processIdentifier))
+  }
+
+  /// 동작이 어떤 경로로 끝나든 감시를 멈춘다. 이후 사람이 직접 그 앱을 고르는 것은 되돌리지 않는다.
+  func stopWatching() { watched = nil }
+
+  /// 감시를 끝낸다. 대상 앱이 앞으로 왔다면 복원 여부를 돌려준다.
+  func unwatch() async -> Bool? {
+    watched = nil
+    guard let restoring else { return nil }
+    self.restoring = nil
+    return await restoring.value
+  }
+
+  private func targetActivated(_ app: NSRunningApplication) {
+    guard let watched, app.processIdentifier == watched.pid, restoring == nil else { return }
+    let session = Foreground.Session(previous: watched.previous, previousWindow: watched.window, switched: true, started: clockNow())
+    restoring = Task { @MainActor in await Foreground.restore(session) }
+  }
+
   func start() {
     let own = getpid()
     if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != own { previous = front }
@@ -15,7 +43,7 @@ import AppKit
                                                                  object: nil, queue: .main) { [weak self] note in
       guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
       MainActor.assumeIsolated {
-        if app.processIdentifier == own { self?.yieldActivation() } else { self?.previous = app }
+        if app.processIdentifier == own { self?.yieldActivation() } else { self?.previous = app; self?.targetActivated(app) }
       }
     }
   }

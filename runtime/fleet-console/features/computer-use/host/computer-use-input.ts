@@ -29,11 +29,10 @@ export class InvalidComputerUseParameters extends FleetHelperError {
 }
 const invalid = (detail: string): never => { throw new InvalidComputerUseParameters(detail); };
 const POINTER = ["target", "x", "y", "view"] as const;
-const FOREGROUND = [...POINTER, "foreground"] as const;
 const ACTION_FIELDS = {
-  click: FOREGROUND, double_click: FOREGROUND, right_click: FOREGROUND,
+  click: [...POINTER, "foreground"], double_click: POINTER, right_click: POINTER,
   type: ["target", "text", "foreground"], set_value: ["target", "text"], paste: ["target", "text", "format"],
-  key: ["target", "key", "foreground"], scroll: [...FOREGROUND, "direction", "pages"], drag: [...POINTER, "to"],
+  key: ["target", "key", "foreground"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
   select: ["target", "text"], ax_action: ["target", "name"],
 } satisfies Record<Action, readonly (keyof ActionArgs)[]>;
 const NAMED_KEYS = /^(?:return|enter|tab|escape|esc|backspace|delete|forwarddelete|(?:arrow)?(?:up|down|left|right)|home|end|pageup|pagedown|space|f(?:[1-9]|1[0-2]))$/u;

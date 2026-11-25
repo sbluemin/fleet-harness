@@ -25,7 +25,7 @@ export const computerUseTools = [
     "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
     "pages": {"type": "number", "minimum": 0.1, "maximum": 10},
     "name": {"type": "string", "maxLength": 80, "description": "ax_action name exactly as listed by computer_state."},
-    "foreground": {"type": "boolean", "description": "click/scroll/key/type only; type: ASCII."},
+    "foreground": {"type": "boolean", "description": "click, key, type (ASCII) only."},
     "reason": {"type": "string", "minLength": 1, "maxLength": 300}},
    "required": ["window", "action", "reason"], "additionalProperties": false}},
  {"name": "computer_verify",

@@ -117,7 +117,7 @@ enum Foreground {
     return psn.withUnsafeBytes { setFront($0.baseAddress!, wid, userGenerated) } == 0
   }
 
-  private static func frontWindow(of pid: pid_t) -> CGWindowID? {
+  static func frontWindow(of pid: pid_t) -> CGWindowID? {
     let rows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [Object] ?? []
     return rows.first { $0[kCGWindowOwnerPID as String] as? pid_t == pid && $0[kCGWindowLayer as String] as? Int == 0 }
       .flatMap { ($0[kCGWindowNumber as String] as? NSNumber)?.uint32Value }
@@ -133,22 +133,26 @@ enum Foreground {
   }
 
   /// 대상 창을 앞으로 올린다. 이미 앞이면 아무것도 바꾸지 않는다.
-  @MainActor static func activate(_ win: WindowInfo, symbols: WindowSymbols) async throws -> Session {
+  @MainActor static func activate(_ win: WindowInfo, keyboard: Bool, symbols: WindowSymbols) async throws -> Session {
     let previous = NSWorkspace.shared.frontmostApplication
     let started = clockNow()
     if previous?.processIdentifier == win.key.pid {
       return Session(previous: nil, previousWindow: nil, switched: false, started: started)
     }
     let session = Session(previous: previous, previousWindow: previous.flatMap { frontWindow(of: $0.processIdentifier) }, switched: true, started: started)
-    if front(win.key.pid, window: win.key.id) { try? symbols.targetFocus(win) }
-    if await !waitFront(win.key.pid, ms: 400) {
-      let asked = NSRunningApplication(processIdentifier: win.key.pid)?.activate(options: []) == true
-      let fronted = await waitFront(win.key.pid, ms: 400)
-      guard asked, fronted else {
-        _ = await restore(session)
-        throw HelperError("foreground_unavailable")
-      }
+    // 가상 머신(eb7cf15c 실측): 앱 활성화(activate) 뒤에는 키가 첫 입력부터 닿았고(KT2 4/4, V5·V6·V8), SkyLight 전면 지정 뒤에는 키가
+    // 하나도 닿지 않았다(KT 0/4). 왼쪽 클릭은 두 방식 모두 첫 클릭부터 정확했다(6/6). 입력 종류에 맞는 쪽을 먼저 쓰고, 안 되면 다른 쪽으로 올린다.
+    let byActivate = { NSRunningApplication(processIdentifier: win.key.pid)?.activate(options: []) == true }
+    let bySkyLight = { front(win.key.pid, window: win.key.id) }
+    var fronted = false
+    for raise in keyboard ? [byActivate, bySkyLight] : [bySkyLight, byActivate] where !fronted {
+      if raise() { fronted = await waitFront(win.key.pid, ms: 400) }
     }
+    guard fronted else {
+      _ = await restore(session)
+      throw HelperError("foreground_unavailable")
+    }
+    try? symbols.targetFocus(win)
     return session
   }
 
@@ -188,47 +192,28 @@ enum Foreground {
     post?(pid, Unmanaged.passUnretained(event).toOpaque())
   }
 
-  /// 포인터 이벤트. 활성화 직후 첫 클릭이 사라지거나 엉뚱한 곳에 들어갔으므로(3/3), 같은 자리로 이동 이벤트를 두 번 먼저 보낸다.
-  /// 화면 밖 프라이머 클릭은 게스트에 실제 클릭으로 들어가므로(44f8f9a9 13a) 보내지 않는다.
-  static func pointer(_ action: PointerAction, route: ForegroundRoute, screen: CGPoint, height: CGFloat, sent: () -> Void) async throws {
+  /// 왼쪽 클릭. 같은 자리로 이동 이벤트를 두 번 먼저 보낸다. 화면 밖 프라이머 클릭은 게스트에 실제 클릭으로 들어가므로(44f8f9a9 13a) 보내지 않는다.
+  static func click(route: ForegroundRoute, screen: CGPoint, sent: () -> Void) async throws {
     let local = CGPoint(x: screen.x - route.frame.minX, y: screen.y - route.frame.minY)
     let group = Int64(clockNow() * 1000) & 0xffff_ffff
-    func mouse(_ type: CGEventType, button: CGMouseButton = .left, count: Int64 = 0, phase: Int64) throws -> CGEvent {
-      guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: screen, mouseButton: button) else {
+    // 출처 없이 만든다. HID 상태 출처의 클릭은 원격 시트 패널이 버렸다(eb7cf15c 실측). 가상 머신은 둘 다 받았다.
+    func mouse(_ type: CGEventType, count: Int64, phase: Int64) throws -> CGEvent {
+      guard let e = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: screen, mouseButton: .left) else {
         throw HelperError("internal", "event_creation_failed")
       }
       e.flags = []
       stamp(e, route: route, local: local, phase: phase, group: group)
       e.setIntegerValueField(.mouseEventClickState, value: count)
-      if button == .right { e.setIntegerValueField(.mouseEventButtonNumber, value: 1) }
       return e
     }
-    for _ in 0..<2 { send(try mouse(.mouseMoved, phase: 2), to: route.pid); try await pause(60) }
+    for _ in 0..<2 { send(try mouse(.mouseMoved, count: 0, phase: 2), to: route.pid); try await pause(60) }
     sent()
-    switch action {
-    case .click, .doubleClick, .rightClick:
-      let right: Bool = { if case .rightClick = action { return true }; return false }()
-      let count: Int64 = { if case .doubleClick = action { return 2 }; return 1 }()
-      for index in 1...count {
-        send(try mouse(right ? .rightMouseDown : .leftMouseDown, button: right ? .right : .left, count: index, phase: 3), to: route.pid)
-        try await pause(28)
-        send(try mouse(right ? .rightMouseUp : .leftMouseUp, button: right ? .right : .left, count: index, phase: 3), to: route.pid)
-        if index < count { try await pause(28) }
-      }
-    case .scroll(let direction, let pages):
-      let distance = Int32(min(Double(Int32.max), max(1, (pages * height * 0.8).rounded())))
-      let vertical: Int32 = direction == .up ? distance : direction == .down ? -distance : 0
-      let horizontal: Int32 = direction == .left ? distance : direction == .right ? -distance : 0
-      guard let e = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: horizontal == 0 ? 1 : 2,
-                            wheel1: vertical, wheel2: horizontal, wheel3: 0) else { throw HelperError("internal", "event_creation_failed") }
-      e.flags = []
-      e.location = screen
-      stamp(e, route: route, local: local, phase: 0, group: group)
-      send(e, to: route.pid)
-    case .drag: throw HelperError("invalid_params", "foreground drag")
-    }
+    send(try mouse(.leftMouseDown, count: 1, phase: 3), to: route.pid)
+    try await pause(28)
+    send(try mouse(.leftMouseUp, count: 1, phase: 3), to: route.pid)
   }
 
+  /// 키는 HID 상태 출처로 만든다(가상 머신에서 실측한 조합).
   static func keys(_ strokes: [KeyStroke], route: ForegroundRoute, sent: () -> Void) async throws {
     let source = CGEventSource(stateID: .hidSystemState)
     sent()
