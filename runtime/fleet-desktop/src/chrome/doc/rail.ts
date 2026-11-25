@@ -93,6 +93,17 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.classList.toggle("tight", horizontal() && first !== null && first.getBoundingClientRect().width < TIGHT_TAB_PX);
   };
   new ResizeObserver(fitTabs).observe(tabsBox);
+  /**
+   * 가로 표시줄의 탭 묶음이 탭들의 최소 폭 합보다 줄지 않게 붙든다. 묶음이 그보다 줄면 탭이 묶음 밖으로 넘쳐 새 탭 단추를 덮고
+   * 단추 누름을 가로챈다. 붙들면 넘치는 만큼 줄이 옆으로 넘어가고(휠로 넘긴다), 끝 여백의 끌 자리도 그대로 남는다.
+   */
+  const holdTabsMinimum = (): void => {
+    if (!horizontal()) { tabsBox.style.minWidth = ""; return; }
+    const tabs = [...tabsBox.children] as HTMLElement[];
+    const gap = Number.parseFloat(getComputedStyle(tabsBox).columnGap) || 0;
+    const floor = tabs.reduce((sum, tab) => sum + (Number.parseFloat(getComputedStyle(tab).minWidth) || 0), 0) + gap * Math.max(0, tabs.length - 1);
+    tabsBox.style.minWidth = `${Math.ceil(floor)}px`;
+  };
 
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
@@ -172,6 +183,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.hidden = tabs.length === 0;
     tabsBox.setAttribute("aria-label", `${name} — ${t("tabs")}`);
     keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);
+    holdTabsMinimum();
     fitTabs();
   };
 

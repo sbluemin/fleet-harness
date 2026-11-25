@@ -44,6 +44,12 @@ describe("가로 탭 표시줄의 창 끌기 영역", () => {
     expect(railSource).toMatch(/classList\.toggle\("menu-open", state\.overlay\?\.kind === "tabs-menu"\)/);
   });
 
+  it("탭 묶음은 탭들의 최소 폭 합보다 줄지 않는다 — 줄면 넘친 탭이 새 탭 단추를 덮는다", () => {
+    expect(declarations(".rail.horizontal .tabs").get("min-width")).toBe("0");
+    expect(railSource).toMatch(/tabsBox\.style\.minWidth = `\$\{Math\.ceil\(floor\)\}px`/);
+    expect(railSource).toMatch(/holdTabsMinimum\(\);\s*fitTabs\(\);/);
+  });
+
   it("세로 레일은 끌기 영역을 갖지 않는다", () => {
     expect(declarations(".rail").has("-webkit-app-region")).toBe(false);
     expect(declarations(".rail > .pad").has("-webkit-app-region")).toBe(false);
