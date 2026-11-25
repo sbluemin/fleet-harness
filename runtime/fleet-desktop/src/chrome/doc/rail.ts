@@ -93,6 +93,17 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.classList.toggle("tight", horizontal() && first !== null && first.getBoundingClientRect().width < TIGHT_TAB_PX);
   };
   new ResizeObserver(fitTabs).observe(tabsBox);
+  /**
+   * 가로 표시줄의 탭 묶음이 탭들의 최소 폭 합보다 줄지 않게 붙든다. 묶음이 그보다 줄면 탭이 묶음 밖으로 넘쳐 새 탭 단추를 덮고
+   * 단추 누름을 가로챈다. 붙들면 넘치는 만큼 줄이 옆으로 넘어가고(휠로 넘긴다), 끝 여백의 끌 자리도 그대로 남는다.
+   */
+  const holdTabsMinimum = (): void => {
+    if (!horizontal()) { tabsBox.style.minWidth = ""; return; }
+    const tabs = [...tabsBox.children] as HTMLElement[];
+    const gap = Number.parseFloat(getComputedStyle(tabsBox).columnGap) || 0;
+    const floor = tabs.reduce((sum, tab) => sum + (Number.parseFloat(getComputedStyle(tab).minWidth) || 0), 0) + gap * Math.max(0, tabs.length - 1);
+    tabsBox.style.minWidth = `${Math.ceil(floor)}px`;
+  };
 
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
@@ -146,6 +157,8 @@ export function mountRail(): (state: ChromeUiState) => void {
     // 보기 전용에서는 탭을 고르기만 한다. 원격 조작은 새 탭과 닫기를 로컬과 같이 둔다.
     const viewLocked = chromeViewLocked(state.viewOnly);
     root.classList.toggle("viewing", viewLocked);
+    // 가로 표시줄의 바탕은 창 끌기 영역이라 누름이 문서에 오지 않는다. 표시줄 메뉴가 떠 있는 동안만 끌기를 내려, 바탕을 눌러도 메뉴가 닫히게 한다.
+    root.classList.toggle("menu-open", state.overlay?.kind === "tabs-menu");
     newButton.hidden = viewLocked;
     tabsBox.setAttribute("aria-orientation", state.orientation);
     leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
@@ -170,6 +183,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.hidden = tabs.length === 0;
     tabsBox.setAttribute("aria-label", `${name} — ${t("tabs")}`);
     keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);
+    holdTabsMinimum();
     fitTabs();
   };
 
