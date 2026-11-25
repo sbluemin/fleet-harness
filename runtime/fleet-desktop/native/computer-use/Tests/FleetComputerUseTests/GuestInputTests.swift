@@ -1,5 +1,5 @@
 import CoreGraphics
-import Foundation
+import AppKit
 import Testing
 @testable import FleetComputerUse
 
@@ -38,5 +38,34 @@ struct ParallelsSDKTrustTests {
   func acceptsTheSDKShippedInsideParallelsDesktop() {
     let path = ParallelsGuest.trustedSDK("/Applications/Parallels Desktop.app/Contents/Frameworks/ParallelsVirtualizationSDK.framework")
     #expect(path?.hasSuffix("/ParallelsVirtualizationSDK") == true)
+  }
+}
+
+struct ParallelsOwnerTrustTests {
+  @Test func refusesAProcessThatOnlyClaimsTheParallelsBundleID() throws {
+    // /bin/sleep 사본을 Parallels Desktop의 식별자로 임시(ad hoc) 서명해 실행한다. 식별자는 같아도 Parallels 팀 서명이 아니므로 거절한다.
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fake-parallels-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let binary = dir.appendingPathComponent("prl_client_app")
+    try FileManager.default.copyItem(atPath: "/bin/sleep", toPath: binary.path)
+    let sign = Process()
+    sign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+    sign.arguments = ["--force", "--sign", "-", "--identifier", "com.parallels.desktop.console", binary.path]
+    try sign.run(); sign.waitUntilExit()
+    #expect(sign.terminationStatus == 0)
+    let fake = Process()
+    fake.executableURL = binary
+    fake.arguments = ["30"]
+    try fake.run()
+    defer { fake.terminate() }
+    #expect(ParallelsGuest.trustedOwner(fake.processIdentifier) == nil)
+    #expect(ParallelsGuest.trustedOwner(getpid()) == nil)
+  }
+
+  @Test(.enabled(if: !NSRunningApplication.runningApplications(withBundleIdentifier: "com.parallels.desktop.console").isEmpty))
+  func acceptsTheRunningParallelsDesktop() {
+    let app = NSRunningApplication.runningApplications(withBundleIdentifier: "com.parallels.desktop.console")[0]
+    #expect(ParallelsGuest.trustedOwner(app.processIdentifier)?.hasSuffix("/Parallels Desktop.app") == true)
   }
 }

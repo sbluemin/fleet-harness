@@ -81,16 +81,16 @@ function errorHint(error: FleetHelperError): string {
   if (code === "permission_required") return permissionHint(details);
   if (code === "vm_unavailable") {
     const reason = details?.reason;
-    if (reason === "not_found" || reason === "ambiguous") return "Fleet could not match this window to exactly one Parallels virtual machine by its title. Nothing was sent to the guest.";
-    return "Fleet could not reach this virtual machine's input devices through Parallels Desktop. Nothing was sent to the guest.";
+    if (reason === "not_found" || reason === "ambiguous") return "The window title did not uniquely identify a Parallels VM by name.";
+    return "Parallels guest input is unavailable for this window.";
   }
   if (code === "vm_unsupported") {
     const reason = details?.reason;
-    if (reason === "text") return "Typing into a virtual machine supports ASCII characters only. Nothing was sent.";
-    if (reason === "key") return "That key has no virtual machine key code. Nothing was sent.";
-    if (reason === "outside_guest") return "That point is outside the guest screen (for example on the Parallels toolbar). Use an element id for toolbar controls.";
-    if (reason === "horizontal_scroll") return "Virtual machine displays support vertical scrolling only. Nothing was sent.";
-    return "This action is not supported on a virtual machine display. Nothing was sent.";
+    if (reason === "text") return "Guest typing accepts printable ASCII, tabs and newlines.";
+    if (reason === "key") return "Fleet has no guest key mapping for this key.";
+    if (reason === "outside_guest") return "Could not map that point to the guest screen. For guest input, use coordinates from computer_state with image:true. For Parallels controls, use a listed element id.";
+    if (reason === "horizontal_scroll") return "Guest scrolling supports up and down only.";
+    return "This action is not supported on the guest screen.";
   }
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
@@ -101,10 +101,15 @@ export function textResult(text: string, isError = false) {
 export function gateResult(error: string, hintText?: string) {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);
 }
+// 게스트 화면은 접근성 트리에 내용이 없으므로 결과 확인은 화면으로만 할 수 있다(프롬프트 자문 결정 ace3dec0).
+const GUEST_CHECK = "Guest content is not in the accessibility tree. To check a visible effect, use computer_state with image:true.";
 export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration): ComputerUseResult {
   const code = /^(?:[a-z][a-z_]{0,63})$/u.test(error.code) ? error.code : "internal";
+  const unknown = error.details?.target === "vm"
+    ? `dispatch unknown: timeout — ${GUEST_CHECK} Do not replay the action.`
+    : "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action.";
   const text = action
-    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `not sent: ${code} — ${errorHint(error)}`}`
+    ? `${actionTarget(action)}: ${error.uncertain ? unknown : `not sent: ${code} — ${errorHint(error)}`}`
     : `${code === "invalid_params" ? "not sent: invalid_params —" : `error ${code}:`} ${errorHint(error)}`;
   return textResult(text + clipboardLine(clipboard), true);
 }
@@ -189,7 +194,7 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
-  if (reply.via === "vm") lines.push("note: Sent to the virtual machine's own input devices; the user's pointer, focus and front app were not used. Guest content is not in the accessibility tree; check with computer_state image:true.");
+  if (reply.via === "vm") lines.push(`note: ${GUEST_CHECK}`);
   if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }

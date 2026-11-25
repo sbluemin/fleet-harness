@@ -963,6 +963,8 @@ private struct Expectation {
     case .type:
       guard let events = GuestKeys.events(request.text!) else { throw HelperError("vm_unsupported", details: ["reason": "text"]) }
       keys = events
+    case .scroll where request.direction == .left || request.direction == .right:
+      throw HelperError("vm_unsupported", details: ["reason": "horizontal_scroll"])
     case .click, .doubleClick, .rightClick, .scroll: break
     default: throw HelperError("vm_unsupported", details: ["reason": "action"])
     }
@@ -981,7 +983,8 @@ private struct Expectation {
     if win.onscreen { await startCursor(request.point, in: win) }
     try revalidate()
     let notes = ["vm_input"]
-    record.confirmed(via: "vm", notes: notes)
+    // 보내기 시작한 뒤의 시간 초과는 전송 불명이다. 모든 입력을 SDK가 받은 뒤에만 보냄으로 표시한다.
+    record.markGuest()
     if let keys {
       if request.name == .type { await cursor?.pulse(.typing(true)) }
       try await guest.keys(connection, keys, gapMs: request.name == .type ? 12 : 25)
@@ -996,6 +999,7 @@ private struct Expectation {
       }
       try await guest.pointer(connection, action, at: target)
     }
+    record.confirmed(via: "vm", notes: notes)
     // 연결을 닫기 전에 가상 머신이 마지막 이벤트를 처리할 시간을 둔다.
     try? await pause(150)
     return ["sent": true, "via": "vm", "observation": "unobservable", "changes": [], "notes": notes]

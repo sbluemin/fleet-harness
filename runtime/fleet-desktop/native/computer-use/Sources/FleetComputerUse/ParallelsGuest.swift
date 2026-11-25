@@ -109,9 +109,29 @@ enum GuestKeys {
   /// Parallels가 Developer ID로 서명한 SDK만 연다. 번들 ID는 아무 앱이나 자칭할 수 있고 헬퍼는 손쉬운 사용·화면 기록 권한을 가지며
   /// 릴리스 빌드는 라이브러리 검증을 끄므로, 서명을 확인하지 않으면 같은 번들 ID를 단 앱의 코드가 헬퍼 안에서 실행될 수 있다.
   /// 팀 식별자는 설치된 Parallels Desktop 27.1의 실제 서명에서 읽었다(Parallels International GmbH, 4C6364ACXT).
-  nonisolated static let sdkRequirement = "identifier \"com.parallels.virtualization.sdk\" and anchor apple generic"
-    + " and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
-    + " and certificate leaf[subject.OU] = \"4C6364ACXT\""
+  nonisolated static func parallelsRequirement(_ identifier: String) -> String {
+    "identifier \"\(identifier)\" and anchor apple generic"
+      + " and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists"
+      + " and certificate leaf[subject.OU] = \"4C6364ACXT\""
+  }
+  nonisolated static let sdkRequirement = parallelsRequirement("com.parallels.virtualization.sdk")
+  nonisolated static let appRequirement = parallelsRequirement("com.parallels.desktop.console")
+
+  /// 창을 소유한 실행 중 프로세스가 Parallels가 서명한 Parallels Desktop이면 그 코드가 실행된 번들 경로를 돌려준다.
+  /// 디스크의 프레임워크만 검증하면 번들 ID를 자칭한 앱이 검증 뒤·dlopen 전에 파일을 바꿔치기할 수 있다. 실행 중인 서명을 먼저 확인하고,
+  /// 그 코드의 번들(설치본은 root 소유)에서만 SDK를 찾는다(사령관 검수 의견, 18a642fb m4).
+  nonisolated static func trustedOwner(_ pid: pid_t) -> String? {
+    var code: SecCode?
+    var requirement: SecRequirement?
+    var staticCode: SecStaticCode?
+    var url: CFURL?
+    guard SecCodeCopyGuestWithAttributes(nil, [kSecGuestAttributePid: NSNumber(value: pid)] as CFDictionary, [], &code) == errSecSuccess, let code,
+          SecRequirementCreateWithString(appRequirement as CFString, [], &requirement) == errSecSuccess, let requirement,
+          SecCodeCheckValidity(code, [], requirement) == errSecSuccess,
+          SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+          SecCodeCopyPath(staticCode, [], &url) == errSecSuccess, let url else { return nil }
+    return (url as URL).resolvingSymlinksInPath().path
+  }
 
   /// 프레임워크 번들 전체(안에 든 dylib 포함)가 위 요구 조건을 만족하면 그 안의 실행 파일 실제 경로를 돌려준다.
   nonisolated static func trustedSDK(_ framework: String) -> String? {
@@ -164,7 +184,8 @@ enum GuestKeys {
 
   /// 창 제목과 이름이 같은 가상 머신 하나에 디스플레이 연결을 연다. 이름이 겹치거나 없으면 보내지 않는다.
   func connect(_ win: WindowInfo) throws -> Connection {
-    let s = try load(win.bundlePath)
+    guard let bundle = Self.trustedOwner(win.key.pid) else { throw HelperError("vm_unavailable", details: ["reason": "sdk_untrusted"]) }
+    let s = try load(bundle)
     if server == nil {
       var created: H = nil
       guard s.create(&created) == 0 else { throw HelperError("vm_unavailable", details: ["reason": "sdk_call"]) }
@@ -218,11 +239,18 @@ enum GuestKeys {
 
   func pointer(_ c: Connection, _ action: PointerAction, at p: CGPoint) async throws {
     guard let s = symbols else { return }
+    // 거절할 동작은 첫 이벤트(포인터 이동) 전에 거절한다. 이동을 보낸 뒤의 거절은 not sent가 거짓이 된다.
+    if case .scroll(let direction, _) = action, direction == .left || direction == .right {
+      throw HelperError("vm_unsupported", details: ["reason": "horizontal_scroll"])
+    }
+    if case .drag = action { throw HelperError("drag_unsupported", details: ["settableSlider": false]) }
     let x = Int32(p.x), y = Int32(p.y)
     var first = true
     func set(_ buttons: UInt32, z: Int32 = 0, then ms: Int) async throws {
       // 첫 이벤트가 거절되면 아무것도 가지 않았다. 그 뒤의 실패는 일부가 이미 갔을 수 있다.
-      guard s.setPos(c.vm, x, y, z, buttons) == 0 else { throw first ? HelperError("vm_unavailable", details: ["reason": "sdk_call"]) : HelperError("timeout", "vm_delivery_unknown") }
+      guard s.setPos(c.vm, x, y, z, buttons) == 0 else {
+        throw first ? HelperError("vm_unavailable", details: ["reason": "sdk_call"]) : HelperError("timeout", "vm_delivery_unknown", details: ["target": "vm"])
+      }
       first = false
       try await pause(ms)
     }
@@ -232,10 +260,9 @@ enum GuestKeys {
     case .rightClick: try await set(2, then: 40); try await set(0, then: 0)
     case .doubleClick: for _ in 0..<2 { try await set(1, then: 40); try await set(0, then: 40) }
     case .scroll(let direction, let pages):
-      guard direction == .up || direction == .down else { throw HelperError("vm_unsupported", details: ["reason": "horizontal_scroll"]) }
       let notches = max(1, Int((pages * 5).rounded()))
       for _ in 0..<notches { try await set(0, z: direction == .down ? 1 : -1, then: 25) }
-    case .drag: throw HelperError("drag_unsupported", details: ["settableSlider": false])
+    case .drag: return
     }
   }
 
@@ -243,7 +270,7 @@ enum GuestKeys {
     guard let s = symbols else { return }
     for (index, (code, event)) in events.enumerated() {
       guard s.key(c.vm, code, event) == 0 else {
-        throw index == 0 ? HelperError("vm_unavailable", details: ["reason": "sdk_call"]) : HelperError("timeout", "vm_delivery_unknown")
+        throw index == 0 ? HelperError("vm_unavailable", details: ["reason": "sdk_call"]) : HelperError("timeout", "vm_delivery_unknown", details: ["target": "vm"])
       }
       try await pause(gapMs)
     }
