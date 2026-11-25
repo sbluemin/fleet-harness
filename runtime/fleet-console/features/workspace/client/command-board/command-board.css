@@ -13,17 +13,50 @@
   color: var(--text-primary);
   font-family: var(--font-ui);
   overflow: hidden;
+  container-type: inline-size;
 }
 
-.command-board-head {
+/* 콘솔 쉘 맨 위 52px 띠 — 대화 화면의 .conversation-pill-row 와 같은 높이·부유 캡슐 문법.
+   좌우 빈 공간은 Desktop 창 드래그와 Windows 캡션 버튼에 양보하고, 중앙 캡슐만 클릭을 받는다. */
+.command-board-shell-bar {
+  position: relative;
+  z-index: 6;
   display: flex;
   flex: none;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  height: var(--conversation-top-row, 52px);
+  padding: 0 calc(var(--space-4) + var(--conversation-caption-reserve, 0px)) 0 var(--space-4);
+  box-sizing: border-box;
+}
+
+.command-board-shell-pill {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--hairline-column);
+  max-width: 100%;
+  min-width: 0;
+  height: 38px;
+  padding: 0 5px 0 var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-soft);
+  backdrop-filter: blur(14px);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+:root[data-view-mode="desktop"]:not([data-theme="light"]) .command-board-shell-pill {
+  background: var(--surface-capsule);
+  border-color: var(--surface-capsule-rim);
+}
+
+:root[data-theme="light"] .command-board-shell-pill {
+  height: 40px;
+  background: var(--surface-round-control);
+  border-color: color-mix(in srgb, var(--ink-pearl) 8%, var(--surface-round-control));
+  backdrop-filter: none;
 }
 
 .command-board-title-group {
@@ -31,27 +64,26 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  padding-right: var(--space-1);
 }
 
-.command-board-title-icon {
+.command-board-shell-mark {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   flex: none;
-  border-radius: var(--radius-xs);
-  background: var(--control-wash);
-  color: var(--text-primary);
+  color: var(--brass-ink);
 }
 
-.command-board-title-icon svg {
+.command-board-shell-mark svg {
   width: 15px;
   height: 15px;
 }
 
 .command-board-title {
   margin: 0;
-  font-size: var(--t-base);
+  font-size: var(--t-md);
   font-weight: var(--weight-bold);
   letter-spacing: -0.01em;
   color: var(--text-primary);
@@ -64,10 +96,46 @@
   color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@container (max-width: 680px) {
+  .command-board-summary {
+    display: none;
+  }
+}
+
+.command-board-shell-divider {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  background: var(--hairline-strong);
+}
+
+/* 콘솔 쉘 52px 띠 바로 아래 지휘판 컨트롤 바 — 쉘 드래그 영역과 완전히 분리되어 모든 컨트롤이 안정적으로 눌린다. */
+.command-board-controls {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--hairline-column);
+}
+
+.command-board[data-command-board-view="matrix"] .command-board-toolbar {
+  width: 100%;
+}
+
+.command-board[data-command-board-view="matrix"] .command-board-primary-btn {
+  margin-left: auto;
 }
 
 .command-board-toolbar {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
@@ -163,20 +231,18 @@
 .command-board-segmented {
   display: inline-flex;
   align-items: center;
-  padding: 2px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--control-rest);
+  gap: 2px;
+  flex: none;
 }
 
 .command-board-seg-btn {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  height: 24px;
-  padding: 0 var(--space-2);
+  height: 28px;
+  padding: 0 10px;
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-ui);
@@ -184,6 +250,7 @@
   font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 
 .command-board-seg-btn svg {
@@ -193,12 +260,17 @@
 }
 
 .command-board-seg-btn:hover {
+  background: var(--wash-hover);
   color: var(--text-primary);
 }
 
 .command-board-seg-btn.is-active {
   background: var(--wash-selected);
   color: var(--text-primary);
+}
+
+:root[data-view-mode="desktop"]:not([data-theme="light"]) .command-board-seg-btn.is-active {
+  background: var(--surface-panel);
 }
 
 .command-board-primary-btn {
@@ -208,7 +280,7 @@
   height: 28px;
   padding: 0 var(--space-3);
   border: 0;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-pill);
   background: var(--brass);
   color: var(--text-on-brass);
   font-family: var(--font-ui);
@@ -229,16 +301,26 @@
   opacity: 0.9;
 }
 
-/* 로스터 필터 띠 (통합 · 사령관별 보기) */
+/* 로스터 필터 띠 (컨트롤 바 왼쪽 영역 — 통합 · 사령관별 보기) */
 .command-board-roster {
   display: flex;
-  flex: none;
+  flex: 1 1 280px;
+  min-width: 0;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--hairline-column);
   overflow-x: auto;
+  scrollbar-width: none;
   overscroll-behavior-x: contain;
+}
+
+.command-board-roster::-webkit-scrollbar {
+  display: none;
+}
+
+.command-board-mobile .command-board-roster {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline-column);
 }
 
 .command-board-roster-sep {
