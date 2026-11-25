@@ -64,7 +64,7 @@ function permissionHint(details: Record<string, unknown> | undefined): string {
 
 // Windows에서만 달라지는 안내. 나머지 코드는 두 OS가 같은 문구를 쓴다.
 const windowsHint: Record<string, string> = {
-  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with ctrl/alt/shift+ (cmd is treated as ctrl; the Windows key is unsupported).",
+  invalid_key: "Use a named key (e.g. Return, Backspace, Delete) or a ctrl/alt/shift shortcut; cmd is treated as ctrl. Windows key unsupported.",
   not_settable: "This element does not support value replacement.",
   background_unavailable: "This control cannot be driven in the background. If it is required, ask the user to perform it or choose an element that lists an action.",
 };
@@ -75,7 +75,7 @@ function errorHint(error: FleetHelperError, os: ComputerUseOs = "darwin"): strin
   if (code === "window_unavailable") {
     const reason = details?.reason;
     if (reason === "closed") return "This window is closed. If it is reopened, get its new id with computer_apps.";
-    if (reason === "other_space") return windows ? "Window is on another virtual desktop. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current virtual desktop." : "Window is on another Space. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current Space.";
+    if (reason === "other_space") return windows ? "On another virtual desktop: screenshot only (computer_state with image:true). For control, ask the user to move the window to this desktop." : "Window is on another Space. For a screenshot, use computer_state with image:true. If you need to control this window, ask the user to bring it to the current Space.";
     if (reason === "hidden" || reason === "minimized") {
       return `Window unavailable: ${reason}. If needed, ask the user to make the intended window visible${windows ? " on the current virtual desktop" : " on the current Space"}.`;
     }
@@ -91,6 +91,15 @@ function errorHint(error: FleetHelperError, os: ComputerUseOs = "darwin"): strin
       : " If the drag itself is required, ask the user to perform it.");
   }
   if (code === "permission_required") return permissionHint(details);
+  if (code === "menu_item_not_found") {
+    // Windows 메뉴 경로(결정 9337a92a, 프롬프트 자문 반영): 그 단계(menu 배열 기준 1부터)에서 실제로 보인 이름만 인용한다.
+    const step = typeof details?.step === "number" && Number.isInteger(details.step) && details.step > 0 ? details.step : 1;
+    const seen = Array.isArray(details?.available) ? details.available.filter((item): item is string => typeof item === "string") : [];
+    const total = typeof details?.availableCount === "number" && details.availableCount > seen.length ? details.availableCount : seen.length;
+    const shown = seen.slice(0, 20);
+    const more = total - shown.length;
+    return shown.length ? `Step ${step}: no exact match. Visible items: ${shown.map(quoteApp).join(", ")}${more > 0 ? ` … (+${more} more)` : ""}.` : `Step ${step}: no items observed.`;
+  }
   if (error instanceof InvalidComputerUseParameters) return error.detail;
   if (windows && Object.hasOwn(windowsHint, code)) return windowsHint[code]!;
   return Object.hasOwn(hint, code) ? hint[code]! : hint.internal!;
@@ -102,10 +111,21 @@ export function textResult(text: string, isError = false) {
 export function gateResult(error: string, hintText?: string) {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);
 }
+/** UI Automation이 실제로 전경을 빌린 때만(foreground_borrowed 주석) 한 번씩 알린다. via uia만으로는 추정하지 않는다. */
+function borrowedNotes(notes: unknown): string[] {
+  if (!Array.isArray(notes)) return [];
+  return notes.flatMap((note) => {
+    const borrowed = typeof note === "string" ? /^foreground_borrowed:(\d{1,6})ms (restored|not_restored)$/u.exec(note) : null;
+    return borrowed ? [`note: Focus borrowed (${borrowed[1]}ms); previous window ${borrowed[2] === "restored" ? "restored" : "NOT restored — tell the user"}.`] : [];
+  });
+}
+
 export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration, os: ComputerUseOs = "darwin"): ComputerUseResult {
   const code = /^(?:[a-z][a-z_]{0,63})$/u.test(error.code) ? error.code : "internal";
+  // 메뉴 경로는 앞 단계 메뉴가 이미 열렸을 수 있다. 최종 항목만 실행되지 않았음을 첫 줄에서 밝힌다.
+  const outcome = code === "menu_item_not_found" ? "final item not invoked" : "not sent";
   const text = action
-    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `not sent: ${code} — ${errorHint(error, os)}`}`
+    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `${outcome}: ${code} — ${errorHint(error, os)}`}${borrowedNotes(error.details?.notes).map((line) => `\n${line}`).join("")}`
     : `${code === "invalid_params" ? "not sent: invalid_params —" : `error ${code}:`} ${errorHint(error, os)}`;
   return textResult(text + clipboardLine(clipboard), true);
 }
@@ -146,8 +166,10 @@ export function renderApps(lines: readonly string[], installed: HelperWindows["i
 export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, viewOnly = false, os: ComputerUseOs = "darwin", imageNote?: string) {
   const lines = [`${id} ${quoteApp(window.title)} ${size(window.frame)}`];
   if (view) lines.push(`view ${view} ${size(window.frame)}`);
-  if (viewOnly) lines.push(os === "win32" ? "view-only: screenshot from another virtual desktop. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current virtual desktop." : "view-only: screenshot from another Space. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current Space.");
-  if (view && imageNote === "occluded_chromium_may_be_stale") lines.push("note: This Chromium/Electron window is fully covered, so its screenshot may be stale (the app stops rendering hidden windows). Read elements instead, or ask the user to uncover it if an exact image is needed.");
+  if (viewOnly) lines.push(os === "win32" ? "view-only: another virtual desktop; no elements or input, even by coordinates. For control, ask the user to move the window here." : "view-only: screenshot from another Space. No element access or input, including coordinate clicks. If you need to control this window, ask the user to bring it to the current Space.");
+  if (view && imageNote === "occluded_chromium_may_be_stale") lines.push(os === "win32"
+    ? `note: Fully covered window; screenshot may be stale. ${viewOnly ? "If current pixels are needed, ask the user to uncover the window." : "Use available elements, or ask the user to uncover it if current pixels are needed."}`
+    : "note: This Chromium/Electron window is fully covered, so its screenshot may be stale (the app stops rendering hidden windows). Read elements instead, or ask the user to uncover it if an exact image is needed.");
   if (expand) {
     const element = elements.find((item) => item.ref === expand);
     if (element) lines.push(elementLine(element, true));
@@ -189,14 +211,12 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   const exposed = elementChanges.slice(0, shown.length).filter(({ op }) => op !== "-").map(({ element }) => element);
   const more = Math.max(0, changes.length - 30) + (reply.changesMore ?? 0);
   if (more) lines.push(`… ${more} more changes; call computer_state`);
-  if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push(os === "win32" ? "note: Setting a value may not fire app change events." : "note: Setting an AX value may not fire app change events.");
-  for (const note of reply.notes) {
-    const borrowed = /^foreground_borrowed:(\d{1,6})ms (restored|not_restored)$/u.exec(note);
-    if (borrowed) lines.push(`note: Focus was briefly borrowed (${borrowed[1]}ms) to use UI Automation; the previous window was ${borrowed[2] === "restored" ? "restored" : "NOT restored — tell the user"}.`);
-  }
+  if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push(os === "win32" ? "note: App change events may not fire." : "note: Setting an AX value may not fire app change events.");
+  lines.push(...borrowedNotes(reply.notes));
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
   if (reply.notes.includes("app_took_focus")) lines.push(`note: The app brought itself to the front; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : "focus was returned."} If the input had no effect, foreground:true may reach it.`);
   if (reply.via === "foreground") lines.push(`note: App was brought to the front${reply.foregroundMs ? ` for ${reply.foregroundMs}ms` : ""}; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : reply.notes.includes("focus_restored") ? "focus returned to the user's app." : "it was already in front."}`);
+  if (reply.notes.includes("menu_closed_on_restore")) lines.push("note: Menu closed when focus returned. To choose an item, use menu with the menu-bar item's ID as target.");
   if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }

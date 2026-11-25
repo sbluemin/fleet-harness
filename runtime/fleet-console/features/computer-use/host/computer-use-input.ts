@@ -1,15 +1,21 @@
 import { z } from "zod";
-import { computerUseTools } from "./computer-use-tools.js";
+import { computerUseTools, WINDOWS_MENU_PROPERTY } from "./computer-use-tools.js";
 import { FleetHelperError } from "../runtime/fleet-helper.js";
+import type { ComputerUseOs } from "../shared/status.js";
 
-const schemas = new Map(computerUseTools.map(({ name, inputSchema }) => [name, z.fromJSONSchema(inputSchema as Parameters<typeof z.fromJSONSchema>[0])]));
+const toZod = (inputSchema: unknown) => z.fromJSONSchema(inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+const schemas = new Map(computerUseTools.map(({ name, inputSchema }) => [name, toZod(inputSchema)]));
+// Windows는 같은 스키마에 메뉴 경로만 더 받는다. foreground는 여기서 받아 두고, 런타임이 Windows에서 설명과 함께 거절한다.
+const windowsSchemas = new Map(computerUseTools.map(({ name, inputSchema }) => [name, name === "computer_action"
+  ? toZod({ ...inputSchema, properties: { ...inputSchema.properties, menu: WINDOWS_MENU_PROPERTY } })
+  : toZod(inputSchema)]));
 export type DeviceTool = typeof computerUseTools[number]["name"];
 export type Action = typeof computerUseTools[3]["inputSchema"]["properties"]["action"]["enum"][number];
 export interface Point { x: number; y: number }
 export interface ActionArgs {
   window: string; action: Action; reason: string; target?: string; x?: number; y?: number; view?: string;
   to?: string; text?: string; format?: "text" | "md" | "html"; key?: string;
-  direction?: "up" | "down" | "left" | "right"; pages?: number; name?: string; foreground?: boolean;
+  direction?: "up" | "down" | "left" | "right"; pages?: number; name?: string; foreground?: boolean; menu?: string[];
 }
 export interface Expectation { target?: string; role?: string; label?: string; value?: string; exists?: boolean; enabled?: boolean; selected?: boolean }
 export interface StateArgs { window: string; find?: string; expand?: string; image?: boolean; limit?: number }
@@ -30,7 +36,7 @@ export class InvalidComputerUseParameters extends FleetHelperError {
 const invalid = (detail: string): never => { throw new InvalidComputerUseParameters(detail); };
 const POINTER = ["target", "x", "y", "view"] as const;
 const ACTION_FIELDS = {
-  click: [...POINTER, "foreground"], double_click: POINTER, right_click: POINTER,
+  click: [...POINTER, "foreground", "menu"], double_click: POINTER, right_click: POINTER,
   type: ["target", "text", "foreground"], set_value: ["target", "text"], paste: ["target", "text", "format"],
   key: ["target", "key", "foreground"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
   select: ["target", "text"], ax_action: ["target", "name"],
@@ -69,6 +75,7 @@ function validateAction(input: ActionArgs): void {
   if ((input.action === "type" || input.action === "paste" || input.action === "select") && input.text === "") invalid(`text must not be empty for ${input.action}.`);
   if (input.action === "key") { need("key"); validateKey(input.key!); }
   if (input.foreground && input.action === "type" && [...input.text!].length > 200) invalid("foreground type: at most 200 characters.");
+  if (input.menu !== undefined && (input.target === undefined || input.foreground)) invalid("menu needs target (a menu-bar item) and no foreground.");
   if (!(ACTION_FIELDS[input.action] as readonly string[]).includes("x")) return;
   const hasCoordinates = input.x !== undefined || input.y !== undefined;
   const end = dragPoint(input.to);
@@ -78,8 +85,8 @@ function validateAction(input: ActionArgs): void {
   if (!hasCoordinates && !end && input.view !== undefined) invalid("view requires x and y or a coordinate drag destination.");
 }
 
-export function parseDeviceInput<K extends DeviceTool>(tool: K, args: unknown): ToolArgs[K] {
-  const parsed = schemas.get(tool)!.safeParse(args);
+export function parseDeviceInput<K extends DeviceTool>(tool: K, args: unknown, os: ComputerUseOs = "darwin"): ToolArgs[K] {
+  const parsed = (os === "win32" ? windowsSchemas : schemas).get(tool)!.safeParse(args);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const fields = issue?.path.filter((part) => typeof part === "number" || /^[a-z][a-zA-Z]*$/u.test(String(part))).join(".");
