@@ -16,7 +16,7 @@ const hint: Record<string, string> = {
   stale_element: "That element id is no longer valid for this window. Call computer_state and use a current id.",
   coordinates_need_image: "Call computer_state with image:true. Read the coordinates from that new image and use its view id.",
   text_via_key: "key sends key codes that depend on the user's input source. Use type for text.",
-  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Backspace, Delete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with cmd/ctrl/alt/shift+.",
+  invalid_key: "Unknown key name. Use names like Return, Tab, Escape, Delete (⌫), ForwardDelete, Up, Down, Left, Right, Home, End, PageUp, PageDown, Space, F1–F12, with cmd/ctrl/alt/shift+.",
   no_editable_focus: "Editable focus was not confirmed in the target window. Check the intended field with computer_state.",
   not_settable: "This element does not support AX value replacement.",
   text_not_found: "That text was not found in the element.",
@@ -27,6 +27,9 @@ const hint: Record<string, string> = {
   timeout: "The helper did not answer in time.",
   internal: "The Fleet Computer Use helper could not complete the request.",
   clipboard_prepare_failed: "The clipboard could not be prepared.",
+  user_busy: "The user is typing or using the pointer. Retry shortly.",
+  foreground_unavailable: "The app could not be brought to the front; focus was returned.",
+  foreground_unsupported: "Keys cannot reach this sheet. Use its element ids from computer_state.",
 };
 
 // 권한 안내 문구(프롬프트 자문 확정, 결정 "permission_required 문구 v2"). 렌더러가 앞에 permission_required를 붙이므로 부족하다는 말은
@@ -79,19 +82,6 @@ function errorHint(error: FleetHelperError): string {
       : " If the drag itself is required, ask the user to perform it.");
   }
   if (code === "permission_required") return permissionHint(details);
-  if (code === "vm_unavailable") {
-    const reason = details?.reason;
-    if (reason === "not_found" || reason === "ambiguous") return "The window title did not uniquely identify a Parallels VM by name.";
-    return "Parallels guest input is unavailable for this window.";
-  }
-  if (code === "vm_unsupported") {
-    const reason = details?.reason;
-    if (reason === "text") return "Guest typing accepts printable ASCII, tabs and newlines.";
-    if (reason === "key") return "Fleet has no guest key mapping for this key.";
-    if (reason === "outside_guest") return "Could not map that point to the guest screen. For guest input, use coordinates from computer_state with image:true. For Parallels controls, use a listed element id.";
-    if (reason === "horizontal_scroll") return "Guest scrolling supports up and down only.";
-    return "This action is not supported on the guest screen.";
-  }
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
 
@@ -101,15 +91,10 @@ export function textResult(text: string, isError = false) {
 export function gateResult(error: string, hintText?: string) {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);
 }
-// 게스트 화면은 접근성 트리에 내용이 없으므로 결과 확인은 화면으로만 할 수 있다(프롬프트 자문 결정 ace3dec0).
-const GUEST_CHECK = "Guest content is not in the accessibility tree. To check a visible effect, use computer_state with image:true.";
 export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration): ComputerUseResult {
   const code = /^(?:[a-z][a-z_]{0,63})$/u.test(error.code) ? error.code : "internal";
-  const unknown = error.details?.target === "vm"
-    ? `dispatch unknown: timeout — ${GUEST_CHECK} Do not replay the action.`
-    : "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action.";
   const text = action
-    ? `${actionTarget(action)}: ${error.uncertain ? unknown : `not sent: ${code} — ${errorHint(error)}`}`
+    ? `${actionTarget(action)}: ${error.uncertain ? "dispatch unknown: timeout — Check with computer_verify or computer_state; do not replay the action." : `not sent: ${code} — ${errorHint(error)}`}`
     : `${code === "invalid_params" ? "not sent: invalid_params —" : `error ${code}:`} ${errorHint(error)}`;
   return textResult(text + clipboardLine(clipboard), true);
 }
@@ -194,7 +179,8 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
-  if (reply.via === "vm") lines.push(`note: ${GUEST_CHECK}`);
+  if (reply.notes.includes("app_took_focus")) lines.push(`note: The app brought itself to the front; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : "focus was returned."} If the input had no effect, foreground:true may reach it.`);
+  if (reply.via === "foreground") lines.push(`note: App was brought to the front${reply.foregroundMs ? ` for ${reply.foregroundMs}ms` : ""}; ${reply.notes.includes("focus_not_restored") ? "focus was NOT returned to the user's app; tell the user." : reply.notes.includes("focus_restored") ? "focus returned to the user's app." : "it was already in front."}`);
   if (reply.notes.includes("key_window_click")) lines.push("note: Sent a click to the target field before the shortcut; the app or page may react to the click.");
   return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }

@@ -16,6 +16,7 @@ private struct ActionRequest {
   let pages: Double
   let axName: String?
   let requireEditableFocus: Bool
+  let foreground: Bool
 
   init(_ p: Object) throws {
     guard let raw = p["action"] as? String, let action = ActionName(rawValue: raw) else { throw HelperError("invalid_params", "action") }
@@ -29,7 +30,12 @@ private struct ActionRequest {
     case .key: allowed.formUnion(["key", "ref", "requireEditableFocus", "text"])
     case .axAction: allowed.formUnion(["ref", "name"])
     }
+    // 실측으로 확인한 클릭·키·입력만 받는다(eb7cf15c, 가상 머신). 오른쪽 클릭은 누름만 늦게 실제 포인터 자리로 들어가고 뗌이 사라졌고(3/4),
+    // 두 번 클릭은 한 번만, 스크롤은 하나도 닿지 않았다.
+    if [.click, .key, .type].contains(action) { allowed.insert("foreground") }
     try validateKeys(p, allowed: allowed)
+    if p["foreground"] != nil && jsonBool(p["foreground"]) == nil { throw HelperError("invalid_params", "foreground") }
+    let foreground = jsonBool(p["foreground"]) == true
     let ref = try optionalRef(p["ref"])
     var point: CGPoint?
     if p["x"] != nil || p["y"] != nil {
@@ -74,6 +80,7 @@ private struct ActionRequest {
     }
     self.name = action; self.ref = ref; self.point = point; self.end = end; self.text = text; self.stroke = stroke
     self.direction = direction; self.pages = pages; self.axName = axName; self.requireEditableFocus = requireEditableFocus
+    self.foreground = foreground
   }
 }
 
@@ -718,23 +725,10 @@ private struct Expectation {
       return KeyWindowPrimer(element: el, range: raw as! AXValue, click: click)
     }
 
-    // 가상 머신 게스트 화면은 백그라운드 입력을 버린다. 보낸 것처럼 보고하지 않도록 아무것도 보내기 전에 가상 머신 입력 장치 경로로 돌린다.
-    let guest: Bool = {
-      guard GuestDisplay.bundleIds.contains(win.bundleId), node == nil else { return false }
-      switch request.name {
-      case .click, .doubleClick, .rightClick, .scroll, .drag:
-        guard let p = request.point else { return false }
-        let hit = AXReader.hit(win, p)
-        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: hit == nil || before.root.map { CFEqual(hit!, $0) } == true)
-      case .key, .type:
-        let focused = AXReader.focused(win, root: before.root)
-        let editable = focused.map { el in AXReader.editable(el, role: AXReader.attribute(el, kAXRoleAttribute) as? String ?? "") } ?? false
-        return GuestDisplay.receives(bundleId: win.bundleId, target: false, bareWindow: !editable)
-      default: return false
-      }
-    }()
-    if guest, request.name == .drag { throw HelperError("drag_unsupported", details: ["settableSlider": false]) }
-    if guest { return try await actOnGuest(request, win: win, record: record, revalidate: revalidate) }
+    if request.foreground {
+      return try await actForeground(request, node: node, win: win, before: before, windows: beforeWindows, record: record,
+                                     revalidate: revalidate, actionStart: actionStart)
+    }
 
     switch request.name {
     case .click, .doubleClick, .rightClick:
@@ -900,6 +894,8 @@ private struct Expectation {
       let rc = AXReader.set(element, attribute, value)
       guard rc == .success else { throw failedAX(rc, defaultCode: "not_settable") }
     }
+    if sequence != nil { activation.watch(pid) }
+    defer { activation.stopWatching() }
     if let sequence {
       if sequence.needsFocus { via = "event+focus"; notes.append("focus_record_used") }
       else { via = "event" }
@@ -948,61 +944,73 @@ private struct Expectation {
     // 피드백 모션은 관측 주기와 병행한다. 전송은 이미 끝났고 이후에는 관측만 한다.
     let feedback = pulse.map { kind in Task { @MainActor in await self.cursor?.pulse(kind) } }
     defer { feedback?.cancel() }
-    return try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart)
+    var result: Object
+    do { result = try await observe(win, before: before, windows: beforeWindows, via: via, notes: notes, verification: verification, actionStart: actionStart) }
+    catch { _ = await activation.unwatch(); throw error }
+    if let restored = await activation.unwatch() {
+      result["notes"] = notes + ["app_took_focus", restored ? "focus_restored" : "focus_not_restored"]
+    }
+    return result
   }
 
-  /// 게스트 화면 입력(`ParallelsGuest`): 가상 머신의 마우스·키보드 장치에 직접 보낸다. 사람의 포인터·포커스·전면 앱은 쓰지 않는다.
-  /// 게스트 내용은 접근성 트리에 없어 관측할 수 없으므로 결과는 늘 관측 불가다.
-  private func actOnGuest(_ request: ActionRequest, win: WindowInfo, record: DispatchRecord, revalidate: () throws -> Void) async throws -> Object {
-    // 보낼 키를 먼저 모두 정한다. 대응이 없는 글자·키가 있으면 아무것도 보내지 않는다.
-    var keys: [(UInt32, UInt32)]?
+  /// 전면 폴백(`Foreground`). 에이전트가 명시할 때만 온다. 사람이 쉬는 틈에 대상 앱을 잠깐 앞으로 올려 SkyLight로 보내고 직전 앱으로 되돌린다.
+  /// 접근성 동작·포커스 확인을 건너뛰므로 type은 미국 배열 ASCII 키 입력이다. 결과에 포커스 이동과 복원 여부를 남긴다.
+  private func actForeground(_ request: ActionRequest, node: AXNode?, win: WindowInfo, before: AXTree, windows: [WindowInfo],
+                             record: DispatchRecord, revalidate: () throws -> Void, actionStart: Double) async throws -> Object {
+    guard Foreground.available else { throw HelperError("self_check_failed", "foreground_unavailable") }
+    if !win.onscreen { throw HelperError("needs_visible_window", details: ["reason": win.minimized ? "minimized" : win.hidden ? "hidden" : "offscreen"]) }
+    var clicks = false
+    var strokes: [KeyStroke] = []
     switch request.name {
-    case .key:
-      guard let events = GuestKeys.events(request.stroke!) else { throw HelperError("vm_unsupported", details: ["reason": "key"]) }
-      keys = events
+    case .click: clicks = true
+    case .key: strokes = [request.stroke!]
     case .type:
-      guard let events = GuestKeys.events(request.text!) else { throw HelperError("vm_unsupported", details: ["reason": "text"]) }
-      keys = events
-    case .scroll where request.direction == .left || request.direction == .right:
-      throw HelperError("vm_unsupported", details: ["reason": "horizontal_scroll"])
-    case .click, .doubleClick, .rightClick, .scroll: break
-    default: throw HelperError("vm_unsupported", details: ["reason": "action"])
+      // 키 하나에 약 40ms다. 요청 감시 시간(15초) 안에 보내고 되돌리도록, 그리고 앞에 둔 시간을 짧게 하도록 길이를 묶는다.
+      guard request.text!.count <= 200 else { throw HelperError("invalid_params", "foreground type accepts at most 200 characters") }
+      guard let keys = Foreground.asciiKeys(request.text!) else { throw HelperError("invalid_params", "foreground type accepts printable ASCII, tabs and newlines") }
+      strokes = keys
+    default: throw HelperError("invalid_params", "foreground")
     }
+    // 키는 창 번호 없이 앱의 key 창으로 간다. 대상 앱이 이미 앞인데 다른 창이 key면 그 창(사람이 쓰는 창)에 들어가므로 보내기 전에 거절한다.
+    if !clicks, NSRunningApplication(processIdentifier: win.key.pid)?.isActive == true, !AXReader.reportsFocusedWindow(win, root: before.root) {
+      throw HelperError("no_editable_focus", "target_not_key_window")
+    }
+    let point = clicks ? try localPoint(node: node, explicit: request.point, in: win) : (try? localPoint(node: node, explicit: nil, in: win))
     try revalidate()
-    let guest = ParallelsGuest.shared
-    let connection = try guest.connect(win)
-    defer { guest.close(connection) }
-    var target: CGPoint?
-    if let point = request.point {
-      guard let mapped = ParallelsGuest.guestPoint(point, window: win.frame.size, guest: (connection.width, connection.height)) else {
-        throw HelperError("vm_unsupported", details: ["reason": "outside_guest"])
-      }
-      target = mapped
-    }
+    // 원격 패널(시트) 경로. 키는 7가지 방식 모두 패널에 닿지 않았으므로(eb7cf15c 실측) 앞으로 올리기 전에 거절한다. 시트 버튼은 요소로 누른다.
+    let route = Foreground.route(win, point: clicks ? point : nil)
+    if !clicks && route.pid != win.key.pid { throw HelperError("foreground_unsupported", details: ["reason": "sheet_keys"]) }
     defer { idleCursor() }
-    if win.onscreen { await startCursor(request.point, in: win) }
+    await startCursor(point, in: win)
+    try await Foreground.waitForIdle()
     try revalidate()
-    let notes = ["vm_input"]
-    // 보내기 시작한 뒤의 시간 초과는 전송 불명이다. 모든 입력을 SDK가 받은 뒤에만 보냄으로 표시한다.
-    record.markGuest()
-    if let keys {
+    let session = try await Foreground.activate(win, keyboard: !clicks, symbols: symbols)
+    var sent = false
+    do {
+      try await pause(120)
+      try revalidate()
       if request.name == .type { await cursor?.pulse(.typing(true)) }
-      try await guest.keys(connection, keys, gapMs: request.name == .type ? 12 : 25)
-      if request.name == .type { await cursor?.pulse(.typing(false)) }
-    } else if let target {
-      let action: PointerAction
-      switch request.name {
-      case .doubleClick: action = .doubleClick
-      case .rightClick: action = .rightClick
-      case .scroll: action = .scroll(request.direction!, request.pages)
-      default: action = .click
+      if clicks, let point {
+        try await Foreground.click(route: route, screen: win.screen(point)) { sent = true }
+      } else {
+        try await Foreground.keys(strokes, route: route) { sent = true }
       }
-      try await guest.pointer(connection, action, at: target)
+      if request.name == .type { await cursor?.pulse(.typing(false)) }
+      try? await pause(150)
+    } catch {
+      let restored = await Foreground.restore(session)
+      hideCursor(animated: false)
+      if sent { throw HelperError("timeout", restored ? "foreground_delivery_unknown" : "foreground_delivery_unknown_focus_not_restored") }
+      throw error
     }
-    record.confirmed(via: "vm", notes: notes)
-    // 연결을 닫기 전에 가상 머신이 마지막 이벤트를 처리할 시간을 둔다.
-    try? await pause(150)
-    return ["sent": true, "via": "vm", "observation": "unobservable", "changes": [], "notes": notes]
+    let restored = await Foreground.restore(session)
+    let foregroundMs = Int((clockNow() - session.started) * 1000)
+    var notes = ["foreground"]
+    if session.switched { notes.append(restored ? "focus_restored" : "focus_not_restored") }
+    record.confirmed(via: "foreground", notes: notes)
+    var result = try await observe(win, before: before, windows: windows, via: "foreground", notes: notes, verification: nil, actionStart: actionStart)
+    if session.switched { result["foregroundMs"] = foregroundMs }
+    return result
   }
 
   private func failedAX(_ code: AXError, defaultCode: String) -> HelperError {

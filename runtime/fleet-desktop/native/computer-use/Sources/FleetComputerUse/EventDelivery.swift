@@ -82,7 +82,8 @@ struct KeyStroke {
 
   private static let named: [String: Int] = [
     "return": kVK_Return, "enter": kVK_Return, "tab": kVK_Tab, "escape": kVK_Escape, "esc": kVK_Escape,
-    "backspace": kVK_Delete, "delete": kVK_ForwardDelete, "forwarddelete": kVK_ForwardDelete,
+    // 맥 키보드의 delete는 ⌫(kVK_Delete)다. 앞쪽 삭제(⌦)는 forwarddelete로 보낸다.
+    "backspace": kVK_Delete, "delete": kVK_Delete, "forwarddelete": kVK_ForwardDelete,
     "up": kVK_UpArrow, "down": kVK_DownArrow, "left": kVK_LeftArrow, "right": kVK_RightArrow,
     "arrowup": kVK_UpArrow, "arrowdown": kVK_DownArrow, "arrowleft": kVK_LeftArrow, "arrowright": kVK_RightArrow,
     "home": kVK_Home, "end": kVK_End, "pageup": kVK_PageUp, "pagedown": kVK_PageDown, "space": kVK_Space,
@@ -124,6 +125,24 @@ struct KeyStroke {
       code = CGKeyCode(mapped)
     } else { throw HelperError("invalid_key") }
     self.flags = flags
+  }
+
+  init(code: CGKeyCode, flags: CGEventFlags) { self.code = code; self.flags = flags }
+
+  private static let shifted: [Character: Character] = Dictionary(uniqueKeysWithValues: zip(
+    "~!@#$%^&*()_+{}|:\"<>?", "`1234567890-=[]\\;',./"))
+
+  /// 미국 배열 기준 출력 가능한 ASCII 한 글자의 키. 전면 폴백의 type에서만 쓴다(가상 머신은 키코드를 게스트 배열로 해석한다).
+  static func ascii(_ char: Character) -> KeyStroke? {
+    switch char {
+    case " ": return KeyStroke(code: CGKeyCode(kVK_Space), flags: [])
+    case "\n": return KeyStroke(code: CGKeyCode(kVK_Return), flags: [])
+    case "\t": return KeyStroke(code: CGKeyCode(kVK_Tab), flags: [])
+    default: break
+    }
+    if char.isUppercase, char.isASCII, let code = characters[Character(char.lowercased())] { return KeyStroke(code: CGKeyCode(code), flags: .maskShift) }
+    if let base = shifted[char], let code = characters[base] { return KeyStroke(code: CGKeyCode(code), flags: .maskShift) }
+    return characters[char].map { KeyStroke(code: CGKeyCode($0), flags: []) }
   }
 
   var paste: Bool { code == CGKeyCode(kVK_ANSI_V) && flags == .maskCommand }

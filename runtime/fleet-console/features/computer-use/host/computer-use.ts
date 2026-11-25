@@ -584,13 +584,13 @@ export class ComputerUseService {
       const plain = args.format === undefined || args.format === "text";
       params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true, ...(plain ? { text: args.text } : {}) };
     } else {
-      params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, to: end ?? (args.to ? { ref: args.to } : undefined) };
+      params = { ...target, action: args.action, expectedFrame: view?.frame, name, ...point, text: args.text, key: args.key, direction: args.direction, pages: args.pages, foreground: args.foreground, to: end ?? (args.to ? { ref: args.to } : undefined) };
     }
     let reply;
     try {
       this.assertActive(lifetime);
       reply = await client.request("act", params);
-      if (!reply.sent || !reply.via || !["ax", "event", "event+focus", "vm"].includes(reply.via)) throw new FleetHelperError("timeout", true);
+      if (!reply.sent || !reply.via || !["ax", "event", "event+focus", "foreground"].includes(reply.via)) throw new FleetHelperError("timeout", true);
       didSend();
     } finally {
       if (lease) {

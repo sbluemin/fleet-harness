@@ -9,7 +9,7 @@ export interface Point { x: number; y: number }
 export interface ActionArgs {
   window: string; action: Action; reason: string; target?: string; x?: number; y?: number; view?: string;
   to?: string; text?: string; format?: "text" | "md" | "html"; key?: string;
-  direction?: "up" | "down" | "left" | "right"; pages?: number; name?: string;
+  direction?: "up" | "down" | "left" | "right"; pages?: number; name?: string; foreground?: boolean;
 }
 export interface Expectation { target?: string; role?: string; label?: string; value?: string; exists?: boolean; enabled?: boolean; selected?: boolean }
 export interface StateArgs { window: string; find?: string; expand?: string; image?: boolean; limit?: number }
@@ -30,9 +30,9 @@ export class InvalidComputerUseParameters extends FleetHelperError {
 const invalid = (detail: string): never => { throw new InvalidComputerUseParameters(detail); };
 const POINTER = ["target", "x", "y", "view"] as const;
 const ACTION_FIELDS = {
-  click: POINTER, double_click: POINTER, right_click: POINTER,
-  type: ["target", "text"], set_value: ["target", "text"], paste: ["target", "text", "format"],
-  key: ["target", "key"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
+  click: [...POINTER, "foreground"], double_click: POINTER, right_click: POINTER,
+  type: ["target", "text", "foreground"], set_value: ["target", "text"], paste: ["target", "text", "format"],
+  key: ["target", "key", "foreground"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
   select: ["target", "text"], ax_action: ["target", "name"],
 } satisfies Record<Action, readonly (keyof ActionArgs)[]>;
 const NAMED_KEYS = /^(?:return|enter|tab|escape|esc|backspace|delete|forwarddelete|(?:arrow)?(?:up|down|left|right)|home|end|pageup|pagedown|space|f(?:[1-9]|1[0-2]))$/u;
@@ -68,6 +68,7 @@ function validateAction(input: ActionArgs): void {
   if (input.action === "type" || input.action === "paste") need("text");
   if ((input.action === "type" || input.action === "paste" || input.action === "select") && input.text === "") invalid(`text must not be empty for ${input.action}.`);
   if (input.action === "key") { need("key"); validateKey(input.key!); }
+  if (input.foreground && input.action === "type" && [...input.text!].length > 200) invalid("foreground type: at most 200 characters.");
   if (!(ACTION_FIELDS[input.action] as readonly string[]).includes("x")) return;
   const hasCoordinates = input.x !== undefined || input.y !== undefined;
   const end = dragPoint(input.to);
