@@ -394,6 +394,9 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
    단추가 줄의 간격만큼 당겨 서므로 보이는 자리는 그대로다. */
 .rail.horizontal .tabs:not([hidden]) { padding-inline-end: var(--space-1); }
 .rail.horizontal:has(.tabs:not([hidden])) > .row.new { margin-inline-start: calc(-1 * var(--space-1)); }
+/* 끝 패딩 자리는 그리지 않는다 — 줄을 넘기는 중에 끝에서 잘린 탭이 단추에 맞붙지 않고 예전처럼 틈을 두고 끊긴다.
+   마스크는 그림만 가리고 누름·휠 판정은 그대로라, 그 틈의 휠도 줄을 넘긴다. */
+.rail.horizontal .scroll { mask-image: linear-gradient(to left, transparent var(--space-1), #000 var(--space-1)); }
 .rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
 /* 비활성 탭 사이의 1px 세로 구분선. 보는 탭과 호버 중인 탭 양옆에서는 걷힌다 — 그 자리는 그 탭의 면이 대신한다. */
