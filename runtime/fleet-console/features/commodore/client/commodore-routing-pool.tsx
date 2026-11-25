@@ -43,7 +43,6 @@ const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
   "gpt-6.1-terra": "commodore.pool.sub.gpt-6.1-terra",
   "grok-4.7": "commodore.pool.sub.grok-4.7",
   "grok-composer-2.5-fast": "commodore.pool.sub.grok-composer-2.5-fast",
-  "gemini-4-argon": "commodore.pool.sub.gemini-4-argon",
   "gemini-4-carbon": "commodore.pool.sub.gemini-4-carbon",
   "gemini-4-hydrogen": "commodore.pool.sub.gemini-4-hydrogen",
   "gemini-4-neon": "commodore.pool.sub.gemini-4-neon",

@@ -504,10 +504,10 @@ describe("quota service", () => {
 });
 
 describe("gemini spend ledger", () => {
-  it("prices turns, keeps the Pacific week, doubles Argon on December 1, and clears a block on the next usage", () => {
+  it("prices turns, keeps the Pacific week, doubles Carbon on December 1, and clears a block on the next usage", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-spend-"));
     const filePath = path.join(directory, "gemini-spend.json");
-    // 11-16(월, PST)이 시작하는 주와, Argon 단가가 2배가 된 뒤의 다른 주(11-30 월요일이 시작).
+    // 11-16(월, PST)이 시작하는 주와, Carbon 단가가 2배가 된 뒤의 다른 주(11-30 월요일이 시작).
     const firstWeek = Date.UTC(2026, 10, 18, 12);
     const laterWeek = Date.UTC(2026, 11, 1, 9);
     try {
@@ -527,8 +527,8 @@ describe("gemini spend ledger", () => {
         resetsAt: Date.UTC(2026, 2, 9, 7),
       });
       // 단가 전환은 태평양시 12-01 00:00 정각부터다. Neon은 고정 단가다.
-      expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8) - 1).input).toBe(2_000_000n);
-      expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8)).input).toBe(4_000_000n);
+      expect(geminiTokenPrice("gemini-4-carbon", "standard", Date.UTC(2026, 11, 1, 8) - 1).input).toBe(2_000_000n);
+      expect(geminiTokenPrice("gemini-4-carbon", "standard", Date.UTC(2026, 11, 1, 8)).input).toBe(4_000_000n);
       expect(geminiTokenPrice("gemini-4-neon", "standard", Date.UTC(2026, 11, 1, 8))).toEqual({
         input: 3_000_000n,
         output: 15_000_000n,
@@ -539,14 +539,14 @@ describe("gemini spend ledger", () => {
 
       // Hydrogen: (100−40)×1.5 + 40×0.075(캐시) + (10+10)×7.5 = 0.000243 USD.
       ledger.observeUsage({ model: "gemini-4-hydrogen", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 40, candidatesTokens: 10, thoughtsTokens: 10 });
-      // Argon(11월): 100×2 + 20×10 = 0.0004 USD.
-      ledger.observeUsage({ model: "gemini-4-argon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      // Carbon(11월): 100×2 + 20×10 = 0.0004 USD.
+      ledger.observeUsage({ model: "gemini-4-carbon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
       // Neon: (100−20)×3 + 20×0.15(캐시) + (10+10)×15 = 0.000543 USD.
       ledger.observeUsage({ model: "gemini-4-neon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 20, candidatesTokens: 10, thoughtsTokens: 10 });
       // 레거시 달 누적(US$5)은 이번 주 지출에 더하지 않는다.
       expect(ledger.read(firstWeek).spend).toMatchObject({ currency: "USD", spent: "0.001186", basis: "fleet_measured" });
-      // 다음 주 Argon은 2배다: 100×4 + 20×20 = 0.0008 USD. 첫 주 누적은 그대로 남는다.
-      ledger.observeUsage({ model: "gemini-4-argon", at: laterWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      // 다음 주 Carbon은 2배다: 100×4 + 20×20 = 0.0008 USD. 첫 주 누적은 그대로 남는다.
+      ledger.observeUsage({ model: "gemini-4-carbon", at: laterWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
       expect(ledger.read(laterWeek).spend.spent).toBe("0.0008");
       expect(ledger.read(firstWeek).spend.spent).toBe("0.001186");
 
@@ -562,11 +562,11 @@ describe("gemini spend ledger", () => {
       expect(JSON.parse(fs.readFileSync(filePath, "utf8")).months).toEqual({ "2026-11": "5000000000000" });
 
       // 402는 사유·시각과 함께 남고, 지난주의 차단은 이번 주 카드에 서지 않는다.
-      ledger.observeBlock({ model: "gemini-4-argon", at: firstWeek, httpStatus: 402, reason: "balance_depleted", code: "payment_required", message: "Prepay credit balance is depleted." });
+      ledger.observeBlock({ model: "gemini-4-carbon", at: firstWeek, httpStatus: 402, reason: "balance_depleted", code: "payment_required", message: "Prepay credit balance is depleted." });
       expect(ledger.read(firstWeek).block).toMatchObject({ httpStatus: 402, reason: "balance_depleted", code: "payment_required" });
       expect(ledger.read(laterWeek).block).toBeUndefined();
       // 다음 성공 사용량이 차단 표시를 걷는다.
-      ledger.observeUsage({ model: "gemini-4-argon", at: laterWeek, serviceTier: "standard", promptTokens: 1, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 });
+      ledger.observeUsage({ model: "gemini-4-carbon", at: laterWeek, serviceTier: "standard", promptTokens: 1, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 });
       expect(ledger.read(laterWeek).block).toBeUndefined();
       expect(ledger.read(firstWeek).block).toBeUndefined();
 

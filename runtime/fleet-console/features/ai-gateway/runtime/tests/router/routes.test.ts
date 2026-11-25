@@ -1696,12 +1696,12 @@ describe("Gemini routing", () => {
     const router = createAiGatewayRouter({ fetch: fetchMock, readGeminiApiKey: async () => "gemini-key", geminiUsage });
     try {
       const res = response();
-      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-argon" }));
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-carbon" }));
       expect(res.status).toBe(200);
-      expect(calls[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse");
+      expect(calls[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-carbon:streamGenerateContent?alt=sse");
       expect(calls[0]?.headers.get("x-goog-api-key")).toBe("gemini-key");
       expect(geminiUsage.observeUsage).toHaveBeenCalledTimes(1);
-      expect(geminiUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-4-argon", promptTokens: 3, serviceTier: "standard" }));
+      expect(geminiUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-4-carbon", promptTokens: 3, serviceTier: "standard" }));
 
       const neonRes = response();
       await router.handle(ctx({ res: neonRes, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-neon" }));
