@@ -207,6 +207,10 @@ Delete the cookie file with the run directory. It holds the session secret.
 
 Use [Desktop's authorization and owned environment](desktop/setup.md#preflight-and-ownership) for a shell claim, not to repeat the browser check. The gate's owned `TMPDIR` and a dedicated worktree isolate local discovery. For discovery-isolation claims, with no prepared neighbor or saved host, confirm `/api/v1/local-consoles` returns `{ consoles: [] }`, capture zero other machines in the shell, and open the new-Commodore dialog without a machine selector. Never select, probe, or stop an unrecorded Console.
 
+Choose the remote owner before launching. Use an independent `serve` remote for registration, switching, or away checks that do not require a Desktop-managed remote Console. If the remote target needs its own managing Desktop (for example, its Fleet Browser engine), use the [two-Desktop setup](#two-desktops-one-managed-remote-target) instead.
+
+#### Desktop with an independent `serve` remote
+
 Desktop owns home; do not `serve` its slot. Start a separate remote-role Console through [isolated setup](setup.md#isolate-the-console), seed onboarding, then [issue](../scripts/issue-access-link.mjs) and [register](#register-the-link-on-a-second-owned-console) its link against the **running Desktop home's** lock-derived loopback origin. The two-`serve` helper does not launch Desktop. Seed one identifiable home Commodore for the return row; for a unified sidebar check, seed onboarding on both owned Consoles and use the [seed helpers](seed.md) to create that home Commodore and one remote Commodore with distinct names, each in a differently named sidebar section. Perform the first join through the Desktop UI only if the remote is not already paired. After returning home, confirm both named sections and their respective rows together in the unified sidebar with CDP DOM values and a matching renderer screenshot; registration or a successful switch alone is not enough.
 
 Reload the home renderer after command-line registration. Match the saved-host origin to the shell's remote entry; the helper's 2xx alone proves neither display nor join. Local discovery should remain empty. Use that remote's Commodore row or **Switch to this console / 이 콘솔로 전환** button: `remote-bridge.ts` checks the certificate and joins, whereas raw `location` navigation does not establish the shell switch. Read:
@@ -222,6 +226,16 @@ Reload the home renderer after command-line registration. Match the saved-host o
 Away is `origin` equal to that remote `https://<LAN>:<remotePort>`, `home` equal to the Desktop home's loopback origin, and `dot === "live"`. Return through the identifiable home Commodore row and confirm `origin === home` and `dot === null`. A roster-unavailable notice is not proof of a received roster; report that result separately from the successful switch/join.
 
 Stop Desktop with [its owned stop helper](desktop/setup.md#stopping-the-owned-desktop), never the Console CLI. Stop the remote-role `serve` through `isolated-env.mjs` with its own original `--run-dir`; delete its link file with the owned run directory. Leave every other process and directory untouched.
+
+#### Two Desktops, one managed remote target
+
+Desktop A manages Console A. Desktop B manages its own home Console B but switches its renderer to Console A. Use two separately owned Desktop slots and the [Desktop preflight and launch authorization](desktop/setup.md#preflight-and-ownership) for both (separate worktrees for local dev launches); do not run `serve` in either slot. Record the build identity for each. If the target build or isolated slots are unavailable, report the managed topology as unverified, not as an independent `serve` pass.
+
+1. On A, match its home renderer to the loopback origin in its owned Console lock and verify that Console is A's running child. Read A's live listener origin from `GET /api/v1/access-links` after [issuing a full link](../scripts/issue-access-link.mjs) from A's slot on an approved isolated local bind. [Register](#register-the-link-on-a-second-owned-console) that link against **B's** lock-derived home origin; do not expose the link or credentials.
+2. Reload B and switch using the shell as above. On B, match `location.origin` to **A's** live listener and `GET /api/v1/desktop/shell`'s `homeOrigin` to **B's** own home. Recheck that A still manages the same Console.
+3. From the switched B renderer, read the same-origin `GET /api/v1/browser`. Require `available === true` **and** `surfaceMode === "remote"` in the same response: the engine is available and this renderer has the remote Desktop surface. Registration, the away dot, and either field alone do not establish the setup. These are readiness observations, not a pass for the feature being tested.
+
+Stop each Desktop with [the owned Desktop stop helper](desktop/setup.md#stopping-the-owned-desktop), targeting its own slot; neither endpoint uses the `serve` stop path. Reclaim both slots and the link file through [run lifetime and reclamation](setup.md#run-lifetime-and-reclamation).
 
 ## Administration stays on loopback
 
