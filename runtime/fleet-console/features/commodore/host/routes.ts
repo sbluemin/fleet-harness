@@ -294,7 +294,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     }, false) },
     { name: "commodore/marketplaces/list", method: "POST", summary: "List marketplaces and the plugin catalog of enabled ones; registers the Anthropic presets in the background.", handler: json(z.object({}).strict(), () => plugins().catalog()) },
     { name: "commodore/marketplaces/add", method: "POST", summary: "Add a custom marketplace from a GitHub owner/repo, a git https or ssh address, or a marketplace.json URL.", handler: json(marketplaceAddSchema, async ({ source, ref }) => ({ marketplace: await plugins().add(source, ref) })) },
-    { name: "commodore/marketplaces/update", method: "POST", summary: "Fetch one marketplace again, or all when no name is given.", handler: json(marketplaceUpdateSchema, ({ name }) => plugins().refresh(name)) },
+    { name: "commodore/marketplaces/update", method: "POST", summary: "Fetch one marketplace again, or all when no name is given, then update its installed plugins that have a newer version; one whose new version runs untrusted commands stays for a confirmed per-plugin update.", handler: json(marketplaceUpdateSchema, ({ name }) => plugins().refresh(name, (pluginIds) => {
+      // 갱신으로 함께 올린 플러그인 — 개별 업데이트와 같이 인증 캐시를 버리고 고른 사령관에 알린다.
+      hooks.pluginAuth?.invalidate();
+      hooks.pluginsChanged?.(pluginIds);
+    })) },
     { name: "commodore/marketplaces/enable", method: "POST", summary: "Turn a marketplace on or off; off hides its plugins and blocks new installs, installed ones stay.", handler: json(marketplaceEnableSchema, ({ name, enabled }) => plugins().enable(name, enabled)) },
     { name: "commodore/marketplaces/remove", method: "POST", summary: "Remove a custom marketplace; presets can only be turned off.", handler: json(marketplaceNameRefSchema, ({ name }) => plugins().remove(name)) },
     { name: "commodore/plugins/inspect", method: "POST", summary: "Fetch a plugin into Console's plugin home and report its components and the commands it would run.", handler: json(pluginInspectSchema, async ({ pluginId }) => ({ plugin: await plugins().inspect(pluginId) })) },

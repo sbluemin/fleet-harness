@@ -1776,6 +1776,106 @@ setTimeout(() => console.log(JSON.stringify({ command: "update", outcome: "ok", 
     expect(JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8"))).toMatchObject({ trusted: { "nover@team": "b8394fda9111" } });
     expect(changed).toHaveBeenCalledWith(["nover@team"]);
   });
+  it("updates installed plugins together when their marketplace is refreshed, keeping the trust boundary", async () => {
+    // 마켓 갱신 = 설치본 업데이트. 새 버전 후보가 있는 것만 올리고, 신뢰가 필요한 것과 실패한 것은 이전 버전에 남긴다.
+    const SHA_A = "a".repeat(40);
+    const SHA_C = "c".repeat(40);
+    const h = harness();
+    const root = path.join(h.objectivesDir, "commodore-plugins");
+    const market = path.join(root, "markets", "team");
+    const cache = path.join(root, "claude", "plugins", "cache", "team");
+    const writePlugin = (dir: string, manifest: unknown, hooks?: unknown) => {
+      fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true });
+      fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify(manifest));
+      if (hooks !== undefined) {
+        fs.mkdirSync(path.join(dir, "hooks"), { recursive: true });
+        fs.writeFileSync(path.join(dir, "hooks", "hooks.json"), JSON.stringify(hooks));
+      }
+    };
+    const hooks = { hooks: { SessionStart: [{ hooks: [{ type: "command", command: "echo held" }] }] } };
+    // 마켓 쪽: auto·held 는 1.1.0 으로 올라왔고, same 은 그대로, broken 은 외부 출처의 새 커밋을 가리킨다.
+    writePlugin(path.join(market, "plugins", "auto"), { name: "auto", version: "1.1.0" });
+    writePlugin(path.join(market, "plugins", "held"), { name: "held", version: "1.1.0" }, hooks);
+    writePlugin(path.join(market, "plugins", "same"), { name: "same", version: "1.0.0" });
+    for (const name of ["auto", "same", "broken"]) writePlugin(path.join(cache, name, "1.0.0"), { name, version: "1.0.0" });
+    writePlugin(path.join(cache, "held", "1.0.0"), { name: "held", version: "1.0.0" }, hooks);
+    writePlugin(path.join(cache, "auto", "1.1.0"), { name: "auto", version: "1.1.0" });
+    writePlugin(path.join(cache, "held", "1.1.0"), { name: "held", version: "1.1.0" }, hooks);
+    fs.mkdirSync(path.join(market, ".claude-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", plugins: [
+      { name: "auto", source: "./plugins/auto" },
+      { name: "held", source: "./plugins/held" },
+      { name: "same", source: "./plugins/same" },
+      { name: "broken", source: { source: "github", repo: "org/broken", ref: "main", sha: SHA_C }, version: "2.0.0" },
+    ] }));
+    fs.mkdirSync(path.join(root, "claude", "plugins"), { recursive: true });
+    fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
+    const install = (name: string) => ({ scope: "user", installPath: path.join(cache, name, "1.0.0"), version: "1.0.0", installedAt: "2026-10-29T00:00:00Z", lastUpdated: "2026-10-29T00:00:00Z", gitCommitSha: SHA_A });
+    fs.writeFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), JSON.stringify({ plugins: Object.fromEntries(["auto", "held", "same", "broken"].map((name) => [`${name}@team`, [install(name)]])) }));
+    // held 1.0.0 의 명령은 설치 때 신뢰했다 — 새 버전은 아직 신뢰하지 않았다.
+    fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: { "held@team": "1.0.0" } }));
+    const stub = path.join(root, "refresh-stub.mjs");
+    fs.writeFileSync(stub, `#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+const home = process.env.CLAUDE_CONFIG_DIR ?? "";
+const [command, op, id] = process.argv.slice(2, 5);
+fs.appendFileSync(process.env.FLEET_REFRESH_STUB_LOG, process.argv.slice(3, -1).join(" ") + "\\n");
+if (command === "plugin" && op === "marketplace" && id === "update") { console.log(JSON.stringify({ outcome: "ok" })); process.exit(0); }
+if (command === "plugin" && op === "update" && id === "broken@team") {
+  console.log(JSON.stringify({ command: "update", outcome: "failed", pluginId: id, message: "Plugin source not found", failureCode: "source_missing" })); process.exit(1);
+}
+if (command === "plugin" && op === "update" && (id === "auto@team" || id === "held@team")) {
+  const file = path.join(home, "plugins", "installed_plugins.json");
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  const name = id.slice(0, id.lastIndexOf("@"));
+  raw.plugins[id][0] = { ...raw.plugins[id][0], version: "1.1.0", gitCommitSha: "${SHA_C}", installPath: path.join(home, "plugins", "cache", "team", name, "1.1.0") };
+  fs.writeFileSync(file, JSON.stringify(raw, null, 2));
+  console.log(JSON.stringify({ command: "update", outcome: "ok", updateOutcome: "updated", pluginId: id, oldVersion: "1.0.0", newVersion: "1.1.0" }));
+  process.exit(0);
+}
+console.log(JSON.stringify({ outcome: "failed", failureCode: "unexpected", message: "unexpected args" })); process.exit(1);
+`);
+    fs.chmodSync(stub, 0o755);
+    const stubLog = path.join(root, "refresh-stub.log");
+    fs.writeFileSync(stubLog, "");
+    const plugins = createCommodorePlugins({ root, executable: async () => stub, env: () => ({ ...process.env, FLEET_REFRESH_STUB_LOG: stubLog }) });
+    const installedFile = () => JSON.parse(fs.readFileSync(path.join(root, "claude", "plugins", "installed_plugins.json"), "utf8")) as { plugins: Record<string, { version: string }[]> };
+    const changed = vi.fn();
+    const invalidate = vi.fn();
+
+    const refreshed = await h.route("commodore/marketplaces/update", { name: "team" }, { plugins, pluginAuth: { invalidate } as never, pluginsChanged: changed });
+    expect(refreshed.status).toBe(200);
+    const view = refreshed.value as { marketplaces: { name: string; status: string }[]; plugins: { id: string; version?: string; latestVersion?: string }[] };
+    expect(view.marketplaces.find((row) => row.name === "team")?.status).toBe("ready");
+    // 새 버전이 있고 명령이 없는 플러그인은 따로 누르지 않아도 올라간다.
+    expect(installedFile().plugins["auto@team"]![0]!.version).toBe("1.1.0");
+    expect(view.plugins.find((plugin) => plugin.id === "auto@team")).toMatchObject({ version: "1.1.0" });
+    expect(view.plugins.find((plugin) => plugin.id === "auto@team")).not.toHaveProperty("latestVersion");
+    // 신뢰하지 않은 새 명령은 CLI 를 부르기 전에 멈추고, 후보 표시가 남아 개별 업데이트로 확인할 수 있다.
+    expect(installedFile().plugins["held@team"]![0]!.version).toBe("1.0.0");
+    expect(view.plugins.find((plugin) => plugin.id === "held@team")).toMatchObject({ version: "1.0.0", latestVersion: "1.1.0" });
+    // 실패한 플러그인은 그대로 남고 갱신·다른 업데이트를 막지 않는다. 이미 최신인 것은 CLI 를 부르지도 않는다.
+    expect(installedFile().plugins["broken@team"]![0]!.version).toBe("1.0.0");
+    expect(view.plugins.find((plugin) => plugin.id === "broken@team")).toMatchObject({ latestVersion: "2.0.0" });
+    const calls = fs.readFileSync(stubLog, "utf8").trim().split("\n");
+    expect(calls).toEqual(["marketplace update team", "update auto@team", "update broken@team"]);
+    // 올린 플러그인만 고른 사령관에 알리고 인증 캐시를 버린다.
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledWith(["auto@team"]);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+
+    // 보류된 플러그인은 사람이 확인하면 기존 개별 업데이트로 올라간다.
+    const manual = await h.route("commodore/plugins/update", { pluginId: "held@team", trusted: true, version: "1.1.0", runs: [{ kind: "hook", label: "SessionStart", command: "echo held" }] }, { plugins, pluginAuth: { invalidate } as never, pluginsChanged: changed });
+    expect(manual).toMatchObject({ status: 200, value: { outcome: "updated", newVersion: "1.1.0" } });
+    expect(installedFile().plugins["held@team"]![0]!.version).toBe("1.1.0");
+
+    // 다시 갱신해도 올릴 것이 없으면 알리지 않는다(실패한 출처만 다시 시도한다).
+    changed.mockClear();
+    await h.route("commodore/marketplaces/update", {}, { plugins, pluginAuth: { invalidate } as never, pluginsChanged: changed });
+    expect(changed).not.toHaveBeenCalled();
+    expect(installedFile().plugins["auto@team"]![0]!.version).toBe("1.1.0");
+  });
   it("registers only official and community presets on a fresh registry, and reconciles retired presets without breaking selected plugins", async () => {
     const h = harness();
     const unavailable = async () => { throw new Error("agent_cli_unavailable"); };
