@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.319.0] - 2026-11-26
+
+### fleet-console
+
+#### Changed
+- 플러그인 마켓플레이스를 갱신하면 그 마켓에서 설치한 플러그인도 함께 업데이트되어 하나씩 따로 업데이트할 필요가 없습니다. 아직 신뢰하지 않은 명령을 실행하는 새 버전은 확인할 때까지 현재 버전에 머뭅니다.
+
 ## [1.318.0] - 2026-11-25
 
 ### fleet-console

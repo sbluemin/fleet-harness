@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.319.0] - 2026-11-26
+
+### fleet-console
+
+#### Changed
+- Refreshing a plugin marketplace now also updates the plugins you installed from it, so you no longer update each one separately. A new version that runs commands you have not trusted yet stays on its current version until you confirm it.
+
 ## [1.318.0] - 2026-11-25
 
 ### fleet-console
