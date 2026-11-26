@@ -83,8 +83,8 @@ export interface CommodoreReferenceInputProps {
   readonly onBlur?: () => void;
   readonly onCompositionStart?: () => void;
   readonly onCompositionEnd?: () => void;
-  /** 붙여넣거나 끌어 놓은 이미지 — 받는 쪽이 없으면 이미지는 버린다. */
-  readonly onFiles?: (files: readonly File[]) => void;
+  /** 붙여넣거나 끌어 놓은 이미지 — 받는 쪽이 없으면 이미지는 버린다. 붙여넣기는 돌려받은 표시(`[Image #n]`)를 커서 자리에 넣는다. */
+  readonly onFiles?: (files: readonly File[]) => string | void;
   readonly isFile?: (file: File) => boolean;
   /** TaskForce 등 사령관 보드가 아닌 표면이 공용 입력을 그대로 쓸 때 멘션 후보를 이 사령관들로 한정한다. 주면 목표 후보는 숨긴다. */
   readonly allowedCommodoreIds?: readonly string[];
@@ -584,7 +584,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
     event.preventDefault();
     const { onFiles, isFile } = latest.current;
     const files = Array.from(event.clipboardData.files).filter((file) => (isFile ? isFile(file) : false));
-    if (files.length) { onFiles?.(files); return; }
+    if (files.length) { const markers = onFiles?.(files); if (markers) insertText(markers); return; }
     const text = event.clipboardData.getData("text/plain");
     if (text) insertText(text);
   };

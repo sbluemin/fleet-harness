@@ -15,7 +15,7 @@ import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "
 import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes } from "../../execution/client/composer-primitives/quotes.js";
 import { composerAttachmentNoticeText, composerT } from "../../execution/client/composer-primitives/messages.js";
 import { createComposerAttachments, type ComposerAttachmentLimits, type ComposerAttachmentPort } from "../../execution/client/composer-primitives/attachment-store.js";
-import { isComposerAttachmentCandidate } from "../../execution/client/composer-primitives/attachments.js";
+import { composerImageMarkers, isComposerAttachmentCandidate, resolveComposerImageMarkers } from "../../execution/client/composer-primitives/attachments.js";
 import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
@@ -836,10 +836,13 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     return () => { document.removeEventListener("pointerdown", pointer); document.removeEventListener("keydown", key); };
   }, [menuOpen]);
   useEffect(() => { if (!usable) setMenuOpen(false); }, [usable]);
-  const addFiles = (files: readonly File[]) => {
-    if (!usable || draft.read().sending || clear.busy) return;
+  /** 새로 선 칩의 표시(`[Image #n]`)를 돌려준다 — 붙여넣기만 그 표시를 커서 자리에 넣는다. */
+  const addFiles = (files: readonly File[]): string => {
+    if (!usable || draft.read().sending || clear.busy) return "";
     setBudgetNotice(null);
+    const before = draft.attachments.read().items.length;
     draft.attachments.add(files, (file) => file.name.trim().length > 0 ? file.name : ct("composer.attach.pasted"));
+    return composerImageMarkers(draft.attachments.read().items.slice(before));
   };
   // 수신함 — 받을 수 있을 때만 꺼낸다(잠긴 동안 맡겨진 것은 풀리면 선다). 최신 판정을 읽도록 ref 로 잇는다.
   const takeInbox = useRef<() => void>(() => undefined);
@@ -869,7 +872,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   // 그룹 채팅 입력창(`group-composer.tsx`)처럼 턴 진행 중이고 보낼 내용(글·첨부·인용)이 없을 때만 한 자리 버튼을 정지로 바꾼다.
   const stopMode = running && !text.trim() && attachments.length === 0 && quotes.length === 0 && !sending && !clear.busy;
   const send = () => {
-    const typed = text.trim();
+    // 본문의 이미지 표시는 보내는 첨부 순서로 다시 매긴다(칩이 없는 표시는 빠진다) — 서버가 같은 순서로 라벨을 붙인다.
+    const typed = resolveComposerImageMarkers(text, draft.attachments.read().items).trim();
     const sentQuotes = draft.quotes.read();
     // 인용은 문면 끝 줄로 합성된다 — 사령관 기록은 그 줄을 떼어 칩으로 세운다(`commodore-chat.ts`).
     const message = composeQuotedPrompt(typed, composerQuoteValues(sentQuotes)).trim();

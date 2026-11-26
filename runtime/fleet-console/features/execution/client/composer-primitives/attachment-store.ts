@@ -29,6 +29,8 @@ export interface ComposerAttachmentRecord {
   readonly uploading: boolean;
   /** 저장까지 끝난 편집본. 주석은 이미지에 합쳐져 있고, 보내기 전까지만 원본으로 되돌릴 수 있다. */
   readonly edited: boolean;
+  /** 본문 표시 `[Image #n]`의 n — 칩을 지워도 남은 칩의 번호는 그대로다. 보낼 때 보내는 순서로 다시 매긴다(`attachments.ts`). */
+  readonly marker: number;
 }
 
 /** 동기 거절(상한·용량)과, 업로드가 끝난 뒤의 거절(실패·형식·보관 한도)과, 보낸 토큰이 만료된 경우. */
@@ -110,6 +112,7 @@ interface MutableItem {
   uploading: boolean;
   edited: boolean;
   source: Blob | null;
+  marker: number;
 }
 
 export function isComposerAttachmentExpired(error: unknown): boolean {
@@ -148,13 +151,15 @@ export function createComposerAttachments(
   let items: MutableItem[] = [];
   let notice: ComposerAttachmentNotice | null = null;
   let disposed = false;
+  /** 다음 칩의 표시 번호 — 보내고 나서 비면 1부터 다시 센다. */
+  let nextMarker = 1;
   const listeners = new Set<() => void>();
   const canceled = new Set<string>();
   let snapshot: ComposerAttachmentsSnapshot = { items: [], uploading: false, notice: null };
 
   const emit = (): void => {
     snapshot = {
-      items: items.map((item) => ({ key: item.key, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: item.uploading, edited: item.edited })),
+      items: items.map((item) => ({ key: item.key, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: item.uploading, edited: item.edited, marker: item.marker })),
       uploading: items.some((item) => item.uploading),
       notice,
     };
@@ -200,7 +205,7 @@ export function createComposerAttachments(
         const previewUrl = URL.createObjectURL(file);
         const named = (nameFor?.(file) ?? "").trim();
         const name = named.length > 0 ? named : file.name.trim().length > 0 ? file.name : "pasted image";
-        items.push({ key, id: null, name, previewUrl, uploading: true, edited: false, source: file });
+        items.push({ key, id: null, name, previewUrl, uploading: true, edited: false, source: file, marker: nextMarker++ });
         void port.upload(file).then(({ id }) => {
           if (disposed || canceled.delete(key) || !stillThere(key)) {
             revoke(previewUrl);
@@ -271,7 +276,7 @@ export function createComposerAttachments(
       for (const item of slot) {
         if (have.has(item.previewUrl)) continue;
         have.add(item.previewUrl);
-        items.push({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item) });
+        items.push({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item), marker: nextMarker++ });
       }
       emit();
     },
@@ -300,7 +305,7 @@ export function createComposerAttachments(
         items = [];
         notice = { kind: "expired" };
       } else {
-        items = slot.map((item) => ({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item) }));
+        items = slot.map((item) => ({ key: item.id, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: false, edited: item.edited === true, source: carriedSource(item), marker: nextMarker++ }));
         notice = null;
       }
       emit();
@@ -332,6 +337,7 @@ export function createComposerAttachments(
         if (discardIds && item.id !== null) discard(item.id);
       }
       items = items.filter((item) => !keySet.has(item.key));
+      if (items.length === 0) nextMarker = 1;
       emit();
     },
     commitEdit: async (key, file) => {

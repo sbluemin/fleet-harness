@@ -293,8 +293,8 @@ describe("agent chat mode routes", () => {
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
     // 자식은 첨부 지시 줄만 받는다 — Console이 지어낸 문장은 없다.
-    await vi.waitFor(() => expect(harness.sends.at(-1)).toMatch(new RegExp(`^${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}\\S+image\\.png$`)));
-    const hostPath = harness.sends.at(-1)!.slice(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX.length);
+    await vi.waitFor(() => expect(harness.sends.at(-1)).toMatch(new RegExp(`^\\[Image #1\\] ${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}\\S+image\\.png$`)));
+    const hostPath = harness.sends.at(-1)!.slice(`[Image #1] ${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}`.length);
     // 원장의 말은 문면 없이 첨부 좌표만 싣고, 브라우저로 가는 프레임 어디에도 호스트 경로가 없다.
     const dispatch = await vi.waitFor(() => {
       const frame = frames.slice(replayed).find(({ event }) => event.kind === "dispatch");
