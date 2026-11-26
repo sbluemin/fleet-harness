@@ -81,7 +81,7 @@ function createComposerDraft(objectiveId: string) {
       try {
         // 인용은 문면 끝 줄로 합성된다 — 서버가 말풍선 문면에서 그 줄을 떼어 칩으로 기록한다(`splitQuotedPrompt`).
         // 본문의 이미지 표시는 보내는 첨부 순서로 다시 매긴다 — 서버가 같은 순서로 경로 지시에 라벨을 붙인다.
-        await messageAgentSession(objectiveId, composeQuotedPrompt(resolveComposerImageMarkers(text, sent).trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
+        await messageAgentSession(objectiveId, composeQuotedPrompt(resolveComposerImageMarkers(text, attachments.read()).trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
         if (disposed) return true;
         attachments.releaseSent(sentKeys);
         quotes.releaseSent(sentQuotes.map((quote) => quote.key));

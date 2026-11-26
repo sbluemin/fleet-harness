@@ -104,15 +104,16 @@ describe("chat transcript mapping", () => {
     const filePath = path.join(os.tmpdir(), "fleet-attachments-abc123", "attachment-xyz", "image.png");
     const line = JSON.stringify({
       type: "user",
-      message: { role: "user", content: `look at this\n\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}` },
+      // 라벨이 붙은 경로 지시 줄(`[Image #k] …`)도 경로째 걷고, 본문 속 같은 표시는 남는다.
+      message: { role: "user", content: `look at [Image #1] this\n\n[Image #1] ${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}` },
     });
 
     expect(chatEventsFromTranscriptLine(line, { resolveAttachmentId: () => "att-1" }))
-      .toEqual([{ kind: "dispatch", text: "look at this", attachments: [{ id: "att-1" }] }]);
+      .toEqual([{ kind: "dispatch", text: "look at [Image #1] this", attachments: [{ id: "att-1" }] }]);
     // 스토어가 모르는 경로(지난 프로세스가 만든 것)도 경로를 되살리지 않는다 — 자리만 남는다.
     expect(chatEventsFromTranscriptLine(line))
-      .toEqual([{ kind: "dispatch", text: "look at this", attachments: [{ lapsed: true }] }]);
-    // 그룹 입력창의 플러그인 출처도 표시 문면과 첨부 좌표만 되찾는다 — 숨긴 프롬프트·경로는 나오지 않는다.
+      .toEqual([{ kind: "dispatch", text: "look at [Image #1] this", attachments: [{ lapsed: true }] }]);
+    // 그룹 입력창의 플러그인 출처도 표시 문면과 첨부 좌표만 되찾는다 — 숨긴 프롬프트·경로는 나오지 않는다(라벨 없는 옛 줄).
     const by = { kind: "plugin" as const, pluginId: "objectives", humanInput: { id: "10d824d9-7c30-4c0b-a15f-47f122e95b29" } };
     const tagged = tagChatOrigin(`private instruction\n\nlook at this\n\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}`, by, "look at this");
     const restored = chatEventsFromTranscriptLine(JSON.stringify({ type: "user", message: { content: tagged } }), { resolveAttachmentId: () => "att-1" });

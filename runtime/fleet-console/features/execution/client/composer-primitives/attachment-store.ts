@@ -44,6 +44,8 @@ export interface ComposerAttachmentsSnapshot {
   readonly items: readonly ComposerAttachmentRecord[];
   readonly uploading: boolean;
   readonly notice: ComposerAttachmentNotice | null;
+  /** 이 초안이 지금까지 발급한 표시 번호의 상한(1..issued). 그 밖의 `[Image #n]`은 사람이 쓴 평문이다. */
+  readonly issued: number;
 }
 
 /** 이미 서버 id가 있는 칩. 미리보기 URL의 소유권은 넘기는 쪽이 정한다. */
@@ -151,17 +153,18 @@ export function createComposerAttachments(
   let items: MutableItem[] = [];
   let notice: ComposerAttachmentNotice | null = null;
   let disposed = false;
-  /** 다음 칩의 표시 번호 — 보내고 나서 비면 1부터 다시 센다. */
+  /** 다음 칩의 표시 번호 — 되감지 않는다. 전송 중 이어 쓴 본문의 옛 표시가 새 칩과 겹치지 않게 한다(보낼 때만 1부터 다시 매긴다). */
   let nextMarker = 1;
   const listeners = new Set<() => void>();
   const canceled = new Set<string>();
-  let snapshot: ComposerAttachmentsSnapshot = { items: [], uploading: false, notice: null };
+  let snapshot: ComposerAttachmentsSnapshot = { items: [], uploading: false, notice: null, issued: 0 };
 
   const emit = (): void => {
     snapshot = {
       items: items.map((item) => ({ key: item.key, id: item.id, name: item.name, previewUrl: item.previewUrl, uploading: item.uploading, edited: item.edited, marker: item.marker })),
       uploading: items.some((item) => item.uploading),
       notice,
+      issued: nextMarker - 1,
     };
     for (const listener of [...listeners]) listener();
   };
@@ -337,7 +340,6 @@ export function createComposerAttachments(
         if (discardIds && item.id !== null) discard(item.id);
       }
       items = items.filter((item) => !keySet.has(item.key));
-      if (items.length === 0) nextMarker = 1;
       emit();
     },
     commitEdit: async (key, file) => {
@@ -456,7 +458,7 @@ export function createComposerAttachments(
       }
       items = [];
       notice = null;
-      snapshot = { items: [], uploading: false, notice: null };
+      snapshot = { items: [], uploading: false, notice: null, issued: 0 };
       listeners.clear();
     },
   };
