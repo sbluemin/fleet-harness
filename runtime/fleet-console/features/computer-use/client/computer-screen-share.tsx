@@ -26,7 +26,7 @@ import "../../execution/client/agent/computer-screen-share.css";
  * 화면의 주인과 지금 조작하는 참가자(actor). 주인은 목표(objectiveId — 공유 컨텍스트면 루트)이거나 사령관(commodoreId)이다.
  * `ownerKind` 가 없는 프레임은 목표 소유로 읽는다.
  */
-type CaptureTarget = { id: string; ownerKind?: "objective" | "commodore"; objectiveId: string | null; commodoreId?: string | null; actor: string | null; title: string; offscreen?: boolean };
+type CaptureTarget = { id: string; ownerKind?: "objective" | "commodore"; objectiveId: string | null; commodoreId?: string | null; actor: string | null; title: string; offscreen?: boolean; minimized?: boolean };
 /** 이 화면의 주인이 그 목표/사령관인가. 사령관을 묻는 쪽은 목표 id 로 겹쳐 읽히지 않는다. */
 function targetOwnedBy(target: CaptureTarget, owner: { readonly objectiveId?: string; readonly commodoreId?: string }): boolean {
   return owner.commodoreId !== undefined
@@ -572,6 +572,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   /** 미리보기 자리(영상 또는 원격 정지 화면)가 있는가 — 크기·최대화·끌기 규칙은 둘이 같다. */
   const media = Boolean(own?.stream) || remoteLive || stillId !== null;
   const stillUrl = remote?.url ?? own?.localStillUrl;
+  const minimizedStill = stillId !== null && own?.target.minimized === true && !remote;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!remoteLive) return;
@@ -685,7 +686,10 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
     onClick={(event) => event.stopPropagation()}>
     {chip ? <span className="computer-screen-share-actor">{chip}</span> : null}
     {(own.stream || own.localStillUrl) && remoteViewers > 0 ? <span className="computer-screen-share-remote" data-remote-viewers={remoteViewers}>{t("settings.computerUse.shareRemote")}</span> : null}
-    {remoteLive || stillId !== null ? (stillUrl
+    {remoteLive || stillId !== null ? (minimizedStill
+      // 최소화된 창은 정지 화면을 만들 수 없다(Windows DWM). 빈 자리 대신 사유와 되돌리는 방법을 말한다.
+      ? <p className="computer-screen-share-still is-empty is-minimized" role="status">{t("settings.computerUse.shareMinimized")}</p>
+      : stillUrl
       ? <img className="computer-screen-share-still" src={stillUrl} alt="" draggable={false} onLoad={(event) => { const image = event.currentTarget; if (image.naturalWidth > 0 && image.naturalHeight > 0) setRemoteRatio(image.naturalWidth / image.naturalHeight); }} />
       : <span className="computer-screen-share-still is-empty" />) : null}
     {remote ? <>

@@ -872,7 +872,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     turnOpen: (objectiveId) => { const activity = consoleControl.observe(objectiveId)?.activity; return activity === "running" || activity === "awaiting"; },
   });
   // 화면의 주인은 목표(objectiveId)이거나 사령관 자신의 세션(commodoreId)이다 — 소유자 종류는 ownerKind 가 구분하고, 사령관 소유일 때 objectiveId 는 null 이다.
-  let computerCaptureTarget: { id: string; offscreen: boolean | null; pid: number; windowId: number; processStartedAt: number; title: string; ownerKind: "objective" | "commodore"; objectiveId: string | null; commodoreId: string | null; actor: string } | null = null;
+  let computerCaptureTarget: { id: string; offscreen: boolean | null; minimized: boolean; pid: number; windowId: number; processStartedAt: number; title: string; ownerKind: "objective" | "commodore"; objectiveId: string | null; commodoreId: string | null; actor: string } | null = null;
   const COMPUTER_CAPTURE_STATE_EVENT = "computer-capture:state";
   let computerCaptureWatch: ReturnType<typeof setTimeout> | null = null;
   let lastComputerCaptureSnapshot: string | null = null;
@@ -907,7 +907,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           && computerCaptureTarget.objectiveId === ownerObjectiveId && computerCaptureTarget.commodoreId === ownerCommodoreId) {
           computerCaptureTarget = { ...computerCaptureTarget, title: target.title, actor };
         } else {
-          computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, ownerKind, objectiveId: ownerObjectiveId, commodoreId: ownerCommodoreId, actor, id: crypto.randomUUID(), offscreen: null };
+          computerCaptureTarget = { pid: target.pid, windowId: target.windowId, processStartedAt: target.processStartedAt, title: target.title, ownerKind, objectiveId: ownerObjectiveId, commodoreId: ownerCommodoreId, actor, id: crypto.randomUUID(), offscreen: null, minimized: false };
         }
       }
       broadcastComputerCapture();
@@ -2496,7 +2496,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const unavailableReason = target ? null : computerUse.captureUnavailableReason();
     const unavailableCommodoreId = unavailableOwner ? computerUseMcp.commodoreIdForOwner(unavailableOwner) : null;
     return {
-      target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title, offscreen: target.offscreen === true } : null,
+      target: target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, ...(target.commodoreId ? { commodoreId: target.commodoreId } : {}), actor: target.actor, title: target.title, offscreen: target.offscreen === true, ...(target.minimized ? { minimized: true } : {}) } : null,
       unavailableObjectiveId: unavailableOwner ? computerUseMcp.objectiveIdForOwner(unavailableOwner) : null,
       ...(unavailableCommodoreId ? { unavailableCommodoreId } : {}),
       // 비민감 사유 코드만. 일반 식별 실패면 싣지 않아 옛 화면·계약과 같은 모양이 남는다.
@@ -2546,10 +2546,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 감시와 GET은 진행 중인 검증을 공유한다. 같은 대상의 명시적 불일치만 해제 근거다.
     computerCaptureVerification ??= (async () => {
       // 시간 초과나 조회 불가는 창 소멸의 증거가 아니다. 이때는 기존 영상 경로를 사용한다.
-      const unknown = { identity: "unknown", onscreen: false } as const;
+      const unknown = { identity: "unknown", onscreen: false, minimized: false } as const;
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
-        const { identity, onscreen } = await Promise.race([
+        const { identity, onscreen, minimized } = await Promise.race([
           computerUse.captureWindowState(candidate).catch(() => unknown),
           // 응답을 기다리는 Desktop의 3초 HTTP 한도 안에 대체 상태를 돌려준다.
           new Promise<typeof unknown>((resolve) => { timeout = setTimeout(() => resolve(unknown), 2500); timeout.unref(); }),
@@ -2562,8 +2562,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           watchComputerCapture();
         } else {
           const offscreen = identity === "matches" && !onscreen;
-          if (computerCaptureTarget.offscreen !== offscreen) {
-            computerCaptureTarget = { ...computerCaptureTarget, offscreen };
+          // 최소화된 창은 DWM이 그리지 않아 정지 화면이 없다. 미리보기 카드가 빈 자리 대신 그 사유를 말한다(Windows 헬퍼만 싣는다).
+          const isMinimized = offscreen && minimized === true;
+          if (computerCaptureTarget.offscreen !== offscreen || computerCaptureTarget.minimized !== isMinimized) {
+            computerCaptureTarget = { ...computerCaptureTarget, offscreen, minimized: isMinimized };
             broadcastComputerCapture();
           }
         }

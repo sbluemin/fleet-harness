@@ -63,6 +63,8 @@
 /* 원격 정지 화면(결정 8cd1a62d) — 영상과 같은 자리·같은 맞춤이다. 첫 장 전에는 문구 없이 자리만 지킨다. */
 .computer-screen-share-still { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; user-select: none; }
 .computer-screen-share-still.is-empty { min-height: 144px; background: var(--surface-panel); }
+/* 최소화된 창(Windows) — 정지 화면이 없는 사유를 빈 자리 한가운데에 적는다. */
+.computer-screen-share .computer-screen-share-still.is-minimized { display: flex; align-items: center; justify-content: center; box-sizing: border-box; text-align: center; }
 /* 지연 안내는 이미지 아래 띠로 겹친다 — 마지막 이미지는 그대로 보인다. 초수는 화면에만 있고 스크린리더에는 아래 알림이 한 번 읽힌다. */
 .computer-screen-share .computer-screen-share-stale { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: .45rem .75rem; border-top: 1px solid var(--warn); background: color-mix(in oklab, var(--surface-panel-raised) 92%, transparent); color: var(--warn-ink); }
 .computer-screen-share-announce { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }

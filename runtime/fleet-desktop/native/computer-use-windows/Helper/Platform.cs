@@ -109,7 +109,8 @@ internal static class PlatformCommands
                 var catalog = new WindowCatalog();
                 var state = WindowState(catalog, target, includingHidden: method != "verifyWindowIdentity");
                 if (method == "verifyWindowIdentity") result = new Obj(("identity", state.Identity));
-                else if (method == "windowState") result = new Obj(("identity", state.Identity), ("onscreen", state.Onscreen));
+                // DWM does not compose a minimized window, so no still exists until it is restored; the preview card says so.
+                else if (method == "windowState") result = new Obj(("identity", state.Identity), ("onscreen", state.Onscreen), ("minimized", state.Window?.Minimized == true));
                 else
                 {
                     if (!WindowCapture.Supported) return Fail("screen_recording_required");

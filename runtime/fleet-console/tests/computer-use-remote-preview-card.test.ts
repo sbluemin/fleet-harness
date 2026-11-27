@@ -273,3 +273,40 @@ it("does not let a late initial read undo a newer state that the stream already 
   await flush();
   expect(node.querySelector(".computer-screen-share")).toBeNull();
 });
+
+it("says the window is minimized instead of leaving the offscreen card blank, only while the host reports it minimized", async () => {
+  document.documentElement.dataset.desktopShell = "true";
+  const track = { readyState: "live", addEventListener: vi.fn(), stop: vi.fn(), getSettings: () => ({ width: 480, height: 300 }) };
+  const getDisplayMedia = vi.fn(async () => ({ getTracks: () => [track], getVideoTracks: () => [track] }));
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getDisplayMedia } });
+  HTMLMediaElement.prototype.play = () => Promise.resolve();
+  vi.stubGlobal("IntersectionObserver", class {
+    constructor(callback: IntersectionObserverCallback) { queueMicrotask(() => callback([{ isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver)); }
+    observe() {}
+    disconnect() {}
+  });
+  const original = fetchMock.getMockImplementation()!;
+  // 최소화된 창은 정지 화면이 없다 — 서버는 204로 답한다.
+  fetchMock.mockImplementation(async (path: string, init?: RequestInit) => path.startsWith(DESKTOP_OFFSCREEN_PREVIEW_STILL_PATH) ? new Response(null, { status: 204 }) : original(path, init));
+  const node = await mount();
+  const setState = (state: { offscreen: boolean; minimized?: boolean }) => act(async () => { emit("computer-capture:state", { target: { ...target, title: "Fixture", ...state } }); });
+  const note = () => node.querySelector(".computer-screen-share-still.is-minimized");
+
+  // 다른 데스크톱 등 최소화가 아닌 빈 장은 예전처럼 문구 없이 자리만 지킨다.
+  await setState({ offscreen: true });
+  await flush(1000);
+  expect(node.querySelector(".computer-screen-share-still.is-empty")).not.toBeNull();
+  expect(note()).toBeNull();
+
+  await setState({ offscreen: true, minimized: true });
+  await flush(1000);
+  expect(note()?.getAttribute("role")).toBe("status");
+  expect(note()?.textContent).toBe("The window is minimized. Restore it to resume the preview.");
+  expect(node.querySelector(".computer-screen-share img")).toBeNull();
+
+  await setState({ offscreen: false });
+  await flush();
+  expect(note()).toBeNull();
+  expect(node.querySelector(".computer-screen-share video")).not.toBeNull();
+  expect(getDisplayMedia).toHaveBeenCalledTimes(1);
+});

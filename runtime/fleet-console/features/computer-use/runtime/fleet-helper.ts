@@ -88,7 +88,7 @@ export function createFleetComputerUsePlatform(runtime: Runtime, config: {
           onUnsupported: () => { legacyWindowState = true; },
         });
         if ((result?.identity === "matches" || result?.identity === "mismatch") && typeof result.onscreen === "boolean") {
-          return { identity: result.identity, onscreen: result.onscreen };
+          return { identity: result.identity, onscreen: result.onscreen, ...(result.minimized === true ? { minimized: true } : {}) };
         }
         if (!legacyWindowState) return { identity: "unknown", onscreen: false };
       }
