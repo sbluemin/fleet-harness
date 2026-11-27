@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.320.0] - 2026-11-27
+
+### fleet-console
+
+#### Changed
+- Redesigned Objective Commander conversations into an interactive node-and-wire Inner Loop flow canvas on desktop (with a compact vertical thread on mobile) that collapses completed loops while immediately surfacing runtime errors, delivery failures, and unreported member stops.
+
+#### Fixed
+- On Windows, the Computer Use preview now says the window is minimized instead of staying blank, and resumes when you restore it.
+
 ## [1.319.0] - 2026-11-26
 
 ### fleet-console

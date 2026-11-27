@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.320.0] - 2026-11-27
+
+### fleet-console
+
+#### Changed
+- 목표 지휘관 대화를 데스크톱에서는 노드·와이어 기반의 인터랙티브 Inner Loop 플로우 캔버스로(모바일에서는 간결한 수직 스레드로) 개편해 완료된 루프는 자동 접힘으로 정리하고, 런타임 오류·전달 실패·구성원 미보고 정지를 즉시 드러냅니다.
+
+#### Fixed
+- Windows에서 대상 창을 최소화하면 컴퓨터 사용 미리보기가 빈 칸 대신 창이 최소화되었다고 알려 주고, 창을 복원하면 다시 보입니다.
+
 ## [1.319.0] - 2026-11-26
 
 ### fleet-console
