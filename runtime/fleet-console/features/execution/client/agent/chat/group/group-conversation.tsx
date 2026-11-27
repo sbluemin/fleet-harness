@@ -774,6 +774,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
     case "board-action": return <BoardActionLine entry={entry} language={language} onOpenRecord={onOpenCommodoreRecord} label={boardActionLabel} />;
     case "decision-answer": return <DecisionAnswerLine entry={entry} asker={participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null} language={language} />;
     case "plugin-notice": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
+    case "session-error": return <NoteLine entry={{ kind: "note", id: entry.id, at: entry.at, tone: "warn", text: `${entry.speaker.name} · ${entry.code}` }} language={language} />;
     case "note": return <NoteLine entry={entry} language={language} />;
   }
 }, (before, after) => {

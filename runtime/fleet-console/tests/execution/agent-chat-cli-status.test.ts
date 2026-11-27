@@ -6,6 +6,7 @@ import { probeClaudeAuth } from "../../features/execution/host/agent/claude-auth
 import type { AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 import { agentChatCliFailure, initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal } from "../../features/execution/client/agent/chat/group-timeline.js";
+import { buildCommanderFlow } from "../../features/execution/client/agent/chat/group/commander-flow-model.js";
 
 function baseSeed(overrides: Partial<AgentChatSessionSeed> = {}): AgentChatSessionSeed {
   return {
@@ -228,5 +229,149 @@ describe("commander chat client CLI failure state", () => {
     expect(seen[0]?.ANTHROPIC_API_KEY).toBeUndefined();
     expect(seen[1]?.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-work");
     expect("CLAUDE_SECURESTORAGE_CONFIG_DIR" in seen[1]!).toBe(false);
+  });
+
+  it("surfaces non-CLI session errors, delivery refusals, and failure plugin notices into commander flow", () => {
+    const rootId = "obj-root";
+    const memberId = "obj-builder";
+    let rootJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 1000,
+      event: { kind: "dispatch", text: "Build bundle and verify" },
+    }, rootId);
+    rootJournal = reduceConversationJournal(rootJournal, {
+      seq: 2,
+      at: 1100,
+      event: {
+        kind: "tool",
+        id: "call-refused",
+        name: "mcp__fleet-commander__member_message",
+        detail: "",
+        toolDetail: { sections: [{ kind: "message", text: "→ verifier\nPlease verify" }] },
+      },
+    }, rootId);
+    rootJournal = reduceConversationJournal(rootJournal, {
+      seq: 3,
+      at: 1150,
+      event: {
+        kind: "tool-result",
+        id: "call-refused",
+        ok: false,
+        summary: "delivery_refused: unknown member verifier",
+      },
+    }, rootId);
+    rootJournal = reduceConversationJournal(rootJournal, {
+      seq: 4,
+      at: 1300,
+      event: {
+        kind: "dispatch",
+        text: 'The last turn of member "builder" (obj-builder) in objective obj-root ended in failure.\nReason: rate_limit_exceeded\n<error-data>\n429 too many requests\n</error-data>',
+        by: { kind: "plugin", pluginId: "objectives" },
+      },
+    }, rootId);
+
+    let memberJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 1200,
+      event: { kind: "turn-start" },
+    }, memberId);
+    memberJournal = reduceConversationJournal(memberJournal, {
+      seq: 2,
+      at: 1250,
+      event: { kind: "turn-end", ok: false, durationMs: 4200 },
+    }, memberId);
+    memberJournal = reduceConversationJournal(memberJournal, {
+      seq: 3,
+      at: 1251,
+      event: { kind: "error", code: "chat_turn_failed" },
+    }, memberId);
+    // User-initiated stop must not fabricate a session-error entry.
+    memberJournal = reduceConversationJournal(memberJournal, {
+      seq: 4,
+      at: 1400,
+      event: { kind: "turn-start" },
+    }, memberId);
+    memberJournal = reduceConversationJournal(memberJournal, {
+      seq: 5,
+      at: 1450,
+      event: { kind: "turn-end", ok: false, stopped: true },
+    }, memberId);
+
+    const snap = composeGroupTimeline({
+      rootObjectiveId: rootId,
+      participants: [
+        { speaker: { kind: "commander", name: "Commander", objectiveId: rootId }, activity: "idle" },
+        { speaker: { kind: "member", name: "builder", objectiveId: memberId }, activity: "idle" },
+      ],
+      journals: new Map([
+        [rootId, rootJournal],
+        [memberId, memberJournal],
+      ]),
+    });
+
+    const sessionErrors = snap.entries.filter((entry) => entry.kind === "session-error");
+    expect(sessionErrors).toHaveLength(1);
+    expect(sessionErrors[0]).toMatchObject({ kind: "session-error", code: "chat_turn_failed", objectiveId: memberId });
+
+    const flow = buildCommanderFlow(snap, { language: "en" });
+    expect(flow.loops).toHaveLength(1);
+    const loop = flow.loops[0]!;
+    expect(loop.status).toBe("error");
+    expect(loop.hasErrors).toBe(true);
+    expect(loop.errors.map((err) => err.code)).toEqual(
+      expect.arrayContaining(["delivery_failed", "chat_turn_failed", "member_turn_failed"]),
+    );
+    expect(loop.edges.some((edge) => edge.status === "error")).toBe(true);
+    expect(loop.nodes.some((node) => node.status === "error")).toBe(true);
+  });
+
+  it("suppresses generic turn_failed after chat_cli_unavailable and keeps queued prompts outside active loops", () => {
+    const rootId = "obj-root";
+    // Order matching ChatSession.ensureSdk(): error(chat_cli_unavailable) BEFORE turn-end(ok:false)
+    let cliJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 1000,
+      event: { kind: "dispatch", text: "Run check" },
+    }, rootId);
+    cliJournal = reduceConversationJournal(cliJournal, {
+      seq: 2,
+      at: 1005,
+      event: { kind: "error", code: "chat_cli_unavailable" },
+    }, rootId);
+    cliJournal = reduceConversationJournal(cliJournal, {
+      seq: 3,
+      at: 1006,
+      event: { kind: "turn-end", ok: false },
+    }, rootId);
+    const cliSnap = composeGroupTimeline({
+      rootObjectiveId: rootId,
+      participants: [{ speaker: { kind: "commander", name: "Commander", objectiveId: rootId }, activity: "idle" }],
+      journals: new Map([[rootId, cliJournal]]),
+    });
+    expect(cliSnap.cliFailure).toBe("missing");
+    expect(cliSnap.entries.filter((entry) => entry.kind === "session-error")).toEqual([]);
+
+    // Queued human message while Commander is still working stays in pendingPrompts and does not split/steal the running loop.
+    let activeJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 2000,
+      event: { kind: "dispatch", text: "First active task" },
+    }, rootId);
+    activeJournal = reduceConversationJournal(activeJournal, {
+      seq: 2,
+      at: 2050,
+      event: { kind: "queue", entries: [{ id: "q-1", text: "Queued follow-up\nline 2" }] },
+    }, rootId);
+    const activeSnap = composeGroupTimeline({
+      rootObjectiveId: rootId,
+      participants: [{ speaker: { kind: "commander", name: "Commander", objectiveId: rootId }, activity: "running" }],
+      journals: new Map([[rootId, activeJournal]]),
+    });
+    const activeFlow = buildCommanderFlow(activeSnap, { language: "en" });
+    expect(activeFlow.loops).toHaveLength(1);
+    expect(activeFlow.loops[0]!.status).toBe("live");
+    expect(activeFlow.loops[0]!.prompt).toBe("First active task");
+    expect(activeFlow.pendingPrompts).toHaveLength(1);
+    expect(activeFlow.pendingPrompts[0]!.text).toBe("Queued follow-up\nline 2");
   });
 });

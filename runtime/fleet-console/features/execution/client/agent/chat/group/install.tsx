@@ -13,7 +13,6 @@ import {
   type ConversationBodyContext,
   type ConversationToolbarTailContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
-import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { stopAgentChatTurn } from "../../api.js";
 import { CliFailureCard } from "../../../../../commodore/client/commodore-cli-status.js";
 import { getT as getCommodoreT } from "../../../../../commodore/client/i18n/index.js";
@@ -27,7 +26,8 @@ import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subs
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { fillGroupComposerDraft, GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
-import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
+import { CommanderFlowConversation } from "./commander-flow.js";
+import { GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 import { registerObjectiveContextRail } from "./context-rail.js";
@@ -206,25 +206,17 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((objectiveId: string) => openLedger(root.id, objectiveId), [root.id]);
-  // 데스크톱 그룹채팅의 네임플레이트만 누른 참여자와 무관하게 원장 분할 화면으로 바꾼다(모든 지휘관 공통 설정). 작업 줄·진행 메모 링크·
-  // 전언 화면은 그 참여자의 개별 원장을 그대로 연다. 폰은 네임플레이트도 예전처럼 개별 원장이다.
   const openLedgerView = React.useCallback(() => setGroupConversationView("ledger"), []);
   const clusters = useGroupClusters();
   const openUIOpen = clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.openUIOpen;
   // 보드 동작이 있는 일반 Objective도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
   const recordedObjective = clusters.some((cluster) => cluster.conversation?.objectiveId === root.id && cluster.conversation.recordedObjective === true);
-  // 사령관 행위 줄 → 읽기 전용 사령관 기록(그 턴 위치). 기록을 찾는 일은 묶음을 공급한 플러그인이 한다(임무 14 계약).
-  const openRecord = useOpenBoardActionRecord(clusters);
   // 답이 받아들여진 요청은 보드가 요청을 걷기 전에도 카드를 내린다. 답은 보드가 결정으로 남긴 대화 줄로 그 시각 자리에 선다.
   const [answered, setAnswered] = React.useState<readonly string[]>([]);
   React.useEffect(() => setAnswered([]), [root.id]);
   const speakerOf = (objectiveId: string) => snapshot.participants.find((participant) => participant.speaker.objectiveId === objectiveId)?.speaker ?? null;
-  // 지휘관과 구성원은 컴퓨터 하나를 함께 쓴다(호스트의 공유 컨텍스트) — 화면공유는 원장이 아니라 이 대화에 서고, 누가 조작하는지는
-  // 미리보기 위 칩과 진행 줄 꼬리가 같은 이름으로 말한다.
-  // 함께 쓰는 사람(구성원)이 있을 때만 목표 표면이다 — 목표 밖 일반 채팅은 예전 그대로(카드 문구·진행 줄·미리보기 자리).
+  // 지휘관과 구성원은 컴퓨터 하나를 함께 쓴다(호스트의 공유 컨텍스트) — 화면공유는 원장이 아니라 이 대화에 선다.
   const shared = useConsoleState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === root.id);
-  const actorId = useComputerActor(root.id);
-  const computerActor = shared ? actorId : null;
   const t = getGroupT(language);
   const cliT = getCommodoreT(language);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
@@ -265,7 +257,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const draftOpenUI = React.useCallback((text: string) => {
     fillGroupComposerDraft(root.id, text);
   }, [root.id]);
-  const composer = (workingLine?: React.ReactNode) => (
+  const composer = (
     <GroupComposer
       key={root.id}
       rootObjectiveId={root.id}
@@ -274,34 +266,34 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       language={language}
       topEntries={recordedObjective ? <ComposerTopEntries /> : null}
       renderControls={!phone ? clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.renderComposerControls : undefined}
-      workingLine={workingLine}
       cliFailure={snapshot.cliFailure ?? null}
       onStopOne={stopOne}
     />
   );
   return (
-    <OpenUINavigationContext.Provider value={openUIOpen ?? null}><GroupConversation
-      snapshot={snapshot}
-      language={language}
-      onOpenLedger={openMemberLedger}
-      {...(phone ? {} : { onOpenNameplate: openLedgerView, nameplateLabel: t("group.view.toLedger") })}
-      onOpenCommodoreRecord={openRecord}
-      cards={cards}
-      fold
-      computerActor={computerActor}
-      {...(actions ? { onOpenUISend: sendOpenUI, onOpenUIDraft: draftOpenUI } : {})}
-      overlay={phone || !shared ? null : (
-        <ComputerScreenShare
-          objectiveId={root.id}
-          className="is-group"
-          actor={(id) => {
-            const speaker = speakerOf(id);
-            return speaker ? <span className="group-share-actor"><span className="group-share-actor-dot" aria-hidden="true" /><SpeakerMark speaker={speaker} size="sm" />{t("group.share.actor", { name: speaker.name })}</span> : null;
-          }}
-        />
-      )}
-      {...(recordedObjective ? { renderComposerWithWorking: composer } : { composer: composer() })}
-    /></OpenUINavigationContext.Provider>
+    <OpenUINavigationContext.Provider value={openUIOpen ?? null}>
+      <CommanderFlowConversation
+        snapshot={snapshot}
+        language={language}
+        variant={phone ? "thread" : "canvas"}
+        awaitingCheckpoint={Boolean(decision) || useRequests.length > 0}
+        onOpenLedger={openMemberLedger}
+        {...(phone ? {} : { onOpenSplitLedger: openLedgerView })}
+        cards={cards}
+        composer={composer}
+        {...(actions ? { onOpenUISend: sendOpenUI, onOpenUIDraft: draftOpenUI } : {})}
+        overlay={phone || !shared ? null : (
+          <ComputerScreenShare
+            objectiveId={root.id}
+            className="is-group"
+            actor={(id) => {
+              const speaker = speakerOf(id);
+              return speaker ? <span className="group-share-actor"><span className="group-share-actor-dot" aria-hidden="true" /><SpeakerMark speaker={speaker} size="sm" />{t("group.share.actor", { name: speaker.name })}</span> : null;
+            }}
+          />
+        )}
+      />
+    </OpenUINavigationContext.Provider>
   );
 }
 
