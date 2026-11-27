@@ -83,16 +83,18 @@ export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText,
     };
     const onScroll = (event: Event) => {
       if (event.target instanceof Node && rootRef.current?.contains(event.target)) return;
+      if (event.target instanceof Element && event.target.closest("[data-host-surface=\"mobile-sheet\"]")) return;
       close.current();
     };
+    const onResize = () => close.current();
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("pointerdown", onPointerDown, true);
-    window.addEventListener("resize", close.current);
+    window.addEventListener("resize", onResize);
     window.addEventListener("scroll", onScroll, true);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown, true);
-      window.removeEventListener("resize", close.current);
+      window.removeEventListener("resize", onResize);
       window.removeEventListener("scroll", onScroll, true);
     };
   }, [anchor]);
