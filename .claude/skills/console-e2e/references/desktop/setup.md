@@ -32,6 +32,7 @@ On macOS that target hands the bundle to `open`, which passes the calling shell'
 
 For Desktop runs that need `pnpm` or `tsx` helpers, [claim the run directory](../setup.md#isolate-the-console) before the launch below with `node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> -- true` (`--check` does not record ownership); register that directory through [Run lifetime](../setup.md#run-lifetime-and-reclamation) before the claim. After boot, follow [First-load commissioning state](../setup.md#first-load-commissioning-state), using its isolated-environment wrapper and the same run and Console directories.
 
+For a local Windows Objective test, if [run registration](../setup.md#run-lifetime-and-reclamation) or the [read-only preflight](#read-only-preflight) blocks the run, stop before launch and report Desktop boot, fake-agent response, and owned shutdown as unverified.
 ```bash
 cd <worktree>
 node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-desktop.mjs <worktree> \
