@@ -38,6 +38,8 @@ export type WindowIdentityResult = "matches" | "mismatch" | "unknown";
 export interface ComputerUseWindowState {
   readonly identity: WindowIdentityResult;
   readonly onscreen: boolean;
+  /** 대상 창이 최소화되어 있는가. Windows 헬퍼만 싣는다 — 없으면 최소화가 아닌 것으로 읽는다. */
+  readonly minimized?: boolean;
 }
 export type ClipboardRestoration = "restored" | "preserved_newer_contents" | "failed";
 export interface ClipboardLease { finish(): Promise<ClipboardRestoration> }

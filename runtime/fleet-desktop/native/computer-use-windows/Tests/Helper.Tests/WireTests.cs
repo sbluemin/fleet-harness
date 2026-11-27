@@ -370,6 +370,7 @@ public class PlatformWireTests
         (exit, reply) = Run(Frame("{\"version\":1,\"method\":\"windowState\",\"params\":{\"pid\":4,\"windowId\":1234567,\"processStartedAt\":1700000000.5}}"));
         Assert.Equal(0, exit);
         Assert.False(reply["result"]!["onscreen"]!.GetValue<bool>());
+        Assert.False(reply["result"]!["minimized"]!.GetValue<bool>());
         (exit, reply) = Run(Frame("{\"version\":1,\"method\":\"captureStill\",\"params\":{\"pid\":4,\"windowId\":1234567,\"processStartedAt\":1700000000.5}}"));
         Assert.Equal(1, exit);
         Assert.Equal("still_unavailable", reply["error"]!.GetValue<string>());

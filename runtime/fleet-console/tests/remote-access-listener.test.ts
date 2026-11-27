@@ -199,10 +199,12 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       expect(first.status).toBe(200);
       expect(first.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBeDefined();
       const previewEvents = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
-      for (const onscreen of [false, true]) {
-        windowState = { identity: "matches", onscreen };
+      // 최소화는 Windows 헬퍼만 싣고, 화면 밖일 때만 카드에 실린다. 원격 미리보기 상태는 바뀌지 않는다.
+      for (const { onscreen, minimized } of [{ onscreen: false, minimized: false }, { onscreen: false, minimized: true }, { onscreen: true, minimized: true }]) {
+        windowState = { identity: "matches", onscreen, ...(minimized ? { minimized } : {}) };
         const reading = await (await fetch(`${origin}/api/v1/desktop/computer-capture`)).json();
         expect(reading.target).toMatchObject({ id, offscreen: !onscreen });
+        expect(reading.target.minimized).toBe(!onscreen && minimized);
         const kept = await readFrame();
         expect(kept.status).toBe(200);
         expect(kept.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBe(first.headers[REMOTE_PREVIEW_SEQ_HEADER]);
