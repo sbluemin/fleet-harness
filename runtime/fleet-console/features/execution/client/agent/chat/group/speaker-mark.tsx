@@ -192,6 +192,7 @@ export function useLocalizedSnapshot<S extends LocalizableSnapshot>(snapshot: S,
         case "delegation": return localized(entry.sender) || entry.recipients.some(localized)
           ? { ...entry, sender: fix(entry.sender), recipients: entry.recipients.map(fix) } : entry;
         case "board-action": return { ...entry, speaker: fix(entry.speaker) };
+        case "session-error": return localized(entry.speaker) ? { ...entry, speaker: fix(entry.speaker) } : entry;
         default: return entry;
       }
     });

@@ -129,6 +129,11 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * 보드가 결정으로 남긴 답만 싣는다. 사람의 말과 같은 오른쪽 말풍선으로, 받는 이는 대화의 지휘관이다.
    */
   | { readonly kind: "decision-answer"; readonly answers: readonly { readonly header?: string; readonly question: string; readonly answer: string; readonly declined?: true }[] }
+  /**
+   * 세션 런타임 오류 또는 실패로 닫힌 턴(`error`·`turn-end(ok:false)`).
+   * CLI 미설치·미로그인은 전용 `cliFailure` 계약으로 다루고, 그 밖의 런타임 실패는 이 줄로 흘려 Flow와 타임라인에 즉시 드러낸다.
+   */
+  | { readonly kind: "session-error"; readonly objectiveId: string; readonly speaker: ConversationSpeaker; readonly code: string; readonly turn?: string; readonly durationMs?: number }
 );
 
 /** Objectives 등 플러그인이 기존 ObjectiveCluster 포트로 보내는 보드 사실. */

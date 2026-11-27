@@ -11,6 +11,8 @@ export interface ConversationJournal {
   readonly truncated: boolean;
   /** 지금 열린 턴의 좌표 — 지시(dispatch)나 턴 시작이 열고 턴 끝이 닫는다. 말과 전언이 이 값을 `turn` 으로 단다. */
   readonly turn?: string | null;
+  /** 직전에 닫힌 턴의 좌표 — `turn-end(ok:false)` 직후 도착하는 `error` 사건을 같은 턴으로 합친다. */
+  readonly lastClosedTurn?: string | null;
   /**
    * 아직 시작하지 않은 예약의 전량. 서버 큐와 같은 REPLACE 이고 라이브 전용이라 재생·이력에는 없다.
    * 화면은 여기서 사람의 말만 대기 말풍선으로 세우고, 처리가 시작되거나 취소되면 이 목록에서 빠진다.
@@ -28,7 +30,7 @@ export interface ConversationJournal {
   /** 이 참여자에게 사람이 마지막으로 보낸 말 — C2 원인 카드의 「다시 보내기」가 쓴다. */
   readonly lastHumanPrompt?: string | null;
 }
-export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map(), context: null, cliFailure: null, lastHumanPrompt: null };
+export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, lastClosedTurn: null, queue: [], queueSeen: new Map(), context: null, cliFailure: null, lastHumanPrompt: null };
 const objectiveRecordSpeaker = (id: string): ConversationSpeaker => ({ kind: "objectiveRecord", objectiveId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
@@ -44,6 +46,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   let entries = [...state.entries];
   let draftId = state.draftId;
   let turn = state.turn ?? null;
+  let lastClosedTurn = state.lastClosedTurn ?? null;
   let cliFailure = state.cliFailure ?? null;
   let lastHumanPrompt = state.lastHumanPrompt ?? null;
   const id = `message:${objectiveId}:${row.seq}`;
@@ -57,6 +60,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       // 지시는 새 턴을 연다. 도는 턴에 끼워 넣은 말(turn-inject)은 그 턴 안이다.
       if (event.kind === "dispatch") {
         turn = `turn:${objectiveId}:${row.seq}`;
+        lastClosedTurn = null;
         cliFailure = null;
         lastHumanPrompt = null;
       }
@@ -135,17 +139,67 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       // 지시가 이미 연 턴이면 그 턴이 이어진다. 다른 세션의 말이 깨운 턴은 여기서 열린다.
       if (turn !== null) return state;
       turn = `turn:${objectiveId}:${row.seq}`;
+      lastClosedTurn = null;
       break;
-    case "turn-end":
+    case "turn-end": {
+      const closedTurn = turn;
       entries = entries.map((entry) => entry.kind === "message" && entry.streaming ? { ...entry, streaming: false } : entry);
       draftId = null;
       turn = null;
-      if (event.ok) cliFailure = null;
+      lastClosedTurn = closedTurn;
+      if (event.ok) {
+        cliFailure = null;
+      } else if (event.stopped !== true) {
+        const hasTurnError = closedTurn !== null && entries.some((entry) => entry.kind === "session-error" && entry.turn === closedTurn);
+        if (!hasTurnError) {
+          entries.push({
+            kind: "session-error",
+            id: `session-error:${objectiveId}:${closedTurn ?? row.seq}`,
+            at,
+            objectiveId,
+            speaker,
+            code: "turn_failed",
+            ...(closedTurn ? { turn: closedTurn } : {}),
+            ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+          });
+        }
+      }
       break;
-    case "error":
-      if (event.code === "chat_cli_unavailable") return { ...state, cliFailure: "missing" };
-      if (event.code === "chat_cli_signed_out") return { ...state, cliFailure: "signedout" };
-      return state;
+    }
+    case "error": {
+      const targetTurn = turn ?? lastClosedTurn;
+      if (event.code === "chat_cli_unavailable" || event.code === "chat_cli_signed_out") {
+        // CLI 원인 실패는 전용 CliFailureCard가 책임진다 — 직전 turn-end(ok:false)가 남긴 일반 turn_failed는 걷어 중복 노출을 막는다.
+        const filtered = targetTurn
+          ? entries.filter((entry) => !(entry.kind === "session-error" && entry.turn === targetTurn && entry.code === "turn_failed"))
+          : entries;
+        return {
+          ...state,
+          entries: filtered,
+          cliFailure: event.code === "chat_cli_unavailable" ? "missing" : "signedout",
+        };
+      }
+      const existingIndex = targetTurn
+        ? entries.findIndex((entry) => entry.kind === "session-error" && entry.turn === targetTurn && entry.code === "turn_failed")
+        : -1;
+      if (existingIndex >= 0) {
+        const current = entries[existingIndex]!;
+        if (current.kind === "session-error") {
+          entries[existingIndex] = { ...current, code: event.code, at: current.at ?? at };
+        }
+      } else {
+        entries.push({
+          kind: "session-error",
+          id: `session-error:${objectiveId}:${targetTurn ?? row.seq}:${event.code}`,
+          at,
+          objectiveId,
+          speaker,
+          code: event.code,
+          ...(targetTurn ? { turn: targetTurn } : {}),
+        });
+      }
+      break;
+    }
     case "queue": {
       // 예약 전량 교체. 저널 줄은 건드리지 않는다 — 대기 말은 이 스냅샷에서만 서고, 확정 말과 섞어 세지 않는다.
       const seen = new Map<string, number>();
@@ -162,7 +216,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   // 수신/재생의 동일 좌표는 한 번만 세운다. 결과 갱신은 기존 자리를 유지한다.
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const unique = [...byId.values()];
-  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen, context: state.context, cliFailure, lastHumanPrompt };
+  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, lastClosedTurn, queue: state.queue, queueSeen: state.queueSeen, context: state.context, cliFailure, lastHumanPrompt };
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);
@@ -264,6 +318,11 @@ export function composeGroupTimeline(input: {
         entries.set(item.id, resolvedEntry(item, [recipient], () => ({ ...item, recipient })));
         continue;
       }
+      if (item.kind === "session-error") {
+        const speaker = resolve(item.speaker);
+        entries.set(item.id, resolvedEntry(item, [speaker], () => ({ ...item, speaker })));
+        continue;
+      }
       if (item.kind !== "delegation") continue;
       // 보낸 이는 원장 id 접두의 참여자다. 받는 이는 로스터의 역할·지휘관만 — 풀리지 않는 힌트는 비운다.
       const senderId = [...speakers.keys()].sort((a, b) => b.length - a.length).find((id) => item.id.startsWith(`delegation:${id}:`));
@@ -272,7 +331,13 @@ export function composeGroupTimeline(input: {
         const recipient = resolveRosterRecipient(hint, speakers, input.participants);
         return recipient ? [recipient] : [];
       });
-      entries.set(item.id, resolvedEntry(item, [sender, ...resolvedRecipients], () => ({ ...item, sender, recipients: resolvedRecipients })));
+      // 전달이 실패했고 로스터에서 찾지 못한 힌트가 있으면(예: 존재하지 않는 구성원 이름), 실패 표면에 원래 대상 이름을 남긴다.
+      const recipients = resolvedRecipients.length > 0
+        ? resolvedRecipients
+        : item.ok === false
+          ? item.recipients.filter((hint) => hint.name.trim().length > 0)
+          : [];
+      entries.set(item.id, resolvedEntry(item, [sender, ...recipients], () => ({ ...item, sender, recipients })));
     }
   }
   // 대기 말은 확정 말 뒤에 얹는다. 같은 사람 발송 id 의 확정 말이 이미 있으면 그 말이 이긴다(중복으로 세우지 않는다).

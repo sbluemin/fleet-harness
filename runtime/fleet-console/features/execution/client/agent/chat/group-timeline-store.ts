@@ -306,7 +306,8 @@ function renameCommodoreSpeakers(snapshot: GroupTimelineSnapshot, alias: string 
       }
       case "member-joined":
       case "member-left":
-      case "board-action": {
+      case "board-action":
+      case "session-error": {
         const nextSpeaker = speaker(item.speaker);
         return nextSpeaker === item.speaker ? item : { ...item, speaker: nextSpeaker };
       }

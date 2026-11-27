@@ -1,0 +1,873 @@
+/* 지휘관 Inner Loop Flow — n8n 워크플로우 캔버스(데스크톱) + Quiet Thread(모바일 적응).
+   색·활자·굵기·반경은 모두 theme.css 토큰만 소비한다. 왼쪽 띠(border-left)는 쓰지 않고
+   균일한 1px 전체 둘레와 정숙한 면 틴트로만 상태를 구분한다. */
+
+.commander-flow {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  container: commander-flow / inline-size;
+  --agent-chat-font: var(--font-code);
+}
+
+.commander-flow-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+  margin-bottom: calc(-1 * var(--m-dock-h, 0px));
+  /* 오른쪽 floating Context Rail 과 겹치지 않도록 데스크톱 우측 여백을 확보한다. */
+  padding: calc(var(--space-4) + var(--conversation-overlay-top, 0px)) clamp(var(--space-6), 6cqi, 72px) calc(var(--space-3) + var(--m-dock-h, 0px)) clamp(var(--space-4), 4cqi, 48px);
+  scroll-padding-bottom: var(--m-dock-h, 0px);
+}
+
+:root[data-view-mode="mobile"] .commander-flow-log {
+  padding-inline: var(--space-4);
+}
+
+.commander-flow-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  font-family: var(--font-ui);
+  font-size: var(--font-body-size);
+  color: var(--text-primary);
+}
+
+.commander-flow-empty,
+.commander-flow-notice {
+  margin: 0;
+  align-self: center;
+  text-align: center;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+}
+
+/* ── 플루이드 애니메이션 키프레임 ──────────────────────────────────────── */
+
+@keyframes commander-flow-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes commander-flow-wire {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes commander-flow-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
+@keyframes commander-flow-node-breath {
+  0%, 100% {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--positive) 26%, transparent), var(--shadow-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--positive-glow), var(--shadow-soft);
+  }
+}
+
+.commander-flow-loop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  animation: commander-flow-enter var(--duration-base) var(--ease-spring) both;
+}
+
+/* ── 과거 완료 루프 1줄 미니 노드 리본 ─────────────────────────────────── */
+
+.commander-flow-ribbon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-column);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.commander-flow-ribbon:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-panel-raised);
+}
+
+.commander-flow-ribbon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commander-flow-ribbon-check {
+  flex: none;
+  color: var(--positive-ink);
+  font-size: var(--t-sm);
+  line-height: 1;
+}
+
+.commander-flow-ribbon-prompt {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.commander-flow-ribbon-chain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+
+.commander-flow-mini-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2) 2px var(--space-1);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline-column);
+  background: var(--control-rest);
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.commander-flow-mini-sep {
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+}
+
+.commander-flow-ribbon-meta {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commander-flow-ribbon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+/* ── n8n 도트 그리드 플로우 캔버스 ─────────────────────────────────────── */
+
+.commander-flow-shell {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-column);
+  background-color: color-mix(in oklab, var(--surface-panel) 62%, transparent);
+  background-image: radial-gradient(circle, color-mix(in oklab, var(--text-primary) 10%, transparent) 1px, transparent 1px);
+  background-size: 18px 18px;
+  overflow: hidden;
+}
+
+.commander-flow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline-column);
+  background: color-mix(in oklab, var(--surface-panel) 84%, transparent);
+}
+
+.commander-flow-head-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.commander-flow-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  flex: none;
+  background: var(--positive);
+}
+
+.commander-flow-status-dot.is-live {
+  animation: commander-flow-pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 0 3px var(--positive-glow);
+}
+
+.commander-flow-status-dot.is-error {
+  background: var(--coral);
+  box-shadow: 0 0 0 3px var(--coral-glow);
+}
+
+.commander-flow-status-dot.is-await {
+  background: var(--aurora);
+  box-shadow: 0 0 0 3px var(--aurora-glow);
+}
+
+.commander-flow-head-prompt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.commander-flow-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.commander-flow-head-dur {
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commander-flow-head-dur.is-live { color: var(--positive-ink); }
+.commander-flow-head-dur.is-error { color: var(--coral-ink); }
+.commander-flow-head-dur.is-await { color: var(--aurora-ink); }
+
+.commander-flow-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.commander-flow-collapse-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.commander-flow-collapse-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commander-flow-board-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  padding: var(--space-3) var(--space-3) var(--space-4);
+}
+
+.commander-flow-board {
+  position: relative;
+  margin: 0 auto;
+}
+
+.commander-flow-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.commander-flow-wire {
+  fill: none;
+  stroke: var(--hairline-strong);
+  stroke-width: 1.5;
+  stroke-opacity: 0.72;
+}
+
+.commander-flow-wire.is-dim {
+  stroke-opacity: 0.3;
+}
+
+.commander-flow-wire.is-live {
+  stroke: var(--positive);
+  stroke-width: 1.85;
+  stroke-opacity: 0.5;
+}
+
+.commander-flow-wire-flow {
+  fill: none;
+  stroke: var(--positive);
+  stroke-width: 1.85;
+  stroke-dasharray: 5 7;
+  animation: commander-flow-wire 1.1s linear infinite;
+}
+
+.commander-flow-wire.is-error {
+  stroke: var(--coral);
+  stroke-width: 1.85;
+  stroke-opacity: 0.78;
+  stroke-dasharray: 4 5;
+}
+
+.commander-flow-wire.is-await {
+  stroke: var(--aurora);
+  stroke-width: 1.65;
+  stroke-opacity: 0.7;
+  stroke-dasharray: 3 4;
+}
+
+.commander-flow-packet {
+  fill: var(--positive);
+}
+
+.commander-flow-packet.is-await {
+  fill: var(--aurora);
+}
+
+/* ── n8n 노드 카드 (균일 1px 전체 둘레, 왼쪽 띠 없음) ──────────────────── */
+
+.commander-flow-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition: transform var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.commander-flow-node:hover {
+  transform: translateY(-1px);
+  border-color: var(--hairline-strong);
+  background: var(--surface-panel-raised);
+  z-index: 3;
+}
+
+.commander-flow-node:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+  z-index: 4;
+}
+
+.commander-flow-node.is-live {
+  border-color: color-mix(in oklab, var(--positive) 56%, var(--hairline));
+  animation: commander-flow-node-breath 2.2s ease-in-out infinite;
+}
+
+.commander-flow-node.is-error {
+  border-color: color-mix(in oklab, var(--coral) 62%, transparent);
+  background: color-mix(in oklab, var(--coral) 9%, var(--surface-panel));
+}
+
+.commander-flow-node.is-warn {
+  border-color: color-mix(in oklab, var(--warn) 58%, transparent);
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface-panel));
+}
+
+.commander-flow-node.is-await {
+  border-color: color-mix(in oklab, var(--aurora) 60%, transparent);
+  background: color-mix(in oklab, var(--aurora) 8%, var(--surface-panel));
+}
+
+.commander-flow-node.is-dim {
+  opacity: 0.48;
+}
+
+.commander-flow-node-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.commander-flow-node-who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.commander-flow-node-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+}
+
+.commander-flow-node.is-error .commander-flow-node-title { color: var(--coral-ink); }
+.commander-flow-node.is-warn .commander-flow-node-title { color: var(--warn-ink); }
+.commander-flow-node.is-await .commander-flow-node-title { color: var(--aurora-ink); }
+
+.commander-flow-node-meta {
+  flex: none;
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commander-flow-node.is-live .commander-flow-node-meta { color: var(--positive-ink); }
+.commander-flow-node.is-error .commander-flow-node-meta { color: var(--coral-ink); }
+.commander-flow-node.is-warn .commander-flow-node-meta { color: var(--warn-ink); }
+.commander-flow-node.is-await .commander-flow-node-meta { color: var(--aurora-ink); }
+
+.commander-flow-node-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.commander-flow-node.is-error .commander-flow-node-sub {
+  color: var(--text-primary);
+}
+
+.commander-flow-human-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline-strong);
+  background: var(--control-rest);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+  flex: none;
+}
+
+/* 노드 좌우 포트 핸들 */
+.commander-flow-port {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--hairline-strong);
+  background: var(--surface-panel);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.commander-flow-port.is-in { left: -4px; }
+.commander-flow-port.is-out { right: -4px; }
+.commander-flow-port.is-live { border-color: var(--positive); background: var(--positive); }
+.commander-flow-port.is-error { border-color: var(--coral); background: var(--coral); }
+.commander-flow-port.is-warn { border-color: var(--warn); background: var(--warn); }
+.commander-flow-port.is-await { border-color: var(--aurora); background: var(--aurora); }
+.commander-flow-port.is-done { border-color: var(--text-tertiary); background: var(--text-tertiary); }
+
+/* 와이어 중앙 배지 */
+.commander-flow-wire-badge {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+
+.commander-flow-wire-badge:hover {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.commander-flow-wire-badge:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commander-flow-wire-badge.is-live {
+  border-color: color-mix(in oklab, var(--positive) 48%, var(--hairline));
+  color: var(--positive-ink);
+}
+
+.commander-flow-wire-badge.is-error {
+  border-color: color-mix(in oklab, var(--coral) 62%, transparent);
+  color: var(--coral-ink);
+}
+
+.commander-flow-wire-badge.is-await {
+  border-color: color-mix(in oklab, var(--aurora) 54%, var(--hairline));
+  color: var(--aurora-ink);
+}
+
+/* ── 노드/와이어 인라인 세부 검사 패널 ──────────────────────────────────── */
+
+.commander-flow-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--hairline-column);
+  background: var(--surface-panel);
+}
+
+.commander-flow-inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.commander-flow-inspector-title {
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--text-primary);
+}
+
+.commander-flow-inspector-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.commander-flow-inspector-body {
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: var(--t-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 승격 오류·경고 카드 (균일 1px 전체 둘레, 절대 접히지 않음) ────────── */
+
+.commander-flow-errors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.commander-flow-alert {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in oklab, var(--coral) 48%, var(--hairline));
+  background: var(--coral-glow);
+}
+
+.commander-flow-alert.is-warn {
+  border-color: color-mix(in oklab, var(--warn) 46%, var(--hairline));
+  background: var(--warn-glow);
+}
+
+.commander-flow-alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.commander-flow-alert-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: var(--coral-ink);
+}
+
+.commander-flow-alert.is-warn .commander-flow-alert-title {
+  color: var(--warn-ink);
+}
+
+.commander-flow-alert-code {
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.commander-flow-alert-detail {
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.commander-flow-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.commander-flow-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--hairline-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.commander-flow-action-btn:hover {
+  background: var(--wash-hover);
+}
+
+.commander-flow-action-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commander-flow-action-btn.is-coral {
+  border-color: color-mix(in oklab, var(--coral) 54%, transparent);
+  color: var(--coral-ink);
+}
+
+/* ── 최종 결과 착지 (말풍선 없는 정숙한 에디토리얼 본문) ───────────────── */
+
+.commander-flow-outcome {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+}
+
+.commander-flow-outcome-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--t-sm);
+}
+
+.commander-flow-outcome-tag {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+
+.commander-flow-outcome-body {
+  font-size: var(--font-body-size);
+  line-height: 1.65;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* ── 모바일 폴백: Quiet Thread (수직 1px 척추선, 왼쪽 띠 없음) ─────────── */
+
+.commander-flow-thread-anchor {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--hairline-column);
+  background: var(--surface-panel);
+}
+
+.commander-flow-thread-prompt {
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.commander-flow-thread-block {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: var(--space-2);
+  margin-left: var(--space-1);
+}
+
+.commander-flow-thread-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: var(--space-1);
+}
+
+.commander-flow-thread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--hairline-strong);
+  background: var(--surface-panel);
+  flex: none;
+}
+
+.commander-flow-thread-dot.is-done { background: var(--text-tertiary); border-color: var(--text-tertiary); }
+.commander-flow-thread-dot.is-live { background: var(--positive); border-color: var(--positive); box-shadow: 0 0 0 3px var(--positive-glow); }
+.commander-flow-thread-dot.is-error { background: var(--coral); border-color: var(--coral); box-shadow: 0 0 0 3px var(--coral-glow); }
+.commander-flow-thread-dot.is-await { background: var(--aurora); border-color: var(--aurora); box-shadow: 0 0 0 3px var(--aurora-glow); }
+
+.commander-flow-thread-spine {
+  width: 1px;
+  flex: 1 1 auto;
+  min-height: 16px;
+  margin-top: var(--space-1);
+  background: var(--hairline);
+}
+
+.commander-flow-thread-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.commander-flow-thread-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.commander-flow-thread-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+  border-radius: var(--radius-xs);
+}
+
+.commander-flow-thread-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: var(--space-1);
+}
+
+.commander-flow-thread-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  margin-left: calc(-1 * var(--space-2));
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.commander-flow-thread-step:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.commander-flow-thread-step:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commander-flow-thread-step .group-chat-name {
+  flex: none;
+  white-space: nowrap;
+}
+
+.commander-flow-thread-step-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commander-flow-thread-step.is-error .commander-flow-thread-step-text {
+  color: var(--coral-ink);
+  font-weight: var(--weight-medium);
+}
+
+/* ── 모션 축소 및 고대비 접근성 ────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .commander-flow-loop,
+  .commander-flow-status-dot.is-live,
+  .commander-flow-wire-flow,
+  .commander-flow-node.is-live {
+    animation: none;
+  }
+  .commander-flow-packet {
+    display: none;
+  }
+  .commander-flow-node,
+  .commander-flow-ribbon {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .commander-flow-node,
+  .commander-flow-ribbon,
+  .commander-flow-alert,
+  .commander-flow-action-btn {
+    border: 1px solid ButtonText;
+  }
+  .commander-flow-node:focus-visible,
+  .commander-flow-ribbon:focus-visible,
+  .commander-flow-action-btn:focus-visible {
+    outline: 2px solid CanvasText;
+  }
+}
