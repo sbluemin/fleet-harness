@@ -324,4 +324,54 @@ describe("commander chat client CLI failure state", () => {
     expect(loop.edges.some((edge) => edge.status === "error")).toBe(true);
     expect(loop.nodes.some((node) => node.status === "error")).toBe(true);
   });
+
+  it("suppresses generic turn_failed after chat_cli_unavailable and keeps queued prompts outside active loops", () => {
+    const rootId = "obj-root";
+    // Order matching ChatSession.ensureSdk(): error(chat_cli_unavailable) BEFORE turn-end(ok:false)
+    let cliJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 1000,
+      event: { kind: "dispatch", text: "Run check" },
+    }, rootId);
+    cliJournal = reduceConversationJournal(cliJournal, {
+      seq: 2,
+      at: 1005,
+      event: { kind: "error", code: "chat_cli_unavailable" },
+    }, rootId);
+    cliJournal = reduceConversationJournal(cliJournal, {
+      seq: 3,
+      at: 1006,
+      event: { kind: "turn-end", ok: false },
+    }, rootId);
+    const cliSnap = composeGroupTimeline({
+      rootObjectiveId: rootId,
+      participants: [{ speaker: { kind: "commander", name: "Commander", objectiveId: rootId }, activity: "idle" }],
+      journals: new Map([[rootId, cliJournal]]),
+    });
+    expect(cliSnap.cliFailure).toBe("missing");
+    expect(cliSnap.entries.filter((entry) => entry.kind === "session-error")).toEqual([]);
+
+    // Queued human message while Commander is still working stays in pendingPrompts and does not split/steal the running loop.
+    let activeJournal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, {
+      seq: 1,
+      at: 2000,
+      event: { kind: "dispatch", text: "First active task" },
+    }, rootId);
+    activeJournal = reduceConversationJournal(activeJournal, {
+      seq: 2,
+      at: 2050,
+      event: { kind: "queue", entries: [{ id: "q-1", text: "Queued follow-up\nline 2" }] },
+    }, rootId);
+    const activeSnap = composeGroupTimeline({
+      rootObjectiveId: rootId,
+      participants: [{ speaker: { kind: "commander", name: "Commander", objectiveId: rootId }, activity: "running" }],
+      journals: new Map([[rootId, activeJournal]]),
+    });
+    const activeFlow = buildCommanderFlow(activeSnap, { language: "en" });
+    expect(activeFlow.loops).toHaveLength(1);
+    expect(activeFlow.loops[0]!.status).toBe("live");
+    expect(activeFlow.loops[0]!.prompt).toBe("First active task");
+    expect(activeFlow.pendingPrompts).toHaveLength(1);
+    expect(activeFlow.pendingPrompts[0]!.text).toBe("Queued follow-up\nline 2");
+  });
 });

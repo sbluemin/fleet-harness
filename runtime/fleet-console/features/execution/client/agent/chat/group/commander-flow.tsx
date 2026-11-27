@@ -213,7 +213,7 @@ export function CommanderFlowConversation({
             </p>
           ) : null}
 
-          {model.loops.length === 0 ? (
+          {model.loops.length === 0 && model.pendingPrompts.length === 0 ? (
             <p className="commander-flow-empty">{snapshot.loading ? t("group.loading") : t("group.flow.empty")}</p>
           ) : model.loops.map((loop, index) => {
             const isLast = index === model.loops.length - 1;
@@ -241,6 +241,20 @@ export function CommanderFlowConversation({
               />
             );
           })}
+
+          {model.pendingPrompts.length > 0 ? (
+            <div className="commander-flow-pending-list" role="status">
+              {model.pendingPrompts.map((entry) => (
+                <div key={entry.id} className="commander-flow-pending" data-entry-id={entry.id}>
+                  <span className="commander-flow-human-mark" aria-hidden="true">
+                    {Array.from(t("group.you"))[0] ?? "Y"}
+                  </span>
+                  <span className="commander-flow-pending-text">{entry.text}</span>
+                  <span className="commander-flow-ribbon-meta">{t("group.pending")}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {cards}
         </div>
@@ -524,7 +538,7 @@ function QuietThreadLoop({
   return (
     <>
       <div className="commander-flow-thread-anchor">
-        <span className="commander-flow-thread-prompt">{loop.prompt}</span>
+        <span className="commander-flow-thread-prompt">{loop.triggerMessage?.text || loop.prompt}</span>
         {loop.durationLabel ? <span className="commander-flow-ribbon-meta">{loop.durationLabel}</span> : null}
       </div>
 

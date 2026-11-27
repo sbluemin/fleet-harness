@@ -106,6 +106,7 @@ export interface FlowLoop {
 
 export interface CommanderFlowModel {
   readonly loops: readonly FlowLoop[];
+  readonly pendingPrompts: readonly FlowMessageEntry[];
   readonly activeCount: number;
   readonly errorCount: number;
 }
@@ -260,6 +261,7 @@ interface BranchAccumulator {
 }
 
 function isLoopOpener(entry: GroupTimelineEntry): boolean {
+  if (entry.kind === "message" && entry.pending === true) return false;
   if (entry.kind === "message" && entry.speaker.kind === "human") return true;
   if (entry.kind === "message" && entry.speaker.kind === "commodore" && Boolean(entry.via)) return true;
   if (entry.kind === "decision-answer") return true;
@@ -287,10 +289,17 @@ export function buildCommanderFlow(
 
   const workingKeys = new Set(snapshot.working.map((speaker) => speakerKey(speaker)));
   const buckets: RawLoopBucket[] = [];
+  const pendingPrompts: FlowMessageEntry[] = [];
 
   for (const entry of snapshot.entries) {
     // IM 잡음(합류·제거)은 버린다.
     if (entry.kind === "member-joined" || entry.kind === "member-left") continue;
+
+    // 아직 발송되지 않은 예약 메시지는 진행 중인 루프를 끊지 않고 별도 대기 큐로 분리한다.
+    if (entry.kind === "message" && entry.pending === true) {
+      pendingPrompts.push(entry);
+      continue;
+    }
 
     if (isLoopOpener(entry)) {
       if (entry.kind === "decision-answer") {
@@ -1052,6 +1061,7 @@ export function buildCommanderFlow(
 
   return {
     loops,
+    pendingPrompts,
     activeCount: snapshot.working.length,
     errorCount: loops.reduce((sum, loop) => sum + loop.errors.length, 0) + (snapshot.cliFailure ? 1 : 0),
   };

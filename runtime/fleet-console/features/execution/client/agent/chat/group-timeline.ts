@@ -149,7 +149,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       lastClosedTurn = closedTurn;
       if (event.ok) {
         cliFailure = null;
-      } else if (event.stopped !== true) {
+      } else if (event.stopped !== true && cliFailure === null) {
         const hasTurnError = closedTurn !== null && entries.some((entry) => entry.kind === "session-error" && entry.turn === closedTurn);
         if (!hasTurnError) {
           entries.push({
