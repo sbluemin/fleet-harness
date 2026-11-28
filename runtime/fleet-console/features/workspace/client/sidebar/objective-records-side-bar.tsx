@@ -61,6 +61,7 @@ import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpan
 import { CommandBoardGlyph } from "../command-board/command-board.js";
 import { useCommandBoardCounts } from "../command-board/command-board-data.js";
 import { closeCommandBoard, toggleCommandBoard, useCommandBoardOpen } from "../command-board/command-board-store.js";
+import { useCommandBoardEnabled } from "../command-board/command-board-experiment.js";
 import { shortcutCommandLabel, useShortcutOverrides } from "../../../../core/client/src/integration/shortcut-bindings.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import { RowToolUse } from "./side-bar-cluster-row.js";
@@ -213,6 +214,7 @@ export function ObjectiveRecordsSideBar({
   const t = useT();
   useShortcutOverrides();
   const commandBoardOpen = useCommandBoardOpen();
+  const commandBoardEnabled = useCommandBoardEnabled();
   const commandBoardCounts = useCommandBoardCounts();
   const commandBoardShortcut = shortcutCommandLabel("console.command-board");
   const rootRef = useRef<HTMLElement | null>(null);
@@ -786,7 +788,7 @@ export function ObjectiveRecordsSideBar({
         {topStripTrailing}
       </div>
 
-      <div className={`side-bar-command-board-wrap${compact ? " is-compact" : ""}`}>
+      {commandBoardEnabled ? <div className={`side-bar-command-board-wrap${compact ? " is-compact" : ""}`}>
         {compact ? (
           <button
             type="button"
@@ -816,7 +818,7 @@ export function ObjectiveRecordsSideBar({
             </span>
           </button>
         )}
-      </div>
+      </div> : null}
 
       <div className="side-bar-wide">
       {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}

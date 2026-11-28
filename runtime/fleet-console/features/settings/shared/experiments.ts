@@ -48,6 +48,8 @@ export interface ConsoleExperimentSettings {
   readonly commodoreEffort: ExperimentEffort;
   /** TaskForce — 여러 사령관의 합동 판단. 옵트인이며 기본 꺼짐이다. */
   readonly taskforce: boolean;
+  /** 목표 보드(지휘판) — 사이드바 '목표' 진입과 보드 화면. 옵트인이며 기본 꺼짐이다. */
+  readonly commandBoard: boolean;
 }
 
 /**
@@ -68,6 +70,7 @@ export const DEFAULT_EXPERIMENT_SETTINGS: ConsoleExperimentSettings = {
   commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
   commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
   taskforce: false,
+  commandBoard: false,
 };
 
 /**
@@ -113,6 +116,7 @@ export function resolveExperimentSettings(value: unknown): ConsoleExperimentSett
     commodoreModel: COMMODORE_DEFAULT_SELECTION.model,
     commodoreEffort: COMMODORE_DEFAULT_SELECTION.effort,
     taskforce: record.taskforce === true,
+    commandBoard: record.commandBoard === true,
   };
 }
 

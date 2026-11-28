@@ -8,6 +8,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { CORE_SHORTCUT_COMMANDS } from "./shortcut-bindings.js";
 import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
+import { isCommandBoardEnabled } from "../../../../features/workspace/client/command-board/command-board-experiment.js";
 import { getT, type CoreMessageKey } from "../i18n/index.js";
 import { fuzzyMatchPaletteLabel, searchTokens, type PaletteCommandMatch } from "./palette-match.js";
 
@@ -163,7 +164,7 @@ export function buildPaletteCommands(
     const undoKey = options.undoKind === "deletion" ? "palette.undoClose" : "palette.undoArchive";
     push({ commandId: "undo-close", label: t(undoKey), aliasLabel: alias(undoKey), action: { kind: "undo-close" }, group: "console", glyph: "console-undo", shortcut: "console.undo-close" });
   }
-  push({ commandId: "open-command-board", label: t("palette.openCommandBoard"), aliasLabel: alias("palette.openCommandBoard"), action: { kind: "open-command-board" }, group: "console", glyph: "view-status-axis", shortcut: "console.command-board" });
+  if (isCommandBoardEnabled()) push({ commandId: "open-command-board", label: t("palette.openCommandBoard"), aliasLabel: alias("palette.openCommandBoard"), action: { kind: "open-command-board" }, group: "console", glyph: "view-status-axis", shortcut: "console.command-board" });
   push({ commandId: "open-archive", label: t("palette.openArchive"), aliasLabel: alias("palette.openArchive"), action: { kind: "open-archive" }, group: "console", glyph: "objective-archive" });
   // 현재 Objective — 이 구역만이 Objective을 가리키는 명령을 가진다. 다른 Objective의 동작은
   // 검색 결과 행의 동작 띠가 맡는다(Objective마다 재개·닫기 쌍을 늘어놓던 옛 홈은 첫 화면을

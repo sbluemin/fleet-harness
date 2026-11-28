@@ -12,6 +12,7 @@ import { commodoreAvatarKey } from "../../../../../features/workspace/shared/ava
 import type { MongleState } from "../../../../../features/workspace/shared/avatars.js";
 import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { CommandBoardGlyph } from "../../../../../features/workspace/client/command-board/command-board.js";
+import { useCommandBoardEnabled } from "../../../../../features/workspace/client/command-board/command-board-experiment.js";
 import { useCommandBoardCounts } from "../../../../../features/workspace/client/command-board/command-board-data.js";
 import { isNotStartedRow } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
 import type { ObjectiveCluster } from "../../../../../features/objectives/shared/objective-clusters.js";
@@ -103,6 +104,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const order = useSidebarOrder();
   const clusters = useObjectiveClusters();
   const boardCounts = useCommandBoardCounts();
+  const commandBoardEnabled = useCommandBoardEnabled();
   const attentionRows = useMobileAttentionRows();
   const bindings = useRailEntries();
   const shownDestinations = useMobileDestinationBindings(bindings, mobileHomeCommodoreId());
@@ -196,24 +198,26 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.create")} onClick={() => pushMobileSheet({ kind: "create" })}><MobileIcon name="plus" /></button>
       </header>
       <div className="mobile-conv-scroll">
-        <button
-          type="button"
-          data-press="r1"
-          className="mobile-home-board-entry"
-          onClick={() => setMobileDestination({ kind: "command-board" })}
-        >
-          <span className="mobile-home-board-entry-icon" aria-hidden="true"><CommandBoardGlyph size={18} /></span>
-          <span className="mobile-home-board-entry-copy">
-            <span className="mobile-home-board-entry-title">{t("commandBoard.title")}</span>
-            <span className="mobile-home-board-entry-sub">
-              {t("commandBoard.mobileEntrySummary", { fresh: boardCounts.fresh, active: boardCounts.active, review: boardCounts.review, done: boardCounts.done })}
+        {commandBoardEnabled ? (
+          <button
+            type="button"
+            data-press="r1"
+            className="mobile-home-board-entry"
+            onClick={() => setMobileDestination({ kind: "command-board" })}
+          >
+            <span className="mobile-home-board-entry-icon" aria-hidden="true"><CommandBoardGlyph size={18} /></span>
+            <span className="mobile-home-board-entry-copy">
+              <span className="mobile-home-board-entry-title">{t("commandBoard.title")}</span>
+              <span className="mobile-home-board-entry-sub">
+                {t("commandBoard.mobileEntrySummary", { fresh: boardCounts.fresh, active: boardCounts.active, review: boardCounts.review, done: boardCounts.done })}
+              </span>
             </span>
-          </span>
-          {boardCounts.review > 0 ? (
-            <span className="mobile-home-board-entry-badge is-review">{t("commandBoard.sidebarReview", { n: boardCounts.review })}</span>
-          ) : null}
-          <MobileIcon name="right" size={16} className="mobile-home-chip-caret" />
-        </button>
+            {boardCounts.review > 0 ? (
+              <span className="mobile-home-board-entry-badge is-review">{t("commandBoard.sidebarReview", { n: boardCounts.review })}</span>
+            ) : null}
+            <MobileIcon name="right" size={16} className="mobile-home-chip-caret" />
+          </button>
+        ) : null}
         {visibleAttention.length > 0 ? (
           <section className="mobile-home-attention" aria-label={t("mobile.home.attention")}>
             <div className="mobile-home-attention-head">

@@ -1,6 +1,7 @@
 import { useClusterIndex } from "../../../../../features/workspace/client/objective-clusters.js";
 import { useAvatarClaims } from "../../../../../features/workspace/client/avatars.js";
 import { CommandBoardGlyph } from "../../../../../features/workspace/client/command-board/command-board.js";
+import { useCommandBoardEnabled } from "../../../../../features/workspace/client/command-board/command-board-experiment.js";
 import { isNotStartedRow, useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
@@ -24,6 +25,7 @@ export function useMobileCommodoreAttentionCount(commodoreId: string): number {
  */
 export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commodoreId: string; readonly leave: (run: () => void) => void }) {
   const t = useT();
+  const commandBoardEnabled = useCommandBoardEnabled();
   const state = useConsoleState();
   const bindings = useRailEntries();
   const clusterIndex = useClusterIndex();
@@ -73,21 +75,23 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
         </div>
       </> : null}
       <MobileCommanderList key={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
-      <button
-        type="button"
-        data-press="r1"
-        className="mobile-commodore-board-link"
-        onClick={() => leave(() => setMobileDestination({ kind: "command-board", commodoreId }))}
-      >
-        <span className="mobile-commodore-board-link-main">
-          <CommandBoardGlyph size={16} />
-          <span>{t("commandBoard.mobileOpenBoard")}</span>
-        </span>
-        <span className="mobile-commodore-board-link-meta">
-          {settledSummary ? <span>{settledSummary}</span> : null}
-          <span aria-hidden="true">→</span>
-        </span>
-      </button>
+      {commandBoardEnabled ? (
+        <button
+          type="button"
+          data-press="r1"
+          className="mobile-commodore-board-link"
+          onClick={() => leave(() => setMobileDestination({ kind: "command-board", commodoreId }))}
+        >
+          <span className="mobile-commodore-board-link-main">
+            <CommandBoardGlyph size={16} />
+            <span>{t("commandBoard.mobileOpenBoard")}</span>
+          </span>
+          <span className="mobile-commodore-board-link-meta">
+            {settledSummary ? <span>{settledSummary}</span> : null}
+            <span aria-hidden="true">→</span>
+          </span>
+        </button>
+      ) : null}
       <MobileArchivedFinished commodoreId={commodoreId} leave={leave} />
     </div>
   );
