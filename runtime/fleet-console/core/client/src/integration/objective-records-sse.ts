@@ -8,8 +8,26 @@ import { applyDesktopShellUpdateSnapshot } from "./desktop-shell-update.js";
 import { applyControlHolder, applyControlReclaimed, applyGroupRemoved, applyGroupUpdate, applyObserverStatus, applyObjectiveRemoved, applyObjectiveUpdate, getState, hydrateGroups, hydrateObjectiveRecords, setConnectionState } from "./store.js";
 import type { ControlHolder, ObjectiveRecord } from "./types.js";
 
-const MAX_RECONNECT_DELAY_MS = 30_000;
-/** 깨우기가 앞당긴 시도도 직전 시도와 이만큼은 떨어진다 — 백오프의 가장 짧은 대기와 같다. */
+/**
+ * 백오프의 상한. 끊긴 동안 화면은 서버가 돌아왔는지 다음 시도로만 안다 — 이 값이 곧 "호스트가 돌아온 뒤
+ * 화면이 다시 붙기까지"의 최악 대기다(30초였을 때 실측 8.7초, 이론상 최대 30초). 1·2·4·8초 계단은 그대로라
+ * 처음 15초의 일정과 모바일의 10초 조용함(`MOBILE_QUIET_MS`)은 바뀌지 않는다.
+ *
+ * 서버가 내려가 있는 동안의 시도는 연결 거절로 곧바로 끝나 서버에 닿지 않는다. 시도가 서버에 닿는 것은
+ * 서버가 돌아온 순간 한 번이며, 그 수는 상한과 무관하게 기기 수와 같다 — 상한은 그 한 번이 얼마나 빨리
+ * 오는지만 정한다.
+ */
+const MAX_RECONNECT_DELAY_MS = 10_000;
+/**
+ * 각 대기를 이 비율 안에서 무작위로 **줄인다**(늘리지 않는다 — 최악 대기는 그대로 상한이다).
+ *
+ * 호스트가 내려가면 붙어 있던 기기가 모두 같은 순간에 끊기므로, 흔들림이 없으면 모두 같은 박자로 다시
+ * 시도해 서버가 돌아온 직후 한꺼번에 몰린다. 원격 리스너의 무인증 조인은 동시 8개를 넘으면 `busy`로
+ * 돌려보내므로(remote-join-guard), 몰린 기기의 일부는 한 칸을 더 기다리게 된다. 칸마다 따로 흔들리므로
+ * 같은 순간 끊긴 기기들도 칸이 쌓일수록 흩어지고, 상한에 이른 뒤에는 한 칸마다 최대 2초씩 더 벌어진다.
+ */
+const RECONNECT_JITTER_RATIO = 0.2;
+/** 깨우기가 앞당긴 시도도 직전 시도와 이만큼은 떨어진다 — 백오프의 첫 대기와 같다. */
 const WAKE_MIN_GAP_MS = 1_000;
 /** 서버는 30초마다 heartbeat를 보낸다 — 두 번을 놓치고도 아무 프레임이 없으면 조용히 끊긴 연결로 본다. */
 const STALE_AFTER_MS = 75_000;
@@ -17,8 +35,9 @@ const STALE_AFTER_MS = 75_000;
 const FRESHNESS_GRACE_MS = 1_500;
 /**
  * 재연결 시도(스냅숏 3종 조회와 세션 재합류)의 기한. 이 조회들은 로컬 상태를 읽는 가벼운 응답이라 건강한 연결에서는
- * 원격 화면에서도 1초 안팎에 끝난다. 그 열 배 넘게 기다려 느린 망을 오판하지 않으면서, 최대 백오프(30초)보다 짧게 잡아
- * 답 없는 요청 하나가 재연결 일정을 백오프 한 칸 넘게 밀지 않게 한다.
+ * 원격 화면에서도 1초 안팎에 끝난다. 그 열 배 넘게 기다려 느린 망(큰 스냅숏을 받는 휴대폰 회선)을 오판하지 않는다.
+ * 백오프 상한(10초)보다 길어서, 답 없는 요청 하나는 재연결을 이 기한에 다음 대기 한 칸을 더한 만큼까지 늦출 수 있다
+ * — 매달린 요청을 일찍 끊는 이득보다 느리지만 살아 있는 응답을 끊는 손해가 크다.
  */
 const RECONNECT_ATTEMPT_DEADLINE_MS = 15_000;
 
@@ -33,7 +52,8 @@ let lastAttemptAt = 0;
  *
  * 대기 중인 시도를 지금 돌리면, 앞당긴 시간만큼 다음 대기가 길어져 그다음 시도는 원래 일정의
  * 자리에 그대로 선다. 그 빚을 다 갚기 전에는 다시 당기지 않으므로, 탭 전환을 아무리 연타해도
- * 어느 구간의 시도 수는 백오프 일정보다 많아야 한 번 더 많다 — 장기 단절에서는 그대로 분당 2회다.
+ * 어느 구간의 시도 수는 백오프 일정보다 많아야 한 번 더 많다 — 장기 단절에서는 그대로 분당 6~7.5회다
+ * (8~10초 간격). 원격 리스너의 조인 실패 예산(출처당 분당 10회)보다 낮다.
  * 실패한 깨우기가 백오프를 1초로 되돌리지 않는 것도 같은 이유다: 되돌리면 1·2·4·8·16초 계단이
  * 깨울 때마다 처음부터 다시 돌아 이 상한을 우회한다.
  */
@@ -349,12 +369,17 @@ function scheduleReconnect(): void {
   const now = Date.now();
   // 방금 끊긴 연결도 직전 시도로 친다 — 첫 깨우기도 단절 1초 안에는 서버를 두드리지 않는다.
   lastAttemptAt = now;
-  const delayMs = reconnectDelayMs + wakeBorrowedMs;
+  const delayMs = jitteredDelay(reconnectDelayMs) + wakeBorrowedMs;
   wakeAllowedAt = now + wakeBorrowedMs;
   wakeBorrowedMs = 0;
   pendingRetry = retry;
   reconnectDueAt = now + delayMs;
   reconnectHandle = setTimeout(retry, delayMs);
+}
+
+/** 백오프 한 칸을 `RECONNECT_JITTER_RATIO` 안에서 무작위로 줄인다 — 결과는 언제나 `baseMs` 이하다. */
+function jitteredDelay(baseMs: number): number {
+  return Math.round(baseMs * (1 - RECONNECT_JITTER_RATIO * Math.random()));
 }
 
 /**
