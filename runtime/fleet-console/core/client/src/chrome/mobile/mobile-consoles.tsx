@@ -11,7 +11,7 @@ import { useT } from "../../i18n/index.js";
 import { openConsoleSwitcher } from "../../integration/mobile-appearance-store.js";
 import {
   forgetMobileHomeScrollTop,
-  hasMobileConsoleArrival,
+  peekMobileConsoleArrival,
   mobileConsolesSeamless,
   mobileSwitchKey,
   peekMobileHomeScrollTop,
@@ -57,7 +57,10 @@ export function useMobileConsoleArrival(): void {
   const state = useConsoleState();
   const ready = state.bootstrapped && commodoreListLoaded();
   useEffect(() => {
-    if (!ready || !hasMobileConsoleArrival()) return;
+    const pending = peekMobileConsoleArrival();
+    if (!ready || !pending) return;
+    // 목표 기록은 사령관 목록과 따로 적재된다(bootstrapped가 그것을 보장하지 않는다) — commander가 있으면 기록이 선 뒤에 꺼낸다.
+    if (pending.commander && !state.objectiveRecordsHydrated) return;
     const arrival = takeMobileConsoleArrival();
     if (!arrival) return;
     const commodore = commodores.find((row) => row.commodoreId === arrival.commodore);
@@ -71,7 +74,7 @@ export function useMobileConsoleArrival(): void {
       return;
     }
     openMobileHomeCommodore(commodore);
-  }, [ready, commodores, state.objectiveRecords]);
+  }, [ready, commodores, state.objectiveRecords, state.objectiveRecordsHydrated]);
 }
 
 /**

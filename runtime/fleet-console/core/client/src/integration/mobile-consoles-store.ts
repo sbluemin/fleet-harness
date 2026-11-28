@@ -274,9 +274,9 @@ export function takeMobileConsoleArrival(): MobileConsoleArrival | null {
   return arrival;
 }
 
-/** 도착할 때까지 남은 도착이 있는가(꺼내기 전). */
-export function hasMobileConsoleArrival(): boolean {
-  return documentArrival !== null;
+/** 아직 꺼내지 않은 이 문서의 도착 — 읽기만(언제 꺼낼지 정하는 데 쓴다). */
+export function peekMobileConsoleArrival(): MobileConsoleArrival | null {
+  return documentArrival;
 }
 
 /** 도착이 남긴 홈 목록 위치 — 읽기만. */

@@ -19,7 +19,7 @@ vi.mock("../features/commodore/client/commodore-list.js", () => ({
   commodoreListLoaded: () => commodoreList.loaded,
   selectMobileCommodore: (id: string | null) => { commodoreList.selected.push(id); },
 }));
-const consoleState = vi.hoisted(() => ({ bootstrapped: true, objectiveRecords: [] as { id: string; commodoreId: string }[] }));
+const consoleState = vi.hoisted(() => ({ bootstrapped: true, objectiveRecordsHydrated: true, objectiveRecords: [] as { id: string; commodoreId: string }[] }));
 vi.mock("../core/client/src/hooks/use-store.js", () => ({ useConsoleState: () => consoleState }));
 const focused = vi.hoisted(() => [] as string[]);
 vi.mock("../core/client/src/integration/store.js", () => ({ focusObjective: (id: string) => { focused.push(id); } }));
@@ -74,6 +74,7 @@ beforeEach(() => {
   commodoreList.rows = [];
   commodoreList.loaded = true;
   consoleState.objectiveRecords = [];
+  consoleState.objectiveRecordsHydrated = true;
   const saved = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => saved.get(key) ?? null, setItem: (key: string, value: string) => { saved.set(key, value); }, removeItem: (key: string) => { saved.delete(key); }, clear: () => saved.clear() });
   store.resetMobileConsolesForTest();
@@ -266,6 +267,21 @@ describe("mobile console arrival", () => {
     expect(commodoreList.selected).toEqual(["c-1"]);
     expect(focused).toEqual(["o-1"]);
     expect(posted.filter((body) => body.type === "arrived")).toHaveLength(1);
+  });
+
+  it("waits for objective hydration before consuming a commander arrival", () => {
+    commodoreList.rows = [{ commodoreId: "c-1", theaters: [] }];
+    consoleState.objectiveRecordsHydrated = false;
+    plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "c-1", commander: "o-1" } });
+    store.installMobileConsoles();
+    mount(createElement(Probe));
+    expect(destinations).toEqual([]);
+    expect(posted).toEqual([]);
+    consoleState.objectiveRecords = [{ id: "o-1", commodoreId: "c-1" }];
+    consoleState.objectiveRecordsHydrated = true;
+    mount(createElement(Probe));
+    expect(focused).toEqual(["o-1"]);
+    expect(posted).toEqual([{ v: 1, type: "arrived" }]);
   });
 
   it("waits for the commodore list, then opens the commodore", () => {
