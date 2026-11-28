@@ -33,6 +33,47 @@ final class TargetStoreTests: XCTestCase {
     _ = deck
   }
 
+  func testEachTargetKeepsARandomOpaqueIdAndItsPlaceAcrossReconnects() throws {
+    let kv = InMemoryKeyValueStore()
+    var counter = 0
+    let deck = TargetStore(store: kv) { counter += 1; return "id-\(counter)" }
+    deck.upsert(target("https://one.example:1001", "one.example", 1001, label: "One"))
+    deck.upsert(target("https://two.example:1002", "two.example", 1002, label: "Two"))
+    // 다시 연결(commit)해도 순서와 id가 그대로다 — 전환마다 목록이 재배열되지 않는다.
+    deck.upsert(target("https://one.example:1001", "one.example", 1001, label: "One again", fp: "C"))
+    XCTAssertEqual(deck.records().map(\.id), ["id-1", "id-2"])
+    XCTAssertEqual(deck.list().map(\.origin), ["https://one.example:1001", "https://two.example:1002"])
+    XCTAssertEqual(deck.active()?.origin, "https://one.example:1001")
+    XCTAssertEqual(deck.find(id: "id-2")?.target.origin, "https://two.example:1002")
+    // id는 주소·지문에서 유도되지 않는다.
+    let stored = try XCTUnwrap(kv.string(forKey: "targets-v3"))
+    XCTAssertTrue(stored.contains("\"id\":\"id-1\""))
+    // 지웠다가 다시 붙이면 새 id다.
+    deck.remove("https://one.example:1001")
+    deck.upsert(target("https://one.example:1001", "one.example", 1001, label: "One"))
+    XCTAssertEqual(deck.records().map(\.id), ["id-2", "id-3"])
+  }
+
+  func testTargetsSavedBeforeIdsAreMigratedOnceToStableRandomIds() throws {
+    let kv = InMemoryKeyValueStore()
+    let legacy: [String: Any] = [
+      "active": "https://one.example:1001",
+      "targets": [
+        ["origin": "https://one.example:1001", "hostname": "one.example", "port": 1001, "label": "One",
+         "fingerprint": String(repeating: "A", count: 64), "localHost": "127.0.0.1", "localPort": 41001],
+        ["id": "bad id!", "origin": "https://two.example:1002", "hostname": "two.example", "port": 1002, "label": "Two",
+         "fingerprint": String(repeating: "B", count: 64), "localHost": "127.0.0.1", "localPort": 41002],
+      ],
+    ]
+    kv.set(String(decoding: try JSONSerialization.data(withJSONObject: legacy), as: UTF8.self), forKey: "targets-v3")
+    let first = TargetStore(store: kv).records()
+    XCTAssertEqual(first.count, 2)
+    XCTAssertTrue(first.allSatisfy { TargetStore.isValidId($0.id) && UUID(uuidString: $0.id) != nil })
+    XCTAssertNotEqual(first[0].id, first[1].id)
+    XCTAssertEqual(TargetStore(store: kv).records().map(\.id), first.map(\.id))
+    XCTAssertEqual(TargetStore(store: kv).active()?.origin, "https://one.example:1001")
+  }
+
   func testRemoveClearsActiveOnlyForTheRemovedOrigin() {
     let kv = InMemoryKeyValueStore()
     let deck = TargetStore(store: kv)
