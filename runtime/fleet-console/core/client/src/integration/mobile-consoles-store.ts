@@ -166,10 +166,12 @@ let snapshot: MobileConsolesSnapshot = { capable: false, state: null, switching:
 /** r1 — 문서 적재 때 읽은 도착. 한 번 꺼내 쓰면 null. */
 let documentArrival: MobileConsoleArrival | null = null;
 /**
- * 홈 목록 위치(D1) — 같은 문서 안에서 사령관을 열었다 돌아올 때 복원한다(문서 메모리, 저장소 아님).
- * 도착 scrollTop이 초기값이다 → 전환 뒤 뒤로 가면 누를 때의 위치.
+ * 홈 목록 위치(D1, 결정 936bd6b1) — 도착 scrollTop으로만 세운다. 도착한 문서에서 홈이 처음 다시 설 때(전환 뒤 첫
+ * 뒤로 가기) 한 번 복원하고 비운다. 같은 콘솔 안에서 사령관을 열었다 돌아오는 것은 현행대로 복원하지 않는다.
  */
 let homeScrollMemory: number | null = null;
+/** 도착이 연 화면(사령관/목표)이 실제로 섰는가 — 그 전에 서 있던 홈이 복원을 써 버리지 않게 한다. */
+let arrivalScreenShown = false;
 /** 도착을 어떻게 처리했는가 — 첫 의미 있는 화면(r7)을 판정하는 데 쓴다. */
 export type MobileArrivalOutcome = "objective" | "commodore" | "home";
 let arrivalOutcome: MobileArrivalOutcome | null = null;
@@ -278,6 +280,7 @@ export function resetMobileConsolesForTest(): void {
   installed = false;
   documentArrival = null;
   homeScrollMemory = null;
+  arrivalScreenShown = false;
   arrivalOutcome = null;
   paintSignalled = false;
   snapshot = { capable: false, state: null, switching: null };
@@ -337,13 +340,26 @@ export function peekMobileConsoleArrival(): MobileConsoleArrival | null {
   return documentArrival;
 }
 
-/** 홈이 돌아올 때 맞출 목록 위치(D1) — 없으면 null(맨 위). */
+/** 도착이 남긴 홈 목록 위치(D1) — 없으면 null(복원 없음, 현행). */
 export function readMobileHomeScrollTop(): number | null {
   return homeScrollMemory;
 }
 
-/** 홈 목록이 스크롤될 때 그 위치를 기억한다(문서 메모리). */
-export function rememberMobileHomeScrollTop(scrollTop: number): void {
-  if (!Number.isFinite(scrollTop)) return;
-  homeScrollMemory = Math.min(MOBILE_SCROLL_TOP_MAX, Math.max(0, Math.round(scrollTop)));
+/** 복원을 마쳤다 — 이후 홈은 현행대로 맨 위에서 선다. */
+export function forgetMobileHomeScrollTop(): void {
+  homeScrollMemory = null;
+}
+
+/** 도착이 연 화면이 섰다(r7 판정과 같은 순간). */
+export function noteMobileArrivalScreenShown(): void {
+  arrivalScreenShown = true;
+}
+
+/**
+ * 지금 선 홈이 도착 위치를 복원할 차례인가 — 도착을 꺼낸 뒤, 도착이 홈에 머물렀거나(없는 사령관) 도착이 연
+ * 화면이 이미 선 뒤(그러니 지금 홈은 그 화면에서 뒤로 온 것)일 때만.
+ */
+export function mobileHomeScrollRestorable(): boolean {
+  if (homeScrollMemory === null || documentArrival !== null) return false;
+  return arrivalOutcome === "home" || arrivalScreenShown;
 }

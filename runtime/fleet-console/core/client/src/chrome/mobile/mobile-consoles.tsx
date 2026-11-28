@@ -15,10 +15,12 @@ import {
   mobileFirstPaintSignalled,
   noteMobileArrivalOutcome,
   peekMobileConsoleArrival,
+  forgetMobileHomeScrollTop,
   mobileConsolesSeamless,
+  mobileHomeScrollRestorable,
   mobileSwitchKey,
+  noteMobileArrivalScreenShown,
   readMobileHomeScrollTop,
-  rememberMobileHomeScrollTop,
   requestMobileConsoleRoster,
   switchMobileConsole,
   takeMobileConsoleArrival,
@@ -84,28 +86,23 @@ export function useMobileConsoleArrival(): void {
 }
 
 /**
- * 홈 목록 위치(D1) — 홈이 설 때마다 기억한 위치(처음엔 도착 scrollTop)를 페인트 전에 맞추고, 스크롤하면 기억한다.
- * 같은 문서 안에서 사령관을 열었다 돌아와도, 전환 뒤 뒤로 가도 누를 때의 위치다. 목록이 아직 짧으면(사령관 목록 전)
- * 다음 그림에서 다시 맞추고, 닿거나 목록이 선 뒤에는 멈춘다. 맞추는 동안의 스크롤 이벤트(잘린 값)는 기억하지 않는다.
+ * 홈 목록 위치(D1, 결정 936bd6b1) — 콘솔 전환으로 도착한 뒤 홈이 처음 다시 설 때만, 누를 때의 위치(도착 scrollTop)를
+ * 페인트 전에 한 번 맞추고 비운다. 목록이 아직 짧으면(사령관 목록 전) 다음 그림에서 다시 맞추고, 닿거나 목록이 서면
+ * 끝낸다. 스크롤을 기억하지는 않는다 — 같은 콘솔 안에서 사령관을 열었다 돌아오는 것은 현행대로 맨 위다.
  */
 export function useMobileHomeScrollRestore(scrollRef: RefObject<HTMLElement | null>): void {
-  const settled = useRef(false);
+  const done = useRef(false);
   useLayoutEffect(() => {
-    if (settled.current) return;
+    if (done.current || !mobileHomeScrollRestorable()) return;
     const element = scrollRef.current;
-    if (!element) return;
     const target = readMobileHomeScrollTop();
-    if (target === null || target === 0) { settled.current = true; return; }
+    if (!element || target === null) return;
     element.scrollTop = target;
-    if (element.scrollHeight - element.clientHeight >= target || commodoreListLoaded()) settled.current = true;
+    if (element.scrollHeight - element.clientHeight >= target || commodoreListLoaded()) {
+      done.current = true;
+      forgetMobileHomeScrollTop();
+    }
   });
-  useEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const onScroll = () => { if (settled.current) rememberMobileHomeScrollTop(element.scrollTop); };
-    element.addEventListener("scroll", onScroll, { passive: true });
-    return () => element.removeEventListener("scroll", onScroll);
-  }, [scrollRef]);
 }
 
 /**
@@ -114,11 +111,13 @@ export function useMobileHomeScrollRestore(scrollRef: RefObject<HTMLElement | nu
  */
 export function useMobileFirstPaintSignal(screen: { readonly ready: boolean; readonly kind: "objective" | "commodore" | "home" | "other" }): void {
   useEffect(() => {
-    if (mobileFirstPaintSignalled() || !screen.ready || peekMobileConsoleArrival()) return;
+    if (!screen.ready || peekMobileConsoleArrival()) return;
     const outcome = getMobileArrivalOutcome();
     if (outcome === "objective" && screen.kind !== "objective") return;
     if (outcome === "commodore" && screen.kind !== "commodore") return;
-    markMobileFirstPaint();
+    // 도착 화면이 섰다 — 이 뒤에 서는 홈은 그 화면에서 뒤로 온 것이라 도착 위치를 복원한다(D1).
+    if (outcome === "objective" || outcome === "commodore") noteMobileArrivalScreenShown();
+    if (!mobileFirstPaintSignalled()) markMobileFirstPaint();
   });
 }
 

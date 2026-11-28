@@ -340,20 +340,56 @@ describe("mission 7 fixes", () => {
     return createElement("div", { ref, className: "probe-scroll" });
   }
 
-  it("remembers the home scroll within the document and seeds it from the arrival (D1)", () => {
+  const scrollOf = (host: HTMLElement) => host.querySelector<HTMLElement>(".probe-scroll")!.scrollTop;
+  const unmountAll = () => { mounted.splice(0).forEach((cleanup) => cleanup()); };
+
+  it("restores the arrival scroll once on the first return home after a switch, then behaves as before (D1, 936bd6b1)", () => {
+    commodoreList.rows = [{ commodoreId: "c-1", theaters: [] }];
     plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "c-1", scrollTop: 300 } });
     store.installMobileConsoles();
+    // 도착을 처리하기 전에 서 있던 홈은 복원을 쓰지 않는다.
+    const early = mount(createElement(ScrollProbe));
+    mount(createElement(PaintProbe, { kind: "home" }));
+    expect(scrollOf(early)).toBe(0);
     expect(store.readMobileHomeScrollTop()).toBe(300);
-    const first = mount(createElement(ScrollProbe));
-    const element = first.querySelector<HTMLElement>(".probe-scroll")!;
-    expect(element.scrollTop).toBe(300);
-    // 사람이 스크롤하면 기억하고, 홈이 다시 서면(사령관을 열었다 돌아옴) 그 위치로 맞춘다.
+    unmountAll();
+    // 도착이 연 사령관 화면이 서고, 뒤로 가서 홈이 다시 서면 누를 때의 위치다.
+    mount(createElement(PaintProbe, { kind: "commodore" }));
+    const back = mount(createElement(ScrollProbe));
+    expect(scrollOf(back)).toBe(300);
+    expect(store.readMobileHomeScrollTop()).toBeNull();
+    // 그 뒤 같은 콘솔 안에서 사령관을 열었다 돌아오면 현행처럼 복원하지 않는다(스크롤도 기억하지 않는다).
+    const element = back.querySelector<HTMLElement>(".probe-scroll")!;
     element.scrollTop = 120;
     element.dispatchEvent(new Event("scroll"));
-    expect(store.readMobileHomeScrollTop()).toBe(120);
-    mounted.splice(0).forEach((cleanup) => cleanup());
+    unmountAll();
     const again = mount(createElement(ScrollProbe));
-    expect(again.querySelector<HTMLElement>(".probe-scroll")!.scrollTop).toBe(120);
+    expect(scrollOf(again)).toBe(0);
+    expect(store.readMobileHomeScrollTop()).toBeNull();
+  });
+
+  it("restores at once when the arrival stays home (unknown commodore)", () => {
+    commodoreList.rows = [{ commodoreId: "c-1", theaters: [] }];
+    plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "gone", scrollTop: 240 } });
+    store.installMobileConsoles();
+    mount(createElement(PaintProbe, { kind: "home" }));
+    const home = mount(createElement(ScrollProbe));
+    expect(scrollOf(home)).toBe(240);
+    unmountAll();
+    expect(scrollOf(mount(createElement(ScrollProbe)))).toBe(0);
+  });
+
+  it("does not restore in a document without an arrival", () => {
+    plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: null });
+    store.installMobileConsoles();
+    expect(store.readMobileHomeScrollTop()).toBeNull();
+    const home = mount(createElement(ScrollProbe));
+    const element = home.querySelector<HTMLElement>(".probe-scroll")!;
+    element.scrollTop = 90;
+    element.dispatchEvent(new Event("scroll"));
+    unmountAll();
+    expect(scrollOf(mount(createElement(ScrollProbe)))).toBe(0);
+    expect(store.readMobileHomeScrollTop()).toBeNull();
   });
 
   function PaintProbe({ kind }: { readonly kind: "objective" | "commodore" | "home" | "other" }) {
