@@ -2767,6 +2767,77 @@ describe("commodore supervisor", () => {
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 
+  it("keeps human, board and TaskForce wakes pending during a retry, but opens the turn at once for routine and mail", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-20T12:00:00Z"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-retry-wake-")); dirs.push(dir);
+    const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+    const { entities } = ownership;
+    const id = ownership.create(); const peer = ownership.create();
+    const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+    const taskforce = createTaskforceStore({ root: path.join(dir, "taskforce"), emit: () => {} });
+    const tf = taskforce.create({ name: "TF", topic: "topic", members: [id, peer] });
+    const RATE = "API Error: 429 {\"type\":\"rate_limit_error\"}";
+    let failure: string | null = null;
+    const sent: string[] = [];
+    const agent = { createSession: async (options: AgentSessionOptions) => ({
+      send: async (input: AgentInput) => {
+        sent.push(typeof input === "string" ? input : JSON.stringify(input));
+        options.onEvent?.(failure ? { kind: "result", isError: true, source: "message", detail: failure } : { kind: "result", isError: false, source: "message" });
+      },
+      steer: () => false, cancel: () => undefined, dispose: async () => undefined,
+    }) } as unknown as AgentHost;
+    let boardWake: ((code: "pending") => void) | undefined;
+    const supervisor = createHostSupervisor({
+      store, agent, taskforce, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+      experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true, taskforce: true }),
+      board: () => ({ tools: () => [], watch: (_id, sink) => { boardWake = (code) => sink.wake(code); return { dispose: () => undefined, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }; }, objective: () => null }),
+      emit: () => {},
+    });
+    try {
+      supervisor.sync("restart");
+      // 재시도 대기 중에는 사람 말·보드 사건·TaskForce 깨움이 턴을 열지 않고 예약 재시도 시각을 그대로 둔다.
+      failure = RATE;
+      store.transcriptAppend(id, { kind: "message", text: "first" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(supervisor.status(id)).toMatchObject({ phase: "retrying" });
+      const retryAt = supervisor.status(id)!.nextWakeAt!;
+      const before = sent.length;
+      store.transcriptAppend(id, { kind: "message", text: "human while retrying" });
+      boardWake!("pending");
+      taskforce.append(tf.state.id, { speaker: { kind: "person" }, text: "TF 말" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sent).toHaveLength(before);
+      expect(supervisor.status(id)).toMatchObject({ phase: "retrying", nextWakeAt: retryAt });
+      failure = null;
+      await vi.advanceTimersByTimeAsync(retryAt - Date.now() + 1);
+      expect(sent.length).toBeGreaterThan(before);
+      expect(sent.slice(before).some((text) => text.includes("human while retrying"))).toBe(true);
+
+      // routine·mail 깨움은 예약 재시도를 지우고 즉시 턴을 연다.
+      failure = RATE;
+      store.transcriptAppend(id, { kind: "message", text: "second" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(supervisor.status(id)).toMatchObject({ phase: "retrying" });
+      failure = null;
+      store.routineAdd(id, { name: "Quick", task: "Check quickly", schedule: { kind: "once", at: Date.now() + 1_000 } });
+      await vi.advanceTimersByTimeAsync(1_000 + 1);
+      expect(sent.at(-1)).toContain("Check quickly");
+      expect(supervisor.status(id)?.nextWakeAt).toBeUndefined();
+      failure = RATE;
+      store.transcriptAppend(id, { kind: "message", text: "third" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(supervisor.status(id)).toMatchObject({ phase: "retrying" });
+      failure = null;
+      const mailCount = sent.length;
+      store.transcriptAppend(id, { kind: "received", messageId: randomUUID(), from: { id: peer, alias: "Peer" }, text: "mail body" });
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sent).toHaveLength(mailCount + 1);
+      expect(sent.at(-1)).toContain("mail body");
+      expect(supervisor.status(id)?.nextWakeAt).toBeUndefined();
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
   it("owns accepted images beyond the draft TTL, delivers blocks and releases success, clear and undelivered messages", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));
