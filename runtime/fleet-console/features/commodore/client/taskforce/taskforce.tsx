@@ -29,6 +29,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../../execution/shared/conversat
 import { MentionChip } from "../../../execution/client/composer-primitives/mention-chip.js";
 import { ConfirmDialog } from "@fleet-console/ui/react";
 import { MobileIcon } from "../../../../core/client/src/chrome/mobile/mobile-icons.js";
+import { getMobileDestination, setMobileDestination, useMobileDestination } from "../../../../core/client/src/chrome/mobile/mobile-store.js";
 import { MobileSheet } from "../../../../core/client/src/chrome/mobile/mobile-sheet.js";
 import { pushBackLayer } from "../../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -52,6 +53,17 @@ let mobileId: string | null = null;
 const listeners = new Set<() => void>();
 const emit = () => { for (const listener of listeners) listener(); };
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+/** 모바일 TF는 홈과 다른 목적지다. replace만 한다 — 루트 이동은 history를 늘리지 않는다. */
+function showMobileTaskforce(id: string): void {
+  mobileId = id;
+  setMobileDestination({ kind: "taskforce", id });
+  emit();
+}
+function releaseMobileTaskforce(): void {
+  if (mobileId !== null) mobileId = null;
+  if (getMobileDestination().kind === "taskforce") setMobileDestination({ kind: "home" });
+  emit();
+}
 export function connectTaskforceConversation(port: ClientConversationCapability | undefined): () => void {
   conversation = port;
   return () => { if (conversation === port) conversation = undefined; };
@@ -64,7 +76,7 @@ export function requestTaskforceCreate(preselected?: string): void {
 }
 export function requestTaskforceDelete(id: string): void { deleteRequest = id; emit(); }
 export function openTaskforce(id: string, options: { readonly focusComposer?: boolean } = {}): void {
-  if (!conversation?.open(SURFACE, { taskforceId: id, ...options })) { mobileId = id; emit(); }
+  if (!conversation?.open(SURFACE, { taskforceId: id, ...options })) showMobileTaskforce(id);
   void loadTaskforce(id);
 }
 /**
@@ -215,6 +227,7 @@ export function TaskforceHost() {
   const request = useSyncExternalStore(subscribe, () => createRequest);
   const deleting = useSyncExternalStore(subscribe, () => deleteRequest);
   const mobile = useSyncExternalStore(subscribe, () => mobileId);
+  const destination = useMobileDestination();
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
   const rows = useTaskforces();
   const selection = useConversationSurface();
@@ -224,11 +237,16 @@ export function TaskforceHost() {
   const viewMode = useViewMode().effective;
   useEffect(() => {
     if (!mobile || viewMode !== "desktop" || !conversation?.isActive()) return;
-    if (conversation.open(SURFACE, { taskforceId: mobile })) { mobileId = null; emit(); }
+    if (conversation.open(SURFACE, { taskforceId: mobile })) releaseMobileTaskforce();
   }, [mobile, viewMode]);
+  // 브라우저 뒤로는 목적지만 홈으로 바꾼다. 화면은 그 주소를 따라 닫히고, ‹ 는 onClose가 mobileId를 비운다.
+  useEffect(() => {
+    if (destination.kind === "taskforce") { if (mobileId !== destination.id) { mobileId = destination.id; emit(); } }
+    else if (mobileId !== null) { mobileId = null; emit(); }
+  }, [destination]);
   useEffect(() => {
     if (selection?.surfaceId === SURFACE && wasTaskforceRemoved(idOf(selection.params))) conversation?.close(SURFACE);
-    if (mobile && wasTaskforceRemoved(mobile)) { mobileId = null; emit(); }
+    if (mobile && wasTaskforceRemoved(mobile)) releaseMobileTaskforce();
   }, [rows, selection, mobile]);
   // 실험이 꺼지면 열려 있던 TF 대화·화면을 닫는다. 저장된 TF와 읽음 커서는 그대로 둔다.
   useEffect(() => {
@@ -236,11 +254,11 @@ export function TaskforceHost() {
     createRequest = null;
     deleteRequest = null;
     if (selection?.surfaceId === SURFACE) conversation?.close(SURFACE);
-    if (mobileId) { mobileId = null; }
-    emit();
+    if (mobileId !== null || getMobileDestination().kind === "taskforce") releaseMobileTaskforce();
+    else emit();
   }, [experiment.known, experiment.enabled, selection]);
   if (!experiment.enabled && experiment.known) return null;
-  return <>{request ? <TaskforceCreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => { mobileId = null; emit(); }} /> : null}</>;
+  return <>{request ? <TaskforceCreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => releaseMobileTaskforce()} /> : null}</>;
 }
 
 /**
@@ -462,7 +480,7 @@ function TaskforceDetails({ id, tab, language }: { readonly id: string; readonly
   };
   if (!state) return <p>{t("taskforce.loading")}</p>;
   return <div className="taskforce-details">
-    {tab === "overview" ? <div className="taskforce-overview"><section className="objectives-commodore-section objectives-commodore-panel-section"><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.topic")}</h3></div>{editingTopic ? <><textarea autoFocus className="objectives-commodore-input is-tall" aria-label={t("taskforce.topic")} maxLength={MAX_TASKFORCE_TOPIC} value={topic} readOnly={busy} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); event.stopPropagation(); setTopic(state.topic); closeTopic(); setFailed(false); } }} /><div className="objectives-commodore-description-actions"><button type="button" className="objectives-btn" disabled={busy} onClick={() => { setTopic(state.topic); closeTopic(); setFailed(false); }}>{t("taskforce.cancel")}</button><button type="button" className="objectives-btn" disabled={busy || !topic.trim() || topic === state.topic} onClick={() => void run("update", { topic: topic.trim() })}>{t("taskforce.save")}</button></div></> : <button ref={topicPreview} type="button" className={state.topic ? "objectives-commodore-description-preview" : "commodore-theaters-add"} title={state.topic ? t("taskforce.editTopic") : undefined} onClick={() => { setTopic(state.topic); setFailed(false); setEditingTopic(true); }}>{state.topic || <><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.addTopic")}</span></>}</button>}</section><section className="objectives-commodore-section objectives-commodore-panel-section taskforce-members-section" aria-label={t("taskforce.members")}><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.members")}</h3></div><div className="taskforce-member-list">{state.members.map((member) => <div className="taskforce-member" key={member}><button type="button" className="taskforce-member-open" onClick={() => { if (!openCommodoreConversation(member)) return; if (mobileId) { mobileId = null; emit(); } }}><CommodoreAvatar commodoreId={member} state={judging.includes(member) ? "running" : "idle"} size={28} label="" decorative /><strong>{memberName(member, language)}</strong></button><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setRemoving(member)}>{t("taskforce.remove")}</button></div>)}</div><button ref={addRef} type="button" className="commodore-theaters-add" disabled={busy || state.members.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={adding} onClick={() => setAdding(!adding)}><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.add")}</span></button>{adding ? <MemberPicker anchor={addRef.current} candidates={commodores.filter((row) => !state.members.includes(row.commodoreId)).map((row) => ({ id: row.commodoreId, name: memberName(row.commodoreId, language) }))} searchPlaceholder={t("taskforce.searchCommodores")} emptyText={t("taskforce.noMatchingCommodores")} listLabel={t("taskforce.members")} onPick={(id) => { if (busy || state.members.length >= MAX_TASKFORCE_MEMBERS) return; void run("addMembers", { commodoreIds: [id] }).finally(() => { window.requestAnimationFrame(() => { if (addRef.current?.isConnected) addRef.current.focus({ preventScroll: true }); }); }); }} onClose={() => setAdding(false)} /> : null}</section><TaskforceChainLimitRow value={state.chain.limit} language={language} onChange={(chainLimit) => void run("update", { chainLimit })} /></div> : null}
+    {tab === "overview" ? <div className="taskforce-overview"><section className="objectives-commodore-section objectives-commodore-panel-section"><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.topic")}</h3></div>{editingTopic ? <><textarea autoFocus className="objectives-commodore-input is-tall" aria-label={t("taskforce.topic")} maxLength={MAX_TASKFORCE_TOPIC} value={topic} readOnly={busy} onChange={(event) => setTopic(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); event.stopPropagation(); setTopic(state.topic); closeTopic(); setFailed(false); } }} /><div className="objectives-commodore-description-actions"><button type="button" className="objectives-btn" disabled={busy} onClick={() => { setTopic(state.topic); closeTopic(); setFailed(false); }}>{t("taskforce.cancel")}</button><button type="button" className="objectives-btn" disabled={busy || !topic.trim() || topic === state.topic} onClick={() => void run("update", { topic: topic.trim() })}>{t("taskforce.save")}</button></div></> : <button ref={topicPreview} type="button" className={state.topic ? "objectives-commodore-description-preview" : "commodore-theaters-add"} title={state.topic ? t("taskforce.editTopic") : undefined} onClick={() => { setTopic(state.topic); setFailed(false); setEditingTopic(true); }}>{state.topic || <><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.addTopic")}</span></>}</button>}</section><section className="objectives-commodore-section objectives-commodore-panel-section taskforce-members-section" aria-label={t("taskforce.members")}><div className="objectives-commodore-panel-head"><h3 className="objectives-commodore-panel-title">{t("taskforce.members")}</h3></div><div className="taskforce-member-list">{state.members.map((member) => <div className="taskforce-member" key={member}><button type="button" className="taskforce-member-open" onClick={() => { if (!openCommodoreConversation(member)) return; if (mobileId) releaseMobileTaskforce(); }}><CommodoreAvatar commodoreId={member} state={judging.includes(member) ? "running" : "idle"} size={28} label="" decorative /><strong>{memberName(member, language)}</strong></button><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setRemoving(member)}>{t("taskforce.remove")}</button></div>)}</div><button ref={addRef} type="button" className="commodore-theaters-add" disabled={busy || state.members.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={adding} onClick={() => setAdding(!adding)}><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.add")}</span></button>{adding ? <MemberPicker anchor={addRef.current} candidates={commodores.filter((row) => !state.members.includes(row.commodoreId)).map((row) => ({ id: row.commodoreId, name: memberName(row.commodoreId, language) }))} searchPlaceholder={t("taskforce.searchCommodores")} emptyText={t("taskforce.noMatchingCommodores")} listLabel={t("taskforce.members")} onPick={(id) => { if (busy || state.members.length >= MAX_TASKFORCE_MEMBERS) return; void run("addMembers", { commodoreIds: [id] }).finally(() => { window.requestAnimationFrame(() => { if (addRef.current?.isConnected) addRef.current.focus({ preventScroll: true }); }); }); }} onClose={() => setAdding(false)} /> : null}</section><TaskforceChainLimitRow value={state.chain.limit} language={language} onChange={(chainLimit) => void run("update", { chainLimit })} /></div> : null}
     {tab === "actions" ? <>{snapshot.actionsLoading ? <p className="taskforce-muted" role="status">{t("taskforce.loading")}</p> : null}{snapshot.actionsError ? <p className="taskforce-error" role="alert">{t("taskforce.failed")} <button type="button" className="taskforce-link" onClick={() => void loadTaskforceActions(id)}>{t("taskforce.retry")}</button></p> : null}{snapshot.actionEntries.length > 0 || snapshot.actionsLoaded ? <TaskforceActivityLog entries={snapshot.actionEntries} language={language} /> : null}</> : null}
     {tab !== "actions" && snapshot.hasMore ? <button type="button" className="taskforce-link" disabled={busy} onClick={() => { setBusy(true); void loadTaskforce(id, true).finally(() => setBusy(false)); }}>{t("taskforce.older")}</button> : null}
     {failed ? <p className="taskforce-error" role="alert">{t("taskforce.failed")}</p> : null}

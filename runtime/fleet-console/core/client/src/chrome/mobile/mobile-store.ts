@@ -34,6 +34,8 @@ export function subscribeMobileState(listener: () => void): () => void { return 
  */
 export type MobileDestination =
   | { readonly kind: "home" }
+  /** 태스크포스 화면. 홈과 주소를 나누는 루트 — `?dest=taskforce:<id>`. 열기·닫기는 replace만 한다. */
+  | { readonly kind: "taskforce"; readonly id: string }
   /**
    * 열린 Objective(대화)의 정보 화면 — Objective 화면 머리 pill이 연다. 열린 Objective이 없으면 홈(대화 목록)으로 읽힌다.
    * `tab`은 처음 세울 탭(엔트리의 `mobile.conversationPane`으로 오는 착지) — 생략하면 「정보」 탭이다.
@@ -61,6 +63,7 @@ export function readDestinationFromUrl(): MobileDestination {
   if (raw !== null && raw.startsWith("command-board:") && raw.length > 14) return { kind: "command-board", commodoreId: raw.slice(14) };
   if (raw === "attention" || raw === "archive" || raw === "search" || raw === "plugins" || raw === "info") return { kind: raw };
   if (raw !== null && raw.startsWith("info:") && raw.length > 5) return { kind: "info", tab: raw.slice(5) };
+  if (raw !== null && raw.startsWith("taskforce:") && raw.length > 10) return { kind: "taskforce", id: raw.slice(10) };
   if (raw !== null && raw.startsWith("plugin:") && raw.length > 7) {
     const [entryId = "", query] = splitOnce(raw.slice(7), "?");
     const params = query === undefined ? {} : Object.fromEntries(new URLSearchParams(query));
@@ -87,6 +90,7 @@ function writeDestinationToUrl(next: MobileDestination): void {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   const value = next.kind === "home" ? null
+    : next.kind === "taskforce" ? `taskforce:${next.id}`
     : next.kind === "command-board" ? (next.commodoreId ? `command-board:${next.commodoreId}` : "command-board")
     : next.kind === "plugin" ? `plugin:${next.entryId}${paramsSuffix(next.params)}`
     : next.kind === "search" && next.scope === "archive" ? "search:archive"
@@ -129,6 +133,7 @@ export function setMobileDestination(next: MobileDestination): void {
   if (destination.kind === next.kind && (destination as { entryId?: string }).entryId === (next as { entryId?: string }).entryId && (destination as { scope?: string }).scope === (next as { scope?: string }).scope
     && (destination as { tab?: string }).tab === (next as { tab?: string }).tab
     && (destination as { commodoreId?: string }).commodoreId === (next as { commodoreId?: string }).commodoreId
+    && (destination as { id?: string }).id === (next as { id?: string }).id
     && paramsSuffix((destination as { params?: Readonly<Record<string, string>> }).params) === paramsSuffix((next as { params?: Readonly<Record<string, string>> }).params)) { writeDestinationToUrl(next); return; }
   destination = next;
   if (next.kind === "plugin" && next.params?.theaterId) {
