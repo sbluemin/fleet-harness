@@ -8,6 +8,7 @@ import { useT } from "../../i18n/index.js";
  * 확인할 수 없어요」가 섰다 사라지면 화면이 고장처럼 보이고, 사람이 할 수 있는 일도 없다.
  * 그래서 이 시간을 넘겨 이어진 끊김만 띠로 말한다. 그때는 자동 회복이 늦어지고 있어 사람이
  * 「다시 연결」을 누를 이유가 생긴다. 백오프(1·2·4·8초…)의 처음 세 번 시도가 이 안에 든다.
+ * 그 전이라도 사람이 화면을 탭하면 바로 말한다(`useTappedSince`).
  */
 export const MOBILE_QUIET_MS = 10_000;
 
@@ -21,6 +22,31 @@ export function useHeldFor(since: number | null, holdMs: number): boolean {
     return () => clearTimeout(timer);
   }, [since, held, holdMs]);
   return held;
+}
+
+/**
+ * `since`부터 사람이 화면을 탭했는가(끌어 스크롤한 것은 세지 않는다). 끊긴 동안의 입력칸·버튼은 잠겨
+ * 있어 누르면 아무 일도 일어나지 않는다 — 조용히 기다리는 것은 읽는 동안뿐이고, 무언가 하려는 순간에는
+ * 기다리지 않고 이유를 말해야 한다. 잠긴 컨트롤에는 click이 오지 않으므로 포인터를 직접 듣는다.
+ */
+export function useTappedSince(since: number | null): boolean {
+  const [tappedFor, setTappedFor] = useState<number | null>(null);
+  useEffect(() => {
+    if (since === null) return;
+    let start: { readonly x: number; readonly y: number } | null = null;
+    const down = (event: PointerEvent) => { start = { x: event.clientX, y: event.clientY }; };
+    const up = (event: PointerEvent) => {
+      if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 10) setTappedFor(since);
+      start = null;
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+    };
+  }, [since]);
+  return since !== null && tappedFor === since;
 }
 
 /** `active`가 마지막으로 참이 된 시각. 거짓이 되면 null로 돌아간다. */
