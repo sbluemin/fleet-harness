@@ -257,21 +257,24 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
 
   /**
-   * 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로. 칸을 누르면 그 스페이스로 옮긴다(옮기는 일은 main 이 한다).
+   * 스페이스 선택 화면 — 디폴트와 사령관 스페이스를 그리드로. 칸을 누르면 그 스페이스로 옮긴다(옮기는 일은 main 이 한다).
    * 칸은 이름, 열린 탭의 아이콘과 수, 에이전트가 쓰는 중인지만 말한다 — 고르는 데 필요 없는 설명은 싣지 않는다.
+   * 탭이 없는 사령관 스페이스는 싣지 않는다 — 다만 보고 있는 스페이스, 에이전트가 쓰는 중이거나 사람을 기다리는 스페이스는 남긴다.
+   * 단추의 「보는 중」·「다른 스페이스에서 작업 중」·「내 조치 필요」 신호가 가리키는 칸이 그리드에 없으면 안 되기 때문이다.
    */
   const buildSpaces = (state: ChromeUiState, t: T): HTMLElement => {
     const chrome = state.chrome;
     const grid = h("div", { class: "spaces-grid", role: "list" });
     for (const space of chrome?.spaces ?? []) {
       const tabs = chrome!.tabs.filter((tab) => tab.spaceId === space.id);
-      const name = spaceName(t, space);
       const current = space.id === state.spaceId;
+      const needsYou = space.control === "user";
+      if (space.kind === "commodore" && tabs.length === 0 && !current && !space.driving && !needsYou) continue;
+      const name = spaceName(t, space);
       const count = tabCount(t, tabs.length);
       const mark = h("span", { class: "space-mark" });
       if (space.kind === "commodore") mark.append(h("span", { class: "space-initial", text: Array.from(name)[0] ?? "" })); else mark.append(glyph(G.home));
       const top = h("span", { class: "tile-top" }, mark, h("span", { class: "tile-name", text: name }));
-      const needsYou = space.control === "user";
       if (space.driving && !needsYou) top.append(h("span", { class: "tile-agent", title: t("space.driving"), attrs: { role: "img", "aria-label": t("space.driving") } }, agentGlyph()));
       const icons = h("span", { class: "tile-icons" });
       for (const tab of tabs.slice(0, TILE_ICONS)) {
