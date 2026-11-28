@@ -1,4 +1,5 @@
 import { composeQuotedPrompt, composerQuoteValues, createComposerQuotes, type ComposerQuoteItem } from "./composer-primitives/quotes.js";
+import { resolveComposerImageMarkers } from "./composer-primitives/attachments.js";
 import { createComposerAttachments, type ComposerAttachmentNotice, type ComposerAttachmentRecord, type ComposerAttachments } from "./composer-primitives/attachment-store.js";
 import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 
@@ -79,7 +80,8 @@ function createComposerDraft(objectiveId: string) {
       update({ sending: true, failed: false });
       try {
         // 인용은 문면 끝 줄로 합성된다 — 서버가 말풍선 문면에서 그 줄을 떼어 칩으로 기록한다(`splitQuotedPrompt`).
-        await messageAgentSession(objectiveId, composeQuotedPrompt(text, composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
+        // 본문의 이미지 표시는 보내는 첨부 순서로 다시 매긴다 — 서버가 같은 순서로 경로 지시에 라벨을 붙인다.
+        await messageAgentSession(objectiveId, composeQuotedPrompt(resolveComposerImageMarkers(text, attachments.read()).trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
         if (disposed) return true;
         attachments.releaseSent(sentKeys);
         quotes.releaseSent(sentQuotes.map((quote) => quote.key));

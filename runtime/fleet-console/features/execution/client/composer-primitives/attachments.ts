@@ -33,3 +33,24 @@ export async function discardComposerAttachment(id: string, request: (path: stri
 export function isComposerAttachmentCandidate(file: { readonly type: string }): boolean {
   return file.type.startsWith("image/");
 }
+
+/**
+ * 붙여넣은 커서 자리에 서는 표시. 서버는 받은 첨부 순서 k로 같은 글자(`[Image #k]`)를 붙인다 —
+ * 사령관 session·supervisor와 `launch-attachments.ts`가 이 글자의 사본을 가진다(브라우저↔호스트 import 경계).
+ */
+export function composerImageMarkers(items: readonly { readonly marker: number }[]): string {
+  return items.map((item) => `[Image #${item.marker}]`).join(" ");
+}
+
+/**
+ * 보낼 본문의 `[Image #n]`을 보낼 첨부(`ids()`와 같은 순서)의 위치(1부터)로 다시 매긴다. 칩이 없는 표시(지운 칩·실패한 업로드)는 지운다.
+ * 이 초안이 발급한 적 없는 번호(`issued` 밖)는 사람이 쓴 평문이라 그대로 둔다. 표시가 없는 칩은 그대로 나간다 — 위치를 모르는 첨부다.
+ */
+export function resolveComposerImageMarkers(text: string, snapshot: { readonly items: readonly { readonly id: string | null; readonly marker: number }[]; readonly issued: number }): string {
+  const sent = snapshot.items.filter((item) => item.id !== null);
+  return text.replace(/\[Image #(\d+)\]/g, (match, n: string) => {
+    if (Number(n) < 1 || Number(n) > snapshot.issued) return match;
+    const at = sent.findIndex((item) => item.marker === Number(n));
+    return at < 0 ? "" : `[Image #${at + 1}]`;
+  });
+}

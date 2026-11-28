@@ -2,6 +2,7 @@ import { useRef, useState, type ClipboardEvent, type DragEvent, type ReactNode }
 import { useSyncExternalStore } from "react";
 
 import type { ComposerAttachments, ComposerAttachmentsSnapshot } from "./attachment-store.js";
+import { composerImageMarkers } from "./attachments.js";
 
 /**
  * 붙여넣기·끌어놓기·파일 선택을 한 묶음으로 돌린다.
@@ -49,7 +50,11 @@ export function useComposerAttachmentInput(
       if (files.length === 0) return;
       if (!files.some((file) => file.type.startsWith("image/"))) return;
       event.preventDefault();
+      const before = store.read().items.length;
       add(files);
+      // 새로 선 칩의 표시를 커서 자리에 넣는다 — 편집 명령이라 입력 이벤트(onChange)와 실행 취소 기록을 함께 탄다.
+      const markers = composerImageMarkers(store.read().items.slice(before));
+      if (markers && event.currentTarget === document.activeElement) document.execCommand("insertText", false, markers);
     },
     onDragOver: (event) => {
       if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;

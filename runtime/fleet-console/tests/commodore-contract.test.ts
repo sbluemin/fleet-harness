@@ -686,9 +686,10 @@ it("attaches retained prior-turn person and covered taskforce images via objecti
     const turn1Text = (Array.isArray(prompts[0]) ? prompts[0] as { type: string; text?: string }[] : [])
       .filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
     expect(turn1Text).toContain("Attached images from the person (copy with attachmentIds; do not reconstruct them as text):");
+    expect(turn1Text).toContain(`[Image #1] ${kept.id}`);
     expect(turn1Text).toContain("Attached mail images (copy with attachmentIds before the turn ends; do not reconstruct them as text):");
     expect(turn1Text).toContain(`Attached Commodore images for message ${mailSent.messageId}:`);
-    expect(turn1Text).toContain(`1. ${tfImageId}`);
+    expect(turn1Text).toContain(`[Image #1] ${tfImageId}`);
     finish(); await vi.advanceTimersByTimeAsync(1);
     expect(attachments.read(to, kept.entry.messageId)).toEqual([]);
     expect(() => turnsByOwner.get(to)?.readAttachments([kept.id!])).toThrow("attachment_not_available");

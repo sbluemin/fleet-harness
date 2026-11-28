@@ -101,10 +101,16 @@ export async function readLaunchAttachmentBody(req: http.IncomingMessage, maxByt
   return Buffer.concat(chunks);
 }
 
-/** 사용자 프롬프트 뒤에 첨부 경로 지시를 잇는다. 프롬프트가 없으면 지시만으로 프롬프트가 된다. */
+/** 경로 지시 앞의 라벨 — 컴포저가 본문 속 `[Image #k]`를 같은 순서로 매겨 보낸다(`composer-primitives/attachments.ts`). */
+const LAUNCH_ATTACHMENT_LABEL = /^\[Image #\d+\] /;
+
+/**
+ * 사용자 프롬프트 뒤에 첨부 경로 지시를 잇는다. 프롬프트가 없으면 지시만으로 프롬프트가 된다.
+ * 각 줄은 첨부 순서 k의 `[Image #k]`로 시작해 본문 속 같은 표시와 짝을 짓는다.
+ */
 export function composeLaunchPromptWithAttachments(prompt: string | undefined, filePaths: readonly string[]): string | undefined {
   if (filePaths.length === 0) return prompt;
-  const lines = filePaths.map((filePath) => `${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}`).join("\n");
+  const lines = filePaths.map((filePath, index) => `[Image #${index + 1}] ${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}${filePath}`).join("\n");
   return prompt === undefined || prompt.length === 0 ? lines : `${prompt}\n\n${lines}`;
 }
 
@@ -124,8 +130,10 @@ export function splitLaunchAttachmentInstructions(text: string): { readonly text
   const kept: string[] = [];
   const paths: string[] = [];
   for (const line of text.split("\n")) {
-    if (line.startsWith(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX)) {
-      const filePath = line.slice(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX.length);
+    // 라벨 없는 옛 기록도 같은 줄로 읽는다.
+    const instruction = line.replace(LAUNCH_ATTACHMENT_LABEL, "");
+    if (instruction.startsWith(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX)) {
+      const filePath = instruction.slice(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX.length);
       if (isLaunchAttachmentPath(filePath)) {
         paths.push(filePath);
         continue;

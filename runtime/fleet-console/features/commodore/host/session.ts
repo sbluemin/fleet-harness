@@ -430,9 +430,9 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         { type: "text" as const, text: note },
         ...(input.taskforceImages ?? []).flatMap(({ taskforceId, seq, imageIds, images }): AgentInputBlock[] => [
           { type: "text", text: imageIds?.length
-            ? `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); copy to objective briefs with attachmentIds (do not reconstruct them as text):\n${imageIds.map((id, index) => `${index + 1}. ${id}`).join("\n")}`
+            ? `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); copy to objective briefs with attachmentIds (do not reconstruct them as text):\n${imageIds.map((id, index) => `[Image #${index + 1}] ${id}`).join("\n")}`
             : `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); these belong to the shared ledger, not the person's 1:1 message:` },
-          ...images,
+          ...images.flatMap((image, index): AgentInputBlock[] => [{ type: "text", text: `[Image #${index + 1}]` }, image]),
         ]),
         ...(input.mailImages ?? []).flatMap(({ messageId, images }): AgentInputBlock[] => [
           { type: "text", text: `Attached Commodore images for message ${messageId}:` },
@@ -440,7 +440,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         ]),
         ...(input.messages ?? []).flatMap((message): AgentInputBlock[] => typeof message === "string"
           ? [{ type: "text", text: messageNote([message]) }]
-          : [{ type: "text", text: messageNote([message.text]) }, ...message.images]),
+          : [{ type: "text", text: messageNote([message.text]) }, ...message.images.flatMap((image, index): AgentInputBlock[] => [{ type: "text", text: `[Image #${index + 1}]` }, image])]),
       ] : [note, ...(input.messages?.length ? [messageNote(input.messages.map((message) => typeof message === "string" ? message : message.text))] : [])].join("\n\n");
       turnActive = true;
       stepReporter?.turnOpened();

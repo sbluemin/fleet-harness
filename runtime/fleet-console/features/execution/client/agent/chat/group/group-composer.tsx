@@ -9,6 +9,7 @@ import { ComposerQuoteTray, composerQuotePlaceholder, useComposerQuotes } from "
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
 import { composerAttachmentNoticeText, composerT } from "../../../composer-primitives/messages.js";
 import { composeQuotedPrompt, composerQuoteValues } from "../../../composer-primitives/quotes.js";
+import { resolveComposerImageMarkers } from "../../../composer-primitives/attachments.js";
 import { createComposerAttachments } from "../../../composer-primitives/attachment-store.js";
 import { useComposerAttachmentInput, useComposerAttachmentSnapshot } from "../../../composer-primitives/attachment-input.js";
 import { SyncedTextarea, consumeComposerSubmitKey } from "../../../composer-primitives/input.js";
@@ -455,7 +456,8 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
     setBusy(true);
     setNotice(null);
     try {
-      const result = await actions.send(groupTarget, composeQuotedPrompt(sentText.trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
+      // 본문의 이미지 표시는 보내는 첨부 순서로 다시 매긴다 — 받는 쪽(지휘관·구성원·사령관)이 같은 순서로 라벨을 붙인다.
+      const result = await actions.send(groupTarget, composeQuotedPrompt(resolveComposerImageMarkers(sentText, draft.attachments.read()).trim(), composerQuoteValues(sentQuotes)), ids.length > 0 ? ids : undefined);
       // 일부만 닿았어도 보낸 말이다 — 보낸 스냅샷만 걷고, 기다리는 동안 새로 쓴 말은 남긴다.
       const current = draft.read();
       draft.attachments.releaseSent(sentKeys);
