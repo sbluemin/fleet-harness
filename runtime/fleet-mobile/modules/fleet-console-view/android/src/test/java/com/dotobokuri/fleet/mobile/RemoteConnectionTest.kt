@@ -7,6 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -69,6 +70,21 @@ class RemoteConnectionTest {
       }
     } finally {
       executor.shutdownNow()
+    }
+  }
+
+  @Test
+  fun aCompleteHttp200WithAnInvalidRosterIsUnsupported() {
+    val target = PersistedTarget("https://fleet.example", "fleet.example", 443, "Fleet", "A".repeat(64), LoopbackIdentity("127.2.3.4", 43210))
+    for (body in listOf(
+      """{"v":1,"more":0,"commodores":{}}""".toByteArray(Charsets.UTF_8), // Valid JSON, not a roster.
+      "<html>Console</html>".toByteArray(Charsets.UTF_8), // A successful non-JSON response.
+      byteArrayOf(0xc3.toByte(), 0x28), // Invalid UTF-8.
+    )) {
+      val head = "HTTP/1.1 200 OK\r\nContent-Length: ${body.size}\r\n\r\n".toByteArray(Charsets.US_ASCII)
+      val reading = RosterHttp.exchange((head + body).inputStream(), ByteArrayOutputStream(), target, "fleet_console_pairing_443=paired")
+      assertEquals(RosterStatus.UNSUPPORTED, reading.status)
+      assertNull(reading.roster)
     }
   }
 

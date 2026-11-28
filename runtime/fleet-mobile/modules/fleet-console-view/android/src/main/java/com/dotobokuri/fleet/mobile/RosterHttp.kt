@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
 
 /** A single fixed HTTP exchange on the pinned socket. Neither redirects nor cookie writes exist here. */
 internal object RosterHttp {
@@ -25,10 +26,15 @@ internal object RosterHttp {
       // Consoles predating this route can reject pairing-only auth before route lookup.
       401, 403, 404 -> RosterReading(RosterStatus.UNSUPPORTED)
       200 -> {
+        // A failed or oversized transfer still propagates as unavailable; only a complete body can be unsupported.
         val body = readBody(stream, response.bodyKind)
-        val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(body)).toString()
-        val roster = BridgeJson.parse(text)?.let(ConsoleRoster::project)
-        if (roster == null) RosterReading(RosterStatus.UNAVAILABLE) else RosterReading(RosterStatus.OK, roster)
+        val text = try {
+          Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(body)).toString()
+        } catch (_: CharacterCodingException) {
+          return RosterReading(RosterStatus.UNSUPPORTED)
+        }
+        val roster = BridgeJson.parse(text)?.let(ConsoleRoster::project) ?: return RosterReading(RosterStatus.UNSUPPORTED)
+        RosterReading(RosterStatus.OK, roster)
       }
       else -> RosterReading(RosterStatus.UNAVAILABLE)
     }
