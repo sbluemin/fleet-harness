@@ -187,11 +187,26 @@ final class MobileConsolesTests: XCTestCase {
   func testSwitchTargetsOnlyKnownInactiveConsolesAndUnpairedOpensTheSheet() {
     let records = deck().records()
     let hub = MobileConsolesHub()
-    XCTAssertEqual(hub.decide(consoleId: records[1].id, records: records, activeOrigin: home), .connect(records[1]))
-    XCTAssertEqual(hub.decide(consoleId: records[0].id, records: records, activeOrigin: home), .ignore)
-    XCTAssertEqual(hub.decide(consoleId: "unknown", records: records, activeOrigin: home), .ignore)
+    XCTAssertEqual(hub.decide(consoleId: records[1].id, records: records, activeOrigin: home, attemptInFlight: false), .connect(records[1]))
+    XCTAssertEqual(hub.decide(consoleId: records[0].id, records: records, activeOrigin: home, attemptInFlight: false), .ignore)
+    XCTAssertEqual(hub.decide(consoleId: "unknown", records: records, activeOrigin: home, attemptInFlight: false), .ignore)
     hub.recordConnectFailure(records[2].id, code: "remote_host_not_paired")
-    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home), .openSheet(records[2]))
+    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home, attemptInFlight: false), .openSheet(records[2]))
+  }
+
+  func testASwitchDuringAnInFlightAttemptIsIgnoredAndSetsNoArrival() {
+    let records = deck().records()
+    let hub = MobileConsolesHub()
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    // 알려진 비활성 콘솔이어도, 페어링이 끊긴 콘솔이어도 진행 중인 시도가 있으면 아무 결정도 내리지 않는다.
+    XCTAssertEqual(hub.decide(consoleId: records[1].id, records: records, activeOrigin: home, attemptInFlight: true), .ignore)
+    hub.recordConnectFailure(records[2].id, code: "remote_host_not_paired")
+    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home, attemptInFlight: true), .ignore)
+    // 셸은 .connect일 때만 도착 위치를 세우므로, 무시된 switch 뒤에는 어느 문서에도 도착 위치가 없다.
+    XCTAssertNil(hub.arrivalTargetId)
+    XCTAssertNil(hub.state(records: records, activeOrigin: other, arrivalFor: records[1].id, now: now).arrival)
+    // 시도가 끝나면 같은 switch가 다시 받아들여진다.
+    XCTAssertEqual(hub.decide(consoleId: records[1].id, records: records, activeOrigin: home, attemptInFlight: false), .connect(records[1]))
   }
 
   func testAFailedSwitchOverAVisibleConsoleIsNotAnErrorScreenAndMarksTheTarget() throws {
@@ -209,10 +224,10 @@ final class MobileConsolesTests: XCTestCase {
     // 네이티브 자체 실패로 페어링이 끊긴 대상을 안다(개정 r2) — 그 뒤의 switch는 시트로 간다.
     XCTAssertEqual(hub.attemptFailed(targetId: records[2].id, code: "remote_host_not_paired", seamless: true, activeVisible: true).report, .switchFailed)
     XCTAssertEqual(hub.status(records[2].id), .unpaired)
-    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home), .openSheet(records[2]))
+    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home, attemptInFlight: false), .openSheet(records[2]))
     // 연결에 성공하면 다시 페어링된 것이다.
     hub.recordConnected(records[2].id)
-    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home), .connect(records[2]))
+    XCTAssertEqual(hub.decide(consoleId: records[2].id, records: records, activeOrigin: home, attemptInFlight: false), .connect(records[2]))
 
     // 보이는 콘솔이 없거나 RN이 시작한 시도의 실패는 현행 오류 경로 그대로다.
     XCTAssertEqual(hub.attemptFailed(targetId: records[1].id, code: "remote_link_unreachable", seamless: true, activeVisible: false).report, .error)

@@ -714,7 +714,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   private func receiveSwitch(console: String, commodore: String, commander: String?, scrollTop: Double?) {
-    switch consoles.decide(consoleId: console, records: targetStore.records(), activeOrigin: activeTarget?.origin) {
+    // 진행 중인 시도가 있으면 무시한다: 활성·스테이징 상태와 도착 위치를 건드리지 않는다.
+    switch consoles.decide(consoleId: console, records: targetStore.records(), activeOrigin: activeTarget?.origin, attemptInFlight: attemptInFlight) {
     case .ignore:
       return
     case .openSheet(let record):

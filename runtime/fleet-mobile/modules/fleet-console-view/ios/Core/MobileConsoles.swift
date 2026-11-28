@@ -564,8 +564,10 @@ public final class MobileConsolesHub {
     case ignore
   }
 
-  /// console은 알려진 비활성 id여야 한다. 활성 콘솔이나 모르는 id는 조용히 버린다.
-  public func decide(consoleId: String, records: [ConsoleRecord], activeOrigin: String?) -> SwitchDecision {
+  /// console은 알려진 비활성 id여야 한다. 활성 콘솔이나 모르는 id는 조용히 버린다. 진행 중인 연결 시도가 있으면
+  /// 페이지발 switch는 무시한다(Android와 같다) — 그 시도를 빼앗지도, 도착 위치를 세우지도, 시트를 열지도 않는다.
+  public func decide(consoleId: String, records: [ConsoleRecord], activeOrigin: String?, attemptInFlight: Bool) -> SwitchDecision {
+    if attemptInFlight { return .ignore }
     guard let record = records.first(where: { $0.id == consoleId }), record.target.origin != activeOrigin else { return .ignore }
     return memory[record.id]?.status == .unpaired ? .openSheet(record) : .connect(record)
   }
