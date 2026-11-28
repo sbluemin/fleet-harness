@@ -143,6 +143,27 @@ describe("RemotePreviewHub", () => {
     expect(projected).toEqual(target());
     expect(readRemotePreviewState({ target: { ...target(), title: "Secret.txt", windowId: 10 }, sending: true })).toEqual({ target: target(), sending: true });
   });
+
+  it("carries only a true minimized flag to remote screens, and announces the change without dropping the target's still", async () => {
+    const native = { ...target(), pid: 5, windowId: 10, processStartedAt: 100, title: "Secret.txt" };
+    expect(toRemotePreviewTarget({ ...native, minimized: true } as Parameters<typeof toRemotePreviewTarget>[0])).toEqual({ ...target(), minimized: true });
+    expect(toRemotePreviewTarget({ ...native, minimized: false } as Parameters<typeof toRemotePreviewTarget>[0])).toEqual(target());
+    expect(readRemotePreviewState({ target: { ...target(), minimized: true }, sending: true })).toEqual({ target: { ...target(), minimized: true }, sending: true });
+    expect(readRemotePreviewState({ target: { ...target(), minimized: "yes" }, sending: true })).toEqual({ target: target(), sending: true });
+
+    const { hub } = hubWith({ waitMs: 50 });
+    hub.update(target(), true);
+    const watching = hub.watch("session-a", 0);
+    expect(hub.accept("target-1", jpeg(1))).toBe("ok");
+    await watching;
+    // 같은 대상이 최소화되면 원격에 알릴 상태가 바뀐다 — 대상 id는 그대로라 장을 버리지 않는다.
+    expect(hub.update({ ...target(), minimized: true }, true)).toBe(true);
+    expect(hub.state()).toEqual({ target: { ...target(), minimized: true }, sending: true });
+    expect(hub.frame()).not.toBeNull();
+    expect(hub.update({ ...target(), minimized: true }, true)).toBe(false);
+    expect(hub.update(target(), true)).toBe(true);
+    expect(hub.state()).toEqual({ target: target(), sending: true });
+  });
 });
 
 describe("remote preview SSE recipients", () => {
@@ -323,6 +344,11 @@ describe("remote preview routes", () => {
     expect(hub.viewers()).toBe(0);
     hub.update(target(), false);
     expect(await (await readState("session-a:full")).json()).toEqual({ target: target(), sending: false });
+    // 최소화 여부도 같은 관문 뒤에서만 읽힌다.
+    hub.update({ ...target(), minimized: true }, true);
+    expect(await (await readState("session-a:full")).json()).toEqual({ target: { ...target(), minimized: true }, sending: true });
+    expect((await readState("watcher:monitoring")).status).toBe(403);
+    expect((await fetch(`${base}${REMOTE_PREVIEW_STATE_PATH}`)).status).toBe(404);
   });
 
   it("refuses a fifth distinct session while four are watching", async () => {

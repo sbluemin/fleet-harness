@@ -245,9 +245,12 @@ export class RemotePreviewHub {
   }
 }
 
-/** 호스트 캡처 대상을 원격에 실을 모양으로 줄인다 — 창 번호·pid·창 제목은 빼고 주인과 조작자만 남긴다. */
-export function toRemotePreviewTarget(target: { readonly id: string; readonly ownerKind: "objective" | "commodore"; readonly objectiveId: string | null; readonly commodoreId: string | null; readonly actor: string } | null): RemotePreviewTarget | null {
-  return target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, commodoreId: target.commodoreId, actor: target.actor } : null;
+/**
+ * 호스트 캡처 대상을 원격에 실을 모양으로 줄인다 — 창 번호·pid·창 제목은 빼고 주인과 조작자만 남긴다.
+ * 최소화 여부는 원격 카드가 '갱신 멈춤' 대신 사유를 말하도록 참일 때만 싣는다.
+ */
+export function toRemotePreviewTarget(target: { readonly id: string; readonly ownerKind: "objective" | "commodore"; readonly objectiveId: string | null; readonly commodoreId: string | null; readonly actor: string; readonly minimized?: boolean } | null): RemotePreviewTarget | null {
+  return target ? { id: target.id, ownerKind: target.ownerKind, objectiveId: target.objectiveId, commodoreId: target.commodoreId, actor: target.actor, ...(target.minimized === true ? { minimized: true as const } : {}) } : null;
 }
 
 /** SSE 구독자 판정에 필요한 모양. 서버의 구독자 기록이 이 필드를 들고 있다. */

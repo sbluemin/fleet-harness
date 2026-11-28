@@ -462,10 +462,15 @@ export function ComputerScreenShareProvider({ children }: { children: ReactNode 
       if (disposed) return;
       const next = readRemotePreviewState(payload);
       const nextTarget: CaptureTarget | null = next.target
-        ? { id: next.target.id, ownerKind: next.target.ownerKind, objectiveId: next.target.objectiveId, commodoreId: next.target.commodoreId, actor: next.target.actor, title: "" }
+        ? { id: next.target.id, ownerKind: next.target.ownerKind, objectiveId: next.target.objectiveId, commodoreId: next.target.commodoreId, actor: next.target.actor, title: "", ...(next.target.minimized ? { minimized: true } : {}) }
         : null;
       const changed = (nextTarget?.id ?? null) !== (target?.id ?? null);
       if (changed || !next.sending) reset();
+      else if (target?.minimized === true && nextTarget?.minimized !== true) {
+        // 복원 — 최소화 동안은 새 장이 없었다. 그 공백을 지연으로 세지 않고 다시 기다리기 시작한 때부터 센다.
+        lastFrameAt = null;
+        waitingSince = Date.now();
+      } else if (nextTarget?.minimized === true && target?.minimized !== true) hide();
       target = nextTarget;
       sending = next.sending;
       if (target && sending && loop === null) {
@@ -572,7 +577,8 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   /** 미리보기 자리(영상 또는 원격 정지 화면)가 있는가 — 크기·최대화·끌기 규칙은 둘이 같다. */
   const media = Boolean(own?.stream) || remoteLive || stillId !== null;
   const stillUrl = remote?.url ?? own?.localStillUrl;
-  const minimizedStill = stillId !== null && own?.target.minimized === true && !remote;
+  /** 최소화된 창은 정지 화면이 없다 — 호스트 카드와 원격 full 카드가 같은 사유 문구를 쓴다. */
+  const minimizedStill = own?.target.minimized === true && (remote ? remoteLive : stillId !== null);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!remoteLive) return;
@@ -582,7 +588,7 @@ export function ComputerScreenShare({ objectiveId, commodoreId, actor, className
   }, [remoteLive]);
   // 첫 장 전이면 기다리기 시작한 때부터, 이후엔 마지막 새 이미지부터 센다.
   const remoteSince = remote ? remote.lastFrameAt ?? remote.waitingSince : null;
-  const staleSeconds = remoteLive && remoteSince !== null && now - remoteSince > REMOTE_PREVIEW_STALE_MS ? Math.floor((now - remoteSince) / 1000) : null;
+  const staleSeconds = remoteLive && !minimizedStill && remoteSince !== null && now - remoteSince > REMOTE_PREVIEW_STALE_MS ? Math.floor((now - remoteSince) / 1000) : null;
   const stale = staleSeconds !== null;
   /** 스크린리더에는 지연이 시작될 때 한 번만 알린다. 초수는 매초 읽히지 않는다. */
   const [announcement, setAnnouncement] = useState("");
