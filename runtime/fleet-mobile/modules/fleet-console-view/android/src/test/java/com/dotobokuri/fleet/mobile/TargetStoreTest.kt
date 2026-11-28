@@ -50,9 +50,10 @@ class TargetStoreTest {
     assertTrue(deck.upsert(target("https://two.example:1002", "two.example", 1002, "Two")))
     assertEquals("https://two.example:1002", deck.active()?.origin)
     assertEquals(2, deck.list().size)
+    val savedIds = deck.list().map { it.id }
 
     assertTrue(deck.upsert(target("https://one.example:1001", "one.example", 1001, "One again", 'C')))
-    assertEquals(2, deck.list().size)
+    assertEquals(savedIds, store().list().map { it.id })
     assertEquals("https://one.example:1001", deck.active()?.origin)
     assertEquals("C".repeat(64), deck.find("https://one.example:1001")?.fingerprint)
   }
@@ -79,6 +80,14 @@ class TargetStoreTest {
     preferences().edit().clear().commit()
     store().upsert(target("https://one.example:1001", "one.example", 1001))
     assertEquals("https://one.example:1001", store().active()?.origin)
+
+    val oldDeck = JSONObject(preferences().getString("targets-v3", null)!!)
+    val firstId = oldDeck.getJSONArray("targets").getJSONObject(0).remove("id")
+    preferences().edit().putString("targets-v3", oldDeck.toString()).commit()
+    val migratedId = requireNotNull(store().active()).id
+    assertTrue(MobileConsoles.validId(migratedId))
+    assertFalse(firstId == migratedId)
+    assertEquals(migratedId, store().active()?.id)
 
     val tampered = JSONObject(preferences().getString("targets-v3", null)!!)
     tampered.getJSONArray("targets").getJSONObject(0).put("fingerprint", "not-hex")

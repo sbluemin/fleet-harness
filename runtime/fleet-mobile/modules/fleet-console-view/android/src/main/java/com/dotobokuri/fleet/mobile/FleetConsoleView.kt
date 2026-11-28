@@ -58,10 +58,11 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val target: PersistedTarget,
     val gateway: LoopbackGateway,
     val cookieSnapshot: FleetCookieSnapshot,
-    val view: WebView,
+    val view: StagedConsoleWebView,
     val readinessNonce: String,
     var localCertificateObserved: Boolean = false,
     var readinessRequested: Boolean = false,
+    var appearanceChannelReady: Boolean = false,
     // Set once WebView reports this view's renderer dead; the view then takes only removal and destroy().
     var rendererGone: Boolean = false,
     var released: Boolean = false,
@@ -78,12 +79,22 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     Thread(task, "fleet-mobile-connection").apply { isDaemon = true }
   }
   private val main = Handler(Looper.getMainLooper())
+  private val seamless = SeamlessSwitch()
+  private val rosterWorker = Executors.newFixedThreadPool(2) { task ->
+    Thread(task, "fleet-mobile-roster").apply { isDaemon = true }
+  }
+  private class RosterJob(val target: PersistedTarget, var obsolete: Boolean = false)
+  private val rosterQueue = ArrayDeque<PersistedTarget>()
+  private val rosterJobs = mutableMapOf<String, RosterJob>()
+  private val rosterReadAt = mutableMapOf<String, Long>()
+  private val rosters = mutableMapOf<String, RosterMemory>()
   private val attempt = AtomicLong(0)
   private val linkReceiver: (String) -> Unit = ::receiveLink
 
   @Volatile private var activeTarget: PersistedTarget? = targetStore.active()
   private var activeView: WebView? = null
   private var activeGateway: LoopbackGateway? = null
+  private var activeAppearanceChannelReady = false
   private var staging: StagedLoad? = null
   private val rendererRecovery = RendererRecovery()
   // The console whose committed page lost its renderer, until a page commits again.
@@ -100,10 +111,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   // The document-start script of each view, replaced whenever the value changes so the next load starts right.
   private val startScripts = WeakHashMap<WebView, ScriptHandler>()
   private var documentStartSupported = WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)
-  // True from the moment an attempt starts until it commits or fails. resume() must not look past it:
-  // a foreground return would otherwise overwrite an in-flight cold-start link attempt with the
-  // stored target. Volatile because beginAttempt can start from the JS thread.
-  @Volatile private var attemptInFlight = false
+  // A foreground return must not overwrite an in-flight cold-start link with the stored target.
+  private var attemptInFlight = false
   // 잘못된 링크 오류는 사용자가 다음 행동을 고를 때까지 포그라운드 복귀로 덮지 않는다.
   @Volatile private var invalidLinkPending = false
   private var detached = false
@@ -235,7 +244,12 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       failInvalidLink()
       return
     }
-    beginAttempt(parsed.withoutCredential(targetStore.identityFor(parsed, activeTarget, activeGateway != null)), parsed.token)
+    main.post {
+      val identity = targetStore.identityFor(parsed, activeTarget, activeGateway != null)
+      val candidate = parsed.withoutCredential(identity)
+      val saved = targetStore.find(parsed.origin)
+      beginAttempt(if (saved == null) candidate else candidate.copy(id = saved.id), parsed.token)
+    }
   }
 
   fun retry() {
@@ -248,6 +262,11 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   fun resume() {
+    if (Looper.myLooper() != main.looper) {
+      main.post(::resume)
+      return
+    }
+    if (activeView != null) requestRosters()
     if (invalidLinkPending) {
       // JS 마운트 전 init 이벤트를 놓쳤더라도 오류를 다시 받는다. 재연결은 하지 않는다.
       emit("error", "pairing_target_invalid")
@@ -274,9 +293,13 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         emit("error", "target_missing")
         return@post
       }
-      val identity = targetStore.resumeIdentity(stored, activeTarget, activeGateway != null)
-      beginAttempt(stored.copy(loopback = identity), null)
+      connectToSaved(stored)
     }
+  }
+
+  private fun connectToSaved(stored: PersistedTarget, arrival: ConsoleArrival? = null) {
+    val identity = targetStore.resumeIdentity(stored, activeTarget, activeGateway != null)
+    beginAttempt(stored.copy(loopback = identity), null, arrival)
   }
 
   fun removeTarget(origin: String) {
@@ -284,11 +307,15 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     main.post {
       val removed = targetStore.find(origin) ?: return@post
       val wasActive = activeTarget?.origin == origin
-      val wasStaging = staging?.target?.origin == origin
-      targetStore.remove(origin)
+      val wasStaging = staging?.target?.origin == origin || seamless.pending?.target?.origin == origin
+      if (!targetStore.remove(origin)) return@post
+      obsoleteRoster(removed)
+      rosters.remove(removed.id)
+      rosterReadAt.remove(removed.id)
       if (wasActive || wasStaging) {
         attempt.incrementAndGet()
         attemptInFlight = false
+        seamless.cancel()
         destroyStaging()
         if (wasActive) {
           activeView?.let {
@@ -302,6 +329,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         }
         activeTarget?.let { emit("connected", label = it.label, origin = it.origin) } ?: emit("waiting")
       }
+      publishConsoles()
       // Forgetting a console also drops its pairing secret; the server row ages out on its own.
       worker.execute {
         try { cookies.restoreAndAwait(removed.origin, removed.port, FleetCookieSnapshot(emptyMap())) } catch (_: Exception) { }
@@ -405,6 +433,9 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     detached = true
     FleetLinkInbox.detach(linkReceiver)
     attempt.incrementAndGet()
+    seamless.cancel()
+    rosterQueue.clear()
+    rosterWorker.shutdownNow()
     destroyStaging()
     activeView?.destroySafely()
     activeView = null
@@ -414,22 +445,26 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     super.onDetachedFromWindow()
   }
 
-  private fun beginAttempt(candidate: PersistedTarget, token: String?) {
+  private fun beginAttempt(candidate: PersistedTarget, token: String?, arrival: ConsoleArrival? = null) {
+    if (Looper.myLooper() != main.looper) {
+      main.post { beginAttempt(candidate, token, arrival) }
+      return
+    }
+    if (detached) return
     val id = attempt.incrementAndGet()
     attemptInFlight = true
     pendingRecovery = null
     rendererReloadStopped = false
     dismissLinkError()
-    main.post {
-      if (!isCurrent(id)) return@post
-      val launch = {
-        if (isCurrent(id)) {
-          emit("connecting", label = candidate.label, origin = candidate.origin)
-          worker.execute { runCandidate(id, candidate, token) }
-        }
+    seamless.start(id, candidate, arrival, System.currentTimeMillis())
+    if (arrival != null) main.postDelayed({ expireArrival(id) }, SeamlessSwitch.TTL_MS)
+    val launch = {
+      if (isCurrent(id)) {
+        emit("connecting", label = candidate.label, origin = candidate.origin, seamless = arrival != null)
+        worker.execute { runCandidate(id, candidate, token) }
       }
-      if (staging == null) launch() else destroyStaging(launch)
     }
+    if (staging == null) launch() else destroyStaging(launch)
   }
 
   private fun runCandidate(id: Long, candidate: PersistedTarget, token: String?) {
@@ -473,11 +508,11 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     } catch (failure: ConnectionFailure) {
       gateway?.close()
       if (candidateTouchedCookies) cookieSnapshot?.let { try { cookies.restoreAndAwait(candidate.origin, candidate.port, it) } catch (_: Exception) { } }
-      failIfCurrent(id, failure.code, candidate.label, candidate.origin, failure.retryAfterSeconds)
+      failIfCurrent(id, failure.code, candidate, failure.retryAfterSeconds)
     } catch (_: Exception) {
       gateway?.close()
       if (candidateTouchedCookies) cookieSnapshot?.let { try { cookies.restoreAndAwait(candidate.origin, candidate.port, it) } catch (_: Exception) { } }
-      failIfCurrent(id, "remote_link_unreachable", candidate.label, candidate.origin)
+      failIfCurrent(id, "remote_link_unreachable", candidate)
     }
   }
 
@@ -491,15 +526,27 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       gateway.close()
       return
     }
-    val webView = WebView(context)
+    val webView = try { StagedConsoleWebView(context) } catch (_: Exception) {
+      gateway.close()
+      worker.execute {
+        try { cookies.restoreAndAwait(candidate.origin, candidate.port, cookieSnapshot) } catch (_: Exception) { }
+        failIfCurrent(id, "remote_host_unavailable", candidate)
+      }
+      return
+    }
     val staged = StagedLoad(id, candidate, gateway, cookieSnapshot, webView, UUID.randomUUID().toString())
     staging = staged
-    configureWebView(staged)
-    webView.visibility = INVISIBLE
-    addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-    layoutWebViews()
-    post(::layoutWebViews)
-    webView.loadUrl(gateway.consoleUrl)
+    try {
+      configureWebView(staged)
+      if (staging !== staged) return
+      // Attach at full size beneath the current view: INVISIBLE can suppress the web paint signal.
+      addView(webView, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+      layoutWebViews()
+      post(::layoutWebViews)
+      webView.loadUrl(gateway.consoleUrl)
+    } catch (_: Exception) {
+      failStaged(staged, "remote_host_unavailable")
+    }
   }
 
   private fun configureWebView(staged: StagedLoad) {
@@ -530,15 +577,11 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       // gateway origin churns across re-links, so a stored preference cannot carry this signal.
       userAgentString = "$userAgentString $USER_AGENT_PRODUCT"
     }
-    // A programmatically added WebView is not focusable in touch mode by default, so a tap on a
-    // page input never reaches the input method and the keyboard stays down.
-    webView.isFocusable = true
-    webView.isFocusableInTouchMode = true
     CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
     try {
       WebViewCompat.addWebMessageListener(
         webView,
-        READINESS_OBJECT,
+        StageReadiness.MESSAGE_OBJECT,
         setOf(staged.gateway.origin),
         object : WebViewCompat.WebMessageListener {
           override fun onPostMessage(
@@ -563,7 +606,6 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       return
     }
     webView.setBackgroundColor(AppearanceBridge.backgroundColor(appearance.dark(systemDark)))
-    installAppearanceScript(webView, staged.gateway, staged.target)
     try {
       WebViewCompat.addWebMessageListener(
         webView,
@@ -589,8 +631,14 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
           }
         },
       )
+      staged.appearanceChannelReady = true
     } catch (_: Exception) {
-      // Readiness already proved the listener API; losing this channel only freezes the preference.
+      // Leave the console usable without the preference and seamless channels.
+    }
+    installStagedScript(staged)
+    if (seamless.pending?.attempt == staged.attemptId && !consolesReady(staged.appearanceChannelReady)) {
+      failStaged(staged, "remote_host_readiness_unsupported")
+      return
     }
     webView.setDownloadListener { _, _, _, _, _ -> failStaged(staged, "navigation_denied") }
     webView.webChromeClient = object : WebChromeClient() {
@@ -667,7 +715,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         }
         if (staged.readinessRequested) return
         staged.readinessRequested = true
-        view.evaluateJavascript(readinessScript(staged), null)
+        view.evaluateJavascript(StageReadiness.script(staged.readinessNonce), null)
       }
 
       override fun onReceivedError(view: WebView?, request: WebResourceRequest, error: WebResourceError?) {
@@ -736,30 +784,64 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private fun isSystemDark(configuration: Configuration): Boolean =
     (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
-  private fun appearanceScriptFor(target: PersistedTarget): String =
-    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target), appVersion, advertisedInsets())
+  private fun consolesReady(channelReady: Boolean) = documentStartSupported && channelReady
 
-  private fun installAppearanceScript(webView: WebView, gateway: LoopbackGateway, target: PersistedTarget) {
+  private fun appearanceScriptFor(target: PersistedTarget, channelReady: Boolean = false): String =
+    AppearanceBridge.script(appearance, systemDark, ConsolePresentation.of(target), appVersion, advertisedInsets(), consolesReady(channelReady))
+
+  private fun consolesScriptFor(gateway: LoopbackGateway, target: PersistedTarget, pending: SeamlessSwitch.Pending? = null): String {
+    val targets = targetStore.list()
+    val normal = MobileConsoles.serialized(targets, target, rosters, arrival = null)
+    val arrival = pending?.let { it to MobileConsoles.serialized(targets, target, rosters, it.arrival) }
+    return MobileConsoles.script(gateway.origin, normal, arrival)
+  }
+
+  private fun installDocumentScript(webView: WebView, gateway: LoopbackGateway, script: String) {
     if (!documentStartSupported) return
-    startScripts.remove(webView)?.remove()
     try {
-      startScripts[webView] = WebViewCompat.addDocumentStartJavaScript(webView, appearanceScriptFor(target), setOf(gateway.origin))
+      startScripts.remove(webView)?.remove()
+      startScripts[webView] = WebViewCompat.addDocumentStartJavaScript(webView, script, setOf(gateway.origin))
     } catch (_: Exception) {
       documentStartSupported = false
     }
   }
 
+  private fun installStagedScript(staged: StagedLoad) {
+    val pending = seamless.forDocument(staged.attemptId, staged.target.id, System.currentTimeMillis())
+    val consoles = if (consolesReady(staged.appearanceChannelReady)) consolesScriptFor(staged.gateway, staged.target, pending) else ""
+    installDocumentScript(staged.view, staged.gateway, consoles + appearanceScriptFor(staged.target, staged.appearanceChannelReady))
+  }
+
+  private fun expireArrival(id: Long) {
+    val staged = staging?.takeIf { it.attemptId == id && !it.released } ?: return
+    if (!isCurrent(id) || !consolesReady(staged.appearanceChannelReady)) return
+    installStagedScript(staged)
+    staged.view.evaluateJavascript(consolesScriptFor(staged.gateway, staged.target), null)
+  }
+
+  private fun publishConsoles(failedId: String? = null) {
+    if (!consolesReady(activeAppearanceChannelReady)) return
+    val view = activeView ?: return
+    val gateway = activeGateway ?: return
+    val target = activeTarget ?: return
+    val state = MobileConsoles.serialized(targetStore.list(), target, rosters, arrival = null, failedId = failedId)
+    val consoles = MobileConsoles.script(gateway.origin, state)
+    installDocumentScript(view, gateway, consoles + appearanceScriptFor(target, activeAppearanceChannelReady))
+    val live = if (failedId == null) consoles else MobileConsoles.script(gateway.origin, state, failedId = failedId)
+    view.evaluateJavascript(live, null)
+  }
+
   /** Tell every live page again: the next load through its document-start script, the open page right now. */
-  private fun republishAppearance() {
-    staging?.takeIf { !it.released }?.let { staged ->
-      installAppearanceScript(staged.view, staged.gateway, staged.target)
-    }
+  private fun republishAppearance(announceConsoles: Boolean = false) {
+    staging?.takeIf { !it.released }?.let(::installStagedScript)
     val view = activeView
     val gateway = activeGateway
     val target = activeTarget
     if (view != null && gateway != null && target != null) {
-      installAppearanceScript(view, gateway, target)
-      view.evaluateJavascript(appearanceScriptFor(target), null)
+      val consoles = if (consolesReady(activeAppearanceChannelReady)) consolesScriptFor(gateway, target) else ""
+      val appearance = appearanceScriptFor(target, activeAppearanceChannelReady)
+      installDocumentScript(view, gateway, consoles + appearance)
+      view.evaluateJavascript(if (announceConsoles) consoles + appearance else appearance, null)
     }
   }
 
@@ -784,29 +866,75 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       is AppearanceMessage.Chrome -> emitPayload(mapOf("type" to "chrome", "top" to message.top, "bottom" to message.bottom))
       AppearanceMessage.Edge -> enterEdgeToEdge()
       AppearanceMessage.Consoles -> emitPayload(mapOf("type" to "consoles"))
+      AppearanceMessage.Roster -> if (consolesReady(activeAppearanceChannelReady)) requestRosters()
+      is AppearanceMessage.Switch -> switchConsole(message)
+      // The hidden stage cannot send commands. By the time it is active, commit has cleared arrival.
+      AppearanceMessage.Arrived -> Unit
     }
+  }
+
+  private fun switchConsole(message: AppearanceMessage.Switch) {
+    if (!consolesReady(activeAppearanceChannelReady) || attemptInFlight) return
+    val target = targetStore.list().firstOrNull { it.id == message.consoleId && it.origin != activeTarget?.origin } ?: return
+    if (rosters[target.id]?.status == RosterStatus.UNPAIRED) {
+      emitPayload(mapOf("type" to "consoles", "origin" to target.origin, "code" to "remote_host_not_paired"))
+      return
+    }
+    connectToSaved(target, message.arrival)
+  }
+
+  private fun requestRosters() {
+    if (detached || !consolesReady(activeAppearanceChannelReady) || !hostResumed()) return
+    val now = android.os.SystemClock.elapsedRealtime()
+    targetStore.list().forEach { target ->
+      if (target.origin != activeTarget?.origin && target.id !in rosterJobs && rosterQueue.none { it.id == target.id } && rosterEligible(target, now)) {
+        rosterQueue.addLast(target)
+      }
+    }
+    pumpRosters()
+  }
+
+  private fun rosterEligible(target: PersistedTarget, now: Long): Boolean =
+    rosterReadAt[target.id]?.let { now - it >= 10_000L } ?: true
+
+  private fun pumpRosters() {
+    if (detached || !hostResumed() || activeView == null) {
+      rosterQueue.clear()
+      return
+    }
+    while (rosterJobs.size < 2 && rosterQueue.isNotEmpty()) {
+      val target = rosterQueue.removeFirst()
+      val now = android.os.SystemClock.elapsedRealtime()
+      if (target.origin == activeTarget?.origin || !rosterEligible(target, now)) continue
+      val job = RosterJob(target)
+      rosterJobs[target.id] = job
+      rosterReadAt[target.id] = now
+      rosterWorker.execute {
+        val reading = connection.readRoster(job.target)
+        main.post {
+          rosterJobs.remove(target.id)
+          if (!detached && !job.obsolete && target.origin != activeTarget?.origin && rememberRoster(target, reading)) publishConsoles()
+          pumpRosters()
+        }
+      }
+    }
+  }
+
+  private fun rememberRoster(target: PersistedTarget, reading: RosterReading): Boolean {
+    val previous = rosters[target.id]
+    val next = RosterMemory.of(reading, previous, System.currentTimeMillis())
+    if (next == previous) return false
+    rosters[target.id] = next
+    return true
+  }
+
+  private fun obsoleteRoster(target: PersistedTarget) {
+    rosterQueue.removeAll { it.id == target.id }
+    rosterJobs[target.id]?.obsolete = true
   }
 
   private fun emitPayload(payload: Map<String, Any>) {
     main.post { onFleetEvent(payload) }
-  }
-
-  private fun readinessScript(staged: StagedLoad): String {
-    val nonce = org.json.JSONObject.quote(staged.readinessNonce)
-    return """
-      void (async () => {
-        try {
-          const response = await fetch('/api/v1/status', {
-            method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error',
-            headers: { Accept: 'application/json' }
-          });
-          if (!response.ok || response.redirected || new URL(response.url).origin !== location.origin) return;
-          const value = await response.json();
-          if (typeof value?.name !== 'string' || !value.name || typeof value?.version !== 'string' || !value.version) return;
-          window.$READINESS_OBJECT.postMessage($nonce);
-        } catch (_) {}
-      })();
-    """.trimIndent()
   }
 
   private fun commitStaged(staged: StagedLoad) {
@@ -818,14 +946,18 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     }
     val previousView = activeView
     val previousGateway = activeGateway
+    seamless.finish(staged.attemptId)
+    obsoleteRoster(staged.target)
+    rosters.remove(staged.target.id)
     activeTarget = staged.target
     activeGateway = staged.gateway
     activeView = staged.view
+    activeAppearanceChannelReady = staged.appearanceChannelReady
     staging = null
-    // The new document has not opted in. Padding is restored before the view is shown, then it is told again.
+    // Swap the document-start script to arrival:null before showing the staged document.
     leaveEdgeToEdge()
-    republishAppearance()
-    staged.view.visibility = VISIBLE
+    republishAppearance(announceConsoles = true)
+    staged.view.reveal()
     staged.view.requestFocus()
     layoutWebViews()
     post(::layoutWebViews)
@@ -837,6 +969,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val recovered = lostPageOrigin == staged.target.origin
     lostPageOrigin = null
     emit("connected", label = staged.target.label, origin = staged.target.origin, recovered = recovered)
+    requestRosters()
   }
 
   private fun onRendererGone(view: WebView, staged: StagedLoad) {
@@ -929,17 +1062,39 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     worker.execute {
       try { cookies.restoreAndAwait(staged.target.origin, staged.target.port, staged.cookieSnapshot) } catch (_: Exception) { }
     }
-    emit("error", code, activeTarget?.label ?: staged.target.label, staged.target.origin)
+    reportAttemptFailure(staged.attemptId, staged.target, code)
   }
 
-  private fun failIfCurrent(id: Long, code: String, candidateLabel: String?, candidateOrigin: String? = null, retryAfterSeconds: Int? = null) {
+  private fun failIfCurrent(id: Long, code: String, candidate: PersistedTarget, retryAfterSeconds: Int? = null) {
     if (!isCurrent(id)) return
     main.post {
       if (!isCurrent(id)) return@post
       attemptInFlight = false
       destroyStaging {
-        if (isCurrent(id)) emit("error", code, activeTarget?.label ?: candidateLabel, candidateOrigin, retryAfterSeconds)
+        if (isCurrent(id)) reportAttemptFailure(id, candidate, code, retryAfterSeconds)
       }
+    }
+  }
+
+  /** Rollback released only the staged view/gateway; the committed view and gateway stay in place. */
+  private fun reportAttemptFailure(id: Long, candidate: PersistedTarget, code: String, retryAfterSeconds: Int? = null) {
+    val switchFailure = seamless.fail(id, code)
+    var rosterChanged = false
+    if (switchFailure != null || code == "remote_host_not_paired") {
+      val stored = targetStore.find(candidate.origin)
+      if (stored != null) {
+        obsoleteRoster(stored)
+        val status = switchFailure?.status ?: RosterStatus.UNPAIRED
+        rosterChanged = rememberRoster(stored, RosterReading(status))
+      }
+    }
+    if (switchFailure != null) {
+      // Opening is page-local state, so a switch failure needs a pulse even if the roster did not change.
+      publishConsoles(failedId = switchFailure.target.id)
+      emitPayload(switchFailure.event())
+    } else {
+      if (rosterChanged) publishConsoles()
+      emit("error", code, activeTarget?.label ?: candidate.label, candidate.origin, retryAfterSeconds)
     }
   }
 
@@ -949,6 +1104,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     main.post {
       if (!isCurrent(id)) return@post
       attemptInFlight = false
+      seamless.cancel()
       destroyStaging {
         if (isCurrent(id)) emit("error", "pairing_target_invalid")
       }
@@ -1085,6 +1241,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     origin: String? = null,
     retryAfterSeconds: Int? = null,
     recovered: Boolean = false,
+    seamless: Boolean = false,
   ) {
     main.post {
       val payload = mutableMapOf<String, Any>("type" to type, "active" to (activeView != null))
@@ -1093,12 +1250,12 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       if (origin != null) payload["origin"] = origin
       if (retryAfterSeconds != null) payload["retryAfterSeconds"] = retryAfterSeconds
       if (recovered) payload["recovered"] = true
+      if (seamless) payload["seamless"] = true
       onFleetEvent(payload)
     }
   }
 
   private companion object {
-    const val READINESS_OBJECT = "fleetReadiness"
     const val PAGE_BACK_BUDGET_MS = 300L
 
     /** Only a literal `true` counts as handled; anything else the page does is the shell's press. */

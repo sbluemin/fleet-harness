@@ -38,17 +38,20 @@ internal class TargetStore(context: Context) {
   fun find(origin: String): PersistedTarget? = state().targets.firstOrNull { it.origin == origin }
 
   /** Commit synchronously so visible target, local origin, and durable metadata cannot diverge. */
-  fun upsert(target: PersistedTarget): Boolean {
+  fun upsert(target: PersistedTarget): Boolean = synchronized(preferences) {
     if (!isValid(target)) return false
     val current = state()
-    return write(State(target.origin, current.targets.filterNot { it.origin == target.origin } + target))
+    val index = current.targets.indexOfFirst { it.origin == target.origin }
+    val next = current.targets.toMutableList()
+    if (index >= 0) next[index] = target.copy(id = next[index].id) else next.add(target)
+    write(State(target.origin, next))
   }
 
-  fun remove(origin: String): Boolean {
+  fun remove(origin: String): Boolean = synchronized(preferences) {
     val current = state()
     val remaining = current.targets.filterNot { it.origin == origin }
     if (remaining.size == current.targets.size) return false
-    return write(State(current.active.takeIf { it != origin }, remaining))
+    write(State(current.active.takeIf { it != origin }, remaining))
   }
 
   fun identityFor(candidate: AccessTarget, live: PersistedTarget?, hasLiveGateway: Boolean): LoopbackIdentity {
@@ -68,7 +71,7 @@ internal class TargetStore(context: Context) {
 
   private data class State(val active: String?, val targets: List<PersistedTarget>)
 
-  private fun state(): State {
+  private fun state(): State = synchronized(preferences) {
     migrateLegacy()
     val raw = preferences.getString(KEY, null) ?: return State(null, emptyList())
     val parsed = try {
@@ -80,18 +83,23 @@ internal class TargetStore(context: Context) {
       preferences.edit().remove(KEY).commit()
       return State(null, emptyList())
     }
-    return parsed
+    parsed
   }
 
   private fun readState(value: JSONObject): State {
     val entries = mutableListOf<PersistedTarget>()
     val array = value.getJSONArray("targets")
+    var needsIdMigration = false
     for (index in 0 until array.length()) {
-      val target = try { readTarget(array.getJSONObject(index)) } catch (_: Exception) { continue }
-      if (isValid(target) && entries.none { it.origin == target.origin }) entries.add(target)
+      val record = array.optJSONObject(index) ?: continue
+      var target = try { readTarget(record) } catch (_: Exception) { continue }
+      if (!isValid(target) || entries.any { it.origin == target.origin }) continue
+      if (entries.any { it.id == target.id }) target = target.copy(id = java.util.UUID.randomUUID().toString())
+      if (record.opt("id") != target.id) needsIdMigration = true
+      entries.add(target)
     }
     val active = value.optString("active").takeIf { name -> entries.any { it.origin == name } }
-    return State(active, entries)
+    return State(active, entries).also { if (needsIdMigration) write(it) }
   }
 
   private fun readTarget(value: JSONObject): PersistedTarget = PersistedTarget(
@@ -101,6 +109,7 @@ internal class TargetStore(context: Context) {
     label = value.getString("label"),
     fingerprint = value.getString("fingerprint"),
     loopback = LoopbackIdentity(value.getString("localHost"), value.getInt("localPort")),
+    id = (value.opt("id") as? String)?.takeIf(MobileConsoles::validId) ?: java.util.UUID.randomUUID().toString(),
   )
 
   private fun write(state: State): Boolean {
@@ -114,7 +123,8 @@ internal class TargetStore(context: Context) {
           .put("label", target.label)
           .put("fingerprint", target.fingerprint)
           .put("localHost", target.loopback.host)
-          .put("localPort", target.loopback.port),
+          .put("localPort", target.loopback.port)
+          .put("id", target.id),
       )
     }
     val value = JSONObject().put("targets", targets)

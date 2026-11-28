@@ -7,6 +7,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.net.URI
 import java.net.URL
 import java.security.MessageDigest
@@ -31,11 +34,31 @@ internal class RemoteConnection(
     openPinnedSocket(target).use { }
   }
 
-  fun openPinnedSocket(target: PersistedTarget): SSLSocket {
+  fun openPinnedSocket(target: PersistedTarget): SSLSocket = openPinnedSocket(target) { }
+
+  /** A roster GET is not a join or a gateway request. It has no access to a cookie writer. */
+  fun readRoster(target: PersistedTarget): RosterReading {
+    var deadline: ScheduledFuture<*>? = null
+    return try {
+      val url = target.origin + RosterHttp.PATH
+      requireExpectedAuthority(target, url)
+      val pairing = cookies.readPairing(url, target.port) ?: return RosterReading(RosterStatus.UNSUPPORTED)
+      openPinnedSocket(target) { socket ->
+        deadline = rosterTimeouts.schedule({ try { socket.close() } catch (_: Exception) { } }, TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+      }.use { RosterHttp.exchange(it.getInputStream(), it.getOutputStream(), target, pairing) }
+    } catch (_: Exception) {
+      RosterReading(RosterStatus.UNAVAILABLE)
+    } finally {
+      deadline?.cancel(false)
+    }
+  }
+
+  private fun openPinnedSocket(target: PersistedTarget, onSocket: (Socket) -> Unit): SSLSocket {
     val trust = StrictPinnedTrustManager(target)
     val context = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
     val socket = context.socketFactory.createSocket() as SSLSocket
     try {
+      onSocket(socket)
       socket.soTimeout = TIMEOUT_MS
       socket.enabledProtocols = socket.supportedProtocols.filter { it == "TLSv1.3" || it == "TLSv1.2" }.toTypedArray()
       socket.connect(InetSocketAddress(target.hostname, target.port), TIMEOUT_MS)
@@ -212,6 +235,10 @@ internal class RemoteConnection(
 
   companion object {
     private const val TIMEOUT_MS = 8_000
+    private val rosterTimeouts by lazy {
+      ScheduledThreadPoolExecutor(1) { task -> Thread(task, "fleet-mobile-roster-timeout").apply { isDaemon = true } }
+        .apply { removeOnCancelPolicy = true }
+    }
 
     fun fingerprint(certificate: X509Certificate): String = MessageDigest.getInstance("SHA-256")
       .digest(certificate.encoded)
@@ -229,6 +256,10 @@ internal object FleetCookiePolicy {
     .entries
     .joinToString("; ") { (name, value) -> "$name=$value" }
     .takeIf(String::isNotEmpty)
+
+  fun pairingHeader(header: String?, port: Int): String? = scoped(header, port)[pairingName(port)]
+    ?.takeIf { it.isNotEmpty() && valuePattern.matches(it) }
+    ?.let { "${pairingName(port)}=$it" }
 
   fun snapshot(header: String?, port: Int): FleetCookieSnapshot = FleetCookieSnapshot(
     scoped(header, port).also { require(it.values.all(valuePattern::matches)) },
@@ -296,6 +327,8 @@ internal class FleetCookieStore(
   private val main: Handler = Handler(Looper.getMainLooper()),
 ) {
   fun readRemote(url: String, port: Int): String? = FleetCookiePolicy.requestHeader(manager.getCookie(url), port)
+
+  fun readPairing(url: String, port: Int): String? = FleetCookiePolicy.pairingHeader(manager.getCookie(url), port)
 
   fun snapshot(url: String, port: Int): FleetCookieSnapshot = FleetCookiePolicy.snapshot(manager.getCookie(url), port)
 

@@ -8,7 +8,7 @@ import org.json.JSONObject
  * font scale, the script that hands them to the page, and the gate for the page's messages.
  *
  * The message channel is a second door from page JavaScript into the shell. It carries display
- * preferences only, and it opens under the readiness rules: the committed view, its main frame,
+ * preferences and saved-console commands, and it opens under the readiness rules: the committed view, its main frame,
  * the exact local gateway origin, and a body that matches one whitelisted shape exactly.
  * Anything else is dropped without failing the connection.
  */
@@ -87,11 +87,18 @@ internal sealed interface AppearanceMessage {
   data class Chrome(val top: String, val bottom: String) : AppearanceMessage
   data object Edge : AppearanceMessage
   data object Consoles : AppearanceMessage
+  data object Roster : AppearanceMessage
+  data object Arrived : AppearanceMessage
+  data class Switch(val consoleId: String, val arrival: ConsoleArrival) : AppearanceMessage
 }
 
 internal object AppearanceBridge {
   const val MESSAGE_OBJECT = "fleetAppearance"
-  private const val MAX_BODY = 256
+  private const val LEGACY_MAX_BODY = 256
+  // Two 128-unit ids can use up to six ASCII characters per escaped UTF-16 unit.
+  private const val MAX_BODY = 2048
+  private val switchRequired = setOf("v", "type", "console", "commodore")
+  private val switchAllowed = switchRequired + setOf("commander", "scrollTop")
   // "scrim" (v1.5): the mode's bg under the page's sheet scrim, so the bars dim with the page.
   private val CHROME_TOP = setOf("bg", "bg-deep", "scrim")
   private val CHROME_BOTTOM = setOf("bg", "bg-deep", "surface", "scrim")
@@ -100,10 +107,12 @@ internal object AppearanceBridge {
   fun accept(fromCommittedView: Boolean, isMainFrame: Boolean, fromGatewayOrigin: Boolean, body: String?): AppearanceMessage? {
     if (!fromCommittedView || !isMainFrame || !fromGatewayOrigin) return null
     if (body == null || body.length > MAX_BODY) return null
-    val json = try { JSONObject(body) } catch (_: Exception) { return null }
-    if (json.opt("v") != 1) return null
+    val json = BridgeJson.parse(body) ?: return null
+    if ((json.opt("v") as? Number)?.toDouble() != 1.0) return null
+    val type = json.opt("type")
+    if (type != "switch" && body.length > LEGACY_MAX_BODY) return null
     val keys = json.keys().asSequence().toSet()
-    return when (json.opt("type")) {
+    return when (type) {
       "set" -> {
         if (keys != setOf("v", "type", "colorMode", "fontScale")) return null
         val colorMode = ColorMode.of(json.opt("colorMode")) ?: return null
@@ -124,6 +133,20 @@ internal object AppearanceBridge {
         AppearanceMessage.Edge
       }
       "consoles" -> if (keys == setOf("v", "type")) AppearanceMessage.Consoles else null
+      "roster" -> if (keys == setOf("v", "type")) AppearanceMessage.Roster else null
+      "arrived" -> if (keys == setOf("v", "type")) AppearanceMessage.Arrived else null
+      "switch" -> {
+        if (!keys.containsAll(switchRequired) || !switchAllowed.containsAll(keys)) return null
+        val id = (json.opt("console") as? String)?.takeIf(MobileConsoles::validId) ?: return null
+        try {
+          val commodore = ConsoleRoster.clean(json.opt("commodore"), 128)
+          val commander = if (json.has("commander")) ConsoleRoster.clean(json.opt("commander"), 128) else null
+          val scrollTop = if (json.has("scrollTop")) {
+            (json.opt("scrollTop") as? Number)?.toDouble()?.takeIf { it.isFinite() && it in 0.0..100_000.0 } ?: return null
+          } else null
+          AppearanceMessage.Switch(id, ConsoleArrival(commodore, commander, scrollTop))
+        } catch (_: IllegalArgumentException) { null }
+      }
       else -> null
     }
   }
@@ -139,6 +162,7 @@ internal object AppearanceBridge {
     console: ConsolePresentation?,
     appVersion: String? = null,
     insets: AppearanceInsets = AppearanceInsets.ZERO,
+    seamlessConsoles: Boolean = true,
   ): String {
     val value = JSONObject()
       .put("v", 1)
@@ -156,6 +180,7 @@ internal object AppearanceBridge {
     // What this shell's chrome channel accepts beyond v1 (v1.5): the page sends "scrim" only when this says so.
     // `edge` (edge-to-edge contract): the page may opt in, and only then, by the fleetAppearance "edge" message.
     value.put("chrome", JSONObject().put("scrim", true).put("edge", true))
+    if (seamlessConsoles) value.put("consoles", JSONObject().put("roster", true).put("seamless", true))
     value.put(
       "insets",
       JSONObject().put("top", insets.top).put("right", insets.right).put("bottom", insets.bottom).put("left", insets.left),
