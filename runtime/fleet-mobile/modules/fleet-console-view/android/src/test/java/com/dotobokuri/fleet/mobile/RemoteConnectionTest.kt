@@ -31,19 +31,20 @@ class RemoteConnectionTest {
         cookieManager.setCookie(target.origin, "$session=original; Path=/; Secure; HttpOnly")
         val responseBody = """{"v":1,"more":0,"commodores":[]}"""
         val received = executor.submit<List<HttpRequest>> {
-          listOf(false, true).map { oversized ->
+          listOf(200 to false, 200 to true, 401 to false, 403 to false, 404 to false).map { (code, oversized) ->
             listener.accept().use { client ->
               client.soTimeout = 8_000
               val request = HttpCodec.readRequest(client.getInputStream().buffered())
-              val size = if (oversized) RosterHttp.MAX_BODY + 1 else responseBody.length
+              val sendsBody = code == 200 && !oversized
+              val size = if (oversized) RosterHttp.MAX_BODY + 1 else if (sendsBody) responseBody.length else 0
               val output = client.getOutputStream()
-              HttpCodec.writeHead(output, "HTTP/1.1 200 OK", Headers(listOf(
+              HttpCodec.writeHead(output, "HTTP/1.1 $code", Headers(listOf(
                 Header("Set-Cookie", "$pairing=changed; Secure; HttpOnly; SameSite=Strict; Path=/"),
                 Header("Set-Cookie", "$session=changed; Secure; HttpOnly; SameSite=Strict; Path=/"),
                 Header("Content-Length", size.toString()),
                 Header("Connection", "close"),
               )))
-              if (!oversized) output.write(responseBody.toByteArray(Charsets.UTF_8))
+              if (sendsBody) output.write(responseBody.toByteArray(Charsets.UTF_8))
               output.flush()
               request
             }
@@ -57,6 +58,7 @@ class RemoteConnectionTest {
         assertEquals(RosterStatus.OK, reading.status)
         assertEquals(0, reading.roster?.getJSONArray("commodores")?.length())
         assertEquals(RosterStatus.UNAVAILABLE, remote.readRoster(target).status)
+        assertEquals(List(3) { RosterStatus.UNSUPPORTED }, List(3) { remote.readRoster(target).status })
         assertEquals(before, cookies.snapshot(target.origin, port))
         for (request in received.get(10, TimeUnit.SECONDS)) {
           assertEquals("GET", request.method)

@@ -13,8 +13,12 @@ internal data class RosterMemory(val status: RosterStatus, val at: Long?, val ro
   companion object {
     fun of(reading: RosterReading, previous: RosterMemory?, at: Long): RosterMemory = when (reading.status) {
       RosterStatus.OK -> RosterMemory(reading.status, at, reading.roster)
-      RosterStatus.UNAVAILABLE -> RosterMemory(reading.status, previous?.at, previous?.roster)
-      else -> RosterMemory(reading.status, previous?.at, null)
+      RosterStatus.UNAVAILABLE, RosterStatus.UNSUPPORTED -> {
+        // A failed background read cannot supersede an explicit native not-paired result.
+        if (previous?.status == RosterStatus.UNPAIRED) previous
+        else RosterMemory(reading.status, previous?.at, previous?.roster?.takeIf { reading.status == RosterStatus.UNAVAILABLE })
+      }
+      RosterStatus.UNPAIRED -> RosterMemory(reading.status, previous?.at, null)
     }
   }
 }

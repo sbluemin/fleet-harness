@@ -42,7 +42,7 @@ internal class RemoteConnection(
     return try {
       val url = target.origin + RosterHttp.PATH
       requireExpectedAuthority(target, url)
-      val pairing = cookies.readPairing(url, target.port) ?: return RosterReading(RosterStatus.UNPAIRED)
+      val pairing = cookies.readPairing(url, target.port) ?: return RosterReading(RosterStatus.UNSUPPORTED)
       openPinnedSocket(target) { socket ->
         deadline = rosterTimeouts.schedule({ try { socket.close() } catch (_: Exception) { } }, TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
       }.use { RosterHttp.exchange(it.getInputStream(), it.getOutputStream(), target, pairing) }

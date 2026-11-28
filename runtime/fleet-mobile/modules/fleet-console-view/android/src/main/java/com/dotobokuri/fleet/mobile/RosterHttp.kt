@@ -22,8 +22,8 @@ internal object RosterHttp {
     val stream = input.buffered()
     val response = HttpCodec.readResponse(stream)
     return when (response.code) {
-      401, 403 -> RosterReading(RosterStatus.UNPAIRED)
-      404 -> RosterReading(RosterStatus.UNSUPPORTED)
+      // Consoles predating this route can reject pairing-only auth before route lookup.
+      401, 403, 404 -> RosterReading(RosterStatus.UNSUPPORTED)
       200 -> {
         val body = readBody(stream, response.bodyKind)
         val text = Charsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(body)).toString()

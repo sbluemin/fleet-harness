@@ -67,6 +67,7 @@ class MobileConsolesTest {
     assertFalse(entries.getJSONObject(1).getBoolean("active"))
     assertTrue(entries.getJSONObject(1).isNull("roster"))
     assertEquals("unpaired", entries.getJSONObject(1).getString("status"))
+    assertEquals(roster, RosterMemory.of(RosterReading(RosterStatus.UNSUPPORTED), roster, 25L))
     assertEquals(mapOf("type" to "switch-failed", "active" to true, "label" to other.label, "origin" to other.origin,
       "code" to "remote_host_not_paired"), failure.event())
     assertEquals(previous.roster, RosterMemory.of(RosterReading(RosterStatus.UNAVAILABLE), previous, 20L).roster)
