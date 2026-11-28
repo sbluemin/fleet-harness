@@ -20,6 +20,14 @@ public enum FleetCookiePolicy {
     return joined.isEmpty ? nil : joined
   }
 
+  /// 명부 조회 전용 Cookie 헤더 — 그 콘솔 포트의 페어링 쿠키 하나만. 세션 쿠키를 싣지 않으므로 서버가
+  /// 세션을 해석·연장할 여지가 없다.
+  public static func pairingHeader(_ header: String?, _ port: Int) throws -> String? {
+    let pairs = try scopedPairs(header, port).filter { $0.name == pairingName(port) }
+    try require(pairs.allSatisfy { matches(valuePattern, $0.value) && !$0.value.isEmpty })
+    return pairs.first.map { "\($0.name)=\($0.value)" }
+  }
+
   public static func snapshot(_ header: String?, _ port: Int) throws -> FleetCookieSnapshot {
     let pairs = try scopedPairs(header, port)
     try require(pairs.allSatisfy { matches(valuePattern, $0.value) })

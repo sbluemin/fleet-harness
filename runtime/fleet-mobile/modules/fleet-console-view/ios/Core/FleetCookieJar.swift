@@ -25,6 +25,11 @@ public final class FleetCookieJar {
     try FleetCookiePolicy.requestHeader(rawHeader(origin), port)
   }
 
+  /// 명부 조회가 붙일 Cookie 헤더 — 페어링 쿠키만.
+  public func readPairing(_ origin: String, _ port: Int) throws -> String? {
+    try FleetCookiePolicy.pairingHeader(rawHeader(origin), port)
+  }
+
   public func snapshot(_ origin: String, _ port: Int) throws -> FleetCookieSnapshot {
     try FleetCookiePolicy.snapshot(rawHeader(origin), port)
   }

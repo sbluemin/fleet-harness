@@ -40,6 +40,7 @@ export interface ShellStrings {
   readonly cameraOff: (ios: boolean) => string;
   readonly notFleetCode: string;
   readonly pageRecovered: string;
+  readonly switchFailed: (name: string | null) => string;
   readonly describe: (code: string | undefined) => string;
 }
 
@@ -80,6 +81,7 @@ const KO: ShellStrings = {
   cameraOff: (ios) => `Fleet의 카메라 접근이 꺼져 있어요. ${ios ? "설정" : "Android 설정"}에서 켜거나 링크를 붙여넣어 주세요.`,
   notFleetCode: "Fleet 접속 링크가 아닌 코드예요.",
   pageRecovered: "Console 화면이 멈춰서 다시 불러왔어요. 첨부하던 이미지가 있으면 다시 추가해 주세요.",
+  switchFailed: (name) => name ? `${name}${towardParticle(name)} 넘어가지 못했어요. 지금 Console은 그대로예요.` : "다른 Console로 넘어가지 못했어요. 지금 Console은 그대로예요.",
   describe(code) {
     switch (code) {
       case "pairing_target_invalid": return "접속 링크가 올바르지 않아요. 그 Console에서 새 접속 링크를 열어 주세요.";
@@ -143,6 +145,7 @@ const EN: ShellStrings = {
   cameraOff: (ios) => `Camera access is turned off for Fleet. Turn it on in ${ios ? "Settings" : "Android settings"}, or paste the link instead.`,
   notFleetCode: "That code is not a Fleet access link.",
   pageRecovered: "The Console page stopped, so Fleet reloaded it. Add any image you were attaching again.",
+  switchFailed: (name) => `Couldn't switch to ${name ?? "that console"}. You're still on this one.`,
   describe(code) {
     switch (code) {
       case "pairing_target_invalid": return "That access link is not valid.";
