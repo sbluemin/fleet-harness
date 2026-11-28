@@ -310,3 +310,39 @@ it("says the window is minimized instead of leaving the offscreen card blank, on
   expect(node.querySelector(".computer-screen-share video")).not.toBeNull();
   expect(getDisplayMedia).toHaveBeenCalledTimes(1);
 });
+
+it("tells a remote full viewer the host window is minimized instead of counting the delay, and resumes the still after restore", async () => {
+  const node = await mount();
+  frames.push(frame());
+  await act(async () => { emit(REMOTE_PREVIEW_STATE_EVENT, { target, sending: true }); });
+  await flush();
+  expect(node.querySelector(".computer-screen-share.is-remote img")?.getAttribute("src")).toBe("blob:frame-1");
+  const note = () => node.querySelector(".computer-screen-share.is-remote .computer-screen-share-still.is-minimized");
+
+  await act(async () => { emit(REMOTE_PREVIEW_STATE_EVENT, { target: { ...target, minimized: true }, sending: true }); });
+  // 최소화 동안 호스트는 장을 만들지 못한다 — 지연 문구 대신 호스트 카드와 같은 사유를 말한다.
+  await flush(30_000);
+  expect(note()?.getAttribute("role")).toBe("status");
+  expect(note()?.textContent).toBe("The window is minimized. Restore it to resume the preview.");
+  expect(node.querySelector(".computer-screen-share img")).toBeNull();
+  expect(node.querySelector(".computer-screen-share-stale")).toBeNull();
+  expect(node.textContent).not.toContain("No new preview");
+
+  // 복원 — 최소화 동안의 공백을 지연으로 세지 않는다. 지연은 복원한 때부터 다시 센다.
+  await act(async () => { emit(REMOTE_PREVIEW_STATE_EVENT, { target, sending: true }); });
+  await flush();
+  expect(note()).toBeNull();
+  expect(node.querySelector(".computer-screen-share-still.is-empty")).not.toBeNull();
+  expect(node.querySelector(".computer-screen-share-stale")).toBeNull();
+  await flush(4000);
+  expect(node.querySelector(".computer-screen-share-stale")).toBeNull();
+  await flush(2000);
+  expect(node.querySelector(".computer-screen-share-stale")?.textContent).toBe("No new preview in the last 6 seconds.");
+});
+
+it("does not show the minimized note while the host turned remote previews off", async () => {
+  const node = await mount();
+  await act(async () => { emit(REMOTE_PREVIEW_STATE_EVENT, { target: { ...target, minimized: true }, sending: false }); });
+  await flush();
+  expect(node.querySelector(".computer-screen-share")!.textContent).toBe("Remote preview is off in the host settings.");
+});

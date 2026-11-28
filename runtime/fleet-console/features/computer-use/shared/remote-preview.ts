@@ -45,6 +45,8 @@ export interface RemotePreviewTarget {
   readonly objectiveId: string | null;
   readonly commodoreId: string | null;
   readonly actor: string;
+  /** 호스트 창이 최소화되어 정지 화면이 만들어지지 않는다(Windows DWM). 참일 때만 싣는 비민감 불리언이다. */
+  readonly minimized?: true;
 }
 
 /** `computer-preview:state` 프레임. `sending: false`는 컴퓨터 사용 중이지만 호스트가 원격 보내기를 끈 상태다. */
@@ -67,6 +69,7 @@ export function readRemotePreviewState(value: unknown): RemotePreviewState {
         objectiveId: typeof t.objectiveId === "string" ? t.objectiveId : null,
         commodoreId: typeof t.commodoreId === "string" ? t.commodoreId : null,
         actor: t.actor,
+        ...(t.minimized === true ? { minimized: true as const } : {}),
       };
     }
   }
