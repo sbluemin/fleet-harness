@@ -27,7 +27,7 @@ export interface ChromeImportSources {
 export type ChromeTabsOrientation = "vertical" | "horizontal";
 export type ChromeOverlay =
   | { readonly kind: "menu" }
-  /** 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로 보여 준다. */
+  /** 스페이스 선택 화면 — 디폴트와 사령관 스페이스를 그리드로 보여 준다(탭 없는 사령관 스페이스는 보는 중·작업 중·내 조치 필요가 아니면 뺀다). */
   | { readonly kind: "spaces" }
   /** 탭 표시줄 우클릭 메뉴 — 주소줄 문서 좌표(CSS px)의 그 자리에 뜬다. */
   | { readonly kind: "tabs-menu"; readonly x: number; readonly y: number }
