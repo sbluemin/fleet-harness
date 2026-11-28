@@ -26,6 +26,7 @@ import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileHome } from "./mobile-home.js";
+import { useMobileConsoleArrival, useMobileConsolesSeamless } from "./mobile-consoles.js";
 import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
@@ -61,6 +62,9 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
   }, [commandBoardBlocked, commandBoardSettingKnown]);
   const consoleState = useConsoleState();
   const commodores = useCommodoreList();
+  // 심리스 콘솔 도착(계약 6절·r1) — 문서 적재 때 실려 온 사령관(·목표)을 한 번 연다.
+  useMobileConsoleArrival();
+  const seamless = useMobileConsolesSeamless();
   const [selectedObjectiveId, setSelectedObjectiveId] = useState(() => readMobileObjectiveId());
   const selectedObjective = objectiveRecords.find((objectiveRecord) => objectiveRecord.id === selectedObjectiveId) ?? null;
   // 지휘관 화면은 고른 구성원의 본문을 보인다 — 데스크톱 지휘관 패널과 같은 원천(코어의 부모 관계 + 본문 선택)이다.
@@ -151,7 +155,8 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
       </>
     );
   } else {
-    content = commodores.length > 0 ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
+    // 심리스면 이 콘솔에 사령관이 없어도 다른 콘솔 섹션이 있어 홈 목록을 세운다.
+    content = commodores.length > 0 || seamless ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
   }
 
   return (

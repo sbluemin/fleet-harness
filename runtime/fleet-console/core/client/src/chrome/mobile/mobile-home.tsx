@@ -30,9 +30,10 @@ import { useConversationTime } from "./mobile-conversation-row.js";
 import { attentionMovesFirst, entryIconOf, featuredDestinationBinding, isChipDestination, mobileHomeCommodoreId, mobilePluginRows, useMobileDestinationBindings } from "./mobile-destinations.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
+import { MobileConsoleHomeList, openMobileHomeCommodore, useMobileHomeScrollRestore, useMobileRosterPoll } from "./mobile-consoles.js";
 import { MobileShortcutSheet } from "./mobile-shortcut-sheet.js";
 import { useMobileUpdateReady } from "./mobile-update-sheet.js";
-import { openMobilePluginDestination, pushMobileSheet, setMobileDestination, setMobileListTheater, setMobileReturnDestination } from "./mobile-store.js";
+import { openMobilePluginDestination, pushMobileSheet, setMobileDestination, setMobileReturnDestination } from "./mobile-store.js";
 import { CommodoreRowActions } from "./mobile-sheet-host.js";
 import { useLongPress } from "../../../../../features/workspace/client/long-press.js";
 
@@ -143,14 +144,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
 
   const consoleName = appearance.console?.label ?? window.location.hostname;
   const fallbackName = t("sidebar.commodore.fallback");
-  const open = (commodore: ConsoleCommodoreSummary) => {
-    setMobileReturnDestination(null);
-    selectMobileCommodore(commodore.commodoreId);
-    // 바로가기의 범위는 마지막으로 연 사령관의 Theater 목록 첫 줄이다 — 옛 사령관 고르기 시트와 같은 규칙.
-    const home = commodore.theaters.find((theater) => theater.status === "available")?.theaterId ?? null;
-    if (home) setMobileListTheater({ commodoreId: commodore.commodoreId, theaterId: home });
-    setMobileDestination({ kind: "plugin", entryId: "commodore", params: { commodoreId: commodore.commodoreId } });
-  };
+  const open = openMobileHomeCommodore;
   const openChipObjective = (commodore: ConsoleCommodoreSummary, cluster: ObjectiveCluster) => {
     setMobileReturnDestination(null);
     selectMobileCommodore(commodore.commodoreId);
@@ -165,6 +159,10 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
   const listRef = useRef<HTMLElement>(null);
   const headRef = useRef<HTMLElement>(null);
   useChromeHeightProperty(headRef, listRef, "--m-screen-head");
+  // 심리스 콘솔(계약 6절) — 다른 콘솔 명부를 30s마다 새로 읽고, 도착이 남긴 목록 위치를 페인트 전에 맞춘다.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useMobileRosterPoll();
+  useMobileHomeScrollRestore(scrollRef);
 
   const visibleAttention = attentionRows.slice(0, HOME_ATTENTION_LIMIT);
 
@@ -197,7 +195,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
         </button>
         <button type="button" data-press="r1" className="mobile-conv-round" aria-label={t("mobile.list.create")} onClick={() => pushMobileSheet({ kind: "create" })}><MobileIcon name="plus" /></button>
       </header>
-      <div className="mobile-conv-scroll">
+      <div ref={scrollRef} className="mobile-conv-scroll">
         {commandBoardEnabled ? (
           <button
             type="button"
@@ -262,6 +260,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
           </section>
         ) : null}
         {sections.error ? <p className="mobile-home-section-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
+        <MobileConsoleHomeList scrollRef={scrollRef} local={<>
         {faces.length === 0 && commodoreListLoaded() && sections.layout.sections.length === 0 ? <p className="mobile-conv-empty-note">{t("mobile.home.noCommodore")}</p> : null}
         {buckets.map((bucket) => {
           const rows = bucket.rows.map((face) => face.kind === "commodore"
@@ -290,6 +289,7 @@ export function MobileHome({ state }: { readonly state: ConsoleState }) {
             {!collapsed ? rows.length ? rows : <p className="mobile-home-section-empty">{t("mobile.home.sectionEmpty")}</p> : null}
           </section>;
         })}
+        </>} />
       </div>
       <footer className="mobile-home-dock">
         {extraShortcuts > 0 ? (

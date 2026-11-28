@@ -36,6 +36,7 @@ import { loadFeatureRegistry, FeatureRegistryProvider } from "../integration/fea
 import { bindGroupClusterSource, GroupClusterProvider } from "../../../../features/execution/client/agent/chat/group-timeline-store.js";
 import { ComposerTopEntriesProvider } from "../../../../features/execution/client/agent/chat/composer-top-entries.js";
 import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme } from "../integration/store.js";
+import { installMobileConsoles } from "../integration/mobile-consoles-store.js";
 import { installMobileAppearance } from "../integration/mobile-appearance-store.js";
 import { bindConversationSurfaceLayout } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getRailStoreSnapshot } from "../chrome/rail/rail-store.js";
@@ -47,6 +48,8 @@ applyDesktopShellMarker();
 // 모바일 색상 모드·글자 배율은 기기 단위 선호다(앱이면 네이티브 소유, 브라우저면 로컬 저장) —
 // 부트 스크립트가 첫 페인트에 붙인 속성을 이어받아 시스템 외관·네이티브 확정을 실시간으로 따른다.
 installMobileAppearance();
+// 심리스 콘솔(브리지 v1.6) — 문서 적재 때의 도착을 포착하고 다른 콘솔 명부를 구독한다. 능력이 없으면 아무것도 하지 않는다.
+installMobileConsoles();
 // 모달 표시는 CSS :has()가 아니라 루트 속성으로 흐른다 — 문서 전체 스타일 재계산을 막는다(modal-open-marker.ts).
 installModalOpenMarker();
 
