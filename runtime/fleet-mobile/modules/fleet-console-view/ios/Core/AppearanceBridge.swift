@@ -1,7 +1,7 @@
 import Foundation
 
 // AppearanceBridge.kt의 iOS 대응 (shared/bridge-contract.md v1.1).
-// 페이지 → 셸 메시지 통로는 readiness 다음의 두 번째 문이다. 표시 선호만 나르며, readiness와
+// 페이지 → 셸 메시지 통로는 readiness 다음의 두 번째 문이다. 표시 선호와 콘솔 전환 요청만 나르며, readiness와
 // 같은 조건 — 커밋된 뷰, main frame, 정확한 로컬 게이트웨이 오리진, 화이트리스트 모양 하나와
 // 정확히 같은 본문 — 일 때만 열린다. 어긋나면 연결을 실패시키지 않고 조용히 버린다.
 
@@ -22,7 +22,8 @@ public struct Appearance: Equatable {
   }
 }
 
-/// 페이지가 알아도 되는 것은 지금 붙은 이 Console 하나의 표시값뿐이다.
+/// 지금 붙은 이 Console의 표시값. 다른 페어링 Console에 대해 페이지가 아는 것은 MobileConsoles.swift의
+/// 상태(불투명 id·표시 이름·모노그램·톤·상태·최소 명부)뿐이고, 주소는 이 Console 자신의 것만 간다.
 public struct ConsolePresentation: Equatable {
   public let label: String
   public let monogram: String
@@ -77,11 +78,18 @@ public enum AppearanceMessage: Equatable {
   case chrome(top: String, bottom: String)
   case edge
   case consoles
+  /// v1.6 심리스: 다른 페어링 콘솔의 명부를 새로 읽어 달라.
+  case roster
+  /// v1.6 심리스: 그 콘솔로 넘어가 이 사령관(+목표)을 연다. console이 알려진 비활성 id인지는 셸이 본다.
+  case switchConsole(console: String, commodore: String, commander: String?, scrollTop: Double?)
+  /// v1.6 심리스: 도착 위치를 적용했다.
+  case arrived
 }
 
 public enum AppearanceBridge {
   public static let messageObject = "fleetAppearance"
-  private static let maxBody = 256
+  // switch는 id(64)·사령관(128)·목표(128)를 함께 싣는다.
+  private static let maxBody = 1024
   // "scrim"(v1.5) — 페이지 시트 스크림 아래의 지금 모드 bg. 바가 페이지와 함께 어두워진다.
   private static let chromeTop: Set<String> = ["bg", "bg-deep", "scrim"]
   private static let chromeBottom: Set<String> = ["bg", "bg-deep", "surface", "scrim"]
@@ -113,6 +121,27 @@ public enum AppearanceBridge {
       return .edge
     case "consoles":
       return keys == ["v", "type"] ? .consoles : nil
+    case "roster":
+      return keys == ["v", "type"] ? .roster : nil
+    case "arrived":
+      return keys == ["v", "type"] ? .arrived : nil
+    case "switch":
+      // 4~6개 키 정확 일치. 선택 키는 있으면 유효해야 하고 null은 받지 않는다(없으면 키를 뺀다).
+      guard keys.isSuperset(of: ["v", "type", "console", "commodore"]),
+            keys.isSubset(of: ["v", "type", "console", "commodore", "commander", "scrollTop"]),
+            let console = json["console"] as? String, TargetStore.isValidId(console),
+            let commodore = cleanText(json["commodore"], 128) else { return nil }
+      var commander: String?
+      if keys.contains("commander") {
+        guard let value = cleanText(json["commander"], 128) else { return nil }
+        commander = value
+      }
+      var scrollTop: Double?
+      if keys.contains("scrollTop") {
+        guard let value = jsonNumber(json["scrollTop"]), value >= 0, value <= 100_000 else { return nil }
+        scrollTop = value
+      }
+      return .switchConsole(console: console, commodore: commodore, commander: commander, scrollTop: scrollTop)
     default:
       return nil
     }
@@ -135,10 +164,13 @@ public enum AppearanceBridge {
     // v1 너머로 이 셸의 chrome 통로가 받는 것(v1.5) — 페이지는 이것이 있을 때만 "scrim"을 보낸다.
     // `edge`(엣지투엣지 계약) — 페이지는 이것이 있을 때만 fleetAppearance "edge"로 opt-in한다.
     value["chrome"] = ["scrim": true, "edge": true]
+    // v1.6 심리스 — 이 셸은 __fleetMobileConsoles를 주고 roster/switch/arrived를 받는다. 페이지는 이것이
+    // 있을 때만 그 메시지를 보낸다. 구 페이지는 모르는 키를 읽지 않는다.
+    value["consoles"] = ["roster": true, "seamless": true]
     value["insets"] = ["top": insets.top, "right": insets.right, "bottom": insets.bottom, "left": insets.left]
     let json = (try? JSONSerialization.data(withJSONObject: value)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
     let literal = (try? JSONEncoder().encode(json)).flatMap { String(data: $0, encoding: .utf8) } ?? "\"{}\""
-    return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); Object.freeze(v); "
+    return "(() => { const v = JSON.parse(\(literal)); if (v.console) Object.freeze(v.console); if (v.chrome) Object.freeze(v.chrome); if (v.consoles) Object.freeze(v.consoles); Object.freeze(v); "
       + "Object.defineProperty(window, \"__fleetMobileAppearance\", { value: v, configurable: true, enumerable: false, writable: false }); "
       + "window.dispatchEvent(new CustomEvent(\"fleet-mobile-appearance\", { detail: v })); })();"
   }

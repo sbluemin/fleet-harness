@@ -4,13 +4,18 @@ import type { ComponentType, RefAttributes } from "react";
 import type { NativeSyntheticEvent, ViewProps } from "react-native";
 
 export interface FleetConsoleEvent {
-  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets" | "appearance" | "chrome" | "edge" | "consoles";
+  readonly type: "waiting" | "connecting" | "connected" | "error" | "insets" | "appearance" | "chrome" | "edge" | "consoles" | "switch-failed";
   readonly code?: string;
   /** 표시할 Console 이름. 링크 파싱 오류에는 대상이 없으므로 생략한다. */
   readonly label?: string;
   /** Origin of the target the event is about; on an error this is the target that failed. */
   readonly origin?: string;
   readonly active?: boolean;
+  /**
+   * On "connecting": the page asked to switch to another paired console (bridge v1.6). The live console stays on
+   * screen while the new one loads behind it, so no connecting screen is shown over it.
+   */
+  readonly seamless?: boolean;
   readonly retryAfterSeconds?: number;
   /** On "connected": the page came back after its web content process died, so whatever it held is gone. */
   readonly recovered?: boolean;
@@ -27,6 +32,12 @@ export interface FleetConsoleEvent {
   readonly bottom?: "bg" | "bg-deep" | "surface" | "scrim";
   /** On "edge": the committed page opted into drawing under the system bars. Cleared on the next document. */
   readonly on?: boolean;
+  /*
+   * "switch-failed" (bridge v1.6): a switch the page started could not reach `label` (`code`, `origin`). The live
+   * console, its gateway and its page are untouched, so this is a notice, never the error screen.
+   * "consoles" with `origin` and `code: "remote_host_not_paired"`: the page asked to switch to a console whose pairing
+   * is gone; the shell opens the console sheet instead of switching.
+   */
 }
 
 export type ColorMode = "system" | "dark" | "light";

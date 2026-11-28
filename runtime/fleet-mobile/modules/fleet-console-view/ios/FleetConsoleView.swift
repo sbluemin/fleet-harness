@@ -61,6 +61,18 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // 잘못된 링크 오류는 사용자가 다음 행동을 고를 때까지 포그라운드 복귀로 덮지 않는다.
   private var invalidLinkPending = false
   private var detached = false
+  // 모바일 심리스(브리지 v1.6). 다른 페어링 콘솔의 명부·도착 위치를 기억하고, 명부 조회는 동시 2개까지.
+  // 메인 스레드에서만 읽고 쓴다.
+  private let consoles = MobileConsolesHub()
+  private let rosterQueue: OperationQueue = {
+    let queue = OperationQueue()
+    queue.name = "fleet-mobile-console-roster"
+    queue.maxConcurrentOperationCount = 2
+    queue.qualityOfService = .utility
+    return queue
+  }()
+  /// 페이지의 switch로 시작한 시도. 이 시도의 실패는 오류 화면이 아니라 switch-failed다.
+  private var seamlessAttemptId: Int64?
 
   public required init(appContext: AppContext? = nil) {
     let store = kv
@@ -218,7 +230,9 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       return
     }
     if attemptInFlight { return }
-    if activeView == nil && activeTarget != nil { retry() }
+    if activeView == nil && activeTarget != nil { retry(); return }
+    // 포그라운드 복귀(개정 r4): 보이는 콘솔이 있으면 다른 콘솔 명부를 스스로 한 번 새로 읽는다.
+    main { if self.activeView != nil { self.refreshRosters() } }
   }
 
   public func dismissLinkError() {
@@ -231,16 +245,22 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     main {
       self.invalidLinkPending = false
       guard let stored = self.targetStore.find(origin) else { self.emit("error", code: "target_missing"); return }
-      let identity = self.targetStore.resumeIdentity(stored, live: self.activeTarget, hasLiveGateway: self.activeGateway != nil) { LoopbackIdentity.reserve() }
-      let candidate = PersistedTarget(origin: stored.origin, hostname: stored.hostname, port: stored.port, label: stored.label, fingerprint: stored.fingerprint, loopback: identity)
-      self.beginAttempt(candidate, token: nil)
+      self.connect(stored, seamless: false)
     }
+  }
+
+  /// RN의 connectTo와 페이지의 switch가 같은 단계 로드 경로를 쓴다.
+  private func connect(_ stored: PersistedTarget, seamless: Bool) {
+    let identity = targetStore.resumeIdentity(stored, live: activeTarget, hasLiveGateway: activeGateway != nil) { LoopbackIdentity.reserve() }
+    let candidate = PersistedTarget(origin: stored.origin, hostname: stored.hostname, port: stored.port, label: stored.label, fingerprint: stored.fingerprint, loopback: identity)
+    beginAttempt(candidate, token: nil, seamless: seamless)
   }
 
   public func removeTarget(_ origin: String) {
     main {
       self.invalidLinkPending = false
       guard let removed = self.targetStore.find(origin) else { return }
+      if let id = self.targetStore.records().first(where: { $0.target.origin == origin })?.id { self.consoles.forget(id) }
       let wasActive = self.activeTarget?.origin == origin
       let wasStaging = self.staging?.target.origin == origin
       self.targetStore.remove(origin)
@@ -261,6 +281,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       }
       self.cookies.clear(removed.origin)
       _ = removed
+      self.republishConsoles()
     }
   }
 
@@ -320,6 +341,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     detached = true
     FleetLinkInbox.detach(linkReceiver)
     attempt.increment()
+    rosterQueue.cancelAllOperations()
     destroyStaging()
     activeView?.destroySafely(); activeView = nil
     activeLoad = nil
@@ -328,15 +350,18 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   // MARK: - Attempt pipeline
 
-  private func beginAttempt(_ candidate: PersistedTarget, token: String?) {
+  private func beginAttempt(_ candidate: PersistedTarget, token: String?, seamless: Bool = false) {
     let id = attempt.increment()
     main {
       guard self.isCurrent(id) else { return }
       self.attemptInFlight = true
       self.invalidLinkPending = false
+      // 페이지의 switch가 아닌 시도는 남은 도착 위치를 가져가지 않는다.
+      self.seamlessAttemptId = seamless ? id : nil
+      if !seamless { self.consoles.clearArrival() }
       let launch = {
         guard self.isCurrent(id) else { return }
-        self.emit("connecting", label: candidate.label, origin: candidate.origin)
+        self.emit("connecting", label: candidate.label, origin: candidate.origin, seamless: seamless)
         self.worker.async { self.runCandidate(id, candidate, token) }
       }
       if self.staging == nil { launch() } else { self.destroyStaging(launch) }
@@ -397,7 +422,6 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     let config = WKWebViewConfiguration()
     config.userContentController.add(self, name: Self.readinessObject)
     config.userContentController.add(self, name: AppearanceBridge.messageObject)
-    config.userContentController.addUserScript(appearanceUserScript(for: candidate))
     config.preferences.javaScriptCanOpenWindowsAutomatically = false
     // 의도적으로 Android와 다르다. Android는 기본(영속) WebView 프로필에 DOM storage를 켜므로
     // 콘솔의 localStorage가 재시작을 넘어 살아남는다. iOS는 시도마다 새 스토어를 쓴다 —
@@ -426,6 +450,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     // 게이트웨이 시크릿 쿠키를 로컬 오리진에 심는다(로드 전에 완료 대기).
     let staged = StagedLoad(attemptId: id, target: candidate, gateway: gateway, cookieSnapshot: cookieSnapshot, view: webView, readinessNonce: nonce)
     staging = staged
+    // 문서 시작 스크립트: 겉모습 + 콘솔 명부 상태(이 전환의 도착 위치 포함, 개정 r1).
+    installUserScripts(staged)
     webView.isHidden = true
     addSubview(webView)
     layoutWebViews()
@@ -631,17 +657,94 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   /// 살아 있는 페이지마다 다시 알린다: 다음 로드는 문서 시작 스크립트로, 열린 페이지는 지금 바로.
   private func republishAppearance() {
-    if let staged = staging {
-      let content = staged.view.configuration.userContentController
-      content.removeAllUserScripts()
-      content.addUserScript(appearanceUserScript(for: staged.target))
+    if let staged = staging { installUserScripts(staged) }
+    if let view = activeView, let load = activeLoad, load.view === view {
+      installUserScripts(load)
+      view.evaluateJavaScript(appearanceScript(for: load.target), completionHandler: nil)
     }
-    if let view = activeView, let target = activeLoad?.target ?? activeTarget {
-      let content = view.configuration.userContentController
-      content.removeAllUserScripts()
-      content.addUserScript(appearanceUserScript(for: target))
-      view.evaluateJavaScript(appearanceScript(for: target), completionHandler: nil)
+  }
+
+  /// 한 뷰의 문서 시작 스크립트 전부. 겉모습과 콘솔 명부는 함께 다시 심어야 한쪽이 지워지지 않는다.
+  private func installUserScripts(_ load: StagedLoad) {
+    let content = load.view.configuration.userContentController
+    content.removeAllUserScripts()
+    content.addUserScript(appearanceUserScript(for: load.target))
+    content.addUserScript(WKUserScript(source: consolesScript(for: load), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+  }
+
+  // MARK: - Seamless consoles (브리지 v1.6)
+
+  /// 이 뷰의 문서가 받을 상태. 그 문서의 콘솔이 활성 항목이고, 도착 위치는 그 콘솔이 switch의 대상일 때만 실린다.
+  private func consolesScript(for load: StagedLoad) -> String {
+    let records = targetStore.records()
+    let documentId = records.first { $0.target.origin == load.target.origin }?.id
+    let state = consoles.state(records: records, activeOrigin: load.target.origin, arrivalFor: documentId, now: Date())
+    return MobileConsolesBridge.script(state, gatewayOrigin: load.gateway.origin)
+  }
+
+  /// 명부·목록·도착 위치가 바뀌면: 단계 로드 중인 뷰는 문서 시작 스크립트만, 보이는 문서는 지금 바로.
+  private func republishConsoles() {
+    if let staged = staging { installUserScripts(staged) }
+    if let view = activeView, let load = activeLoad, load.view === view {
+      installUserScripts(load)
+      view.evaluateJavaScript(consolesScript(for: load), completionHandler: nil)
     }
+  }
+
+  /// 페이지의 roster 요청. 대상별 최소 간격·동시 2개는 허브와 큐가 지킨다. 바뀐 결과만 다시 알린다.
+  private func refreshRosters() {
+    let due = consoles.claimDue(records: targetStore.records(), activeOrigin: activeTarget?.origin, now: Date())
+    for record in due {
+      rosterQueue.addOperation { [weak self] in
+        guard let self else { return }
+        let outcome = self.connection.readRoster(record.target)
+        self.main {
+          guard !self.detached else { return }
+          guard self.targetStore.find(id: record.id) != nil else { self.consoles.forget(record.id); return }
+          if self.consoles.record(record.id, outcome, now: Date()) { self.republishConsoles() }
+        }
+      }
+    }
+  }
+
+  private func receiveSwitch(console: String, commodore: String, commander: String?, scrollTop: Double?) {
+    switch consoles.decide(consoleId: console, records: targetStore.records(), activeOrigin: activeTarget?.origin) {
+    case .ignore:
+      return
+    case .openSheet(let record):
+      // 페어링이 끊긴 콘솔로는 넘어가지 않는다. RN 콘솔 시트가 재페어링 경로를 보인다.
+      emitPayload(["type": "consoles", "origin": record.target.origin, "code": "remote_host_not_paired"])
+    case .connect(let record):
+      consoles.setArrival(targetId: record.id, MobileConsoleArrival(commodore: commodore, commander: commander, scrollTop: scrollTop), now: Date())
+      // TTL은 단계 로드가 끝나지 않을 때의 안전장치다.
+      DispatchQueue.main.asyncAfter(deadline: .now() + MobileConsolesHub.arrivalTtl + 0.5) { [weak self] in
+        guard let self, !self.detached else { return }
+        if self.consoles.expireArrival(now: Date()) { self.republishConsoles() }
+      }
+      invalidLinkPending = false
+      connect(record.target, seamless: true)
+    }
+  }
+
+  /// 시도 실패를 알린다. 페이지가 시작한 전환이 보이는 콘솔 위에서 실패하면 오류 화면 대신 switch-failed —
+  /// 활성 콘솔·게이트웨이·뷰는 그대로다. 실패한 대상의 상태는 네이티브 캐시에 남긴다(개정 r2).
+  private func reportAttemptFailure(_ id: Int64, code: String, candidateLabel: String?, origin: String?, retryAfter: Int?) {
+    let targetId = origin.flatMap { origin in
+      origin == activeTarget?.origin ? nil : targetStore.records().first { $0.target.origin == origin }?.id
+    }
+    let seamless = seamlessAttemptId == id
+    if seamless { seamlessAttemptId = nil }
+    let (report, changed) = consoles.attemptFailed(targetId: targetId, code: code, seamless: seamless, activeVisible: activeView != nil)
+    if report == .switchFailed {
+      var payload: [String: Any] = ["type": "switch-failed", "code": code, "active": true]
+      if let candidateLabel { payload["label"] = candidateLabel }
+      if let origin { payload["origin"] = origin }
+      emitPayload(payload)
+      republishConsoles()
+      return
+    }
+    if changed { republishConsoles() }
+    emit("error", code: code, label: activeTarget?.label ?? candidateLabel, origin: origin, retryAfterSeconds: retryAfter)
   }
 
   private func refreshAppearance() {
@@ -664,6 +767,12 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       enterEdgeToEdge()
     case .consoles:
       emitPayload(["type": "consoles"])
+    case .roster:
+      refreshRosters()
+    case .arrived:
+      if consoles.clearArrival() { republishConsoles() }
+    case .switchConsole(let console, let commodore, let commander, let scrollTop):
+      receiveSwitch(console: console, commodore: commodore, commander: commander, scrollTop: scrollTop)
     }
   }
 
@@ -702,9 +811,17 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     activeView = staged.view
     activeLoad = staged
     staging = nil
+    // 도착 위치는 이 단계 로드 문서에서 한 번만 쓰인다(개정 r1): 문서 시작 스크립트를 arrival=null로 바꾸고
+    // 최신 상태를 한 번 더 보낸다. 이후 같은 뷰의 다른 문서·재적재에는 도착 위치가 가지 않는다.
+    seamlessAttemptId = nil
+    consoles.clearArrival()
+    if let record = targetStore.records().first(where: { $0.target.origin == staged.target.origin }) { consoles.recordConnected(record.id) }
     // 새 문서는 아직 opt-in하지 않았다. 보이기 전에 패딩으로 되돌리고 능력을 다시 알린다.
     leaveEdgeToEdge()
     republishAppearance()
+    republishConsoles()
+    // 단계 로드 문서의 첫 roster 요청은 readiness 전이라 게이트에 버려질 수 있다(개정 r4) — 셸이 먼저 읽는다.
+    refreshRosters()
     staged.view.isHidden = false
     layoutWebViews()
     if let previousView, previousView !== staged.view { previousView.removeFromSuperview(); previousView.destroySafely() }
@@ -721,7 +838,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     staged.view.destroySafely()
     staged.gateway.close()
     worker.async { try? self.cookies.restore(staged.target.origin, staged.target.port, staged.cookieSnapshot) }
-    emit("error", code: code, label: activeTarget?.label ?? staged.target.label, origin: staged.target.origin)
+    reportAttemptFailure(staged.attemptId, code: code, candidateLabel: staged.target.label, origin: staged.target.origin, retryAfter: nil)
   }
 
   private func failIfCurrent(_ id: Int64, _ code: String, _ candidateLabel: String?, _ candidateOrigin: String?, _ retryAfter: Int?) {
@@ -731,7 +848,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       self.attemptInFlight = false
       self.destroyStaging {
         if self.isCurrent(id) {
-          self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel, origin: candidateOrigin, retryAfterSeconds: retryAfter)
+          self.reportAttemptFailure(id, code: code, candidateLabel: candidateLabel, origin: candidateOrigin, retryAfter: retryAfter)
         }
       }
     }
@@ -818,9 +935,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     return capped.isEmpty ? "iOS device" : capped
   }
 
-  private func emit(_ type: String, code: String? = nil, label: String? = nil, origin: String? = nil, retryAfterSeconds: Int? = nil) {
+  private func emit(_ type: String, code: String? = nil, label: String? = nil, origin: String? = nil, retryAfterSeconds: Int? = nil, seamless: Bool = false) {
     main {
       var payload: [String: Any] = ["type": type, "active": self.activeView != nil]
+      if seamless { payload["seamless"] = true }
       if let code { payload["code"] = code }
       if let label { payload["label"] = label }
       if let origin { payload["origin"] = origin }

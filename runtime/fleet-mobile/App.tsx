@@ -38,6 +38,7 @@ const PLAIN_CHROME: Chrome = { top: "bg", bottom: "bg" };
 const CHROME_FILL = { "bg": "bg", "bg-deep": "bgDeep", "surface": "surface", "scrim": "bgUnderScrim" } as const;
 
 const RECOVERED_NOTICE_MS = 8000;
+const SWITCH_NOTICE_MS = 5000;
 
 const WORDMARK_FONT = Platform.select({ ios: "ui-serif", android: "serif", default: "serif" });
 
@@ -71,6 +72,8 @@ export default function App(): React.JSX.Element {
   const [consolesOpen, setConsolesOpen] = useState(false);
   // Shown over a page that native reloaded after its web content process died.
   const [pageRecovered, setPageRecovered] = useState(false);
+  // A switch the page started did not land; the live console is still the one on screen (bridge v1.6).
+  const [switchNotice, setSwitchNotice] = useState<string | null>(null);
   // An add sheet opened from the console sheet goes back to it when dismissed (impl-spec S-12).
   const [addFromConsoles, setAddFromConsoles] = useState(false);
   const systemScheme = useColorScheme();
@@ -130,6 +133,13 @@ export default function App(): React.JSX.Element {
   }, [pageRecovered, strings]);
 
   useEffect(() => {
+    if (!switchNotice) return;
+    AccessibilityInfo.announceForAccessibility(switchNotice);
+    const timer = setTimeout(() => setSwitchNotice(null), SWITCH_NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [switchNotice]);
+
+  useEffect(() => {
     if (retryLeft === null || retryLeft <= 0) return;
     const timer = setTimeout(() => setRetryLeft(retryLeft - 1), 1000);
     return () => clearTimeout(timer);
@@ -159,10 +169,28 @@ export default function App(): React.JSX.Element {
       return;
     }
     if (nativeEvent.type === "consoles") {
+      // A switch toward a console whose pairing is gone lands here instead (bridge v1.6): the sheet shows it as lost.
+      if (nativeEvent.origin && nativeEvent.code) {
+        const { origin, code } = nativeEvent;
+        setLastError((previous) => ({ ...previous, [origin]: code }));
+      }
       consoleRef.current?.listTargets().then(setTargets, () => {});
       setConsolesOpen(true);
       return;
     }
+    if (nativeEvent.type === "switch-failed") {
+      // The live console never left the screen, so this is a short notice and never the error screen.
+      if (nativeEvent.origin) {
+        const origin = nativeEvent.origin;
+        const code = nativeEvent.code ?? "unknown";
+        setLastError((previous) => ({ ...previous, [origin]: code }));
+      }
+      setSwitchNotice(strings.switchFailed(nativeEvent.label?.trim() || null));
+      return;
+    }
+    // A switch the page started loads behind the live console: nothing on screen changes until it commits.
+    if (nativeEvent.type === "connecting" && nativeEvent.seamless === true && nativeEvent.active === true
+      && screenRef.current === "console" && stateRef.current === "connected") return;
     stateEventSeenRef.current = true;
     if (recoveredLandingRef.current) {
       recoveredLandingRef.current = false;
@@ -222,7 +250,7 @@ export default function App(): React.JSX.Element {
         if (invalidLink || returnable) setScreen("console");
         return;
     }
-  }, [refreshTargets]);
+  }, [refreshTargets, strings]);
 
   const retry = useCallback((): void => {
     setInvalidLinkError(false);
@@ -433,7 +461,16 @@ export default function App(): React.JSX.Element {
           <View pointerEvents="none" style={[styles.band, { bottom: 0, height: insets.bottom, backgroundColor: palette[CHROME_FILL[chrome.bottom]] }]} />
         </>
       ) : null}
-      {pageShown && pageRecovered ? (
+      {pageShown && switchNotice ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${switchNotice} ${strings.close}`}
+          onPress={() => setSwitchNotice(null)}
+          style={[styles.notice, { top: insets.top + 8 }]}
+        >
+          <Text style={styles.noticeText}>{switchNotice}</Text>
+        </Pressable>
+      ) : pageShown && pageRecovered ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`${strings.pageRecovered} ${strings.close}`}

@@ -60,6 +60,50 @@ public final class RemoteConnection {
     }
   }
 
+  // MARK: - Console roster (모바일 심리스, 계약 3절·r2)
+
+  public static let rosterPath = "/api/v1/console-roster"
+
+  /// 비활성 대상의 최소 명부를 읽는다. join/status의 request()와 다른 전용 경로다: 페어링 쿠키만 싣고,
+  /// 응답의 Set-Cookie는 jar에 반영하지 않으며(세션·페어링 상태 무변경), 3xx는 실패다. 핸드셰이크를 포함해
+  /// 8초 안에 끝나지 않으면 소켓을 닫고 unavailable이다. 던지지 않는다.
+  public func readRoster(_ target: PersistedTarget) -> RosterOutcome {
+    let started = DispatchTime.now()
+    do {
+      try Self.requireExpectedAuthority(target, "\(target.origin)\(Self.rosterPath)")
+      let socket = try openPinnedSocket(target)
+      defer { socket.close() }
+      let elapsedMs = Int((DispatchTime.now().uptimeNanoseconds - started.uptimeNanoseconds) / 1_000_000)
+      let remainingMs = Self.timeoutMs - elapsedMs
+      if remainingMs <= 0 { return .unavailable }
+      let deadline = DispatchWorkItem { socket.close() }
+      DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(remainingMs), execute: deadline)
+      defer { deadline.cancel() }
+      return try rosterExchange(target, socket)
+    } catch {
+      FleetLog.failed("console-roster", String(describing: error))
+      return .unavailable
+    }
+  }
+
+  /// 소켓 위의 요청·응답 한 번. 테스트가 가짜 소켓으로 같은 코드를 돌린다.
+  func rosterExchange(_ target: PersistedTarget, _ socket: ByteInput & ByteOutput) throws -> RosterOutcome {
+    var headers = Headers()
+    headers.append(name: "Host", value: target.authority)
+    headers.append(name: "Accept", value: "application/json")
+    if let cookie = try cookies.readPairing(target.origin, target.port) {
+      headers.append(name: "Cookie", value: cookie)
+    }
+    headers.append(name: "Connection", value: "close")
+    try HttpCodec.writeHead(socket, startLine: "GET \(Self.rosterPath) HTTP/1.1", headers: headers)
+    try socket.flush()
+    let response = try HttpCodec.readResponse(socket, requestMethod: "GET")
+    // 3xx는 따라가지 않고 실패다. Set-Cookie는 어느 상태에서도 읽지 않는다.
+    if (300...399).contains(response.code) { return .unavailable }
+    guard (200...299).contains(response.code) else { return RosterOutcome.classify(code: response.code, body: Data()) }
+    return RosterOutcome.classify(code: response.code, body: try Self.readBody(socket, response))
+  }
+
   /// 게이트웨이 릴레이가 업스트림으로 쓰는 새 핀 TLS 소켓.
   public func openPinnedSocket(_ target: PersistedTarget) throws -> PinnedSocket {
     try PinnedSocket.connect(target)
