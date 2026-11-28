@@ -49,7 +49,10 @@ export type MobileAppearanceSnapshot = {
 
 export type MobileIdentityTone = "crimson" | "amber" | "moss" | "teal" | "cerulean" | "indigo" | "plum" | "rose";
 
-/** 앱이 알려 주는 "지금 연결된 이 Console" 표시값(v1.1) — 다른 Console 정보는 웹에 오지 않는다. */
+/**
+ * 앱이 알려 주는 "지금 연결된 이 Console" 표시값(v1.1). 다른 Console의 이름·상태·명부는 이 값이 아니라
+ * 심리스 콘솔 상태(mobile-consoles-store)로만 오며, 그 주소·페어링 비밀은 웹에 오지 않는다.
+ */
 export type MobileConsoleIdentity = {
   readonly label: string;
   readonly monogram: string | null;
@@ -372,9 +375,19 @@ export function forgetReportedMobileEdge(): void {
 }
 
 /**
- * Console 전환 시트(impl-spec S-18)를 연다. 앱에서는 네이티브가 띄운다 — 이 Console의 웹 페이지가
- * 다른 Console들의 이름·주소·상태를 알지 않게 하기 위해서다. 브라우저·구버전 셸이면 false를
- * 돌려주고, 웹 셸이 자기 시트(D12)로 대신한다.
+ * 같은 fleetAppearance 통로로 다른 모양의 메시지를 보낸다(브리지 v1.6 심리스 — mobile-consoles-store).
+ * 앱 소유가 아니면(브라우저) 보내지 않는다. 모양 검증은 부르는 쪽이 한다.
+ */
+export function postMobileShellMessage(body: Record<string, string | number | boolean>): boolean {
+  if (!snapshot.nativeOwned) return false;
+  return postToNative(body);
+}
+
+/**
+ * Console 전환 시트(impl-spec S-18)를 연다. 앱에서는 네이티브가 띄운다 — 페이지는 다른 페어링 Console의
+ * 표시 이름·거친 상태·사령관 명부까지만 알고(심리스 콘솔, mobile-consoles-store), 주소·인증서 지문·페어링
+ * 비밀은 네이티브만 갖기 때문이다. 콘솔 추가·다시 연결·주소가 필요한 전환은 그래서 네이티브 시트가 맡는다.
+ * 브라우저·구버전 셸이면 false를 돌려주고, 웹 셸이 자기 시트(D12)로 대신한다.
  */
 export function openConsoleSwitcher(): boolean {
   if (!snapshot.nativeOwned) return false;

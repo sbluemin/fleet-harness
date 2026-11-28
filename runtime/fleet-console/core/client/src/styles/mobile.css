@@ -1500,6 +1500,24 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-home-section-toggle svg { flex: none; }
 .mobile-home-section-empty { margin: 0; padding: 0 18px 12px; color: var(--m-text-faint); font-size: var(--m-fs-meta); }
 .mobile-home-section-error { margin: 0; padding: 12px 18px; color: var(--m-danger); font-size: var(--m-fs-meta); }
+/* 심리스 콘솔(브리지 v1.6) — 홈 사령관 목록을 콘솔별 머리글 섹션으로 나눈다. 머리글은 섹션 머리글보다 한 단계 굵고, 상태는 글자로만 말한다. */
+.mobile-console-group + .mobile-console-group { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--m-hairline); }
+.mobile-console-head { margin: 0; padding: 0 14px; }
+.mobile-console-toggle { position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 0 4px; color: var(--m-text); font: inherit; font-size: var(--m-fs-secondary); font-weight: var(--weight-semibold, 600); text-align: left; background: transparent; border: 0; --pr-r: 12px; }
+.mobile-console-toggle svg { flex: none; color: var(--m-text-muted); }
+.mobile-console-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mobile-console-status { flex: none; color: var(--m-text-faint); font-size: var(--m-fs-meta); font-weight: var(--weight-regular); }
+.mobile-console-status[data-status="unpaired"] { color: var(--m-awaiting); }
+.mobile-console-count { flex: none; color: var(--m-text-faint); font-size: var(--m-fs-meta); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
+.mobile-console-note { margin: 0; padding: 0 18px 10px; color: var(--m-text-faint); font-size: var(--m-fs-meta); }
+.mobile-console-actions { padding: 0 18px 12px; }
+.mobile-console-action { position: relative; min-height: 36px; padding: 0 14px; color: var(--m-text); font: inherit; font-size: var(--m-fs-meta); background: transparent; border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); --pr-r: var(--radius-pill); }
+.mobile-console-group.is-dim .mobile-home-commodore-item { opacity: 0.5; }
+.mobile-home-obj-chip.is-more { color: var(--m-text-faint); }
+.mobile-console-spinner { flex: none; width: 18px; height: 18px; border: 2px solid var(--m-hairline-strong); border-top-color: var(--m-text-muted); border-radius: 50%; animation: mobile-console-spin 0.8s linear infinite; }
+.mobile-console-spinner.is-small { width: 12px; height: 12px; border-width: 1.5px; }
+@keyframes mobile-console-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mobile-console-spinner { animation: none; } }
 /* 홈 아래 떠 있는 줄 — 왼쪽 바로가기 단추와 검색 입력(누르면 검색 화면). 목록은 그 높이만큼 아래를 비운다. */
 .mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + var(--m-safe-bottom, 0px)); }
 .mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + var(--m-safe-bottom, 0px)); pointer-events: none; background: transparent; }
