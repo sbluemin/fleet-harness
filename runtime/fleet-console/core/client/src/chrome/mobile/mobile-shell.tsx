@@ -12,6 +12,7 @@ import { useT } from "../../i18n/index.js";
 import { selectNestedBody, focusObjective } from "../../integration/store.js";
 import type { ObjectiveRecord, ObjectiveNotification } from "../../integration/types.js";
 import { MobileCommandBoard } from "../../../../../features/workspace/client/command-board/command-board.js";
+import { useCommandBoardEnabled, useCommandBoardSettingKnown } from "../../../../../features/workspace/client/command-board/command-board-experiment.js";
 import { openCommanderConversation } from "../../../../../features/workspace/client/commander-tab/commander-navigation.js";
 import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { MobileIcon } from "./mobile-icons.js";
@@ -49,7 +50,15 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
   readonly onSelectObjective: (objectiveId: string | null) => void;
   readonly onCloseObjective: (objectiveId: string) => void;
 }) {
-  const destination = useMobileDestination();
+  const storedDestination = useMobileDestination();
+  // 목표 보드 실험이 꺼져 있으면 저장·복원된 보드 목적지도 홈으로 떨어진다(빈 화면 대신).
+  const commandBoardEnabled = useCommandBoardEnabled();
+  const commandBoardSettingKnown = useCommandBoardSettingKnown();
+  const commandBoardBlocked = storedDestination.kind === "command-board" && !commandBoardEnabled;
+  const destination = commandBoardBlocked ? { kind: "home" as const } : storedDestination;
+  useEffect(() => {
+    if (commandBoardBlocked && commandBoardSettingKnown) setMobileDestination({ kind: "home" });
+  }, [commandBoardBlocked, commandBoardSettingKnown]);
   const consoleState = useConsoleState();
   const commodores = useCommodoreList();
   const [selectedObjectiveId, setSelectedObjectiveId] = useState(() => readMobileObjectiveId());

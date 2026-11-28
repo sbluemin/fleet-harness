@@ -16,6 +16,7 @@ import { UpdateCurtain } from "../../../../features/updates/client/update-curtai
 import { appendPendingUndo, archiveUndo, deletionUndo, latestPendingUndo, undoCountdownSeconds, type PendingUndo } from "../integration/deletion-undo.js";
 import { openArchiveSheet } from "../integration/objective-archive.js";
 import { openCommandBoard, toggleCommandBoard } from "../../../../features/workspace/client/command-board/command-board-store.js";
+import { isCommandBoardEnabled } from "../../../../features/workspace/client/command-board/command-board-experiment.js";
 import type { ArchiveOutcome } from "../integration/objective-actions.js";
 import { ApiError, undoObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
 import { WhatsNewModal } from "../../../../features/updates/client/whatsnew-modal.js";
@@ -407,6 +408,7 @@ function ConnectedApp() {
       toggleCommandBoard: () => {
         const outcome = resolvePanelShortcut();
         if (outcome === "suppress") return false;
+        if (!isCommandBoardEnabled()) return toggleCommandBoard();
         if (outcome === "reveal") {
           navigate("/objectives");
           return openCommandBoard();

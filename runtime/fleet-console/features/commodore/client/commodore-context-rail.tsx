@@ -3,6 +3,7 @@ import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useAvatarAccent } from "../../workspace/client/avatar-accent.js";
 import { openCommandBoard } from "../../workspace/client/command-board/command-board-store.js";
+import { useCommandBoardEnabled } from "../../workspace/client/command-board/command-board-experiment.js";
 import { openCommanderConversation } from "../../workspace/client/commander-tab/commander-navigation.js";
 import { registerContextRailProvider, type ContextRailProvider } from "../../workspace/client/conversation/context-rail/registry.js";
 import type { ContextRailExtraItem, ContextRailMeasure } from "../../workspace/shared/context-rail.js";
@@ -56,6 +57,7 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
   const name = useCommodoreName(commodoreId ?? "", t);
   const accent = useAvatarAccent(commodoreId ? commodoreAvatarKey(commodoreId) : null);
   const tasks = commodoreTasksList();
+  const commandBoardEnabled = useCommandBoardEnabled();
   if (commodoreId === null) return null;
 
   const measure = measureOf(view?.run?.context);
@@ -126,23 +128,25 @@ const CommodoreContextRail: ContextRailProvider = ({ scope, children }) => {
               {hasSettledGoals ? t("commodore.edge.goalsActiveEmpty") : t("commodore.edge.goalsEmptyBody")}
             </p>
           )}
-          <button
-            type="button"
-            className="commodore-edge-board-link"
-            onClick={() => {
-              close();
-              openCommandBoard({ commodoreId });
-            }}
-          >
-            <span className="commodore-edge-board-link-main">
-              <CommandBoardLinkGlyph />
-              <span>{t("commodore.edge.openCommandBoard")}</span>
-            </span>
-            <span className="commodore-edge-board-link-meta">
-              {settledSummary ? <span>{settledSummary}</span> : null}
-              <span aria-hidden="true">→</span>
-            </span>
-          </button>
+          {commandBoardEnabled ? (
+            <button
+              type="button"
+              className="commodore-edge-board-link"
+              onClick={() => {
+                close();
+                openCommandBoard({ commodoreId });
+              }}
+            >
+              <span className="commodore-edge-board-link-main">
+                <CommandBoardLinkGlyph />
+                <span>{t("commodore.edge.openCommandBoard")}</span>
+              </span>
+              <span className="commodore-edge-board-link-meta">
+                {settledSummary ? <span>{settledSummary}</span> : null}
+                <span aria-hidden="true">→</span>
+              </span>
+            </button>
+          ) : null}
         </div>
       ),
     });

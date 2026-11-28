@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { getViewModeSnapshot } from "../../../../core/client/src/integration/view-mode-store.js";
 import { setContextFlyout } from "../conversation/context-rail/store.js";
 import { getConversationSurface, subscribeConversationSurface } from "../conversation/conversation-surface-store.js";
+import { isCommandBoardEnabled, subscribeCommandBoardEnabled } from "./command-board-experiment.js";
 
 /**
  * 지휘판(Command Board) 클라이언트 상태 — 좌측 사이드바 상단 고정 행과 ⌘B, 우측 컨텍스트 레일 딥링크가
@@ -72,6 +73,11 @@ subscribeConversationSurface(() => {
   }
 });
 
+// 실험이 꺼지면 열려 있던 보드도 닫는다 — 꺼진 기능의 화면이 가운데 칸에 남지 않게.
+subscribeCommandBoardEnabled(() => {
+  if (store.open && !isCommandBoardEnabled()) update({ open: false });
+});
+
 export function getCommandBoardState(): CommandBoardStoreState {
   return store;
 }
@@ -94,7 +100,7 @@ export function useCommandBoardOpen(): boolean {
 }
 
 export function openCommandBoard(options?: { readonly commodoreId?: string }): boolean {
-  if (getViewModeSnapshot().effective === "mobile") return false;
+  if (getViewModeSnapshot().effective === "mobile" || !isCommandBoardEnabled()) return false;
   setContextFlyout(null);
   const commodoreId = options?.commodoreId;
   if (commodoreId) {
@@ -116,6 +122,10 @@ export function closeCommandBoard(): void {
 
 export function toggleCommandBoard(): boolean {
   if (getViewModeSnapshot().effective === "mobile") return false;
+  if (!isCommandBoardEnabled()) {
+    closeCommandBoard();
+    return false;
+  }
   if (store.open) {
     closeCommandBoard();
     return true;

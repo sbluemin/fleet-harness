@@ -84,6 +84,23 @@ function DesktopExperiments({ state, saving }: { readonly state: GlobalSettingsS
           />
         </div>
       </div>
+      <div className="global-settings-row experiments-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.commandBoard.title")}
+            <SettingsHelp title={t("settings.commandBoard.title")}><p>{t("settings.commandBoard.help")}</p></SettingsHelp>
+          </p>
+        </div>
+        <div className="experiments-row-controls">
+          <SettingsToggle
+            checked={experiments.commandBoard}
+            busy={saving}
+            disabled={saving}
+            ariaLabel={t("settings.commandBoard.title")}
+            onChange={(next) => save({ ...experiments, commandBoard: next })}
+          />
+        </div>
+      </div>
     </section>
     </>
   );
@@ -111,6 +128,15 @@ function MobileExperiments({ state, saving }: { readonly state: GlobalSettingsSt
           disabled={saving || !experiments.commodore}
           ariaLabel={t("settings.taskforce.title")}
           onChange={(next) => saveExperiments({ ...experiments, taskforce: next })}
+        />
+      </SettingsRow>
+      <SettingsRow label={t("settings.commandBoard.title")} hint={t("settings.commandBoard.help")} icon={<MobileIcon name="layout" />}>
+        <SettingsToggle
+          checked={experiments.commandBoard}
+          busy={saving}
+          disabled={saving}
+          ariaLabel={t("settings.commandBoard.title")}
+          onChange={(next) => saveExperiments({ ...experiments, commandBoard: next })}
         />
       </SettingsRow>
     </SettingsCard>

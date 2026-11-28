@@ -228,6 +228,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
         t("settings.experiments.aiCard"),
         t("settings.computerUse.title"),
         "Computer Use",
+        t("settings.commandBoard.title"),
         t("settings.core.experiments.keywords"),
       ],
     },

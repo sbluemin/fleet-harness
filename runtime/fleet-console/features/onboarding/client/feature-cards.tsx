@@ -62,8 +62,8 @@ export const FEATURE_CARDS: readonly FeatureCard[] = [
   },
   {
     seenKey: OBJECTIVES_BOARD_INTRO_SEEN_KEY,
-    // 목표 보드 소개는 모두에게 보여 준다.
-    autoShow: () => true,
+    // 목표 보드는 옵트인 실험이다 — 켠 사람에게만 소개가 선다(꺼진 보드로 데려가지 않게).
+    autoShow: (settings) => settings.experiments.commandBoard === true,
     Content: ObjectivesBoardIntroCard,
     Link: ObjectivesBoardIntroLink,
   },

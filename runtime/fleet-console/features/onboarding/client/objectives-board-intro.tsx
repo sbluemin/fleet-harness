@@ -5,6 +5,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { openCommandBoard } from "../../workspace/client/command-board/command-board-store.js";
+import { openSettingsSurface } from "../../settings/client/settings-door.js";
 import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 import { mongleBase } from "../../workspace/shared/avatars.js";
 import type { FeatureCardContentProps, FeatureCardLinkProps } from "./feature-cards.js";
@@ -558,7 +559,8 @@ export function ObjectivesBoardIntroLink({ onLeave }: FeatureCardLinkProps): Rea
   const copy = boardCopy(useConsoleLocale());
   const goBoard = (): void => {
     onLeave();
-    openCommandBoard();
+    // 실험이 꺼져 있으면(다시보기) 빈 화면 대신 켤 수 있는 설정 › 실험으로 간다.
+    if (!openCommandBoard()) openSettingsSurface("experiments");
   };
   return (
     <button type="button" className="tfi-link" onClick={goBoard}>

@@ -202,6 +202,25 @@ describe("global settings routes", () => {
     expect(invalid.writes[0]?.status).toBe(400);
   });
 
+  it("keeps the objectives board experiment off by default and never resets it from a request that omits the key", async () => {
+    expect(DEFAULT_EXPERIMENT_SETTINGS.commandBoard).toBe(false);
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { experiments: { taskforce: true } } }).general?.experiments?.commandBoard).toBe(false);
+    const on = createRouterHarness({ general: { experiments: { ...DEFAULT_EXPERIMENT_SETTINGS } }, body: { experiments: { commandBoard: true } } });
+    await on.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(on.writes[0]?.status).toBe(200);
+    expect(on.currentGeneral()?.experiments?.commandBoard).toBe(true);
+    // 이 키를 모르는 옛 클라이언트의 저장이 켜 둔 보드를 끄지 않는다.
+    on.setBody({ experiments: { taskforce: true } });
+    await on.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(on.currentGeneral()?.experiments?.commandBoard).toBe(true);
+    on.setBody({ experiments: { commandBoard: false } });
+    await on.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(on.currentGeneral()?.experiments?.commandBoard).toBe(false);
+    const invalid = createRouterHarness({ body: { experiments: { commandBoard: "yes" } } });
+    await invalid.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(invalid.writes[0]?.status).toBe(400);
+  });
+
   it("migrates retired theme ids to dark/light on stored reads and PUT bodies", async () => {
     // 테마가 다크·라이트 둘로 줄었다. 퇴역 id는 거부하지 않고 극성대로 옮겨야 업그레이드 직후 저장값과 낡은 화면이 모두 산다.
     expect(sanitizeConsoleSettingsData({ version: 1, general: { theme: "maritime" } }).general?.theme).toBe("dark");
