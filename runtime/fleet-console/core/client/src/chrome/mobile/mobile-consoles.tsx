@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun } from "@fleet-console/protocol/desktop/console-section";
 
 import { commodoreListLoaded, selectMobileCommodore, useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
@@ -10,11 +10,15 @@ import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
 import { openConsoleSwitcher } from "../../integration/mobile-appearance-store.js";
 import {
-  forgetMobileHomeScrollTop,
+  getMobileArrivalOutcome,
+  markMobileFirstPaint,
+  mobileFirstPaintSignalled,
+  noteMobileArrivalOutcome,
   peekMobileConsoleArrival,
   mobileConsolesSeamless,
   mobileSwitchKey,
-  peekMobileHomeScrollTop,
+  readMobileHomeScrollTop,
+  rememberMobileHomeScrollTop,
   requestMobileConsoleRoster,
   switchMobileConsole,
   takeMobileConsoleArrival,
@@ -64,32 +68,57 @@ export function useMobileConsoleArrival(): void {
     const arrival = takeMobileConsoleArrival();
     if (!arrival) return;
     const commodore = commodores.find((row) => row.commodoreId === arrival.commodore);
-    if (!commodore) return;
+    if (!commodore) { noteMobileArrivalOutcome("home"); return; }
     const objective = arrival.commander ? state.objectiveRecords.find((record) => record.id === arrival.commander && record.commodoreId === commodore.commodoreId) : undefined;
     if (objective) {
       setMobileReturnDestination(null);
       selectMobileCommodore(commodore.commodoreId);
       setMobileDestination({ kind: "home" });
       focusObjective(objective.id);
+      noteMobileArrivalOutcome("objective");
       return;
     }
     openMobileHomeCommodore(commodore);
+    noteMobileArrivalOutcome("commodore");
   }, [ready, commodores, state.objectiveRecords, state.objectiveRecordsHydrated]);
 }
 
 /**
- * 홈 목록 위치 복원 — 도착이 남긴 scrollTop을 페인트 전에 맞춘다. 목록이 아직 짧으면(사령관 목록 전) 다음
- * 그림에서 다시 맞추고, 목록이 선 뒤 한 번 맞추면 잊는다.
+ * 홈 목록 위치(D1) — 홈이 설 때마다 기억한 위치(처음엔 도착 scrollTop)를 페인트 전에 맞추고, 스크롤하면 기억한다.
+ * 같은 문서 안에서 사령관을 열었다 돌아와도, 전환 뒤 뒤로 가도 누를 때의 위치다. 목록이 아직 짧으면(사령관 목록 전)
+ * 다음 그림에서 다시 맞추고, 닿거나 목록이 선 뒤에는 멈춘다. 맞추는 동안의 스크롤 이벤트(잘린 값)는 기억하지 않는다.
  */
 export function useMobileHomeScrollRestore(scrollRef: RefObject<HTMLElement | null>): void {
-  const consoles = useMobileConsoles();
+  const settled = useRef(false);
   useLayoutEffect(() => {
-    const target = peekMobileHomeScrollTop();
+    if (settled.current) return;
     const element = scrollRef.current;
-    if (target === null || !element) return;
+    if (!element) return;
+    const target = readMobileHomeScrollTop();
+    if (target === null || target === 0) { settled.current = true; return; }
     element.scrollTop = target;
-    const reachable = element.scrollHeight - element.clientHeight >= target;
-    if (reachable || (commodoreListLoaded() && consoles.state !== null)) forgetMobileHomeScrollTop();
+    if (element.scrollHeight - element.clientHeight >= target || commodoreListLoaded()) settled.current = true;
+  });
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const onScroll = () => { if (settled.current) rememberMobileHomeScrollTop(element.scrollTop); };
+    element.addEventListener("scroll", onScroll, { passive: true });
+    return () => element.removeEventListener("scroll", onScroll);
+  }, [scrollRef]);
+}
+
+/**
+ * r7 — 첫 의미 있는 화면이 선 뒤 한 번 셸에 알린다. 도착이 있었으면 그 사령관/목표 화면이 선 뒤, 없으면 목록이 선 뒤.
+ * 부르는 쪽(모바일 셸)이 지금 무엇을 그렸는지 넘긴다.
+ */
+export function useMobileFirstPaintSignal(screen: { readonly ready: boolean; readonly kind: "objective" | "commodore" | "home" | "other" }): void {
+  useEffect(() => {
+    if (mobileFirstPaintSignalled() || !screen.ready || peekMobileConsoleArrival()) return;
+    const outcome = getMobileArrivalOutcome();
+    if (outcome === "objective" && screen.kind !== "objective") return;
+    if (outcome === "commodore" && screen.kind !== "commodore") return;
+    markMobileFirstPaint();
   });
 }
 

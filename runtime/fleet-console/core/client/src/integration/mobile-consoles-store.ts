@@ -165,8 +165,20 @@ let installed = false;
 let snapshot: MobileConsolesSnapshot = { capable: false, state: null, switching: null };
 /** r1 — 문서 적재 때 읽은 도착. 한 번 꺼내 쓰면 null. */
 let documentArrival: MobileConsoleArrival | null = null;
-/** 도착이 남긴 홈 목록 위치 — 홈이 처음 그려질 때(페인트 전) 한 번 쓴다. */
-let pendingHomeScrollTop: number | null = null;
+/**
+ * 홈 목록 위치(D1) — 같은 문서 안에서 사령관을 열었다 돌아올 때 복원한다(문서 메모리, 저장소 아님).
+ * 도착 scrollTop이 초기값이다 → 전환 뒤 뒤로 가면 누를 때의 위치.
+ */
+let homeScrollMemory: number | null = null;
+/** 도착을 어떻게 처리했는가 — 첫 의미 있는 화면(r7)을 판정하는 데 쓴다. */
+export type MobileArrivalOutcome = "objective" | "commodore" | "home";
+let arrivalOutcome: MobileArrivalOutcome | null = null;
+let paintSignalled = false;
+const PAINT_SIGNAL_GLOBAL = "__fleetMobilePaintSignal";
+const PAINTED_GLOBAL = "__fleetMobilePainted";
+const PAINTED_EVENT = "fleet-mobile-painted";
+/** r7 보강 — rAF가 멈춘 숨김 뷰를 위한 폴백. */
+const PAINT_FALLBACK_MS = 100;
 let switchTimer: ReturnType<typeof setTimeout> | null = null;
 
 function readGlobal(name: string): unknown {
@@ -191,11 +203,21 @@ function clearSwitching(): void {
   setSnapshot({ ...snapshot, switching: null });
 }
 
-function refresh(): void {
+/** r6 — 실패 뒤 한 번 오는 상태 이벤트의 detail에만 실린 `failed: "<console id>"`. 전역에는 없다. */
+export function failedConsoleOf(event: Event | undefined): string | null {
+  const detail = event && "detail" in event ? (event as CustomEvent<unknown>).detail : undefined;
+  if (!isRecord(detail) || typeof detail.failed !== "string" || !CONSOLE_ID_PATTERN.test(detail.failed)) return null;
+  return detail.failed;
+}
+
+function refresh(event?: Event): void {
   const capable = readCapable();
   const state = capable ? parseMobileConsolesState(readGlobal(STATE_GLOBAL)) : null;
   // 전환을 요청한 콘솔이 닿지 않거나 페어링이 풀렸다고 알려 오면 진행 표시를 거둔다.
+  // r6: 상태가 이미 unavailable이라 바뀐 것이 없어도, 셸이 그 콘솔의 실패를 알리면 즉시 거둔다.
   let switching = snapshot.switching;
+  const failed = failedConsoleOf(event);
+  if (switching && failed && switching.startsWith(`${failed}/`)) switching = null;
   if (switching) {
     const target = state?.consoles.find((entry) => switching!.startsWith(`${entry.id}/`));
     if (!target || target.status === "unavailable" || target.status === "unpaired" || target.status === "unsupported") switching = null;
@@ -210,9 +232,43 @@ export function installMobileConsoles(): void {
   installed = true;
   refresh();
   documentArrival = snapshot.capable ? snapshot.state?.arrival ?? null : null;
-  pendingHomeScrollTop = documentArrival?.scrollTop ?? null;
-  window.addEventListener(STATE_EVENT, refresh);
-  window.addEventListener(APPEARANCE_EVENT, refresh);
+  homeScrollMemory = documentArrival?.scrollTop ?? null;
+  window.addEventListener(STATE_EVENT, (event) => refresh(event));
+  window.addEventListener(APPEARANCE_EVENT, () => refresh());
+  // r7 — 이 페이지는 첫 의미 있는 화면을 알린다. 셸은 이 표지가 있을 때만 `fleet-mobile-painted`를 (최대 2.5s) 기다렸다 commit한다.
+  (window as unknown as Record<string, unknown>)[PAINT_SIGNAL_GLOBAL] = true;
+}
+
+/**
+ * r7 — 첫 의미 있는 화면이 섰다. 다음 프레임에 `__fleetMobilePainted = true`와 `fleet-mobile-painted`를 한 번 낸다.
+ * 두 번째부터는 아무것도 하지 않는다.
+ */
+export function markMobileFirstPaint(): void {
+  if (paintSignalled || typeof window === "undefined") return;
+  paintSignalled = true;
+  // 숨긴 스테이징 WebView에서는 rAF가 멈출 수 있다 — 100ms 타이머와 경쟁시켜 먼저 오는 쪽에서 한 번만 낸다.
+  let fired = false;
+  const fire = () => {
+    if (fired) return;
+    fired = true;
+    (window as unknown as Record<string, unknown>)[PAINTED_GLOBAL] = true;
+    window.dispatchEvent(new Event(PAINTED_EVENT));
+  };
+  if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(() => fire());
+  setTimeout(fire, PAINT_FALLBACK_MS);
+}
+
+export function mobileFirstPaintSignalled(): boolean {
+  return paintSignalled;
+}
+
+export function noteMobileArrivalOutcome(outcome: MobileArrivalOutcome): void {
+  arrivalOutcome = outcome;
+}
+
+/** 이 문서의 도착 처리 결과 — 도착이 없었거나 아직이면 null. */
+export function getMobileArrivalOutcome(): MobileArrivalOutcome | null {
+  return arrivalOutcome;
 }
 
 /** 테스트 전용 — 모듈 상태를 처음으로 되돌린다(리스너는 그대로 둔다). */
@@ -221,7 +277,9 @@ export function resetMobileConsolesForTest(): void {
   switchTimer = null;
   installed = false;
   documentArrival = null;
-  pendingHomeScrollTop = null;
+  homeScrollMemory = null;
+  arrivalOutcome = null;
+  paintSignalled = false;
   snapshot = { capable: false, state: null, switching: null };
   listeners.emit();
 }
@@ -279,12 +337,13 @@ export function peekMobileConsoleArrival(): MobileConsoleArrival | null {
   return documentArrival;
 }
 
-/** 도착이 남긴 홈 목록 위치 — 읽기만. */
-export function peekMobileHomeScrollTop(): number | null {
-  return pendingHomeScrollTop;
+/** 홈이 돌아올 때 맞출 목록 위치(D1) — 없으면 null(맨 위). */
+export function readMobileHomeScrollTop(): number | null {
+  return homeScrollMemory;
 }
 
-/** 홈이 위치를 다 맞췄으면 지운다. */
-export function forgetMobileHomeScrollTop(): void {
-  pendingHomeScrollTop = null;
+/** 홈 목록이 스크롤될 때 그 위치를 기억한다(문서 메모리). */
+export function rememberMobileHomeScrollTop(scrollTop: number): void {
+  if (!Number.isFinite(scrollTop)) return;
+  homeScrollMemory = Math.min(MOBILE_SCROLL_TOP_MAX, Math.max(0, Math.round(scrollTop)));
 }

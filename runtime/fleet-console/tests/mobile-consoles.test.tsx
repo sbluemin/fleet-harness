@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement, createRef } from "react";
+import { act, createElement, createRef, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,7 +37,7 @@ scope.__fleetMobileAppearance = { ...appearanceBase, consoles: { roster: true, s
 scope.webkit = { messageHandlers: { fleetAppearance: { postMessage: (body: string) => { posted.push(JSON.parse(body) as Record<string, unknown>); } } } };
 
 const store = await import("../core/client/src/integration/mobile-consoles-store.js");
-const { MobileConsoleHomeList, useMobileConsoleArrival } = await import("../core/client/src/chrome/mobile/mobile-consoles.js");
+const { MobileConsoleHomeList, useMobileConsoleArrival, useMobileFirstPaintSignal, useMobileHomeScrollRestore } = await import("../core/client/src/chrome/mobile/mobile-consoles.js");
 
 const roster = (commodores: unknown[], extra: Record<string, unknown> = {}) => ({ v: 1, commodores, more: 0, ...extra });
 const commodore = (id: string, name: string, extra: Record<string, unknown> = {}) => ({ id, name, look: null, run: "quiet", ...extra });
@@ -82,6 +82,8 @@ beforeEach(() => {
 afterEach(() => {
   for (const cleanup of mounted.splice(0)) cleanup();
   delete scope.__fleetMobileConsoles;
+  delete scope.__fleetMobilePaintSignal;
+  delete scope.__fleetMobilePainted;
   vi.unstubAllGlobals();
 });
 
@@ -162,7 +164,7 @@ describe("mobile consoles messages", () => {
   it("applies the document-start arrival once and ignores later arrival values (r1)", () => {
     plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "c-1", scrollTop: 300 } });
     store.installMobileConsoles();
-    expect(store.peekMobileHomeScrollTop()).toBe(300);
+    expect(store.readMobileHomeScrollTop()).toBe(300);
     publish({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: null });
     expect(store.takeMobileConsoleArrival()).toEqual({ commodore: "c-1", commander: null, scrollTop: 300 });
     expect(store.takeMobileConsoleArrival()).toBeNull();
@@ -305,5 +307,122 @@ describe("mobile console arrival", () => {
     expect(destinations).toEqual([]);
     expect(commodoreList.selected).toEqual([]);
     expect(posted).toEqual([{ v: 1, type: "arrived" }]);
+  });
+});
+
+describe("mission 7 fixes", () => {
+  it("clears the opening marker when the shell reports that console failed, even with no status change (r6)", () => {
+    const state = { v: 1, consoles: [activeEntry("a"), entry("b", { status: "unavailable" }), entry("c")], arrival: null };
+    plant(state);
+    store.installMobileConsoles();
+    // 이미 unavailable인 콘솔로의 전환 — 상태 변화가 없으니 실패 알림 전까지는 표시가 남는다.
+    expect(store.switchMobileConsole({ console: "b", commodore: "c-1" })).toBe(true);
+    expect(store.getMobileConsolesSnapshot().switching).toBe("b/c-1/");
+    window.dispatchEvent(new CustomEvent("fleet-mobile-consoles", { detail: { ...state, failed: "b" } }));
+    expect(store.getMobileConsolesSnapshot().switching).toBeNull();
+  });
+
+  it("keeps the opening marker when another console fails (r6)", () => {
+    const state = { v: 1, consoles: [activeEntry("a"), entry("b"), entry("c")], arrival: null };
+    plant(state);
+    store.installMobileConsoles();
+    expect(store.switchMobileConsole({ console: "b", commodore: "c-1", commander: "o-1" })).toBe(true);
+    window.dispatchEvent(new CustomEvent("fleet-mobile-consoles", { detail: { ...state, failed: "c" } }));
+    publish(state);
+    expect(store.getMobileConsolesSnapshot().switching).toBe("b/c-1/o-1");
+    expect(store.failedConsoleOf(new CustomEvent("x", { detail: { failed: "bad id!" } }))).toBeNull();
+    expect(store.failedConsoleOf(new Event("x"))).toBeNull();
+  });
+
+  function ScrollProbe() {
+    const ref = useRef<HTMLDivElement>(null);
+    useMobileHomeScrollRestore(ref);
+    return createElement("div", { ref, className: "probe-scroll" });
+  }
+
+  it("remembers the home scroll within the document and seeds it from the arrival (D1)", () => {
+    plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "c-1", scrollTop: 300 } });
+    store.installMobileConsoles();
+    expect(store.readMobileHomeScrollTop()).toBe(300);
+    const first = mount(createElement(ScrollProbe));
+    const element = first.querySelector<HTMLElement>(".probe-scroll")!;
+    expect(element.scrollTop).toBe(300);
+    // 사람이 스크롤하면 기억하고, 홈이 다시 서면(사령관을 열었다 돌아옴) 그 위치로 맞춘다.
+    element.scrollTop = 120;
+    element.dispatchEvent(new Event("scroll"));
+    expect(store.readMobileHomeScrollTop()).toBe(120);
+    mounted.splice(0).forEach((cleanup) => cleanup());
+    const again = mount(createElement(ScrollProbe));
+    expect(again.querySelector<HTMLElement>(".probe-scroll")!.scrollTop).toBe(120);
+  });
+
+  function PaintProbe({ kind }: { readonly kind: "objective" | "commodore" | "home" | "other" }) {
+    useMobileConsoleArrival();
+    useMobileFirstPaintSignal({ ready: true, kind });
+    return null;
+  }
+
+  it("raises the paint signal at boot and fires painted once after the arrival screen (r7)", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+    commodoreList.rows = [{ commodoreId: "c-1", theaters: [] }];
+    plant({ v: 1, consoles: [activeEntry("a"), entry("b")], arrival: { commodore: "c-1" } });
+    store.installMobileConsoles();
+    expect(scope.__fleetMobilePaintSignal).toBe(true);
+    let painted = 0;
+    const onPainted = () => { painted += 1; };
+    window.addEventListener("fleet-mobile-painted", onPainted);
+    try {
+      // 도착이 사령관을 열었으니 홈이 먼저 그려져도 알리지 않는다.
+      mount(createElement(PaintProbe, { kind: "home" }));
+      expect(painted).toBe(0);
+      mount(createElement(PaintProbe, { kind: "commodore" }));
+      mount(createElement(PaintProbe, { kind: "commodore" }));
+      expect(painted).toBe(1);
+      expect(scope.__fleetMobilePainted).toBe(true);
+    } finally {
+      window.removeEventListener("fleet-mobile-painted", onPainted);
+    }
+  });
+
+  it("falls back to a 100ms timer when animation frames are paused, firing only once (r7)", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let frame: FrameRequestCallback | null = null;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frame = callback; return 1; });
+    plant({ v: 1, consoles: [activeEntry("a")], arrival: null });
+    store.installMobileConsoles();
+    let painted = 0;
+    const onPainted = () => { painted += 1; };
+    window.addEventListener("fleet-mobile-painted", onPainted);
+    try {
+      store.markMobileFirstPaint();
+      vi.advanceTimersByTime(99);
+      expect(painted).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(painted).toBe(1);
+      expect(scope.__fleetMobilePainted).toBe(true);
+      // 늦게 돈 프레임은 다시 보내지 않는다.
+      (frame as FrameRequestCallback | null)?.(0);
+      store.markMobileFirstPaint();
+      vi.runAllTimers();
+      expect(painted).toBe(1);
+    } finally {
+      window.removeEventListener("fleet-mobile-painted", onPainted);
+      vi.useRealTimers();
+    }
+  });
+
+  it("fires painted after the home list when there is no arrival (r7)", () => {
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+    plant({ v: 1, consoles: [activeEntry("a")], arrival: null });
+    store.installMobileConsoles();
+    let painted = 0;
+    const onPainted = () => { painted += 1; };
+    window.addEventListener("fleet-mobile-painted", onPainted);
+    try {
+      mount(createElement(PaintProbe, { kind: "home" }));
+      expect(painted).toBe(1);
+    } finally {
+      window.removeEventListener("fleet-mobile-painted", onPainted);
+    }
   });
 });

@@ -26,8 +26,8 @@ import { MobileSearchScreen } from "./mobile-search-screen.js";
 import { MobileAttentionScreen } from "./mobile-attention-screen.js";
 import { MobileConversationInfo } from "./mobile-conversation-info.js";
 import { MobileHome } from "./mobile-home.js";
-import { useMobileConsoleArrival, useMobileConsolesSeamless } from "./mobile-consoles.js";
-import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
+import { useMobileConsoleArrival, useMobileConsolesSeamless, useMobileFirstPaintSignal } from "./mobile-consoles.js";
+import { commodoreListLoaded, useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { rememberArchivedTitle } from "./mobile-toast.js";
 import { readMobileObjectiveId, replaceMobileObjectiveId } from "./mobile-objective-url.js";
@@ -158,6 +158,14 @@ export function MobileShell({ objectiveRecords, activeObjectiveId, objectiveReco
     // 심리스면 이 콘솔에 사령관이 없어도 다른 콘솔 섹션이 있어 홈 목록을 세운다.
     content = commodores.length > 0 || seamless ? <MobileHome state={consoleState} /> : <MobileEmptyHome />;
   }
+
+  // r7 — 첫 의미 있는 화면(도착이면 그 사령관/목표 화면, 아니면 목록)이 선 뒤 셸에 한 번 알린다. 셸은 이것을 기다렸다 commit한다.
+  const paintedKind = destination.kind === "plugin"
+    ? destination.entryId === "commodore" ? "commodore" as const : "other" as const
+    : destination.kind === "home" || destination.kind === "info"
+      ? selectedObjective ? "objective" as const : "home" as const
+      : "other" as const;
+  useMobileFirstPaintSignal({ ready: consoleState.bootstrapped && commodoreListLoaded(), kind: paintedKind });
 
   return (
     <main className="mobile-shell">
