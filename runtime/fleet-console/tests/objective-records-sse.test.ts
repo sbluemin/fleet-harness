@@ -262,6 +262,39 @@ describe("objectives SSE update availability", () => {
     stopReconnect();
   });
 
+  /** 서버가 없는 동안의 재연결 시도 시각(끊긴 순간부터 ms) — 시도마다 새 스트림이 서고, 곧바로 실패시킨다. */
+  async function failedAttemptTimes(random: number, spanMs: number): Promise<number[]> {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(random);
+    mocks.fetchObjectiveRecords.mockRejectedValue(new TypeError("Failed to fetch"));
+    connectObjectiveRecordsSse();
+    TestEventSource.instances.at(-1)!.open();
+    const droppedAt = Date.now();
+    TestEventSource.instances.at(-1)!.onerror?.();
+    const attempts: number[] = [];
+    let seen = TestEventSource.instances.length;
+    for (let elapsed = 0; elapsed < spanMs; elapsed += 100) {
+      await vi.advanceTimersByTimeAsync(100);
+      if (TestEventSource.instances.length === seen) continue;
+      seen = TestEventSource.instances.length;
+      attempts.push(Date.now() - droppedAt);
+      TestEventSource.instances.at(-1)!.onerror?.();
+    }
+    randomSpy.mockRestore();
+    return attempts;
+  }
+
+  it("keeps the first 15 seconds of retries and then waits at most 10 seconds between attempts", async () => {
+    // 1·2·4·8초 계단은 그대로다 — 모바일의 10초 조용함 안에 처음 세 번 시도가 든다. 그 뒤는 10초를 넘지 않는다.
+    expect(await failedAttemptTimes(0, 60_000)).toEqual([1_000, 3_000, 7_000, 15_000, 25_000, 35_000, 45_000, 55_000]);
+  });
+
+  it("only shortens each wait by up to a fifth so devices dropped together do not retry in lockstep", async () => {
+    // 흔들림의 끝(random→1)에서 각 칸은 80%가 된다. 늘어나는 쪽은 없으므로 최악 대기는 상한 그대로다.
+    expect(await failedAttemptTimes(0.9999, 50_000)).toEqual([800, 2_400, 5_600, 12_000, 20_000, 28_000, 36_000, 44_000]);
+  });
+
   it("strictly replaces control holder snapshots and preserves them across SSE loss", async () => {
     vi.useFakeTimers();
     vi.stubGlobal("EventSource", TestEventSource);
