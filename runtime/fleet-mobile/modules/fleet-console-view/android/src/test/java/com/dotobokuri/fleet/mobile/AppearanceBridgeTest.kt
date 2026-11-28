@@ -52,6 +52,34 @@ class AppearanceBridgeTest {
   }
 
   @Test
+  fun seamlessCommandsRequireExactShapesAndBoundedTypedValues() {
+    fun accept(body: String) = AppearanceBridge.accept(true, true, true, body)
+    assertEquals(AppearanceMessage.Roster, accept("""{"v":1,"type":"roster"}"""))
+    assertEquals(AppearanceMessage.Arrived, accept("""{"v":1,"type":"arrived"}"""))
+    val base = """{"v":1,"type":"switch","console":"some-id","commodore":"leader""""
+    assertEquals(AppearanceMessage.Switch("some-id", ConsoleArrival("leader", null, null)), accept("$base}"))
+    assertEquals(AppearanceMessage.Switch("some-id", ConsoleArrival("leader", "goal", 99.5)), accept("""$base,"commander":"goal","scrollTop":99.5}"""))
+    val long = "é".repeat(128)
+    assertEquals(AppearanceMessage.Switch("some-id", ConsoleArrival(long, long, 0.0)),
+      accept("""${base.replace("leader", long)},"commander":"$long","scrollTop":0}"""))
+    for (body in listOf(
+      """$base,"origin":"https://elsewhere"}""",
+      """$base,"console":"duplicated"}""",
+      """${base.replace("some-id", "https://domain")}}""",
+      """${base.replace("leader", "bad\\u000aline")}}""",
+      """$base,"commander":null}""",
+      """$base,"commander":"${"a".repeat(129)}"}""",
+      """$base,"scrollTop":"1"}""",
+      """$base,"scrollTop":100001}""",
+      """$base,"scrollTop":1e999}""",
+      """{"v":1,"type":"roster","target":"some-id"}""",
+      """{"v":1,"type":"arrived","target":"some-id"}""",
+    )) assertNull(body, accept(body))
+    assertNull(AppearanceBridge.accept(false, true, true, "$base}"))
+    assertNull(AppearanceBridge.accept(true, false, true, "$base}"))
+  }
+
+  @Test
   fun quotesTheConsoleLabelInsteadOfSplicingItIntoCode() {
     val label = "\"); alert(1); (\"</script>"
     val target = PersistedTarget("https://fleet.example:7443", "fleet.example", 7443, label, "A".repeat(64), LoopbackIdentity("127.44.1.9", 40001))

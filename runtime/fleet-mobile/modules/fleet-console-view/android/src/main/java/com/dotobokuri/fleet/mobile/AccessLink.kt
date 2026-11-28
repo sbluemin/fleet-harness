@@ -28,6 +28,7 @@ internal data class PersistedTarget(
   val label: String,
   val fingerprint: String,
   val loopback: LoopbackIdentity,
+  val id: String = java.util.UUID.randomUUID().toString(),
 ) {
   val consoleUrl: String get() = "$origin/console/"
   val joinUrl: String get() = "$origin/api/v1/join"
