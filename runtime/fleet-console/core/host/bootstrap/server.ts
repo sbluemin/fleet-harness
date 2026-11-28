@@ -2560,7 +2560,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           computerCaptureTarget = null;
           broadcastComputerCapture();
           watchComputerCapture();
+        } else if (identity === "unknown" && computerCaptureTarget.offscreen !== null) {
+          // 시간 초과·조회 불가는 판정이 아니다. 이미 정한 화면 위/밖·최소화 판정을 그대로 두어, 느린 헬퍼 한 번에
+          // 최소화된 창이 화면 위로 뒤집혀 카드가 사유 문구와 지연 문구 사이를 오가지 않게 한다.
+          return;
         } else {
+          // 첫 판정이 unknown이면 기존 영상 경로(화면 위)로 연다.
           const offscreen = identity === "matches" && !onscreen;
           // 최소화된 창은 DWM이 그리지 않아 정지 화면이 없다. 미리보기 카드가 빈 자리 대신 그 사유를 말한다(Windows 헬퍼만 싣는다).
           const isMinimized = offscreen && minimized === true;

@@ -198,18 +198,41 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       const first = await firstFrame;
       expect(first.status).toBe(200);
       expect(first.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBeDefined();
-      const previewEvents = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
-      // 최소화는 Windows 헬퍼만 싣고, 화면 밖일 때만 카드에 실린다. 원격 미리보기 상태는 바뀌지 않는다.
+      // 최소화는 Windows 헬퍼만 싣고, 화면 밖일 때만 카드에 실린다. 원격 full에는 최소화 여부만 새 상태로 알리고,
+      // 같은 대상이라 이미 받은 장은 버리지 않는다.
+      let remoteMinimized = false;
       for (const { onscreen, minimized } of [{ onscreen: false, minimized: false }, { onscreen: false, minimized: true }, { onscreen: true, minimized: true }]) {
+        const previewEvents = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
         windowState = { identity: "matches", onscreen, ...(minimized ? { minimized } : {}) };
         const reading = await (await fetch(`${origin}/api/v1/desktop/computer-capture`)).json();
         expect(reading.target).toMatchObject({ id, offscreen: !onscreen });
-        expect(reading.target.minimized).toBe(!onscreen && minimized);
+        const expected = !onscreen && minimized;
+        expect(reading.target.minimized === true).toBe(expected);
+        if (expected !== remoteMinimized) {
+          await viewerEvents.waitFor(REMOTE_PREVIEW_STATE_EVENT, () => viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT) > previewEvents);
+          expect(viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT)).toBe(previewEvents + 1);
+          const state = viewerEvents.last(REMOTE_PREVIEW_STATE_EVENT);
+          expect(state).toMatchObject({ sending: true, target: { id } });
+          expect(state.target.minimized === true).toBe(expected);
+          remoteMinimized = expected;
+        } else {
+          expect(viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT)).toBe(previewEvents);
+        }
         const kept = await readFrame();
         expect(kept.status).toBe(200);
         expect(kept.headers[REMOTE_PREVIEW_SEQ_HEADER]).toBe(first.headers[REMOTE_PREVIEW_SEQ_HEADER]);
-        expect(viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT)).toBe(previewEvents);
       }
+      // 느린 헬퍼(시간 초과·조회 불가)는 판정이 아니다 — 최소화된 대상을 화면 위로 뒤집지 않고, 원격에도 새 상태를 보내지 않는다.
+      const beforeMinimize = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
+      windowState = { identity: "matches", onscreen: false, minimized: true };
+      await (await fetch(`${origin}/api/v1/desktop/computer-capture`)).json();
+      await viewerEvents.waitFor(REMOTE_PREVIEW_STATE_EVENT, () => viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT) > beforeMinimize);
+      expect(viewerEvents.last(REMOTE_PREVIEW_STATE_EVENT).target.minimized).toBe(true);
+      const beforeUnknown = viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT);
+      windowState = { identity: "unknown", onscreen: false };
+      const held = await (await fetch(`${origin}/api/v1/desktop/computer-capture`)).json();
+      expect(held.target).toMatchObject({ id, offscreen: true, minimized: true });
+      expect(viewerEvents.seen(REMOTE_PREVIEW_STATE_EVENT)).toBe(beforeUnknown);
     } finally {
       desktopEvents.close();
       viewerEvents.close();
@@ -734,6 +757,8 @@ function cookiesOf(response: { readonly headers: import("node:http").IncomingHtt
 interface EventProbe {
   waitFor(event: string, predicate: (data: any) => boolean, timeoutMs?: number): Promise<any>;
   seen(event: string): number;
+  /** 그 이벤트의 가장 최근 데이터 — waitFor는 지난 이벤트도 맞추므로, 새로 온 상태는 seen 수와 이것으로 읽는다. */
+  last(event: string): any;
   /** 서버가 이 스트림을 스스로 닫기를 기다린다. 자격을 잃은 구독이 남지 않았음의 증거다. */
   waitForClose(timeoutMs?: number): Promise<void>;
   close(): void;
@@ -772,6 +797,7 @@ function readEventStream(response: Readable): EventProbe {
   });
   return {
     seen: (event) => received.filter((entry) => entry.event === event).length,
+    last: (event) => received.findLast((entry) => entry.event === event)?.data,
     async waitFor(event, predicate, timeoutMs = 5_000) {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
