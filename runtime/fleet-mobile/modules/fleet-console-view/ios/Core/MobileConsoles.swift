@@ -344,14 +344,18 @@ public enum MobileConsolesBridge {
 
   /// 문서 시작과 실시간 갱신이 같은 스크립트를 쓴다. 지정된 게이트웨이 오리진의 문서에서만 전역을 정의하고
   /// 이벤트를 보낸다. 값은 JSON 인코더를 거친 뒤 한 번 더 JavaScript 문자열로 인용된다.
-  public static func script(_ state: MobileConsolesState, gatewayOrigin: String) -> String {
+  ///
+  /// `failed`(개정 r6)는 실패한 전환의 대상 id다. 그 한 번의 이벤트 detail에만 실리고 전역에는 실리지 않는다.
+  public static func script(_ state: MobileConsolesState, gatewayOrigin: String, failed: String? = nil) -> String {
     let json = String(data: state.fitted().encoded(), encoding: .utf8) ?? "{}"
     let literal = quote(json)
     let origin = quote(gatewayOrigin)
+    let detail = failed.flatMap { TargetStore.isValidId($0) ? $0 : nil }
+      .map { "Object.freeze(Object.assign({}, v, { failed: \(quote($0)) }))" } ?? "v"
     return "(() => { if (window.top !== window || location.origin !== \(origin)) return; const v = JSON.parse(\(literal)); "
       + "const freeze = (o) => { if (o && typeof o === \"object\") { Object.values(o).forEach(freeze); Object.freeze(o); } return o; }; freeze(v); "
       + "Object.defineProperty(window, \"\(global)\", { value: v, configurable: true, enumerable: false, writable: false }); "
-      + "window.dispatchEvent(new CustomEvent(\"\(event)\", { detail: v })); })();"
+      + "window.dispatchEvent(new CustomEvent(\"\(event)\", { detail: \(detail) })); })();"
   }
 
   private static func quote(_ value: String) -> String {

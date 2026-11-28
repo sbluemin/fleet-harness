@@ -675,19 +675,20 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - Seamless consoles (브리지 v1.6)
 
   /// 이 뷰의 문서가 받을 상태. 그 문서의 콘솔이 활성 항목이고, 도착 위치는 그 콘솔이 switch의 대상일 때만 실린다.
-  private func consolesScript(for load: StagedLoad) -> String {
+  private func consolesScript(for load: StagedLoad, failed: String? = nil) -> String {
     let records = targetStore.records()
     let documentId = records.first { $0.target.origin == load.target.origin }?.id
     let state = consoles.state(records: records, activeOrigin: load.target.origin, arrivalFor: documentId, now: Date())
-    return MobileConsolesBridge.script(state, gatewayOrigin: load.gateway.origin)
+    return MobileConsolesBridge.script(state, gatewayOrigin: load.gateway.origin, failed: failed)
   }
 
   /// 명부·목록·도착 위치가 바뀌면: 단계 로드 중인 뷰는 문서 시작 스크립트만, 보이는 문서는 지금 바로.
-  private func republishConsoles() {
+  /// `failed`(개정 r6)는 이번에 보내는 이벤트 detail에만 실린다 — 문서 시작 전역과 다음 문서에는 가지 않는다.
+  private func republishConsoles(failed: String? = nil) {
     if let staged = staging { installUserScripts(staged) }
     if let view = activeView, let load = activeLoad, load.view === view {
       installUserScripts(load)
-      view.evaluateJavaScript(consolesScript(for: load), completionHandler: nil)
+      view.evaluateJavaScript(consolesScript(for: load, failed: failed), completionHandler: nil)
     }
   }
 
@@ -740,7 +741,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       if let candidateLabel { payload["label"] = candidateLabel }
       if let origin { payload["origin"] = origin }
       emitPayload(payload)
-      republishConsoles()
+      // 상태가 바뀌지 않았어도 반드시 한 번 다시 알린다(개정 r6). 페이지는 이 id의 "여는 중"을 바로 푼다.
+      republishConsoles(failed: targetId)
       return
     }
     if changed { republishConsoles() }
@@ -783,18 +785,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - readiness JS
 
   private func readinessScript(_ staged: StagedLoad) -> String {
-    let nonce = jsonQuote(staged.readinessNonce)
-    return """
-    void (async () => {
-      try {
-        const response = await fetch('/api/v1/status', { method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' } });
-        if (!response.ok || response.redirected || new URL(response.url).origin !== location.origin) return;
-        const value = await response.json();
-        if (typeof value?.name !== 'string' || !value.name || typeof value?.version !== 'string' || !value.version) return;
-        window.webkit.messageHandlers.\(Self.readinessObject).postMessage(\(nonce));
-      } catch (_) {}
-    })();
-    """
+    ReadinessScript.source(nonce: staged.readinessNonce, handler: Self.readinessObject)
   }
 
   // MARK: - commit / fail
@@ -949,14 +940,6 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func main(_ block: @escaping () -> Void) {
     if Thread.isMainThread { block() } else { DispatchQueue.main.async(execute: block) }
-  }
-
-  private func jsonQuote(_ value: String) -> String {
-    if let data = try? JSONSerialization.data(withJSONObject: [value]), let s = String(data: data, encoding: .utf8) {
-      // ["x"] → "x"
-      return String(s.dropFirst().dropLast())
-    }
-    return "\"\(value)\""
   }
 }
 
