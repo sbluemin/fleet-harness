@@ -90,6 +90,7 @@ export function MobileSheet({ title, ariaLabel, labelledBy, onClose, full = fals
         className={`mobile-sheet${full ? " is-full" : ""}${leaving ? " is-leaving" : ""}${dragY !== null ? " is-dragging" : ""}${className ? ` ${className}` : ""}`}
         style={dragY !== null ? { transform: `translateY(${dragY}px)` } : undefined}
         role="dialog"
+        data-host-surface="mobile-sheet"
         aria-modal="true"
         aria-label={ariaLabel}
         aria-labelledby={ariaLabel ? undefined : title ? titleId : labelledBy}
