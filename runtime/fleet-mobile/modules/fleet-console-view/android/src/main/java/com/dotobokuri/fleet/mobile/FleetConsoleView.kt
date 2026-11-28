@@ -58,7 +58,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     val target: PersistedTarget,
     val gateway: LoopbackGateway,
     val cookieSnapshot: FleetCookieSnapshot,
-    val view: WebView,
+    val view: StagedConsoleWebView,
     val readinessNonce: String,
     var localCertificateObserved: Boolean = false,
     var readinessRequested: Boolean = false,
@@ -526,7 +526,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       gateway.close()
       return
     }
-    val webView = try { WebView(context) } catch (_: Exception) {
+    val webView = try { StagedConsoleWebView(context) } catch (_: Exception) {
       gateway.close()
       worker.execute {
         try { cookies.restoreAndAwait(candidate.origin, candidate.port, cookieSnapshot) } catch (_: Exception) { }
@@ -539,8 +539,8 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     try {
       configureWebView(staged)
       if (staging !== staged) return
-      webView.visibility = INVISIBLE
-      addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+      // Attach at full size beneath the current view: INVISIBLE can suppress the web paint signal.
+      addView(webView, 0, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
       layoutWebViews()
       post(::layoutWebViews)
       webView.loadUrl(gateway.consoleUrl)
@@ -577,10 +577,6 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
       // gateway origin churns across re-links, so a stored preference cannot carry this signal.
       userAgentString = "$userAgentString $USER_AGENT_PRODUCT"
     }
-    // A programmatically added WebView is not focusable in touch mode by default, so a tap on a
-    // page input never reaches the input method and the keyboard stays down.
-    webView.isFocusable = true
-    webView.isFocusableInTouchMode = true
     CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
     try {
       WebViewCompat.addWebMessageListener(
@@ -961,7 +957,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     // Swap the document-start script to arrival:null before showing the staged document.
     leaveEdgeToEdge()
     republishAppearance(announceConsoles = true)
-    staged.view.visibility = VISIBLE
+    staged.view.reveal()
     staged.view.requestFocus()
     layoutWebViews()
     post(::layoutWebViews)
