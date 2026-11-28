@@ -57,7 +57,7 @@ import { MobileFrame } from "../chrome/mobile/mobile-frame.js";
 import { MobileArchiveOutcomeContext } from "../chrome/mobile/mobile-commander-actions.js";
 import { setMobileDestination } from "../chrome/mobile/mobile-store.js";
 import { MobileActionToast, recallArchivedTitle } from "../chrome/mobile/mobile-toast.js";
-import { MobileConnectionBand } from "../chrome/mobile/mobile-connection-band.js";
+import { MOBILE_QUIET_MS, MobileConnectionBand, useActiveSince, useHeldFor } from "../chrome/mobile/mobile-connection-band.js";
 import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
@@ -133,6 +133,10 @@ function ConnectedApp() {
   const objectiveRecordsViewVisible = pathname.startsWith("/objectives");
   const mobileLayout = useViewMode().effective === "mobile";
   const desktopObjectiveRecordsVisible = !mobileLayout && objectiveRecordsViewVisible;
+  const linkDown = state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching;
+  const mobileLinkBandDue = useHeldFor(mobileLayout && linkDown ? state.connectionLostAt : null, MOBILE_QUIET_MS);
+  const runtimeDegraded = state.connection === "live" && state.objectiveRecordRuntimeHydration === "degraded" && !updateProgress.watching;
+  const mobileDegradedDue = useHeldFor(useActiveSince(mobileLayout && runtimeDegraded), MOBILE_QUIET_MS);
 
   /*
    * 모바일 여부는 폭만으로 정해지지 않는다 — Electron은 언제나 데스크톱이고, Fleet Mobile 셸은
@@ -509,9 +513,10 @@ function ConnectedApp() {
           배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
       {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 같은 순간에 두 가지 이야기를
           내보내면 사용자는 더 무서운 쪽을 믿는다 — 커튼이 떠 있는 동안 배너는 침묵한다. */}
-      {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching && mobileLayout ? (
-        <MobileConnectionBand failed={state.connection === "offline"}><ReconnectButton /></MobileConnectionBand>
-      ) : state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
+      {/* 모바일은 자동 재연결이 메우는 짧은 끊김을 말하지 않는다(`MOBILE_QUIET_MS`). */}
+      {linkDown && mobileLayout ? (
+        mobileLinkBandDue ? <MobileConnectionBand failed={state.connection === "offline"}><ReconnectButton /></MobileConnectionBand> : null
+      ) : linkDown ? (
         <div className="console-link-banner" role="status" aria-live="polite">
           <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
           <ReconnectButton />
@@ -520,8 +525,9 @@ function ConnectedApp() {
       <UpdateCurtain />
       {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
           칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
-          유휴나 휴면으로 추정하지는 않는다. */}
-      {state.connection === "live" && state.objectiveRecordRuntimeHydration === "degraded" && !updateProgress.watching ? (
+          유휴나 휴면으로 추정하지는 않는다. 모바일은 재연결 직후 런타임 스트림이 따라붙는 동안처럼
+          짧게 지나가는 degraded는 말하지 않고, 이어질 때만 같은 배너를 세운다. */}
+      {runtimeDegraded && (!mobileLayout || mobileDegradedDue) ? (
         <div className="console-link-banner" role="status" aria-live="polite">
           <span>{t("chrome.runtime.degraded")}</span>
         </div>
