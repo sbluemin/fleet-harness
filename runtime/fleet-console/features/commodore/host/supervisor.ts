@@ -610,8 +610,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (input.detail && !reason.details.includes(input.detail)) reason.details.push(input.detail);
     if (!existing) runner.pending.set(code, reason);
     if (runner.inflight || runner.turning) return;
-    // 새 사건도 예약 재시도에 합친다.
-    if (runner.phase === "retrying" || runner.phase === "error") return;
+    if (runner.phase === "retrying" || runner.phase === "error") {
+      // routine·mail은 예약 재시도를 기다리지 않고 지금 턴을 연다. 나머지는 예약 재시도에 합친다.
+      if (code === "routine" || code === "mail") { clearTimer(runner, "retry"); runner.nextWakeAt = undefined; clearTimer(runner, "coalesce"); void runTurn(runner); }
+      return;
+    }
     scheduleTurn(runner);
   };
 
