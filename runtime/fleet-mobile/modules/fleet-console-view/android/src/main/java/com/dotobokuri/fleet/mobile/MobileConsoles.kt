@@ -69,7 +69,7 @@ internal object MobileConsoles {
 
   fun serialized(
     targets: List<PersistedTarget>, active: PersistedTarget,
-    rosters: Map<String, RosterMemory>, arrival: ConsoleArrival?,
+    rosters: Map<String, RosterMemory>, arrival: ConsoleArrival?, failedId: String? = null,
   ): String {
     val deck = if (targets.any { it.id == active.id }) targets else targets + active
     val visible = deck.take(MAX_ENTRIES).let { first ->
@@ -89,14 +89,16 @@ internal object MobileConsoles {
     }
     val value = JSONObject().put("v", 1).put("consoles", JSONArray(entries))
       .put("arrival", arrival?.json() ?: JSONObject.NULL)
-    fit(value, entries)
+    // Budget for the extra field in the live event, without putting it in the durable snapshot.
+    val eventOverhead = failedId?.let { utf8(JSONObject().put("failed", it)) - 1 } ?: 0
+    fit(value, entries, eventOverhead)
     return value.toString()
   }
 
   private fun utf8(value: JSONObject): Int = value.toString().toByteArray(Charsets.UTF_8).size
 
-  private fun fit(frame: JSONObject, entries: List<JSONObject>) {
-    var bytes = utf8(frame)
+  private fun fit(frame: JSONObject, entries: List<JSONObject>, eventOverhead: Int) {
+    var bytes = utf8(frame) + eventOverhead
     if (bytes <= MAX_FRAME) return
     val rosters = entries.asReversed().mapNotNull { it.optJSONObject("roster") }
     val rows = rosters.flatMap { roster ->
@@ -145,20 +147,21 @@ internal object MobileConsoles {
   }
 
   /** AndroidX's origin rule also matches subframes; the top-frame and exact origin guards are mandatory. */
-  fun script(origin: String, normal: String, stage: Pair<SeamlessSwitch.Pending, String>? = null): String {
+  fun script(origin: String, normal: String, stage: Pair<SeamlessSwitch.Pending, String>? = null, failedId: String? = null): String {
     val location = JSONObject.quote(origin)
     val choose = stage?.let { (pending, withArrival) ->
       val key = JSONObject.quote(pending.documentKey)
       "try { if (!sessionStorage.getItem($key)) { sessionStorage.setItem($key, '1'); " +
         "if (Date.now() < ${pending.expiresAt}) raw = ${JSONObject.quote(withArrival)}; } } catch (_) {} "
     }.orEmpty()
+    val detail = if (failedId == null) "v" else "Object.freeze({...v, failed: ${JSONObject.quote(failedId)}})"
     return "(() => { if (window !== window.top || location.origin !== $location || " +
       "!(location.pathname === '/console' || location.pathname.startsWith('/console/'))) return; " +
       "let raw = ${JSONObject.quote(normal)}; $choose" +
       "const freeze = x => { if (x && typeof x === 'object') { Object.values(x).forEach(freeze); Object.freeze(x); } return x; }; " +
       "const v = freeze(JSON.parse(raw)); " +
       "Object.defineProperty(window, '__fleetMobileConsoles', {value: v, configurable: true}); " +
-      "window.dispatchEvent(new CustomEvent('fleet-mobile-consoles', {detail: v})); })();"
+      "window.dispatchEvent(new CustomEvent('fleet-mobile-consoles', {detail: $detail})); })();"
   }
 }
 

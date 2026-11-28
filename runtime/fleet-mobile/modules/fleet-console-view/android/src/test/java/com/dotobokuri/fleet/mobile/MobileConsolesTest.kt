@@ -30,8 +30,13 @@ class MobileConsolesTest {
     val summary = JSONObject().put("v", 1).put("more", 0).put("commodores", JSONArray(List(40) { row }))
       .put("address", "must-not-be-relayed")
     val roster = requireNotNull(ConsoleRoster.project(summary))
-    val state = MobileConsoles.serialized(targets, active, targets.drop(1).associate { it.id to RosterMemory(RosterStatus.OK, 12, roster) }, null)
+    val memory = targets.drop(1).associate { it.id to RosterMemory(RosterStatus.OK, 12, roster) }
+    val state = MobileConsoles.serialized(targets, active, memory, null)
     assertTrue(state.toByteArray(Charsets.UTF_8).size <= 65_536)
+    val failedId = "f".repeat(64)
+    val failureState = MobileConsoles.serialized(targets, active, memory, null, failedId)
+    val detail = JSONObject(failureState).put("failed", failedId).toString()
+    assertTrue(detail.toByteArray(Charsets.UTF_8).size <= 65_536)
     assertFalse(state.contains("must-not-be-relayed"))
     assertFalse(state.contains(".example"))
     val entries = JSONObject(state).getJSONArray("consoles")
@@ -71,6 +76,40 @@ class MobileConsolesTest {
     assertEquals(mapOf("type" to "switch-failed", "active" to true, "label" to other.label, "origin" to other.origin,
       "code" to "remote_host_not_paired"), failure.event())
     assertEquals(previous.roster, RosterMemory.of(RosterReading(RosterStatus.UNAVAILABLE), previous, 20L).roster)
+  }
+
+  @Test
+  fun retryFailurePulsesOnlyInEventDetailEvenWhenRosterIsAlreadyUnavailable() {
+    val active = target(1)
+    val other = target(2)
+    val origin = active.loopback.origin
+    val existing = RosterMemory(RosterStatus.UNAVAILABLE, null, null)
+    val failed = RosterMemory.of(RosterReading(RosterStatus.UNAVAILABLE), existing, 10)
+    assertEquals(existing, failed)
+    val state = MobileConsoles.serialized(listOf(active, other), active, mapOf(other.id to failed), null, other.id)
+    val snapshot = MobileConsoles.script(origin, state)
+    val live = MobileConsoles.script(origin, state, failedId = other.id)
+    runJavascript("""
+      const vm = require('node:vm');
+      const a = require('node:assert/strict');
+      const [origin, snapshot, live, id] = process.argv.slice(1);
+      const events = [];
+      const window = {dispatchEvent: event => events.push(event)};
+      window.top = window;
+      const context = vm.createContext({window, location: {origin, pathname:'/console/'},
+        CustomEvent: class { constructor(type, {detail}) { this.type = type; this.detail = detail; } }});
+      vm.runInContext(snapshot, context);
+      const before = window.__fleetMobileConsoles;
+      a.equal(before.consoles[1].status, 'unavailable');
+      vm.runInContext(live, context);
+      a.equal(events.length, 2);
+      a.equal(events[1].type, 'fleet-mobile-consoles');
+      a.equal(events[1].detail.failed, id);
+      a.equal(JSON.stringify(window.__fleetMobileConsoles), JSON.stringify(before));
+      a.ok(Object.isFrozen(events[1].detail));
+      vm.runInContext(snapshot, context);
+      a.equal(events[2].detail.failed, undefined);
+    """.trimIndent(), origin, snapshot, live, other.id)
   }
 
   @Test
@@ -134,7 +173,68 @@ class MobileConsolesTest {
       a.equal(oldValue.console.label, 'Console 1');
       a.ok(oldValue.consoles.roster && oldValue.consoles.seamless);
     """.trimIndent()
-    val process = ProcessBuilder("node", "-e", js, origin, beforeCommit, afterCommit, appearance).redirectErrorStream(true).start()
+    runJavascript(js, origin, beforeCommit, afterCommit, appearance)
+  }
+
+  @Test
+  fun stageWaitsForPaintOnlyAfterTrustedStatusAndOnlyForOptedInPages() {
+    val nonce = "test-readiness-nonce"
+    runJavascript("""
+      const vm = require('node:vm');
+      const a = require('node:assert/strict');
+      const [source, nonce] = process.argv.slice(1);
+      const paint = 'fleet-mobile-painted';
+      const origin = 'https://127.1.2.3:8900';
+      const turn = () => new Promise(setImmediate);
+      async function start({signal, painted, responseOrigin = origin} = {}) {
+        const posted = [];
+        const timers = new Map();
+        const window = new EventTarget();
+        let readStatus;
+        const status = new Promise(resolve => { readStatus = resolve; });
+        window.fleetReadiness = {postMessage: value => posted.push(value)};
+        if (signal !== undefined) window.__fleetMobilePaintSignal = signal;
+        if (painted !== undefined) window.__fleetMobilePainted = painted;
+        vm.runInNewContext(source, {window, URL, location: {origin},
+          fetch: async () => ({ok: true, redirected: false, url: responseOrigin + '/api/v1/status', json: () => status}),
+          setTimeout: (fn, ms) => {timers.set(fn, ms); return fn;}, clearTimeout: key => timers.delete(key)});
+        await turn();
+        a.equal(timers.size, 0);
+        a.deepEqual(posted, []);
+        readStatus({name: 'Console', version: '1'});
+        await turn();
+        return {window, posted, timers};
+      }
+      (async () => {
+        for (const options of [{}, {signal:true, painted:true}]) {
+          const active = await start(options);
+          a.deepEqual(active.posted, [nonce]);
+          a.equal(active.timers.size, 0);
+        }
+        const foreign = await start({signal:true, responseOrigin:'https://different.example'});
+        a.deepEqual(foreign.posted, []);
+        a.equal(foreign.timers.size, 0);
+        const gated = await start({signal:true});
+        a.deepEqual(gated.posted, []);
+        a.deepEqual([...gated.timers.values()], [2500]);
+        gated.window.dispatchEvent(new Event(paint));
+        await turn();
+        a.deepEqual(gated.posted, [nonce]);
+        a.equal(gated.timers.size, 0);
+        const fallback = await start({signal:true});
+        a.deepEqual(fallback.posted, []);
+        a.deepEqual([...fallback.timers.values()], [2500]);
+        [...fallback.timers.keys()][0]();
+        fallback.window.dispatchEvent(new Event(paint));
+        await turn();
+        a.deepEqual(fallback.posted, [nonce]);
+        a.equal(fallback.timers.size, 0);
+      })().catch(e => {console.error(e); process.exitCode = 1;});
+    """.trimIndent(), StageReadiness.script(nonce), nonce)
+  }
+
+  private fun runJavascript(js: String, vararg args: String) {
+    val process = ProcessBuilder("node", "-e", js, *args).redirectErrorStream(true).start()
     try {
       assertTrue("Generated JavaScript did not finish", process.waitFor(10, TimeUnit.SECONDS))
       assertEquals(process.inputStream.bufferedReader().readText(), 0, process.exitValue())

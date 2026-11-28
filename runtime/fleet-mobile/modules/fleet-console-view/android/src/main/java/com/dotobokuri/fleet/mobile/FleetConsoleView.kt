@@ -585,7 +585,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     try {
       WebViewCompat.addWebMessageListener(
         webView,
-        READINESS_OBJECT,
+        StageReadiness.MESSAGE_OBJECT,
         setOf(staged.gateway.origin),
         object : WebViewCompat.WebMessageListener {
           override fun onPostMessage(
@@ -719,7 +719,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
         }
         if (staged.readinessRequested) return
         staged.readinessRequested = true
-        view.evaluateJavascript(readinessScript(staged), null)
+        view.evaluateJavascript(StageReadiness.script(staged.readinessNonce), null)
       }
 
       override fun onReceivedError(view: WebView?, request: WebResourceRequest, error: WebResourceError?) {
@@ -823,14 +823,16 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     staged.view.evaluateJavascript(consolesScriptFor(staged.gateway, staged.target), null)
   }
 
-  private fun publishConsoles() {
+  private fun publishConsoles(failedId: String? = null) {
     if (!consolesReady(activeAppearanceChannelReady)) return
     val view = activeView ?: return
     val gateway = activeGateway ?: return
     val target = activeTarget ?: return
-    val consoles = consolesScriptFor(gateway, target)
+    val state = MobileConsoles.serialized(targetStore.list(), target, rosters, arrival = null, failedId = failedId)
+    val consoles = MobileConsoles.script(gateway.origin, state)
     installDocumentScript(view, gateway, consoles + appearanceScriptFor(target, activeAppearanceChannelReady))
-    view.evaluateJavascript(consoles, null)
+    val live = if (failedId == null) consoles else MobileConsoles.script(gateway.origin, state, failedId = failedId)
+    view.evaluateJavascript(live, null)
   }
 
   /** Tell every live page again: the next load through its document-start script, the open page right now. */
@@ -937,24 +939,6 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
 
   private fun emitPayload(payload: Map<String, Any>) {
     main.post { onFleetEvent(payload) }
-  }
-
-  private fun readinessScript(staged: StagedLoad): String {
-    val nonce = org.json.JSONObject.quote(staged.readinessNonce)
-    return """
-      void (async () => {
-        try {
-          const response = await fetch('/api/v1/status', {
-            method: 'GET', credentials: 'include', cache: 'no-store', redirect: 'error',
-            headers: { Accept: 'application/json' }
-          });
-          if (!response.ok || response.redirected || new URL(response.url).origin !== location.origin) return;
-          const value = await response.json();
-          if (typeof value?.name !== 'string' || !value.name || typeof value?.version !== 'string' || !value.version) return;
-          window.$READINESS_OBJECT.postMessage($nonce);
-        } catch (_) {}
-      })();
-    """.trimIndent()
   }
 
   private fun commitStaged(staged: StagedLoad) {
@@ -1099,16 +1083,23 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   /** Rollback released only the staged view/gateway; the committed view and gateway stay in place. */
   private fun reportAttemptFailure(id: Long, candidate: PersistedTarget, code: String, retryAfterSeconds: Int? = null) {
     val switchFailure = seamless.fail(id, code)
+    var rosterChanged = false
     if (switchFailure != null || code == "remote_host_not_paired") {
       val stored = targetStore.find(candidate.origin)
       if (stored != null) {
         obsoleteRoster(stored)
         val status = switchFailure?.status ?: RosterStatus.UNPAIRED
-        if (rememberRoster(stored, RosterReading(status))) publishConsoles()
+        rosterChanged = rememberRoster(stored, RosterReading(status))
       }
     }
-    if (switchFailure != null) emitPayload(switchFailure.event())
-    else emit("error", code, activeTarget?.label ?: candidate.label, candidate.origin, retryAfterSeconds)
+    if (switchFailure != null) {
+      // Opening is page-local state, so a switch failure needs a pulse even if the roster did not change.
+      publishConsoles(failedId = switchFailure.target.id)
+      emitPayload(switchFailure.event())
+    } else {
+      if (rosterChanged) publishConsoles()
+      emit("error", code, activeTarget?.label ?: candidate.label, candidate.origin, retryAfterSeconds)
+    }
   }
 
   private fun failInvalidLink() {
@@ -1269,7 +1260,6 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   }
 
   private companion object {
-    const val READINESS_OBJECT = "fleetReadiness"
     const val PAGE_BACK_BUDGET_MS = 300L
 
     /** Only a literal `true` counts as handled; anything else the page does is the shell's press. */
