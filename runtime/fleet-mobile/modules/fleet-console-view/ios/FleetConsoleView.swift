@@ -452,8 +452,13 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     staging = staged
     // 문서 시작 스크립트: 겉모습 + 콘솔 명부 상태(이 전환의 도착 위치 포함, 개정 r1).
     installUserScripts(staged)
-    webView.isHidden = true
-    addSubview(webView)
+    // 숨기지(isHidden) 않는다: 숨긴 WKWebView는 WebKit이 보이지 않는 페이지로 보고 렌더링·rAF를 멈출 수 있어,
+    // 페이지가 첫 화면을 그리고 페인트 신호(개정 r7)를 보낼 수 없다. 대신 활성 뷰 아래에 투명하게 두고
+    // 터치와 VoiceOver에서 뺀다. commit 전까지 사용자에게는 보이지도 닿지도 않는다.
+    webView.alpha = 0
+    webView.isUserInteractionEnabled = false
+    webView.accessibilityElementsHidden = true
+    if let active = activeView, active.superview === self { insertSubview(webView, belowSubview: active) } else { addSubview(webView) }
     layoutWebViews()
     installLocalCookie(staged) {
       guard self.staging === staged, self.isCurrent(id) else { return }
@@ -813,7 +818,11 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     republishConsoles()
     // 단계 로드 문서의 첫 roster 요청은 readiness 전이라 게이트에 버려질 수 있다(개정 r4) — 셸이 먼저 읽는다.
     refreshRosters()
-    staged.view.isHidden = false
+    // 이미 그려진 문서를 앞으로 올린다. 이전 뷰 제거는 그다음, 지금 순서 그대로.
+    staged.view.alpha = 1
+    staged.view.isUserInteractionEnabled = true
+    staged.view.accessibilityElementsHidden = false
+    bringSubviewToFront(staged.view)
     layoutWebViews()
     if let previousView, previousView !== staged.view { previousView.removeFromSuperview(); previousView.destroySafely() }
     if previousGateway !== staged.gateway { previousGateway?.close() }
